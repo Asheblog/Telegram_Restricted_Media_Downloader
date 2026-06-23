@@ -146,7 +146,8 @@ class UploadTask:
             with_delete: bool = False,
             media_group: Optional[asyncio.Task] = None,
             message_id: Optional[int] = None,
-            send_as_media_group: bool = False
+            send_as_media_group: bool = False,
+            release_callback: Optional[Callable] = None
     ):
         UploadTask.TASKS.add(self)
         UploadTask.TASK_COUNTER += 1
@@ -163,6 +164,7 @@ class UploadTask:
         self.__media_group: asyncio.Task = media_group
         self.message_id: Optional[int] = message_id
         self.send_as_media_group: bool = send_as_media_group
+        self.release_callback: Optional[Callable] = release_callback
         self.sha256: str = calc_sha256(file_path=self.file_path)
         self.prompt: str = ''
 
@@ -242,6 +244,12 @@ class UploadTask:
                     message
                 )
             )
+
+    def release_window(self) -> None:
+        release_callback = self.release_callback
+        self.release_callback = None
+        if callable(release_callback):
+            release_callback()
 
     @property
     def complete_task(self) -> int:

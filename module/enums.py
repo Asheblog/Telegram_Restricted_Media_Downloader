@@ -1464,6 +1464,7 @@ class BotCallbackText:
     FORWARD_SETTING: str = 'forward_setting'
     UPLOAD_DOWNLOAD: str = 'upload_download'
     UPLOAD_DOWNLOAD_DELETE: str = 'upload_download_delete'
+    UPLOAD_PENDING_LIMIT: str = 'upload_pending_limit'
     DOWNLOAD_CHAT_ID: str = 'download_chat_id'
     DOWNLOAD_CHAT_ID_CANCEL: str = 'download_chat_id_cancel'
     DOWNLOAD_CHAT_FILTER: str = 'download_chat_filter'

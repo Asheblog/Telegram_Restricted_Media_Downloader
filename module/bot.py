@@ -1284,6 +1284,19 @@ class KeyboardButton:
             self,
             global_config: dict
     ):
+        upload_config = global_config.get('upload', {})
+        try:
+            pending_limit = int(upload_config.get('pending_limit', 3))
+        except (TypeError, ValueError):
+            pending_limit = 3
+        pending_limit = min(max(pending_limit, 1), 5)
+        pending_limit_buttons = [
+            InlineKeyboardButton(
+                text=f'队列{i}{" ✅" if pending_limit == i else ""}',
+                callback_data=f'{BotCallbackText.UPLOAD_PENDING_LIMIT}:{i}'
+            )
+            for i in range(1, 6)
+        ]
         try:
             await self.callback_query.message.edit_reply_markup(
                 InlineKeyboardMarkup(
@@ -1300,6 +1313,7 @@ class KeyboardButton:
                                 callback_data=BotCallbackText.UPLOAD_DOWNLOAD_DELETE
                             )
                         ],
+                        pending_limit_buttons,
                         [
                             InlineKeyboardButton(
                                 text=BotButton.RETURN,
