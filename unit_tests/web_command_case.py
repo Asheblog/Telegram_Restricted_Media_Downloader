@@ -125,7 +125,7 @@ class WebCommandTaskTest(unittest.TestCase):
         self.assertFalse(payload['download_type']['document'])
         self.assertEqual(payload['keywords'], ['alpha', 'beta'])
 
-    def test_html_contains_all_command_entries(self):
+    def test_html_contains_supported_command_entries_without_runtime_pages(self):
         assets_path = Path(__file__).resolve().parents[1] / 'module' / 'web_ui_assets.py'
         text = assets_path.read_text(encoding='UTF-8')
 
@@ -138,11 +138,17 @@ class WebCommandTaskTest(unittest.TestCase):
                 'upload',
                 'upload_r',
                 'download_chat',
-                'table',
-                'help',
-                'exit',
         ):
             self.assertIn(command, text)
+        for hidden_command in (
+                "command:'table'",
+                "command:'help'",
+                "command:'exit'",
+                "title:'Table'",
+                "title:'Help'",
+                "title:'Exit'",
+        ):
+            self.assertNotIn(hidden_command, text)
         self.assertIn('/api/listeners/', text)
 
     def test_download_primary_links_preserve_target_profile(self):
