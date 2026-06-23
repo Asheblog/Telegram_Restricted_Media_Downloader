@@ -53,17 +53,26 @@ class TransferStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     started_at TEXT,
-                    finished_at TEXT
+                    finished_at TEXT,
+                    assignment_completed INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS transfer_items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     task_id INTEGER NOT NULL REFERENCES transfer_tasks(id) ON DELETE CASCADE,
+                    source_chat_id TEXT,
                     source_message_id INTEGER,
                     source_link TEXT,
                     target_link TEXT NOT NULL,
                     media_type TEXT,
+                    file_name TEXT,
+                    file_size INTEGER,
                     local_path TEXT,
+                    phase TEXT NOT NULL DEFAULT 'pending',
+                    download_current INTEGER NOT NULL DEFAULT 0,
+                    download_total INTEGER NOT NULL DEFAULT 0,
+                    upload_current INTEGER NOT NULL DEFAULT 0,
+                    upload_total INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     created_at TEXT NOT NULL,
@@ -78,8 +87,53 @@ class TransferStore:
                     message TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS download_success_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_chat_id TEXT NOT NULL,
+                    source_message_id INTEGER NOT NULL,
+                    source_link TEXT,
+                    media_type TEXT,
+                    local_path TEXT NOT NULL,
+                    file_size INTEGER,
+                    file_name TEXT,
+                    downloaded_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(source_chat_id, source_message_id)
+                );
                 '''
             )
+            self._ensure_columns(
+                conn,
+                'transfer_tasks',
+                {
+                    'assignment_completed': 'INTEGER NOT NULL DEFAULT 0'
+                }
+            )
+            self._ensure_columns(
+                conn,
+                'transfer_items',
+                {
+                    'source_chat_id': 'TEXT',
+                    'file_name': 'TEXT',
+                    'file_size': 'INTEGER',
+                    'phase': "TEXT NOT NULL DEFAULT 'pending'",
+                    'download_current': 'INTEGER NOT NULL DEFAULT 0',
+                    'download_total': 'INTEGER NOT NULL DEFAULT 0',
+                    'upload_current': 'INTEGER NOT NULL DEFAULT 0',
+                    'upload_total': 'INTEGER NOT NULL DEFAULT 0'
+                }
+            )
+
+    @staticmethod
+    def _ensure_columns(conn: sqlite3.Connection, table: str, columns: Dict[str, str]) -> None:
+        existing = {
+            str(row['name'])
+            for row in conn.execute(f'PRAGMA table_info({table})').fetchall()
+        }
+        for column, ddl in columns.items():
+            if column not in existing:
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {ddl}')
 
     def create_task(
             self,
@@ -136,7 +190,8 @@ class TransferStore:
             failed_items: Optional[int] = None,
             error_message: Optional[str] = None,
             started: bool = False,
-            finished: bool = False
+            finished: bool = False,
+            assignment_completed: Optional[bool] = None
     ) -> None:
         task = self.get_task(task_id)
         if not task:
@@ -150,7 +205,17 @@ class TransferStore:
             'error_message': error_message if error_message is not None else task['error_message'],
             'updated_at': now,
             'started_at': now if started and not task['started_at'] else task['started_at'],
-            'finished_at': now if finished else task['finished_at']
+            'finished_at': (
+                now
+                if finished
+                else None if status in (TransferStatus.PENDING, TransferStatus.RUNNING)
+                else task['finished_at']
+            ),
+            'assignment_completed': (
+                int(assignment_completed)
+                if assignment_completed is not None
+                else int(task.get('assignment_completed') or 0)
+            )
         }
         with self.connect() as conn:
             conn.execute(
@@ -163,7 +228,8 @@ class TransferStore:
                     error_message = :error_message,
                     updated_at = :updated_at,
                     started_at = :started_at,
-                    finished_at = :finished_at
+                    finished_at = :finished_at,
+                    assignment_completed = :assignment_completed
                 WHERE id = :task_id
                 ''',
                 {**values, 'task_id': task_id}
@@ -175,21 +241,56 @@ class TransferStore:
             source_message_id: Optional[int],
             source_link: Optional[str],
             target_link: str,
+            source_chat_id: Optional[str] = None,
             media_type: Optional[str] = None,
+            file_name: Optional[str] = None,
+            file_size: Optional[int] = None,
             local_path: Optional[str] = None,
+            phase: str = 'pending',
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None
     ) -> int:
         now = self.utc_now()
         with self.connect() as conn:
+            if source_message_id is not None:
+                row = conn.execute(
+                    '''
+                    SELECT id FROM transfer_items
+                    WHERE task_id = ? AND source_message_id = ?
+                    ORDER BY id ASC
+                    LIMIT 1
+                    ''',
+                    (task_id, source_message_id)
+                ).fetchone()
+                if row:
+                    item_id = int(row['id'])
+                    self._update_item_with_connection(
+                        conn=conn,
+                        item_id=item_id,
+                        status=status,
+                        source_chat_id=source_chat_id,
+                        media_type=media_type,
+                        local_path=local_path,
+                        file_name=file_name,
+                        file_size=file_size,
+                        phase=phase,
+                        error_message=error_message,
+                        now=now
+                    )
+                    return item_id
             cursor = conn.execute(
                 '''
                 INSERT INTO transfer_items (
-                    task_id, source_message_id, source_link, target_link,
-                    media_type, local_path, status, error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    task_id, source_chat_id, source_message_id, source_link, target_link,
+                    media_type, file_name, file_size, local_path, phase, status,
+                    error_message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
-                (task_id, source_message_id, source_link, target_link, media_type, local_path, status, error_message, now, now)
+                (
+                    task_id, source_chat_id, source_message_id, source_link, target_link,
+                    media_type, file_name, file_size, local_path, phase, status,
+                    error_message, now, now
+                )
             )
             return int(cursor.lastrowid)
 
@@ -197,20 +298,84 @@ class TransferStore:
             self,
             item_id: int,
             status: Optional[str] = None,
+            source_chat_id: Optional[str] = None,
             media_type: Optional[str] = None,
             local_path: Optional[str] = None,
+            file_name: Optional[str] = None,
+            file_size: Optional[int] = None,
+            phase: Optional[str] = None,
             error_message: Optional[str] = None
     ) -> None:
         now = self.utc_now()
+        with self.connect() as conn:
+            self._update_item_with_connection(
+                conn=conn,
+                item_id=item_id,
+                status=status,
+                source_chat_id=source_chat_id,
+                media_type=media_type,
+                local_path=local_path,
+                file_name=file_name,
+                file_size=file_size,
+                phase=phase,
+                error_message=error_message,
+                now=now
+            )
+
+    @staticmethod
+    def _update_item_with_connection(
+            conn: sqlite3.Connection,
+            item_id: int,
+            now: str,
+            status: Optional[str] = None,
+            source_chat_id: Optional[str] = None,
+            media_type: Optional[str] = None,
+            local_path: Optional[str] = None,
+            file_name: Optional[str] = None,
+            file_size: Optional[int] = None,
+            phase: Optional[str] = None,
+            error_message: Optional[str] = None
+    ) -> None:
         fields = {'updated_at': now}
-        if status is not None:
-            fields['status'] = status
-        if media_type is not None:
-            fields['media_type'] = media_type
-        if local_path is not None:
-            fields['local_path'] = local_path
-        if error_message is not None:
-            fields['error_message'] = error_message
+        optional_fields = {
+            'status': status,
+            'source_chat_id': source_chat_id,
+            'media_type': media_type,
+            'local_path': local_path,
+            'file_name': file_name,
+            'file_size': file_size,
+            'phase': phase,
+            'error_message': error_message
+        }
+        for key, value in optional_fields.items():
+            if value is not None:
+                fields[key] = value
+        set_clause = ', '.join([f'{key} = :{key}' for key in fields])
+        conn.execute(
+            f'UPDATE transfer_items SET {set_clause} WHERE id = :item_id',
+            {**fields, 'item_id': item_id}
+        )
+
+    def update_item_progress(
+            self,
+            item_id: int,
+            phase: Optional[str] = None,
+            download_current: Optional[int] = None,
+            download_total: Optional[int] = None,
+            upload_current: Optional[int] = None,
+            upload_total: Optional[int] = None
+    ) -> None:
+        fields = {'updated_at': self.utc_now()}
+        values = {
+            'phase': phase,
+            'download_current': download_current,
+            'download_total': download_total,
+            'upload_current': upload_current,
+            'upload_total': upload_total
+        }
+        for key, value in values.items():
+            if value is not None:
+                fields[key] = int(value) if key.endswith(('_current', '_total')) else value
         set_clause = ', '.join([f'{key} = :{key}' for key in fields])
         with self.connect() as conn:
             conn.execute(
@@ -262,3 +427,116 @@ class TransferStore:
             'items': self.list_items(task_id),
             'events': self.list_events(task_id)
         }
+
+    def refresh_task_counts(
+            self,
+            task_id: int,
+            expected_total: Optional[int] = None,
+            assignment_completed: Optional[bool] = None
+    ) -> None:
+        task = self.get_task(task_id)
+        if not task:
+            return
+        items = self.list_items(task_id)
+        expected = expected_total if expected_total is not None else task.get('total_items')
+        expected = int(expected or len(items))
+        completed = len([item for item in items if item.get('status') in (TransferStatus.SUCCESS, TransferStatus.SKIPPED)])
+        failed = len([item for item in items if item.get('status') == TransferStatus.FAILURE])
+        terminal = completed + failed
+        assigned = bool(task.get('assignment_completed'))
+        if assignment_completed is not None:
+            assigned = assignment_completed
+        elif expected_total is not None:
+            assigned = True
+
+        status = TransferStatus.RUNNING
+        finished = False
+        if expected > 0 and assigned and len(items) >= expected and terminal >= expected:
+            status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
+            finished = True
+        elif task.get('status') == TransferStatus.PENDING and not items:
+            status = TransferStatus.PENDING
+
+        self.update_task(
+            task_id=task_id,
+            status=status,
+            total_items=expected,
+            completed_items=completed,
+            failed_items=failed,
+            finished=finished,
+            assignment_completed=assigned
+        )
+
+    def delete_task(self, task_id: int) -> bool:
+        with self.connect() as conn:
+            cursor = conn.execute('DELETE FROM transfer_tasks WHERE id = ?', (task_id,))
+            return cursor.rowcount > 0
+
+    def upsert_download_success_record(
+            self,
+            source_chat_id: str,
+            source_message_id: int,
+            source_link: Optional[str],
+            media_type: Optional[str],
+            local_path: str,
+            file_size: Optional[int],
+            file_name: Optional[str]
+    ) -> None:
+        now = self.utc_now()
+        with self.connect() as conn:
+            conn.execute(
+                '''
+                INSERT INTO download_success_records (
+                    source_chat_id, source_message_id, source_link, media_type,
+                    local_path, file_size, file_name, downloaded_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_chat_id, source_message_id) DO UPDATE SET
+                    source_link = excluded.source_link,
+                    media_type = excluded.media_type,
+                    local_path = excluded.local_path,
+                    file_size = excluded.file_size,
+                    file_name = excluded.file_name,
+                    updated_at = excluded.updated_at
+                ''',
+                (
+                    str(source_chat_id), int(source_message_id), source_link, media_type,
+                    local_path, file_size, file_name, now, now
+                )
+            )
+
+    def get_download_success_record(
+            self,
+            source_chat_id: str,
+            source_message_id: int,
+            expected_size: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        with self.connect() as conn:
+            row = conn.execute(
+                '''
+                SELECT * FROM download_success_records
+                WHERE source_chat_id = ? AND source_message_id = ?
+                ''',
+                (str(source_chat_id), int(source_message_id))
+            ).fetchone()
+        if not row:
+            return None
+        record = dict(row)
+        local_path = record.get('local_path')
+        if not local_path or not os.path.isfile(local_path):
+            return None
+        size_to_check = expected_size if expected_size is not None else record.get('file_size')
+        if size_to_check is not None and os.path.getsize(local_path) != int(size_to_check):
+            return None
+        return record
+
+    def list_download_success_records(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT * FROM download_success_records
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                ''',
+                (limit,)
+            ).fetchall()
+            return [dict(row) for row in rows]

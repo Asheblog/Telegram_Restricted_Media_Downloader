@@ -48,7 +48,14 @@ jobs:
         cp "res\2_5_1.png" "release\使用手册\软件更新教程.png"
         cd release
         "..\res\bin\rar.exe" a "TRMD_${{ env.CLEAN_VERSION }}-windows-64.rar" "TRMD.exe" "使用手册"
-        rm -rf "使用手册"
+        python - <<'PY'
+        import pathlib
+        import shutil
+
+        manual_dir = pathlib.Path("使用手册")
+        if manual_dir.is_dir():
+            shutil.rmtree(manual_dir)
+        PY
 
     - name: Upload release asset to GitHub
       uses: softprops/action-gh-release@v2

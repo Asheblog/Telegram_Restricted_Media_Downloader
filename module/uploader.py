@@ -118,6 +118,7 @@ class TelegramUploader:
                         await func()
                     else:
                         await self.loop.run_in_executor(self.client.executor, func)
+                    self.notify_transfer_progress(upload_task, current_size, file_size)
 
             except Exception as e:
                 log.error(
@@ -353,6 +354,7 @@ class TelegramUploader:
                                 for task in UploadTask.TASKS:
                                     if task.message_id in message_ids and task.status == UploadStatus.SUCCESS:
                                         task.status = UploadStatus.SENT
+                                        self.notify_transfer_status(task)
                                 self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
                             except Exception as send_error:
                                 log.error(f'[Upload Worker]发送媒体组失败,{_t(KeyWord.REASON)}:"{send_error}"',
@@ -655,7 +657,14 @@ class TelegramUploader:
                             'item_id': item_id,
                             'target_profile': with_upload.get('target_profile')
                         },
-                        status_callback=with_upload.get('status_callback')
+                        status_callback=with_upload.get('status_callback'),
+                        progress_callback=with_upload.get('progress_callback')
                     )
                 )
             )
+
+    @staticmethod
+    def notify_transfer_progress(upload_task: UploadTask, current: int, total: int) -> None:
+        callback = getattr(upload_task, 'progress_callback', None)
+        if callable(callback):
+            callback(upload_task, current, total)

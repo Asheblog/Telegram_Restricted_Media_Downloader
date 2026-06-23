@@ -49,7 +49,14 @@ jobs:
         cd release
         chmod +x "../res/bin/rar"
         "../res/bin/rar" a "TRMD_${{ env.CLEAN_VERSION }}-linux-64.rar" "TRMD" "使用手册"
-        rm -rf "使用手册"
+        python - <<'PY'
+        import pathlib
+        import shutil
+
+        manual_dir = pathlib.Path("使用手册")
+        if manual_dir.is_dir():
+            shutil.rmtree(manual_dir)
+        PY
 
     - name: Upload release asset to GitHub
       uses: softprops/action-gh-release@v2

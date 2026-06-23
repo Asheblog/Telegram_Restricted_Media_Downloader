@@ -97,7 +97,8 @@ from module.web_ui import (
     get_web_host_from_env,
     get_web_password_from_env,
     get_web_port_from_env,
-    get_web_username_from_env
+    get_web_username_from_env,
+    merge_allowed_settings
 )
 from module.util import (
     is_docker,
@@ -144,6 +145,56 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_submitted_task_ids.add(task_id)
         self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
 
+    def get_web_settings(self) -> dict:
+        return {
+            'user': {
+                'config_path': self.app.config_path,
+                'api_id': self.app.config.get('api_id'),
+                'api_hash': self.app.config.get('api_hash'),
+                'bot_token': self.app.config.get('bot_token'),
+                'session_directory': self.app.config.get('session_directory'),
+                'save_directory': self.app.config.get('save_directory'),
+                'temp_directory': self.app.config.get('temp_directory'),
+                'max_tasks': self.app.config.get('max_tasks'),
+                'max_retries': self.app.config.get('max_retries'),
+                'download_type': self.app.config.get('download_type'),
+                'is_shutdown': self.app.config.get('is_shutdown'),
+                'proxy': self.app.config.get('proxy')
+            },
+            'global': self.gc.config
+        }
+
+    def update_web_settings(self, payload: dict) -> dict:
+        user_config = merge_allowed_settings(
+            target=self.app.config.copy(),
+            patch=payload.get('user', {}) if isinstance(payload, dict) else {},
+            allowed={
+                'api_id', 'api_hash', 'bot_token', 'session_directory', 'save_directory',
+                'temp_directory', 'max_tasks', 'max_retries', 'download_type', 'is_shutdown',
+                'proxy'
+            }
+        )
+        global_config = merge_allowed_settings(
+            target=self.gc.config.copy(),
+            patch=payload.get('global', {}) if isinstance(payload, dict) else {},
+            allowed={'notice', 'export_table', 'upload', 'forward_type'}
+        )
+        self.app.save_config(user_config)
+        self.app.config = user_config
+        self.app.download_type = user_config.get('download_type')
+        self.app.is_shutdown = user_config.get('is_shutdown')
+        self.app.max_download_task = user_config.get('max_tasks', {'download': 3}).get('download')
+        self.app.max_upload_task = (user_config.get('max_tasks') or {}).get('upload', 3) or 3
+        self.app.max_download_retries = user_config.get('max_retries', {'download': 5}).get('download')
+        self.app.max_upload_retries = (user_config.get('max_retries') or {}).get('upload', 3) or 3
+        self.app.save_directory = user_config.get('save_directory')
+        self.app.temp_directory = PARSE_ARGS.temp or (user_config.get('temp_directory') or self.app.TEMP_DIRECTORY)
+        self.app.work_directory = PARSE_ARGS.session or (
+                user_config.get('session_directory') or self.app.WORK_DIRECTORY)
+        self.gc.save_config(global_config)
+        self.download_upload_window.notify_limit_changed()
+        return self.get_web_settings()
+
     def start_web_ui(self) -> None:
         if PARSE_ARGS.web is None:
             return
@@ -151,6 +202,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_ui = WebUiServer(
             store=self.transfer_store,
             task_submitter=self.submit_web_task,
+            settings_provider=self.get_web_settings,
+            settings_updater=self.update_web_settings,
             host=get_web_host_from_env(),
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
@@ -288,22 +341,180 @@ class TelegramRestrictedMediaDownloader(Bot):
     def refresh_transfer_task_counts(self, task_id: int) -> None:
         if not self.transfer_store:
             return
-        items = self.transfer_store.list_items(task_id)
-        total = len(items)
-        completed = len([item for item in items if item.get('status') in (TransferStatus.SUCCESS, TransferStatus.SKIPPED)])
-        failed = len([item for item in items if item.get('status') == TransferStatus.FAILURE])
-        status = TransferStatus.RUNNING
-        finished = False
-        if total and completed + failed >= total:
-            status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
-            finished = True
-        self.transfer_store.update_task(
+        self.transfer_store.refresh_task_counts(task_id)
+
+    def create_transfer_item_for_download(
+            self,
+            task_with_upload: Optional[dict],
+            chat_id: Union[str, int],
+            link: str,
+            message: pyrogram.types.Message,
+            media_type: str,
+            file_name: str,
+            final_path: str,
+            file_size: int
+    ) -> Optional[dict]:
+        if not isinstance(task_with_upload, dict):
+            return task_with_upload
+        source_chat_id = str(getattr(getattr(message, 'chat', None), 'id', chat_id))
+        task_with_upload['message_id'] = getattr(message, 'id', None)
+        task_with_upload['source_chat_id'] = source_chat_id
+        task_with_upload['source_link'] = getattr(message, 'link', None) or link
+        task_with_upload['media_type'] = media_type
+        task_with_upload['file_name'] = file_name
+        task_with_upload['file_size'] = file_size
+        if not self.transfer_store or not task_with_upload.get('task_id'):
+            return task_with_upload
+        task_id = int(task_with_upload.get('task_id'))
+        item_id = self.transfer_store.add_item(
             task_id=task_id,
-            status=status,
-            total_items=total,
-            completed_items=completed,
-            failed_items=failed,
-            finished=finished
+            source_chat_id=source_chat_id,
+            source_message_id=getattr(message, 'id', None),
+            source_link=getattr(message, 'link', None) or link,
+            target_link=task_with_upload.get('link'),
+            media_type=media_type,
+            file_name=file_name,
+            file_size=file_size,
+            local_path=final_path,
+            phase='downloading',
+            status=TransferStatus.RUNNING
+        )
+        self.transfer_store.update_item_progress(
+            item_id=item_id,
+            phase='downloading',
+            download_current=0,
+            download_total=file_size
+        )
+        task_with_upload['item_id'] = item_id
+        self.refresh_transfer_task_counts(task_id)
+        return task_with_upload
+
+    def transfer_download_progress(
+            self,
+            current: int,
+            total: int,
+            progress,
+            task_id: int,
+            with_upload: Optional[dict] = None
+    ) -> None:
+        self.pb.download(current, total, progress, task_id)
+        if not self.transfer_store or not isinstance(with_upload, dict):
+            return
+        item_id = with_upload.get('item_id')
+        if item_id:
+            self.transfer_store.update_item_progress(
+                item_id=int(item_id),
+                phase='downloading',
+                download_current=current,
+                download_total=total
+            )
+
+    def record_transfer_download_success(
+            self,
+            with_upload: Optional[dict],
+            message: pyrogram.types.Message,
+            file_path: str
+    ) -> None:
+        if not self.transfer_store or not isinstance(with_upload, dict):
+            return
+        item_id = with_upload.get('item_id')
+        file_size = with_upload.get('file_size')
+        if file_size is None and os.path.isfile(file_path):
+            file_size = os.path.getsize(file_path)
+        if item_id:
+            self.transfer_store.update_item(
+                int(item_id),
+                local_path=file_path,
+                file_name=with_upload.get('file_name') or os.path.basename(file_path),
+                file_size=file_size,
+                phase='downloaded'
+            )
+            self.transfer_store.update_item_progress(
+                int(item_id),
+                phase='downloaded',
+                download_current=file_size or 0,
+                download_total=file_size or 0
+            )
+        source_chat_id = with_upload.get('source_chat_id')
+        source_message_id = with_upload.get('message_id') or getattr(message, 'id', None)
+        if source_chat_id and source_message_id and os.path.isfile(file_path):
+            self.transfer_store.upsert_download_success_record(
+                source_chat_id=str(source_chat_id),
+                source_message_id=int(source_message_id),
+                source_link=with_upload.get('source_link') or getattr(message, 'link', None),
+                media_type=with_upload.get('media_type'),
+                local_path=file_path,
+                file_size=file_size,
+                file_name=with_upload.get('file_name') or os.path.basename(file_path)
+            )
+
+    def try_reuse_transfer_download_record(
+            self,
+            task_with_upload: Optional[dict],
+            message: pyrogram.types.Message,
+            expected_size: int
+    ) -> Optional[str]:
+        if (
+                not isinstance(task_with_upload, dict)
+                or not self.transfer_store
+                or not task_with_upload.get('source_chat_id')
+                or not task_with_upload.get('message_id')
+        ):
+            return None
+        record = self.transfer_store.get_download_success_record(
+            source_chat_id=str(task_with_upload.get('source_chat_id')),
+            source_message_id=int(task_with_upload.get('message_id')),
+            expected_size=expected_size
+        )
+        if not record:
+            return None
+        local_path = record.get('local_path')
+        item_id = task_with_upload.get('item_id')
+        if item_id:
+            self.transfer_store.update_item(
+                int(item_id),
+                local_path=local_path,
+                file_name=record.get('file_name'),
+                file_size=record.get('file_size'),
+                phase='downloaded'
+            )
+            self.transfer_store.update_item_progress(
+                int(item_id),
+                phase='downloaded',
+                download_current=expected_size,
+                download_total=expected_size
+            )
+            self.transfer_store.add_event(
+                int(task_with_upload.get('task_id')),
+                f'Reused download success record: {record.get("file_name") or os.path.basename(local_path)}',
+                item_id=int(item_id)
+            )
+        if self.uploader:
+            try:
+                media_group = message.get_media_group()
+            except ValueError:
+                media_group = None
+            task_with_upload['media_group'] = media_group
+            self.uploader.download_upload(
+                with_upload=task_with_upload,
+                file_path=local_path
+            )
+        else:
+            self.release_download_upload_window(task_with_upload)
+        return local_path
+
+    def on_transfer_upload_progress(self, upload_task: UploadTask, current: int, total: int) -> None:
+        if not self.transfer_store:
+            return
+        meta = getattr(upload_task, 'transfer_meta', {}) or {}
+        item_id = meta.get('item_id')
+        if not item_id:
+            return
+        self.transfer_store.update_item_progress(
+            item_id=int(item_id),
+            phase='uploading',
+            upload_current=current,
+            upload_total=total
         )
 
     def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
@@ -312,11 +523,15 @@ class TelegramRestrictedMediaDownloader(Bot):
         task_id = int(with_upload.get('task_id'))
         item_id = self.transfer_store.add_item(
             task_id=task_id,
+            source_chat_id=with_upload.get('source_chat_id'),
             source_message_id=with_upload.get('message_id'),
             source_link=with_upload.get('source_link'),
             target_link=with_upload.get('link'),
             media_type=with_upload.get('media_type'),
+            file_name=with_upload.get('file_name') or os.path.basename(file_path),
+            file_size=with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None),
             local_path=file_path,
+            phase='uploading',
             status=TransferStatus.RUNNING
         )
         self.transfer_store.add_event(task_id, f'File ready for target upload: {os.path.basename(file_path)}', item_id=item_id)
@@ -329,10 +544,14 @@ class TelegramRestrictedMediaDownloader(Bot):
         task_id = int(with_upload.get('task_id'))
         item_id = self.transfer_store.add_item(
             task_id=task_id,
+            source_chat_id=with_upload.get('source_chat_id'),
             source_message_id=with_upload.get('message_id'),
             source_link=with_upload.get('source_link'),
             target_link=with_upload.get('link'),
             media_type=with_upload.get('media_type'),
+            file_name=with_upload.get('file_name'),
+            file_size=with_upload.get('file_size'),
+            phase='skipped',
             status=TransferStatus.SKIPPED
         )
         self.transfer_store.add_event(task_id, message, level='warning', item_id=item_id)
@@ -344,10 +563,14 @@ class TelegramRestrictedMediaDownloader(Bot):
         task_id = int(with_upload.get('task_id'))
         item_id = self.transfer_store.add_item(
             task_id=task_id,
+            source_chat_id=with_upload.get('source_chat_id'),
             source_message_id=with_upload.get('message_id'),
             source_link=with_upload.get('source_link'),
             target_link=with_upload.get('link'),
             media_type=with_upload.get('media_type'),
+            file_name=with_upload.get('file_name'),
+            file_size=with_upload.get('file_size'),
+            phase='failure',
             status=TransferStatus.FAILURE,
             error_message=message
         )
@@ -363,12 +586,13 @@ class TelegramRestrictedMediaDownloader(Bot):
         if not task_id or not item_id:
             return
         if upload_task.status == UploadStatus.SENT:
-            self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS)
+            self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent')
             self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
         elif upload_task.status == UploadStatus.FAILURE:
             self.transfer_store.update_item(
                 item_id,
                 status=TransferStatus.FAILURE,
+                phase='failure',
                 error_message=upload_task.error_msg
             )
             self.transfer_store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
@@ -386,6 +610,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             'media_type': media_type,
             'on_file_ready': self.on_transfer_file_ready,
             'status_callback': self.on_transfer_upload_status,
+            'progress_callback': self.on_transfer_upload_progress,
             'skip_callback': self.on_transfer_item_skipped,
             'failure_callback': self.on_transfer_item_failed
         }
@@ -408,6 +633,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             end_id = task.get('end_id')
             if start_id is not None and end_id is not None:
                 source_prefix = source_link.rstrip('/')
+                expected_total = int(end_id) - int(start_id) + 1
                 for message_id in range(int(start_id), int(end_id) + 1):
                     message_link = f'{source_prefix}/{message_id}?single'
                     task_result = await self.create_download_task(
@@ -421,6 +647,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                         error = task_result.get('e_code') or {}
                         raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
                 self.transfer_store.add_event(task_id, f'Range transfer assigned: {start_id}-{end_id}.')
+                self.transfer_store.refresh_task_counts(
+                    task_id,
+                    expected_total=expected_total,
+                    assignment_completed=True
+                )
             else:
                 task_result = await self.create_download_task(
                     message_ids=f'{source_link}?single' if '?single' not in source_link else source_link,
@@ -432,6 +663,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     error = task_result.get('e_code') or {}
                     raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
                 self.transfer_store.add_event(task_id, 'Single-message transfer assigned.')
+                self.transfer_store.refresh_task_counts(
+                    task_id,
+                    expected_total=1,
+                    assignment_completed=True
+                )
         except Exception as e:
             self.transfer_store.update_task(
                 task_id,
@@ -1924,6 +2160,16 @@ class TelegramRestrictedMediaDownloader(Bot):
                         message=message,
                         dtype=valid_dtype).values()
                 task_with_upload = await self.prepare_download_upload_meta(with_upload)
+                task_with_upload = self.create_transfer_item_for_download(
+                    task_with_upload=task_with_upload,
+                    chat_id=chat_id,
+                    link=link,
+                    message=message,
+                    media_type=valid_dtype,
+                    file_name=file_name,
+                    final_path=save_directory,
+                    file_size=sever_file_size
+                )
                 retry['id'] = file_id
                 if is_file_duplicate(
                         save_directory=save_directory,
@@ -1943,6 +2189,14 @@ class TelegramRestrictedMediaDownloader(Bot):
                         diy_download_type=diy_download_type,
                         _future=save_directory
                     )
+                elif self.try_reuse_transfer_download_record(
+                        task_with_upload=task_with_upload,
+                        message=message,
+                        expected_size=sever_file_size
+                ):
+                    DownloadTask.COMPLETE_LINK.add(link)
+                    if isinstance(task_with_upload, dict) and task_with_upload.get('task_id'):
+                        self.refresh_transfer_task_counts(int(task_with_upload.get('task_id')))
                 else:
                     console.log(
                         f'{_t(KeyWord.DOWNLOAD_TASK)}'
@@ -1961,11 +2215,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                         self.resume_download(
                             message=message,
                             file_name=temp_file_path,
-                            progress=self.pb.download,
+                            progress=self.transfer_download_progress,
                             progress_args=(
                                 sever_file_size,
                                 self.pb.progress,
-                                task_id
+                                task_id,
+                                task_with_upload
                             ),
                             compare_size=sever_file_size
                         )
@@ -2094,6 +2349,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。', style='#e6db74'
                 )
                 DownloadTask.COMPLETE_LINK.add(link)
+                self.record_transfer_download_success(
+                    with_upload=with_upload,
+                    message=message,
+                    file_path=os.path.join(self.env_save_directory(message), file_name)
+                )
                 if self.uploader:
                     if with_upload and isinstance(with_upload, dict):
                         try:
@@ -2120,6 +2380,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                     save_directory=self.env_save_directory(message),
                     with_move=True
             ):
+                final_path = os.path.join(self.env_save_directory(message), file_name)
+                self.record_transfer_download_success(
+                    with_upload=with_upload,
+                    message=message,
+                    file_path=final_path
+                )
                 MetaData.print_current_task_num(
                     prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
                     num=self.app.current_task_num
@@ -2134,7 +2400,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                         with_upload['media_group'] = media_group
                         self.uploader.download_upload(
                             with_upload=with_upload,
-                            file_path=os.path.join(self.env_save_directory(message), file_name)
+                            file_path=final_path
                         )
                 else:
                     self.release_download_upload_window(with_upload)
