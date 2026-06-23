@@ -23,3 +23,7 @@ _Avoid_: File task, message job
 **Target Profile**:
 A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.
 _Avoid_: Preset, mode
+
+**WebUI Credentials**:
+Environment-supplied Basic Auth credentials for the visual WebUI. They are required when the server listens on a non-localhost address and are never generated or logged by the application.
+_Avoid_: Random ttyd password, public WebUI
