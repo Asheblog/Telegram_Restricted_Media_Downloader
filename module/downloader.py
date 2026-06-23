@@ -138,12 +138,216 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_ui: Union[WebUiServer, None] = None
         self.web_task_queue: asyncio.Queue = asyncio.Queue()
         self.web_submitted_task_ids: Set[int] = set()
+        self.web_operation_queue: asyncio.Queue = asyncio.Queue()
+        self.web_operation_counter: int = 0
+        self.web_operations: dict = {}
+        self.web_pending_watches: dict = {}
+        self.web_watch_handler_clients: dict = {}
 
     def submit_web_task(self, task_id: int) -> None:
         if task_id in self.web_submitted_task_ids:
             return
         self.web_submitted_task_ids.add(task_id)
         self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
+
+    def next_web_operation_id(self, operation_type: str) -> str:
+        self.web_operation_counter += 1
+        return f'{operation_type}-{self.web_operation_counter}'
+
+    def submit_web_operation(self, operation_type: str, payload: dict) -> dict:
+        operation_id = self.next_web_operation_id(operation_type)
+        operation = {
+            'id': operation_id,
+            'type': operation_type,
+            'status': TransferStatus.PENDING,
+            'payload': payload,
+            'error_message': None,
+            'created_at': TransferStore.utc_now(),
+            'updated_at': TransferStore.utc_now()
+        }
+        self.web_operations[operation_id] = operation
+        self.loop.call_soon_threadsafe(self.web_operation_queue.put_nowait, operation_id)
+        return operation
+
+    def list_watches(self) -> list:
+        watches = []
+        for link in sorted(self.listen_download_chat):
+            watches.append({
+                'id': f'download:{link}',
+                'type': 'download',
+                'source_link': link,
+                'target_link': None
+            })
+        for rule in sorted(self.listen_forward_chat):
+            parts = rule.split(maxsplit=1)
+            source_link = parts[0] if parts else ''
+            target_link = parts[1] if len(parts) > 1 else ''
+            watches.append({
+                'id': f'forward:{rule}',
+                'type': 'forward',
+                'source_link': source_link,
+                'target_link': target_link
+            })
+        running_ids = {watch.get('id') for watch in watches}
+        for watch_id, watch in sorted(self.web_pending_watches.items()):
+            if watch_id not in running_ids:
+                watches.append(watch)
+        return watches
+
+    def pending_watch_sources(self, watch_type: str) -> set:
+        return {
+            watch.get('source_link')
+            for watch in self.web_pending_watches.values()
+            if watch.get('type') == watch_type and watch.get('source_link')
+        }
+
+    def has_download_watch_source(self, source_link: str) -> bool:
+        return source_link in self.listen_download_chat or source_link in self.pending_watch_sources('download')
+
+    def has_forward_watch_source(self, source_link: str) -> bool:
+        running_sources = {
+            rule.split(maxsplit=1)[0]
+            for rule in self.listen_forward_chat
+        }
+        return source_link in running_sources or source_link in self.pending_watch_sources('forward')
+
+    def create_watch(self, payload: dict) -> dict:
+        watch_type = payload.get('type')
+        if watch_type == 'download':
+            created = []
+            for link in payload.get('source_links') or []:
+                if self.has_forward_watch_source(link):
+                    raise ValueError('watch_source_conflict')
+                if self.has_download_watch_source(link):
+                    raise ValueError('watch_already_exists')
+                watch = {
+                    'id': f'download:{link}',
+                    'type': 'download',
+                    'source_link': link,
+                    'target_link': None,
+                    'status': TransferStatus.PENDING
+                }
+                self.web_pending_watches[watch['id']] = watch
+                self.create_live_watch_operation('download', {'source_link': link})
+                created.append(watch)
+            return {'watches': created}
+        if watch_type == 'forward':
+            source_link = payload.get('source_link')
+            target_link = payload.get('target_link')
+            if self.has_download_watch_source(source_link):
+                raise ValueError('watch_source_conflict')
+            rule = f'{source_link} {target_link}'
+            if rule in self.listen_forward_chat or f'forward:{rule}' in self.web_pending_watches:
+                raise ValueError('watch_already_exists')
+            watch = {
+                'id': f'forward:{rule}',
+                'type': 'forward',
+                'source_link': source_link,
+                'target_link': target_link,
+                'status': TransferStatus.PENDING
+            }
+            self.web_pending_watches[watch['id']] = watch
+            self.create_live_watch_operation('forward', {'source_link': source_link, 'target_link': target_link})
+            return {
+                'watches': [watch]
+            }
+        raise ValueError('Unsupported watch type.')
+
+    def create_live_watch_operation(self, watch_type: str, payload: dict) -> str:
+        operation = self.submit_web_operation('watch', {'watch_type': watch_type, **payload})
+        return operation['id']
+
+    def delete_watch(self, watch_id: str) -> bool:
+        watch_type, separator, value = watch_id.partition(':')
+        if not separator:
+            return False
+        if watch_type == 'download':
+            handler = self.listen_download_chat.get(value)
+            if not handler:
+                return self.web_pending_watches.pop(watch_id, None) is not None
+            client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
+            client.remove_handler(handler)
+            self.listen_download_chat.pop(value, None)
+            self.web_pending_watches.pop(watch_id, None)
+            log.info(f'已通过WebUI删除监听下载,频道链接:"{value}"。')
+            return True
+        if watch_type == 'forward':
+            handler = self.listen_forward_chat.get(value)
+            if not handler:
+                return self.web_pending_watches.pop(watch_id, None) is not None
+            client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
+            client.remove_handler(handler)
+            self.listen_forward_chat.pop(value, None)
+            self.web_pending_watches.pop(watch_id, None)
+            log.info(f'已通过WebUI删除监听转发,转发规则:"{value}"。')
+            return True
+        return False
+
+    def statistics(self) -> dict:
+        return {
+            'tables': {
+                'link': {
+                    'available': bool(DownloadTask.LINK_INFO),
+                    'rows': len(DownloadTask.LINK_INFO)
+                },
+                'count': {
+                    'available': bool(DownloadTask.LINK_INFO),
+                    'rows': len(DownloadTask.LINK_INFO)
+                },
+                'upload': {
+                    'available': bool(UploadTask.TASKS),
+                    'rows': len(UploadTask.TASKS)
+                }
+            },
+            'operations': list(self.web_operations.values())[-50:]
+        }
+
+    def export_table(self, table_type: str) -> dict:
+        if table_type == 'link':
+            exported = self.app.print_link_table(
+                link_info=DownloadTask.LINK_INFO,
+                export=True,
+                only_export=True
+            )
+            folder = 'form' if is_docker() else 'DownloadRecordForm'
+        elif table_type == 'count':
+            exported = self.app.print_count_table(export=True, only_export=True)
+            folder = 'form' if is_docker() else 'DownloadRecordForm'
+        else:
+            exported = self.app.print_upload_table(
+                upload_tasks=UploadTask.TASKS,
+                export=True,
+                only_export=True
+            )
+            folder = 'form' if is_docker() else 'UploadRecordForm'
+        return {
+            'exported': bool(exported),
+            'table_type': table_type,
+            'directory': folder
+        }
+
+    def create_upload(self, payload: dict) -> dict:
+        operation = self.submit_web_operation('upload', payload)
+        return {'accepted': True, 'operation_id': operation['id']}
+
+    def create_channel_download(self, payload: dict) -> dict:
+        operation = self.submit_web_operation('channel_download', payload)
+        return {'accepted': True, 'operation_id': operation['id']}
+
+    def create_forward(self, payload: dict) -> dict:
+        task_id = None
+        if self.transfer_store:
+            task_id = self.transfer_store.create_task(
+                source_link=payload.get('source_link'),
+                target_link=payload.get('target_link'),
+                target_profile='forward',
+                start_id=payload.get('start_id'),
+                end_id=payload.get('end_id')
+            )
+            self.transfer_store.add_event(task_id, 'Forward range accepted from WebUI.')
+            payload = {**payload, 'task_id': task_id}
+        operation = self.submit_web_operation('forward', payload)
+        return {'accepted': True, 'operation_id': operation['id'], 'task_id': task_id}
 
     def get_web_settings(self) -> dict:
         return {
@@ -204,6 +408,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             task_submitter=self.submit_web_task,
             settings_provider=self.get_web_settings,
             settings_updater=self.update_web_settings,
+            operations=self,
             host=get_web_host_from_env(),
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
@@ -677,6 +882,228 @@ class TelegramRestrictedMediaDownloader(Bot):
             )
             self.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
 
+    async def process_web_operation(self, operation_id: str) -> None:
+        operation = self.web_operations.get(operation_id)
+        if not operation:
+            return
+        operation['status'] = TransferStatus.RUNNING
+        operation['updated_at'] = TransferStore.utc_now()
+        try:
+            operation_type = operation.get('type')
+            payload = operation.get('payload') or {}
+            if operation_type == 'watch':
+                await self.apply_web_watch(payload)
+            elif operation_type == 'upload':
+                await self.apply_web_upload(payload)
+            elif operation_type == 'channel_download':
+                await self.apply_web_channel_download(payload)
+            elif operation_type == 'forward':
+                await self.apply_web_forward(payload)
+            else:
+                raise ValueError(f'Unsupported WebUI operation: {operation_type}')
+            operation['status'] = TransferStatus.SUCCESS
+        except Exception as e:
+            operation['status'] = TransferStatus.FAILURE
+            operation['error_message'] = str(e)
+            payload = operation.get('payload') or {}
+            if operation.get('type') == 'watch':
+                self.mark_pending_watch(payload, TransferStatus.FAILURE, str(e))
+            log.exception(f'WebUI操作失败:{operation_id},{_t(KeyWord.REASON)}:"{e}"')
+        finally:
+            operation['updated_at'] = TransferStore.utc_now()
+
+    async def apply_web_watch(self, payload: dict) -> None:
+        watch_type = payload.get('watch_type')
+        user_client = self.user or self.app.client
+        if watch_type == 'download':
+            link = payload.get('source_link')
+            if link in self.listen_download_chat:
+                return
+            chat = await user_client.get_chat(link)
+            if getattr(chat, 'is_forum', False):
+                raise PeerIdInvalid
+            handler = MessageHandler(self.listen_download, filters=pyrogram.filters.chat(chat.id))
+            self.listen_download_chat[link] = handler
+            user_client.add_handler(handler)
+            self.web_watch_handler_clients[f'download:{link}'] = user_client
+            self.web_pending_watches.pop(f'download:{link}', None)
+            log.info(f'已通过WebUI新增监听下载,频道链接:"{link}"。')
+            return
+        if watch_type == 'forward':
+            source_link = payload.get('source_link')
+            target_link = payload.get('target_link')
+            rule = f'{source_link} {target_link}'
+            if rule in self.listen_forward_chat:
+                return
+            try:
+                chat = await user_client.get_chat(source_link)
+                if getattr(chat, 'is_forum', False):
+                    raise PeerIdInvalid
+                filters = pyrogram.filters.chat(chat.id)
+            except PeerIdInvalid:
+                meta = await parse_link(client=self.app.client, link=source_link)
+                topic_id = meta.get('topic_id')
+                chat_id = meta.get('chat_id')
+                filters = pyrogram.filters.chat(chat_id) & pyrogram.filters.topic(topic_id) if topic_id else pyrogram.filters.chat(chat_id)
+            handler = MessageHandler(self.listen_forward, filters=filters)
+            self.listen_forward_chat[rule] = handler
+            user_client.add_handler(handler)
+            self.web_watch_handler_clients[f'forward:{rule}'] = user_client
+            self.web_pending_watches.pop(f'forward:{rule}', None)
+            log.info(f'已通过WebUI新增监听转发,转发规则:"{source_link} -> {target_link}"。')
+            return
+        raise ValueError('Unsupported watch type.')
+
+    def mark_pending_watch(self, payload: dict, status: str, error_message: str = None) -> None:
+        watch_type = payload.get('watch_type')
+        if watch_type == 'download':
+            watch_id = f'download:{payload.get("source_link")}'
+        elif watch_type == 'forward':
+            watch_id = f'forward:{payload.get("source_link")} {payload.get("target_link")}'
+        else:
+            return
+        if watch_id in self.web_pending_watches:
+            self.web_pending_watches[watch_id]['status'] = status
+            self.web_pending_watches[watch_id]['error_message'] = error_message
+
+    async def apply_web_upload(self, payload: dict) -> None:
+        if not self.uploader:
+            self.uploader = TelegramUploader(download_object=self)
+        upload_path = payload.get('path')
+        target_link = payload.get('target_link')
+        recursive = bool(payload.get('recursive'))
+        if os.path.isdir(upload_path):
+            if recursive:
+                upload_files = [
+                    os.path.join(root, filename)
+                    for root, _dirs, files in os.walk(upload_path)
+                    for filename in files
+                ]
+            else:
+                upload_files = [
+                    os.path.join(upload_path, filename)
+                    for filename in os.listdir(upload_path)
+                    if os.path.isfile(os.path.join(upload_path, filename))
+                ]
+        else:
+            upload_files = [upload_path]
+        if not upload_files:
+            raise ValueError('Upload path contains no files.')
+        for file_path in upload_files:
+            file_size = os.path.getsize(file_path)
+            upload_task = UploadTask(
+                chat_id=None,
+                file_path=file_path,
+                file_id=self.app.client.rnd_id(),
+                file_size=file_size,
+                file_part=[],
+                status=UploadStatus.PENDING,
+                with_delete=self.gc.upload_delete
+            )
+            await self.uploader.create_upload_task(link=target_link, upload_task=upload_task)
+
+    async def apply_web_channel_download(self, payload: dict) -> None:
+        chat_link = payload.get('chat_link')
+        meta = await parse_link(client=self.app.client, link=chat_link)
+        chat_id = meta.get('chat_id')
+        date_range = payload.get('date_range') or {}
+        start_date = date_range.get('start_date')
+        end_date = date_range.get('end_date')
+        download_type = {
+            dtype: dtype in set(payload.get('download_type') or [])
+            for dtype in DownloadType()
+        }
+        keywords = payload.get('keywords') or []
+        include_comment = bool(payload.get('include_comment'))
+        filter_obj = Filter()
+        links = []
+        async for message in self.app.client.get_chat_history(chat_id=chat_id, reverse=True):
+            if (
+                    filter_obj.date_range(message, start_date, end_date)
+                    and filter_obj.dtype(message, download_type)
+                    and filter_obj.keyword_filter(message, keywords)
+            ):
+                links.append(message.link if getattr(message, 'link', None) else message)
+                if include_comment:
+                    try:
+                        async for comment in self.app.client.get_discussion_replies(chat_id=chat_id, message_id=message.id):
+                            if filter_obj.dtype(comment, download_type):
+                                links.append(comment.link if getattr(comment, 'link', None) else comment)
+                    except (ValueError, AttributeError, MsgIdInvalid):
+                        pass
+        for link in links:
+            await self.create_download_task(
+                message_ids=link,
+                single_link=True,
+                diy_download_type=[_ for _ in DownloadType()]
+            )
+
+    async def apply_web_forward(self, payload: dict) -> None:
+        source_link = payload.get('source_link')
+        target_link = payload.get('target_link')
+        start_id = int(payload.get('start_id'))
+        end_id = int(payload.get('end_id'))
+        origin_meta = await parse_link(client=self.app.client, link=source_link)
+        target_meta = await parse_link(client=self.app.client, link=target_link)
+        origin_chat_id = origin_meta.get('chat_id')
+        target_chat_id = target_meta.get('chat_id')
+        if not all([origin_chat_id, target_chat_id]):
+            raise ValueError('Invalid source or target link.')
+        task_id = payload.get('task_id')
+        if self.transfer_store and task_id:
+            self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+            self.transfer_store.add_event(task_id, 'Forward range started.')
+        forwarded_count = 0
+        failed_count = 0
+        async for message in self.app.client.get_chat_history(
+                chat_id=origin_chat_id,
+                offset_id=start_id,
+                max_id=end_id,
+                reverse=True
+        ):
+            try:
+                await self.forward(
+                    client=self.app.client,
+                    message=message,
+                    message_id=message.id,
+                    origin_chat_id=origin_chat_id,
+                    target_chat_id=target_chat_id,
+                    target_link=target_link,
+                    download_upload=False,
+                    done_notice=False
+                )
+                forwarded_count += 1
+            except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
+                if not self.gc.download_upload or not getattr(message, 'link', None):
+                    raise
+                await self.create_download_task(
+                    message_ids=f'{message.link}?single' if '?single' not in message.link else message.link,
+                    retry=None,
+                    single_link=True,
+                    with_upload={
+                        'link': target_link,
+                        'file_name': None,
+                        'with_delete': self.gc.upload_delete,
+                        'send_as_media_group': True
+                    },
+                    diy_download_type=[_ for _ in DownloadType()]
+                )
+                forwarded_count += 1
+            except Exception as e:
+                failed_count += 1
+                log.warning(f'WebUI转发消息失败,message_id:{getattr(message, "id", None)},{_t(KeyWord.REASON)}:"{e}"')
+        if self.transfer_store and task_id:
+            self.transfer_store.update_task(
+                task_id,
+                status=TransferStatus.FAILURE if failed_count else TransferStatus.SUCCESS,
+                total_items=forwarded_count + failed_count,
+                completed_items=forwarded_count,
+                failed_items=failed_count,
+                finished=True,
+                assignment_completed=True
+            )
+            self.transfer_store.add_event(task_id, f'Forward range finished: {forwarded_count} forwarded, {failed_count} failed.')
+
     async def process_web_task_queue(self) -> None:
         while not self.web_task_queue.empty():
             task_id = await self.web_task_queue.get()
@@ -684,6 +1111,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                 await self.process_web_transfer_task(task_id)
             finally:
                 self.web_task_queue.task_done()
+        while not self.web_operation_queue.empty():
+            operation_id = await self.web_operation_queue.get()
+            try:
+                await self.process_web_operation(operation_id)
+            finally:
+                self.web_operation_queue.task_done()
 
     @staticmethod
     async def __send_pay_qr(
