@@ -10,12 +10,18 @@ import webbrowser
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 from module import log
 from module.enums import ENVIRON
 from module.transfer_store import TransferStore
 from module.web_ui_assets import WEB_UI_HTML
+from module.web_commands import (
+    COMMAND_HELP,
+    WebCommand,
+    normalize_command_payload,
+    primary_links_for_task
+)
 
 
 class WebUiServer:
@@ -23,6 +29,8 @@ class WebUiServer:
             self,
             store: TransferStore,
             task_submitter: Optional[Callable[[int], None]] = None,
+            summary_provider: Optional[Callable[[], dict]] = None,
+            listener_remover: Optional[Callable[[str], bool]] = None,
             host: str = '127.0.0.1',
             port: int = 0,
             username: Optional[str] = None,
@@ -30,6 +38,8 @@ class WebUiServer:
     ):
         self.store = store
         self.task_submitter = task_submitter
+        self.summary_provider = summary_provider
+        self.listener_remover = listener_remover
         self.host = host
         self.port = self.resolve_port(port)
         self.username = (username or '').strip()
@@ -139,6 +149,14 @@ class WebUiServer:
                 if parsed.path in ('/', '/index.html'):
                     self._send_html()
                     return
+                if parsed.path == '/api/commands/help':
+                    self._send_json({'commands': COMMAND_HELP})
+                    return
+                if parsed.path == '/api/runtime/summary':
+                    summary_provider = getattr(server, 'summary_provider', None)
+                    summary = summary_provider() if callable(summary_provider) else {}
+                    self._send_json(summary)
+                    return
                 if parsed.path == '/api/tasks':
                     self._send_json({'tasks': server.store.list_tasks()})
                     return
@@ -159,48 +177,66 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path == '/api/runtime/exit':
+                    payload = self._read_json()
+                    reason = str(payload.get('reason') or 'Requested from WebUI.').strip()
+                    task_id = server.store.create_task(
+                        command=WebCommand.EXIT,
+                        payload={'reason': reason},
+                        source_link=WebCommand.EXIT,
+                        target_link='',
+                        target_profile='runtime'
+                    )
+                    if server.task_submitter:
+                        server.task_submitter(task_id)
+                    self._send_json({'task_id': task_id}, HTTPStatus.ACCEPTED)
+                    return
                 if parsed.path != '/api/tasks':
                     self._send_json({'error': 'Not found.'}, HTTPStatus.NOT_FOUND)
                     return
                 try:
                     payload = self._read_json()
-                    source_link = str(payload.get('source_link') or '').strip()
-                    target_link = str(payload.get('target_link') or 'https://t.me/pikpak_bot').strip()
-                    target_profile = str(payload.get('target_profile') or 'pikpak').strip()
-                    start_id = payload.get('start_id')
-                    end_id = payload.get('end_id')
-                    if not source_link:
-                        self._send_json({'error': 'Source link is required.'}, HTTPStatus.BAD_REQUEST)
-                        return
-                    if not target_link:
-                        self._send_json({'error': 'Target link is required.'}, HTTPStatus.BAD_REQUEST)
-                        return
-                    start_id = int(start_id) if start_id not in (None, '') else None
-                    end_id = int(end_id) if end_id not in (None, '') else None
-                    if (start_id is None) != (end_id is None):
-                        self._send_json({'error': 'Start ID and End ID must be provided together.'}, HTTPStatus.BAD_REQUEST)
-                        return
-                    if start_id is not None and end_id is not None:
-                        if end_id < start_id:
-                            self._send_json({'error': 'End ID must be greater than or equal to Start ID.'}, HTTPStatus.BAD_REQUEST)
-                            return
-                        normalized_source = source_link.rstrip('/')
-                        if normalized_source.count('/') >= 4 and normalized_source.rsplit('/', 1)[-1].isdigit():
-                            self._send_json({'error': 'Range transfer source must be a chat link, not a message link.'}, HTTPStatus.BAD_REQUEST)
-                            return
+                    command = str(payload.get('command') or WebCommand.DOWNLOAD).strip()
+                    command_payload = payload.get('payload')
+                    if not isinstance(command_payload, dict):
+                        command_payload = {
+                            key: value for key, value in payload.items()
+                            if key not in ('command', 'payload')
+                        }
+                    normalized_payload = normalize_command_payload(command, command_payload)
+                    primary = primary_links_for_task(command, normalized_payload)
                     task_id = server.store.create_task(
-                        source_link=source_link,
-                        target_link=target_link,
-                        target_profile=target_profile,
-                        start_id=start_id,
-                        end_id=end_id
+                        command=command,
+                        payload=normalized_payload,
+                        source_link=primary.get('source_link') or '',
+                        target_link=primary.get('target_link') or '',
+                        target_profile=primary.get('target_profile') or 'generic',
+                        start_id=normalized_payload.get('start_id'),
+                        end_id=normalized_payload.get('end_id')
                     )
-                    if server.task_submitter:
+                    if server.task_submitter and command in WebCommand.MUTATING:
                         server.task_submitter(task_id)
                     self._send_json({'task_id': task_id}, HTTPStatus.CREATED)
                 except Exception as e:
                     log.exception('[WebUI] 创建任务失败。')
                     self._send_json({'error': str(e)}, HTTPStatus.BAD_REQUEST)
+
+            def do_DELETE(self):
+                if not self._check_auth():
+                    return
+                parsed = urlparse(self.path)
+                if not parsed.path.startswith('/api/listeners/'):
+                    self._send_json({'error': 'Not found.'}, HTTPStatus.NOT_FOUND)
+                    return
+                listener_id = unquote(parsed.path[len('/api/listeners/'):])
+                remover = getattr(server, 'listener_remover', None)
+                if not callable(remover):
+                    self._send_json({'error': 'Listener removal is not available.'}, HTTPStatus.BAD_REQUEST)
+                    return
+                if remover(listener_id):
+                    self._send_json({'removed': True})
+                    return
+                self._send_json({'error': 'Listener not found.'}, HTTPStatus.NOT_FOUND)
 
         self.httpd = ThreadingHTTPServer((self.host, self.port), Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)

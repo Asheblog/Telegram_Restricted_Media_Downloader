@@ -16,6 +16,10 @@ _Avoid_: PikPak API, cloud drive target
 A persisted user request to move one or more source messages to a target conversation.
 _Avoid_: Download task, forward job
 
+**Web Command Task**:
+A Transfer Task created from the visual WebUI for one of the supported command workflows, such as downloading, forwarding, listening, uploading, downloading a whole chat, or requesting runtime exit.
+_Avoid_: Web button action, browser job
+
 **Transfer Item**:
 One source message or media item inside a Transfer Task.
 _Avoid_: File task, message job

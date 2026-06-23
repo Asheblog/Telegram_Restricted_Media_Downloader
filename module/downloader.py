@@ -111,6 +111,7 @@ from module.util import (
     truncate_display_filename,
     Issues
 )
+from module.web_task_executor import WebTaskExecutor
 
 
 class TelegramRestrictedMediaDownloader(Bot):
@@ -137,6 +138,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_ui: Union[WebUiServer, None] = None
         self.web_task_queue: asyncio.Queue = asyncio.Queue()
         self.web_submitted_task_ids: Set[int] = set()
+        self.web_task_executor = WebTaskExecutor(self)
 
     def submit_web_task(self, task_id: int) -> None:
         if task_id in self.web_submitted_task_ids:
@@ -151,6 +153,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_ui = WebUiServer(
             store=self.transfer_store,
             task_submitter=self.submit_web_task,
+            summary_provider=self.web_task_executor.runtime_summary,
+            listener_remover=self.web_task_executor.remove_listener,
             host=get_web_host_from_env(),
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
@@ -391,55 +395,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         }
 
     async def process_web_transfer_task(self, task_id: int) -> None:
-        if not self.transfer_store:
-            return
-        task = self.transfer_store.get_task(task_id)
-        if not task:
-            return
-        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.FAILURE):
-            return
-        self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
-        self.transfer_store.add_event(task_id, 'Transfer task started.')
-        try:
-            if not self.uploader:
-                self.uploader = TelegramUploader(download_object=self)
-            source_link = task.get('source_link')
-            start_id = task.get('start_id')
-            end_id = task.get('end_id')
-            if start_id is not None and end_id is not None:
-                source_prefix = source_link.rstrip('/')
-                for message_id in range(int(start_id), int(end_id) + 1):
-                    message_link = f'{source_prefix}/{message_id}?single'
-                    task_result = await self.create_download_task(
-                        message_ids=message_link,
-                        retry=None,
-                        single_link=True,
-                        with_upload=self.build_transfer_upload_meta(task=task, source_link=message_link),
-                        diy_download_type=[_ for _ in DownloadType()]
-                    )
-                    if task_result.get('status') == DownloadStatus.FAILURE:
-                        error = task_result.get('e_code') or {}
-                        raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
-                self.transfer_store.add_event(task_id, f'Range transfer assigned: {start_id}-{end_id}.')
-            else:
-                task_result = await self.create_download_task(
-                    message_ids=f'{source_link}?single' if '?single' not in source_link else source_link,
-                    retry=None,
-                    with_upload=self.build_transfer_upload_meta(task=task, source_link=source_link),
-                    diy_download_type=[_ for _ in DownloadType()]
-                )
-                if task_result.get('status') == DownloadStatus.FAILURE:
-                    error = task_result.get('e_code') or {}
-                    raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
-                self.transfer_store.add_event(task_id, 'Single-message transfer assigned.')
-        except Exception as e:
-            self.transfer_store.update_task(
-                task_id,
-                status=TransferStatus.FAILURE,
-                error_message=str(e),
-                finished=True
-            )
-            self.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
+        await self.web_task_executor.process_task(task_id)
 
     async def process_web_task_queue(self) -> None:
         while not self.web_task_queue.empty():
