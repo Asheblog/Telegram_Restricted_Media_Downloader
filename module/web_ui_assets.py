@@ -485,10 +485,7 @@ WEB_UI_HTML = r'''<!doctype html>
       {command:'listen_info', title:'Listen info', usage:'/listen_info', mode:'View runtime'},
       {command:'upload', title:'Upload', usage:'/upload 本地文件 目标频道', mode:'Create task'},
       {command:'upload_r', title:'Upload recursive', usage:'/upload_r 本地文件夹 目标频道', mode:'Create task'},
-      {command:'download_chat', title:'Download chat', usage:'/download_chat 频道链接', mode:'Create task'},
-      {command:'table', title:'Table', usage:'/table', mode:'View runtime'},
-      {command:'help', title:'Help', usage:'/help', mode:'Reference'},
-      {command:'exit', title:'Exit', usage:'/exit', mode:'Runtime control'}
+      {command:'download_chat', title:'Download chat', usage:'/download_chat 频道链接', mode:'Create task'}
     ];
     const downloadTypes = ['video','photo','document','audio','voice','animation','video_note'];
     let activeCommand = 'download';
@@ -530,9 +527,9 @@ WEB_UI_HTML = r'''<!doctype html>
       $('#form-title').textContent = title.title;
       $('#form-usage').textContent = title.usage;
       $('#form-mode').textContent = title.mode;
-      $('#submit-command').style.display = ['help','table','listen_info'].includes(activeCommand) ? 'none' : 'inline-flex';
-      $('#submit-command').className = activeCommand === 'exit' ? 'danger' : '';
-      $('#submit-label').textContent = activeCommand === 'exit' ? 'Request exit' : 'Create task';
+      $('#submit-command').style.display = activeCommand === 'listen_info' ? 'none' : 'inline-flex';
+      $('#submit-command').className = '';
+      $('#submit-label').textContent = 'Create task';
       let html = '';
       if (activeCommand === 'download') {
         html = textarea('links', 'Message links or chat link', 'https://t.me/source/123\\nhttps://t.me/source/124', true)
@@ -564,11 +561,6 @@ WEB_UI_HTML = r'''<!doctype html>
           + typeChecks()
           + textarea('keywords', 'Keywords', 'one keyword per line or space separated')
           + '<label class="check"><input type="checkbox" name="include_comment">Include discussion replies</label>';
-      } else if (activeCommand === 'exit') {
-        html = field('reason', 'Reason', {value:'Requested from WebUI.'})
-          + '<p class="hint">该操作只请求当前 TRMD 进程优雅退出，不执行系统关机或删除命令。</p>';
-      } else if (activeCommand === 'help') {
-        html = '<div class="empty">' + commands.map(item => `<p><strong>${esc(item.usage)}</strong><br><span class="meta">${esc(item.title)}</span></p>`).join('') + '</div>';
       } else {
         html = '<div class="empty">Use the runtime table below to inspect current downloads, uploads, listeners, and Web tasks.</div>';
       }
@@ -619,16 +611,13 @@ WEB_UI_HTML = r'''<!doctype html>
 
     async function submitCommand(event) {
       event.preventDefault();
-      if (['help','table','listen_info'].includes(activeCommand)) return;
+      if (activeCommand === 'listen_info') return;
       const button = $('#submit-command');
       button.disabled = true;
       setFeedback('', '');
       try {
-        const endpoint = activeCommand === 'exit' ? '/api/runtime/exit' : '/api/tasks';
-        const body = activeCommand === 'exit'
-          ? formPayload(event.currentTarget)
-          : {command: activeCommand, payload: formPayload(event.currentTarget)};
-        const res = await fetch(endpoint, {
+        const body = {command: activeCommand, payload: formPayload(event.currentTarget)};
+        const res = await fetch('/api/tasks', {
           method: 'POST',
           headers: {'content-type':'application/json'},
           body: JSON.stringify(body)
