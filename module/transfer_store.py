@@ -2,6 +2,7 @@
 import os
 import sqlite3
 import datetime
+import json
 
 from typing import Optional, List, Dict, Any
 
@@ -40,6 +41,8 @@ class TransferStore:
                 '''
                 CREATE TABLE IF NOT EXISTS transfer_tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    command TEXT NOT NULL DEFAULT 'transfer',
+                    payload TEXT NOT NULL DEFAULT '{}',
                     source_link TEXT NOT NULL,
                     target_link TEXT NOT NULL,
                     target_profile TEXT NOT NULL DEFAULT 'pikpak',
@@ -80,25 +83,74 @@ class TransferStore:
                 );
                 '''
             )
+            self._ensure_column(conn, 'transfer_tasks', 'command', "TEXT NOT NULL DEFAULT 'transfer'")
+            self._ensure_column(conn, 'transfer_tasks', 'payload', "TEXT NOT NULL DEFAULT '{}'")
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        rows = conn.execute(f'PRAGMA table_info({table})').fetchall()
+        if column in {row['name'] for row in rows}:
+            return
+        conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+
+    @staticmethod
+    def encode_payload(payload: Optional[Dict[str, Any]]) -> str:
+        return json.dumps(payload or {}, ensure_ascii=False, separators=(',', ':'))
+
+    @staticmethod
+    def decode_payload(payload: Any) -> Dict[str, Any]:
+        if isinstance(payload, dict):
+            return payload
+        if not payload:
+            return {}
+        try:
+            decoded = json.loads(str(payload))
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
 
     def create_task(
             self,
-            source_link: str,
+            source_link: str = '',
             target_link: str = 'https://t.me/pikpak_bot',
             target_profile: str = 'pikpak',
             start_id: Optional[int] = None,
-            end_id: Optional[int] = None
+            end_id: Optional[int] = None,
+            command: str = 'transfer',
+            payload: Optional[Dict[str, Any]] = None
     ) -> int:
         now = self.utc_now()
+        task_payload = payload.copy() if isinstance(payload, dict) else {}
+        if source_link and 'source_link' not in task_payload:
+            task_payload['source_link'] = source_link
+        if target_link and 'target_link' not in task_payload:
+            task_payload['target_link'] = target_link
+        if target_profile and 'target_profile' not in task_payload:
+            task_payload['target_profile'] = target_profile
+        if start_id is not None and 'start_id' not in task_payload:
+            task_payload['start_id'] = start_id
+        if end_id is not None and 'end_id' not in task_payload:
+            task_payload['end_id'] = end_id
         with self.connect() as conn:
             cursor = conn.execute(
                 '''
                 INSERT INTO transfer_tasks (
-                    source_link, target_link, target_profile, start_id, end_id,
+                    command, payload, source_link, target_link, target_profile, start_id, end_id,
                     status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
-                (source_link, target_link, target_profile, start_id, end_id, TransferStatus.PENDING, now, now)
+                (
+                    command,
+                    self.encode_payload(task_payload),
+                    source_link,
+                    target_link,
+                    target_profile,
+                    start_id,
+                    end_id,
+                    TransferStatus.PENDING,
+                    now,
+                    now
+                )
             )
             task_id = int(cursor.lastrowid)
             conn.execute(
@@ -106,9 +158,14 @@ class TransferStore:
                 INSERT INTO transfer_events (task_id, level, message, created_at)
                 VALUES (?, ?, ?, ?)
                 ''',
-                (task_id, 'info', 'Transfer task created.', now)
+                (task_id, 'info', f'{command} task created.', now)
             )
             return task_id
+
+    def normalize_task(self, row: sqlite3.Row) -> Dict[str, Any]:
+        task = dict(row)
+        task['payload'] = self.decode_payload(task.get('payload'))
+        return task
 
     def list_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
         with self.connect() as conn:
@@ -120,12 +177,12 @@ class TransferStore:
                 ''',
                 (limit,)
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [self.normalize_task(row) for row in rows]
 
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         with self.connect() as conn:
             row = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()
-            return dict(row) if row else None
+            return self.normalize_task(row) if row else None
 
     def update_task(
             self,
