@@ -20,6 +20,10 @@ _Avoid_: Download task, forward job
 One source message or media item inside a Transfer Task.
 _Avoid_: File task, message job
 
+**Download Success Record**:
+A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
+_Avoid_: Cache hit, finished file
+
 **Target Profile**:
 A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.
 _Avoid_: Preset, mode

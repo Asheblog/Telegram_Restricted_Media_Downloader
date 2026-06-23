@@ -149,7 +149,8 @@ class UploadTask:
             send_as_media_group: bool = False,
             release_callback: Optional[Callable] = None,
             transfer_meta: Optional[dict] = None,
-            status_callback: Optional[Callable] = None
+            status_callback: Optional[Callable] = None,
+            progress_callback: Optional[Callable] = None
     ):
         UploadTask.TASKS.add(self)
         UploadTask.TASK_COUNTER += 1
@@ -169,6 +170,7 @@ class UploadTask:
         self.release_callback: Optional[Callable] = release_callback
         self.transfer_meta: dict = transfer_meta or {}
         self.status_callback: Optional[Callable] = status_callback
+        self.progress_callback: Optional[Callable] = progress_callback
         self.sha256: str = calc_sha256(file_path=self.file_path)
         self.prompt: str = ''
 
