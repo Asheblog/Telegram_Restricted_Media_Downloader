@@ -58,6 +58,7 @@ from module import (
 )
 from module.filter import Filter
 from module.app import Application
+from module.async_window import DynamicAsyncWindow
 from module.bot import (
     Bot,
     KeyboardButton,
@@ -110,6 +111,11 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.event: asyncio.Event = asyncio.Event()
         self.queue: asyncio.Queue = asyncio.Queue()
         self.app: Application = Application()
+        self.download_upload_window = DynamicAsyncWindow(
+            limit_provider=lambda: self.gc.upload_pending_limit,
+            minimum=1,
+            maximum=5
+        )
         self.is_running: bool = False
         self.running_log: Set[bool] = set()
         self.running_log.add(self.is_running)
@@ -143,6 +149,23 @@ class TelegramRestrictedMediaDownloader(Bot):
                                 dtype
                             )
         return save_directory
+
+    async def prepare_download_upload_meta(self, with_upload: Optional[dict]) -> Optional[dict]:
+        if not isinstance(with_upload, dict):
+            return with_upload
+        task_with_upload = with_upload.copy()
+        if '_window_release' not in task_with_upload:
+            task_with_upload['_window_release'] = await self.download_upload_window.acquire()
+        return task_with_upload
+
+    @staticmethod
+    def release_download_upload_window(with_upload: Optional[dict]) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        release = with_upload.get('_window_release')
+        if callable(release):
+            release()
+            with_upload['_window_release'] = None
 
     async def get_download_link_from_bot(
             self,
@@ -473,6 +496,21 @@ class TelegramRestrictedMediaDownloader(Bot):
                 await callback_query.message.edit_text(
                     f'😵‍💫😵‍💫😵‍💫`{_prompt_string}`导出失败。\n(具体原因请前往终端查看报错信息)')
             await kb.back_table_button()
+        elif callback_data.startswith(f'{BotCallbackText.UPLOAD_PENDING_LIMIT}:'):
+            try:
+                limit = int(callback_data.split(':', 1)[1])
+                if limit < 1 or limit > 5:
+                    raise ValueError
+                self.gc.config.setdefault('upload', self.gc.default_upload_nesting.copy())['pending_limit'] = limit
+                self.gc.save_config(self.gc.config)
+                self.download_upload_window.notify_limit_changed()
+                await kb.toggle_upload_setting_button(global_config=self.gc.config)
+            except ValueError:
+                await callback_query.message.reply_text('下载后上传队列数量必须在1到5之间。')
+            except Exception as e:
+                await callback_query.message.reply_text(
+                    '下载后上传队列设置失败\n(具体原因请前往终端查看报错信息)')
+                log.error(f'下载后上传队列设置失败,{_t(KeyWord.REASON)}:"{e}"')
         elif callback_data in (BotCallbackText.UPLOAD_DOWNLOAD, BotCallbackText.UPLOAD_DOWNLOAD_DELETE):
             def _toggle_button(_param: str):
                 param: bool = self.gc.get_nesting_config(
@@ -1683,6 +1721,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     self.get_media_meta(
                         message=message,
                         dtype=valid_dtype).values()
+                task_with_upload = await self.prepare_download_upload_meta(with_upload)
                 retry['id'] = file_id
                 if is_file_duplicate(
                         save_directory=save_directory,
@@ -1698,7 +1737,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                         file_id=file_id,
                         format_file_size=format_file_size,
                         task_id=None,
-                        with_upload=with_upload,
+                        with_upload=task_with_upload,
                         diy_download_type=diy_download_type,
                         _future=save_directory
                     )
@@ -1745,7 +1784,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                             file_id,
                             format_file_size,
                             task_id,
-                            with_upload,
+                            task_with_upload,
                             diy_download_type
                         )
                     )
@@ -1859,6 +1898,10 @@ class TelegramRestrictedMediaDownloader(Bot):
                             with_upload=with_upload,
                             file_path=os.path.join(self.env_save_directory(message), file_name)
                         )
+                else:
+                    self.release_download_upload_window(with_upload)
+            else:
+                self.release_download_upload_window(with_upload)
         else:
             self.app.current_task_num -= 1
             self.event.set()  # v1.3.4 修复重试下载被阻塞的问题。
@@ -1885,6 +1928,8 @@ class TelegramRestrictedMediaDownloader(Bot):
                             with_upload=with_upload,
                             file_path=os.path.join(self.env_save_directory(message), file_name)
                         )
+                else:
+                    self.release_download_upload_window(with_upload)
                 self.queue.task_done()
             else:
                 if retry_count < self.app.max_download_retries:
@@ -1916,6 +1961,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     )
                     DownloadTask.set_error(link=link, key=file_name, value=_error.replace('。', ''))
                     self.bot_task_link.discard(link)
+                    self.release_download_upload_window(with_upload)
                     self.queue.task_done()
                 link, file_name = None, None
             self.pb.progress.remove_task(task_id=task_id)

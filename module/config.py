@@ -62,12 +62,10 @@ class BaseConfig:
 
     def process_nesting(self, param_name: Union[str, dict], config):
         param_template = self.TEMPLATE.get(param_name)
-        param_length = len(param_template)
         if param_name in config:
             param_template = self.TEMPLATE.get(param_name)
             param_config = config.get(param_name)
-            if not isinstance(param_config, dict) or (
-                    isinstance(param_config, dict) and len(param_config) != param_length):
+            if not isinstance(param_config, dict):
                 param_config: dict = {}
                 config[param_name] = param_config
             self.add_missing_keys(
@@ -601,7 +599,8 @@ class GlobalConfig(BaseConfig):
         'upload':
             {
                 'download_upload': True,
-                'delete': False
+                'delete': False,
+                'pending_limit': 3
             },
         'forward_type':
             {
@@ -632,10 +631,22 @@ class GlobalConfig(BaseConfig):
             param='upload',
             nesting_param='delete'
         )
+        self.upload_pending_limit: int = self.get_upload_pending_limit()
         self.forward_type: dict = self.config.get('forward_type')
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
         return self.config.get(param, default_nesting).get(nesting_param)
+
+    def get_upload_pending_limit(self) -> int:
+        try:
+            limit = int(self.get_nesting_config(
+                default_nesting=self.default_upload_nesting,
+                param='upload',
+                nesting_param='pending_limit'
+            ))
+        except (TypeError, ValueError):
+            limit = self.default_upload_nesting.get('pending_limit', 3)
+        return min(max(limit, 1), 5)
 
     def save_config(self, config: dict) -> None:
         super().save_config(config)
@@ -649,6 +660,7 @@ class GlobalConfig(BaseConfig):
             param='upload',
             nesting_param='delete'
         )
+        self.upload_pending_limit = self.get_upload_pending_limit()
         self.forward_type: dict = self.config.get('forward_type')
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')

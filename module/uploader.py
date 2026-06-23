@@ -459,6 +459,20 @@ class TelegramUploader:
             link: Union[str, int],
             upload_task: UploadTask
     ) -> None:
+        try:
+            await self.__create_upload_task(link=link, upload_task=upload_task)
+        except Exception as e:
+            upload_task.error_msg = str(e)
+            upload_task.status = UploadStatus.FAILURE
+        finally:
+            if upload_task.status == UploadStatus.FAILURE:
+                upload_task.release_window()
+
+    async def __create_upload_task(
+            self,
+            link: Union[str, int],
+            upload_task: UploadTask
+    ) -> None:
         if isinstance(link, str):
             if link.startswith('https://t.me/'):
                 if link in self.valid_link_cache:
@@ -594,6 +608,7 @@ class TelegramUploader:
                 log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         self.event.set()
         safe_delete(file_path) if upload_task.with_delete else None
+        upload_task.release_window()
         upload_task.status = UploadStatus.SUCCESS
         MetaData.print_current_task_num(
             prompt=_t(KeyWord.CURRENT_UPLOAD_TASK),
@@ -615,7 +630,8 @@ class TelegramUploader:
                         with_delete=with_upload.get('with_delete'),
                         media_group=with_upload.get('media_group'),
                         message_id=with_upload.get('message_id'),
-                        send_as_media_group=with_upload.get('send_as_media_group', False)
+                        send_as_media_group=with_upload.get('send_as_media_group', False),
+                        release_callback=with_upload.get('_window_release')
                     )
                 )
             )
