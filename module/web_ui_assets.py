@@ -64,7 +64,7 @@ WEB_UI_CSS = r'''
     color: var(--text);
     min-height: 100svh;
   }
-  button, input, select {
+  button, input, select, textarea {
     font: inherit;
   }
   button {
@@ -83,6 +83,11 @@ WEB_UI_CSS = r'''
     white-space: nowrap;
   }
   button:hover { background: var(--accent-strong); }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: .58;
+  }
+  button:disabled:hover { background: var(--accent); }
   button.secondary {
     color: var(--text);
     background: var(--surface-muted);
@@ -111,7 +116,7 @@ WEB_UI_CSS = r'''
     white-space: nowrap;
     border: 0;
   }
-  input, select {
+  input, select, textarea {
     width: 100%;
     border: 1px solid var(--line);
     background: #fff;
@@ -121,7 +126,11 @@ WEB_UI_CSS = r'''
     outline: none;
     transition: border-color .18s ease, box-shadow .18s ease;
   }
-  input:focus, select:focus {
+  textarea {
+    min-height: 86px;
+    resize: vertical;
+  }
+  input:focus, select:focus, textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 4px rgba(15, 143, 114, .12);
   }
@@ -244,6 +253,13 @@ WEB_UI_CSS = r'''
     gap: 18px;
     align-items: start;
   }
+  .operation-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    align-items: start;
+  }
+  .wide-section { grid-column: 1 / -1; }
   section {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -305,7 +321,11 @@ WEB_UI_CSS = r'''
     background: #e5f5ed;
     border-color: #b9e4ca;
   }
-  .task-list, .record-list {
+  .notice.is-visible,
+  .form-error.is-visible {
+    display: block;
+  }
+  .task-list, .record-list, .watch-list, .statistics-list {
     overflow: auto;
     min-height: 360px;
   }
@@ -373,6 +393,39 @@ WEB_UI_CSS = r'''
     gap: 9px;
     padding: 14px 18px 18px;
   }
+  .item-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 14px 18px 0;
+  }
+  .item-tab {
+    min-height: 44px;
+    color: var(--muted);
+    background: var(--surface-muted);
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+  }
+  .item-tab:hover,
+  .item-tab.active {
+    color: var(--text);
+    background: #fff;
+    border-color: var(--accent);
+  }
+  .item-tab__count {
+    min-width: 24px;
+    border-radius: 999px;
+    padding: 2px 7px;
+    background: #fff;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .item-tab.active .item-tab__count {
+    color: var(--accent-strong);
+    background: #e4f5ef;
+  }
   .file-row {
     display: grid;
     grid-template-columns: minmax(180px, 1fr) 130px 1fr 1fr;
@@ -382,6 +435,32 @@ WEB_UI_CSS = r'''
     border-bottom: 1px solid var(--line);
   }
   .file-row:last-child { border-bottom: 0; }
+  .item-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 0 18px 18px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .item-page-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .item-page-controls button {
+    min-height: 44px;
+  }
+  .item-page-controls button:disabled {
+    cursor: not-allowed;
+    opacity: .52;
+  }
+  .item-page-controls button:disabled:hover {
+    background: var(--surface-muted);
+  }
   .events {
     max-height: 220px;
     overflow: auto;
@@ -435,7 +514,7 @@ WEB_UI_CSS = r'''
       border-bottom: 1px solid var(--line);
     }
     main { padding: 18px; }
-    .workspace, .settings-columns { grid-template-columns: 1fr; }
+    .workspace, .settings-columns, .operation-grid { grid-template-columns: 1fr; }
     .topbar { flex-direction: column; }
     .top-actions { width: 100%; }
   }
@@ -443,6 +522,9 @@ WEB_UI_CSS = r'''
     main { padding: 14px; }
     .range, .settings-grid, .check-grid { grid-template-columns: 1fr; }
     .file-row { grid-template-columns: 1fr; }
+    .item-tab { flex: 1 1 calc(50% - 8px); }
+    .item-pagination { align-items: stretch; }
+    .item-page-controls, .item-page-controls button { width: 100%; }
     .event { grid-template-columns: 1fr; gap: 4px; }
     th, td { padding: 11px 10px; }
   }
@@ -464,6 +546,22 @@ WEB_UI_BODY = f'''
         <button type="button" class="active" data-nav="transfers">
           <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           <span data-i18n="nav.transfers">转存任务</span>
+        </button>
+        <button type="button" data-nav="watches">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 9v3l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.watches">实时监听</span>
+        </button>
+        <button type="button" data-nav="channel-downloads">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.channelDownloads">频道下载</span>
+        </button>
+        <button type="button" data-nav="uploads">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.uploads">本地上传</span>
+        </button>
+        <button type="button" data-nav="statistics">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span data-i18n="nav.statistics">统计</span>
         </button>
         <button type="button" data-nav="settings" data-view="settings">
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.82 2.82l-.04-.04A1.8 1.8 0 0 0 15 19.4a1.8 1.8 0 0 0-1 .6l-.02.02a2 2 0 0 1-3.96 0L10 20a1.8 1.8 0 0 0-1-.6 1.8 1.8 0 0 0-1.98.36l-.04.04a2 2 0 0 1-2.82-2.82l.04-.04A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-.6-1l-.02-.02a2 2 0 0 1 0-3.96L4 10a1.8 1.8 0 0 0 .6-1 1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 1 1 2.82-2.82l.04.04A1.8 1.8 0 0 0 9 4.6a1.8 1.8 0 0 0 1-.6l.02-.02a2 2 0 0 1 3.96 0L14 4a1.8 1.8 0 0 0 1 .6 1.8 1.8 0 0 0 1.98-.36l.04-.04a2 2 0 1 1 2.82 2.82l-.04.04A1.8 1.8 0 0 0 19.4 9c.24.35.45.69.6 1l.02.02a2 2 0 0 1 0 3.96L20 14c-.15.31-.36.65-.6 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -562,8 +660,73 @@ WEB_UI_BODY = f'''
           </section>
         </div>
         <section>
+{panel_head(title_i18n='forward.title', title_text='原生转发范围', meta_i18n='forward.meta', meta_text='一次性操作', indent=10)}
+          <form id="forward-form">
+            <div class="range">
+              <label>
+                <span data-i18n="forward.source">来源频道</span>
+                <input name="source_link" type="url" placeholder="https://t.me/source" required>
+              </label>
+              <label>
+                <span data-i18n="forward.target">目标频道</span>
+                <input name="target_link" type="url" placeholder="https://t.me/target" required>
+              </label>
+            </div>
+            <div class="range">
+              <label>
+                <span data-i18n="forward.startId">起始 ID</span>
+                <input name="start_id" inputmode="numeric" required>
+              </label>
+              <label>
+                <span data-i18n="forward.endId">结束 ID</span>
+                <input name="end_id" inputmode="numeric" required>
+              </label>
+            </div>
+            <p class="hint" data-i18n="forward.hint">用于可原生转发的消息范围；遇到受限内容时按设置下载后上传。</p>
+            <div class="notice" id="forward-notice" role="alert" aria-live="polite"></div>
+            <div class="actions">
+              <button type="submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="forward.create">提交转发</span>
+              </button>
+            </div>
+          </form>
+        </section>
+        <section>
 {panel_head(title_i18n='items.title', title_text='文件进度', meta_i18n='items.selectTask', meta_text='选择一个任务', meta_id='selected-task', indent=10)}
-          <div class="file-progress" id="items"></div>
+          <div class="item-tabs" role="tablist" aria-label="文件状态分类" data-i18n-aria-label="items.tabsLabel">
+            <button class="item-tab active" type="button" role="tab" aria-selected="true" data-item-tab="running">
+              <span data-i18n="items.tab.running">进行中</span>
+              <span class="item-tab__count" data-item-count="running">0</span>
+            </button>
+            <button class="item-tab" type="button" role="tab" aria-selected="false" data-item-tab="success">
+              <span data-i18n="items.tab.success">已完成</span>
+              <span class="item-tab__count" data-item-count="success">0</span>
+            </button>
+            <button class="item-tab" type="button" role="tab" aria-selected="false" data-item-tab="skipped">
+              <span data-i18n="items.tab.skipped">跳过</span>
+              <span class="item-tab__count" data-item-count="skipped">0</span>
+            </button>
+            <button class="item-tab" type="button" role="tab" aria-selected="false" data-item-tab="failure">
+              <span data-i18n="items.tab.failure">失败</span>
+              <span class="item-tab__count" data-item-count="failure">0</span>
+            </button>
+          </div>
+          <div class="file-progress" id="items" role="tabpanel"></div>
+          <div class="item-pagination" id="items-pagination">
+            <div id="items-page-range">0 / 0</div>
+            <div class="item-page-controls">
+              <button class="secondary" type="button" id="items-page-prev" aria-label="上一页" data-i18n-aria-label="items.page.previous">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="items.page.previous">上一页</span>
+              </button>
+              <span id="items-page-summary">1 / 1</span>
+              <button class="secondary" type="button" id="items-page-next" aria-label="下一页" data-i18n-aria-label="items.page.next">
+                <span data-i18n="items.page.next">下一页</span>
+                <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
         </section>
         <section>
 {panel_head(title_i18n='events.title', title_text='最近事件', meta_text='0', meta_id='event-count', indent=10)}
@@ -629,6 +792,159 @@ WEB_UI_BODY = f'''
         </section>
       </div>
 
+      <div class="view" id="view-watches">
+        <div class="operation-grid">
+          <section>
+{panel_head(title_i18n='watches.downloadTitle', title_text='监听下载', meta_i18n='watches.downloadMeta', meta_text='新消息转存', indent=12)}
+            <form id="watch-download-form">
+              <label>
+                <span data-i18n="watches.sources">来源频道</span>
+                <textarea name="source_links" placeholder="https://t.me/source" required></textarea>
+              </label>
+              <p class="hint" data-i18n="watches.sourcesHint">每行一个 Telegram 频道链接。监听下载会处理新到达的视频和图片。</p>
+              <div class="notice" id="watch-download-notice" role="alert" aria-live="polite"></div>
+              <div class="actions">
+                <button type="submit">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <span data-i18n="watches.createDownload">新增监听下载</span>
+                </button>
+              </div>
+            </form>
+          </section>
+          <section>
+{panel_head(title_i18n='watches.forwardTitle', title_text='监听转发', meta_i18n='watches.forwardMeta', meta_text='新消息转发', indent=12)}
+            <form id="watch-forward-form">
+              <label>
+                <span data-i18n="watches.source">来源频道</span>
+                <input name="source_link" type="url" placeholder="https://t.me/source" required>
+              </label>
+              <label>
+                <span data-i18n="watches.target">目标频道</span>
+                <input name="target_link" type="url" placeholder="https://t.me/target" required>
+              </label>
+              <p class="hint" data-i18n="watches.forwardHint">同一来源不能同时存在监听下载和监听转发。</p>
+              <div class="notice" id="watch-forward-notice" role="alert" aria-live="polite"></div>
+              <div class="actions">
+                <button type="submit">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span data-i18n="watches.createForward">新增监听转发</span>
+                </button>
+              </div>
+            </form>
+          </section>
+          <section class="wide-section">
+{panel_head(title_i18n='watches.title', title_text='当前实时监听', meta_text='0', meta_id='watch-count', indent=12)}
+            <div class="watch-list">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="watches.type">类型</th>
+                    <th data-i18n="tasks.status">状态</th>
+                    <th data-i18n="watches.source">来源频道</th>
+                    <th data-i18n="watches.target">目标频道</th>
+                    <th data-i18n="tasks.actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="watches"></tbody>
+              </table>
+              <div class="empty" id="watches-empty" data-i18n="watches.empty">还没有实时监听。</div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="view" id="view-channel-downloads">
+        <section>
+{panel_head(title_i18n='channel.title', title_text='频道下载', meta_i18n='channel.meta', meta_text='筛选后创建下载', indent=10)}
+          <form id="channel-download-form">
+            <label>
+              <span data-i18n="channel.link">频道链接</span>
+              <input name="chat_link" type="url" placeholder="https://t.me/source" required>
+            </label>
+            <div class="range">
+              <label>
+                <span data-i18n="channel.startDate">起始时间</span>
+                <input name="start_date" type="datetime-local">
+              </label>
+              <label>
+                <span data-i18n="channel.endDate">结束时间</span>
+                <input name="end_date" type="datetime-local">
+              </label>
+            </div>
+            <div>
+              <h3 data-i18n="channel.types">下载类型</h3>
+              <div class="check-grid" id="channel-download-types">
+                <label class="check"><input type="checkbox" name="download_type" value="video" checked><span>video</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="photo" checked><span>photo</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="audio" checked><span>audio</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="voice" checked><span>voice</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="animation" checked><span>animation</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="document" checked><span>document</span></label>
+                <label class="check"><input type="checkbox" name="download_type" value="video_note" checked><span>video_note</span></label>
+              </div>
+            </div>
+            <label>
+              <span data-i18n="channel.keywords">关键词</span>
+              <input name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder">
+            </label>
+            <label class="check"><input name="include_comment" type="checkbox"><span data-i18n="channel.includeComment">包含评论区</span></label>
+            <p class="hint" data-i18n="channel.hint">频道下载会检索匹配消息并创建下载任务，执行时间取决于频道历史消息数量。</p>
+            <div class="notice" id="channel-download-notice" role="alert" aria-live="polite"></div>
+            <div class="actions">
+              <button type="submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v10M8 11l4 4 4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="channel.create">创建频道下载</span>
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div class="view" id="view-uploads">
+        <section>
+{panel_head(title_i18n='uploads.title', title_text='本地上传', meta_i18n='uploads.meta', meta_text='服务器路径', indent=10)}
+          <form id="upload-form">
+            <label>
+              <span data-i18n="uploads.path">本地路径</span>
+              <input name="path" required>
+            </label>
+            <label>
+              <span data-i18n="uploads.target">目标频道</span>
+              <input name="target_link" placeholder="https://t.me/target" required>
+            </label>
+            <label class="check"><input name="recursive" type="checkbox"><span data-i18n="uploads.recursive">递归上传文件夹</span></label>
+            <p class="hint" data-i18n="uploads.serverPathHint">路径位于运行 TRMD 的服务器或容器，不是当前浏览器所在电脑。关闭递归时，文件夹只上传第一层文件；开启递归时包含子文件夹。</p>
+            <div class="notice" id="upload-notice" role="alert" aria-live="polite"></div>
+            <div class="actions">
+              <button type="submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="uploads.create">创建上传</span>
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      <div class="view" id="view-statistics">
+        <section>
+{panel_head(title_i18n='statistics.title', title_text='统计与导出', meta_i18n='statistics.meta', meta_text='运行态数据', indent=10)}
+          <div class="statistics-list">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="statistics.table">表格</th>
+                  <th data-i18n="statistics.available">可用</th>
+                  <th data-i18n="statistics.rows">数量</th>
+                  <th data-i18n="tasks.actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="statistics"></tbody>
+            </table>
+            <div class="notice" id="statistics-notice" role="alert" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
+
       <div class="view" id="view-records">
         <section>
 {panel_head(title_i18n='records.title', title_text='下载成功记录', meta_text='0', meta_id='record-count', indent=10)}
@@ -659,6 +975,10 @@ WEB_UI_SCRIPT = r'''
       'app.subtitle': '转存控制台',
       'app.title': 'TRMD 转存控制台',
       'nav.transfers': '转存任务',
+      'nav.watches': '实时监听',
+      'nav.channelDownloads': '频道下载',
+      'nav.uploads': '本地上传',
+      'nav.statistics': '统计',
       'nav.settings': '设置',
       'nav.records': '下载记录',
       'nav.primary': '主导航',
@@ -685,6 +1005,68 @@ WEB_UI_SCRIPT = r'''
       'new.optional': '可选',
       'new.hint': '单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。',
       'new.create': '创建任务',
+      'forward.title': '原生转发范围',
+      'forward.meta': '一次性操作',
+      'forward.source': '来源频道',
+      'forward.target': '目标频道',
+      'forward.startId': '起始 ID',
+      'forward.endId': '结束 ID',
+      'forward.hint': '用于可原生转发的消息范围；遇到受限内容时按设置下载后上传。',
+      'forward.create': '提交转发',
+      'forward.accepted': '转发任务已接收。',
+      'watches.title': '当前实时监听',
+      'watches.downloadTitle': '监听下载',
+      'watches.downloadMeta': '新消息转存',
+      'watches.forwardTitle': '监听转发',
+      'watches.forwardMeta': '新消息转发',
+      'watches.sources': '来源频道',
+      'watches.sourcesHint': '每行一个 Telegram 频道链接。监听下载会处理新到达的视频和图片。',
+      'watches.source': '来源频道',
+      'watches.target': '目标频道',
+      'watches.forwardHint': '同一来源不能同时存在监听下载和监听转发。',
+      'watches.createDownload': '新增监听下载',
+      'watches.createForward': '新增监听转发',
+      'watches.type': '类型',
+      'watches.empty': '还没有实时监听。',
+      'watches.delete': '移除监听',
+      'watches.download': '监听下载',
+      'watches.forward': '监听转发',
+      'watches.created': '实时监听已接收。',
+      'watches.deleted': '实时监听已移除。',
+      'channel.title': '频道下载',
+      'channel.meta': '筛选后创建下载',
+      'channel.link': '频道链接',
+      'channel.startDate': '起始时间',
+      'channel.endDate': '结束时间',
+      'channel.types': '下载类型',
+      'channel.keywords': '关键词',
+      'channel.keywordsPlaceholder': '逗号分隔，可留空',
+      'channel.includeComment': '包含评论区',
+      'channel.hint': '频道下载会检索匹配消息并创建下载任务，执行时间取决于频道历史消息数量。',
+      'channel.create': '创建频道下载',
+      'channel.accepted': '频道下载已接收。',
+      'uploads.title': '本地上传',
+      'uploads.meta': '服务器路径',
+      'uploads.path': '本地路径',
+      'uploads.target': '目标频道',
+      'uploads.recursive': '递归上传文件夹',
+      'uploads.serverPathHint': '路径位于运行 TRMD 的服务器或容器，不是当前浏览器所在电脑。关闭递归时，文件夹只上传第一层文件；开启递归时包含子文件夹。',
+      'uploads.create': '创建上传',
+      'uploads.accepted': '上传任务已接收。',
+      'statistics.title': '统计与导出',
+      'statistics.meta': '运行态数据',
+      'statistics.table': '表格',
+      'statistics.available': '可用',
+      'statistics.rows': '数量',
+      'statistics.yes': '是',
+      'statistics.no': '否',
+      'statistics.link': '链接统计表',
+      'statistics.count': '计数统计表',
+      'statistics.upload': '上传统计表',
+      'statistics.exportLink': '导出链接统计表',
+      'statistics.exportCount': '导出计数统计表',
+      'statistics.exportUpload': '导出上传统计表',
+      'statistics.exported': '统计表已导出到：{directory}',
       'tasks.title': '转存任务',
       'tasks.notSynced': '尚未同步',
       'tasks.id': 'ID',
@@ -699,6 +1081,19 @@ WEB_UI_SCRIPT = r'''
       'items.title': '文件进度',
       'items.selectTask': '选择一个任务',
       'items.empty': '该任务还没有文件记录。',
+      'items.tabsLabel': '文件状态分类',
+      'items.tab.running': '进行中',
+      'items.tab.success': '已完成',
+      'items.tab.skipped': '跳过',
+      'items.tab.failure': '失败',
+      'items.empty.running': '当前没有进行中的文件。',
+      'items.empty.success': '当前没有已完成的文件。',
+      'items.empty.skipped': '当前没有跳过的文件。',
+      'items.empty.failure': '当前没有失败的文件。',
+      'items.page.previous': '上一页',
+      'items.page.next': '下一页',
+      'items.page.status': '第 {page} / {pages} 页',
+      'items.page.range': '{start}-{end} / {total}',
       'items.download': '下载',
       'items.upload': '上传',
       'events.title': '最近事件',
@@ -751,6 +1146,37 @@ WEB_UI_SCRIPT = r'''
       'error.range_source_must_be_chat_link': '范围转存的来源必须是频道链接，不能是单条消息链接。',
       'error.create_task_failed': '创建任务失败。',
       'error.update_settings_failed': '更新设置失败。',
+      'error.watch_source_conflict': '同一来源不能同时存在监听下载和监听转发。',
+      'error.watch_already_exists': '实时监听已存在。',
+      'error.watch_source_required': '请填写监听来源。',
+      'error.watch_target_required': '请填写监听目标。',
+      'error.invalid_payload': '请求内容无效。',
+      'error.invalid_watch_type': '实时监听类型无效。',
+      'error.invalid_watch_source': '监听来源必须以 https://t.me/ 开头。',
+      'error.invalid_watch_target': '监听目标必须以 https://t.me/ 开头。',
+      'error.watch_operations_unavailable': '实时监听操作不可用。',
+      'error.upload_path_not_found': '服务器或容器中找不到该路径。',
+      'error.upload_path_required': '请填写上传路径。',
+      'error.upload_target_required': '请填写上传目标。',
+      'error.upload_recursive_requires_directory': '递归上传需要选择文件夹路径。',
+      'error.invalid_upload_target': '上传目标必须是 Telegram 链接、me 或 self。',
+      'error.upload_operations_unavailable': '上传操作不可用。',
+      'error.invalid_table_type': '统计表类型无效。',
+      'error.table_operations_unavailable': '统计表操作不可用。',
+      'error.invalid_channel_link': '频道链接必须以 https://t.me/ 开头。',
+      'error.channel_link_required': '请填写频道链接。',
+      'error.channel_download_type_required': '请至少选择一种下载类型。',
+      'error.invalid_channel_download_type': '频道下载类型无效。',
+      'error.channel_download_operations_unavailable': '频道下载操作不可用。',
+      'error.invalid_date_range': '时间范围格式无效。',
+      'error.date_range_end_before_start': '结束时间必须大于或等于起始时间。',
+      'error.forward_source_required': '请填写转发来源。',
+      'error.forward_target_required': '请填写转发目标。',
+      'error.invalid_forward_source': '转发来源必须以 https://t.me/ 开头。',
+      'error.invalid_forward_target': '转发目标必须以 https://t.me/ 开头。',
+      'error.forward_range_required': '转发必须填写起始 ID 和结束 ID。',
+      'error.forward_end_before_start': '结束 ID 必须大于或等于起始 ID。',
+      'error.forward_operations_unavailable': '转发操作不可用。',
       'event.level.info': '信息',
       'event.level.warning': '警告',
       'event.level.error': '错误',
@@ -770,6 +1196,10 @@ WEB_UI_SCRIPT = r'''
       'app.subtitle': 'Transfer Console',
       'app.title': 'TRMD Transfer Console',
       'nav.transfers': 'Transfer tasks',
+      'nav.watches': 'Live watches',
+      'nav.channelDownloads': 'Channel downloads',
+      'nav.uploads': 'Local uploads',
+      'nav.statistics': 'Statistics',
       'nav.settings': 'Settings',
       'nav.records': 'Download records',
       'nav.primary': 'Primary navigation',
@@ -796,6 +1226,68 @@ WEB_UI_SCRIPT = r'''
       'new.optional': 'Optional',
       'new.hint': 'For a single message link, leave the range empty. For a channel range, provide the channel link plus start and end message IDs.',
       'new.create': 'Create task',
+      'forward.title': 'Forward range',
+      'forward.meta': 'One-time action',
+      'forward.source': 'Source channel',
+      'forward.target': 'Target channel',
+      'forward.startId': 'Start ID',
+      'forward.endId': 'End ID',
+      'forward.hint': 'For messages that can be forwarded natively; restricted content follows the download-then-upload setting.',
+      'forward.create': 'Submit forward',
+      'forward.accepted': 'Forward request accepted.',
+      'watches.title': 'Current live watches',
+      'watches.downloadTitle': 'Download watch',
+      'watches.downloadMeta': 'Transfer new messages',
+      'watches.forwardTitle': 'Forward watch',
+      'watches.forwardMeta': 'Forward new messages',
+      'watches.sources': 'Source channels',
+      'watches.sourcesHint': 'One Telegram channel link per line. Download watches handle new video and photo messages.',
+      'watches.source': 'Source channel',
+      'watches.target': 'Target channel',
+      'watches.forwardHint': 'The same source cannot have a download watch and a forward watch at the same time.',
+      'watches.createDownload': 'Add download watch',
+      'watches.createForward': 'Add forward watch',
+      'watches.type': 'Type',
+      'watches.empty': 'No live watches yet.',
+      'watches.delete': 'Remove watch',
+      'watches.download': 'Download watch',
+      'watches.forward': 'Forward watch',
+      'watches.created': 'Live watch accepted.',
+      'watches.deleted': 'Live watch removed.',
+      'channel.title': 'Channel download',
+      'channel.meta': 'Create downloads after filtering',
+      'channel.link': 'Channel link',
+      'channel.startDate': 'Start time',
+      'channel.endDate': 'End time',
+      'channel.types': 'Download types',
+      'channel.keywords': 'Keywords',
+      'channel.keywordsPlaceholder': 'Comma-separated, optional',
+      'channel.includeComment': 'Include discussion replies',
+      'channel.hint': 'Channel download scans matching messages and creates download tasks. Runtime depends on channel history size.',
+      'channel.create': 'Create channel download',
+      'channel.accepted': 'Channel download accepted.',
+      'uploads.title': 'Local upload',
+      'uploads.meta': 'Server path',
+      'uploads.path': 'Local path',
+      'uploads.target': 'Target channel',
+      'uploads.recursive': 'Upload folder recursively',
+      'uploads.serverPathHint': 'The path is on the server or container running TRMD, not on this browser device. With recursion off, a folder uploads only its top-level files; with recursion on, subfolders are included.',
+      'uploads.create': 'Create upload',
+      'uploads.accepted': 'Upload request accepted.',
+      'statistics.title': 'Statistics and export',
+      'statistics.meta': 'Runtime data',
+      'statistics.table': 'Table',
+      'statistics.available': 'Available',
+      'statistics.rows': 'Rows',
+      'statistics.yes': 'Yes',
+      'statistics.no': 'No',
+      'statistics.link': 'Link table',
+      'statistics.count': 'Count table',
+      'statistics.upload': 'Upload table',
+      'statistics.exportLink': 'Export link table',
+      'statistics.exportCount': 'Export count table',
+      'statistics.exportUpload': 'Export upload table',
+      'statistics.exported': 'Table exported to: {directory}',
       'tasks.title': 'Transfer tasks',
       'tasks.notSynced': 'Not synced',
       'tasks.id': 'ID',
@@ -810,6 +1302,19 @@ WEB_UI_SCRIPT = r'''
       'items.title': 'File progress',
       'items.selectTask': 'Select a task',
       'items.empty': 'No file records for this task yet.',
+      'items.tabsLabel': 'File status categories',
+      'items.tab.running': 'Running',
+      'items.tab.success': 'Completed',
+      'items.tab.skipped': 'Skipped',
+      'items.tab.failure': 'Failed',
+      'items.empty.running': 'No running files in this task.',
+      'items.empty.success': 'No completed files in this task.',
+      'items.empty.skipped': 'No skipped files in this task.',
+      'items.empty.failure': 'No failed files in this task.',
+      'items.page.previous': 'Previous',
+      'items.page.next': 'Next',
+      'items.page.status': 'Page {page} / {pages}',
+      'items.page.range': '{start}-{end} / {total}',
       'items.download': 'Download',
       'items.upload': 'Upload',
       'events.title': 'Latest events',
@@ -862,6 +1367,37 @@ WEB_UI_SCRIPT = r'''
       'error.range_source_must_be_chat_link': 'Range transfer source must be a chat link, not a message link.',
       'error.create_task_failed': 'Create task failed.',
       'error.update_settings_failed': 'Update settings failed.',
+      'error.watch_source_conflict': 'The same source cannot have a download watch and a forward watch at the same time.',
+      'error.watch_already_exists': 'Live watch already exists.',
+      'error.watch_source_required': 'Watch source is required.',
+      'error.watch_target_required': 'Watch target is required.',
+      'error.invalid_payload': 'Invalid request payload.',
+      'error.invalid_watch_type': 'Invalid live watch type.',
+      'error.invalid_watch_source': 'Watch source must start with https://t.me/.',
+      'error.invalid_watch_target': 'Watch target must start with https://t.me/.',
+      'error.watch_operations_unavailable': 'Live watch operations are unavailable.',
+      'error.upload_path_not_found': 'Path not found on the server or container.',
+      'error.upload_path_required': 'Upload path is required.',
+      'error.upload_target_required': 'Upload target is required.',
+      'error.upload_recursive_requires_directory': 'Recursive upload requires a folder path.',
+      'error.invalid_upload_target': 'Upload target must be a Telegram link, me, or self.',
+      'error.upload_operations_unavailable': 'Upload operations are unavailable.',
+      'error.invalid_table_type': 'Invalid table type.',
+      'error.table_operations_unavailable': 'Table operations are unavailable.',
+      'error.invalid_channel_link': 'Channel link must start with https://t.me/.',
+      'error.channel_link_required': 'Channel link is required.',
+      'error.channel_download_type_required': 'Select at least one download type.',
+      'error.invalid_channel_download_type': 'Invalid channel download type.',
+      'error.channel_download_operations_unavailable': 'Channel download operations are unavailable.',
+      'error.invalid_date_range': 'Invalid date range.',
+      'error.date_range_end_before_start': 'End time must be greater than or equal to start time.',
+      'error.forward_source_required': 'Forward source is required.',
+      'error.forward_target_required': 'Forward target is required.',
+      'error.invalid_forward_source': 'Forward source must start with https://t.me/.',
+      'error.invalid_forward_target': 'Forward target must start with https://t.me/.',
+      'error.forward_range_required': 'Forward start and end IDs are required.',
+      'error.forward_end_before_start': 'End ID must be greater than or equal to start ID.',
+      'error.forward_operations_unavailable': 'Forward operations are unavailable.',
       'event.level.info': 'info',
       'event.level.warning': 'warning',
       'event.level.error': 'error',
@@ -888,11 +1424,22 @@ WEB_UI_SCRIPT = r'''
     items: [],
     events: [],
     records: [],
-    lastSync: null
+    watches: [],
+    statistics: null,
+    lastSync: null,
+    activeItemStatus: 'running',
+    itemPages: {
+      running: 1,
+      success: 1,
+      skipped: 1,
+      failure: 1
+    }
   };
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => Array.from(document.querySelectorAll(selector));
+  const ITEMS_PAGE_SIZE = 10;
+  const ITEM_STATUS_TABS = ['running', 'success', 'skipped', 'failure'];
 
   function t(key) {
     return (i18n[state.lang] && i18n[state.lang][key]) || i18n.zh[key] || key;
@@ -932,6 +1479,35 @@ WEB_UI_SCRIPT = r'''
       return message === key ? (payload.error || t(fallbackKey)) : message;
     }
     return (payload && payload.error) || t(fallbackKey);
+  }
+
+  function showNotice(selector, message, ok = true) {
+    const notice = $(selector);
+    if (!notice) return;
+    notice.textContent = message;
+    notice.classList.toggle('ok', ok);
+    notice.classList.add('is-visible');
+  }
+
+  async function withLoading(button, task) {
+    const previous = button ? button.disabled : false;
+    if (button) button.disabled = true;
+    try {
+      return await task();
+    } finally {
+      if (button) button.disabled = previous;
+    }
+  }
+
+  async function postJson(path, payload) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return data;
   }
 
   function localizeEventMessage(event) {
@@ -976,6 +1552,7 @@ WEB_UI_SCRIPT = r'''
 
   function refreshVisibleDynamicText() {
     renderTasks();
+    $('#selected-task').textContent = state.selectedTaskId ? `#${state.selectedTaskId}` : t('items.selectTask');
     renderItems(state.items);
     renderEvents(state.events);
     renderRecords();
@@ -992,6 +1569,8 @@ WEB_UI_SCRIPT = r'''
     $$('[data-nav]').forEach(el => el.classList.toggle('active', el.dataset.nav === view));
     if (view === 'settings') loadSettings();
     if (view === 'records') loadRecords();
+    if (view === 'watches') loadWatches();
+    if (view === 'statistics') loadStatistics();
   }
 
   function badge(status) {
@@ -1044,10 +1623,18 @@ WEB_UI_SCRIPT = r'''
       await loadTask(state.tasks[0].id);
     } else if (state.selectedTaskId) {
       await loadTask(state.selectedTaskId);
+    } else {
+      state.items = [];
+      state.events = [];
+      $('#selected-task').textContent = t('items.selectTask');
+      renderItems(state.items);
+      renderEvents(state.events);
     }
   }
 
   async function loadTask(id) {
+    const nextTaskId = Number(id);
+    if (state.selectedTaskId !== nextTaskId) resetItemPages();
     state.selectedTaskId = Number(id);
     const res = await fetch(`/api/tasks/${state.selectedTaskId}`);
     if (!res.ok) {
@@ -1072,8 +1659,54 @@ WEB_UI_SCRIPT = r'''
     return `<div><div>${esc(label)} ${percent}%</div><div class="progress"><div style="width:${percent}%"></div></div><div class="mono">${formatBytes(current)} / ${formatBytes(total)}</div></div>`;
   }
 
+  function itemStatusGroup(item) {
+    const status = String((item && item.status) || 'pending');
+    if (status === 'success' || status === 'skipped' || status === 'failure') return status;
+    if (['pending', 'running'].includes(status)) return 'running';
+    return 'running';
+  }
+
+  function categorizedItems(items) {
+    const groups = {
+      running: [],
+      success: [],
+      skipped: [],
+      failure: []
+    };
+    (items || []).forEach(item => {
+      groups[itemStatusGroup(item)].push(item);
+    });
+    return groups;
+  }
+
+  function itemPageState(total) {
+    const pages = Math.max(1, Math.ceil(total / ITEMS_PAGE_SIZE));
+    const current = Math.min(Math.max(Number(state.itemPages[state.activeItemStatus] || 1), 1), pages);
+    state.itemPages[state.activeItemStatus] = current;
+    const startIndex = (current - 1) * ITEMS_PAGE_SIZE;
+    const endIndex = Math.min(startIndex + ITEMS_PAGE_SIZE, total);
+    return {current, pages, startIndex, endIndex};
+  }
+
+  function renderItemTabs(groups) {
+    ITEM_STATUS_TABS.forEach(status => {
+      const tab = $(`[data-item-tab="${status}"]`);
+      const count = $(`[data-item-count="${status}"]`);
+      if (!tab || !count) return;
+      const active = state.activeItemStatus === status;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      count.textContent = groups[status].length;
+    });
+  }
+
   function renderItems(items) {
-    $('#items').innerHTML = items.length ? items.map(item => `
+    const groups = categorizedItems(items);
+    const activeItems = groups[state.activeItemStatus] || [];
+    const page = itemPageState(activeItems.length);
+    const visibleItems = activeItems.slice(page.startIndex, page.endIndex);
+    renderItemTabs(groups);
+    $('#items').innerHTML = visibleItems.length ? visibleItems.map(item => `
       <div class="file-row">
         <div>
           <div>${esc(item.file_name || item.local_path || item.source_link || `#${item.source_message_id || item.id}`)}</div>
@@ -1083,7 +1716,34 @@ WEB_UI_SCRIPT = r'''
         ${progressLine(t('items.download'), item.download_current, item.download_total)}
         ${progressLine(t('items.upload'), item.upload_current, item.upload_total)}
       </div>
-    `).join('') : `<div class="empty">${esc(t('items.empty'))}</div>`;
+    `).join('') : `<div class="empty">${esc(t(`items.empty.${state.activeItemStatus}`))}</div>`;
+
+    const range = activeItems.length
+      ? interpolate(t('items.page.range'), {
+        start: page.startIndex + 1,
+        end: page.endIndex,
+        total: activeItems.length
+      })
+      : interpolate(t('items.page.range'), {start: 0, end: 0, total: 0});
+    $('#items-page-range').textContent = range;
+    $('#items-page-summary').textContent = interpolate(t('items.page.status'), {
+      page: page.current,
+      pages: page.pages
+    });
+    $('#items-page-prev').disabled = page.current <= 1;
+    $('#items-page-next').disabled = page.current >= page.pages;
+  }
+
+  function resetItemPages() {
+    ITEM_STATUS_TABS.forEach(status => {
+      state.itemPages[status] = 1;
+    });
+  }
+
+  function switchItemTab(status) {
+    if (!ITEM_STATUS_TABS.includes(status)) return;
+    state.activeItemStatus = status;
+    renderItems(state.items);
   }
 
   function renderEvents(events) {
@@ -1097,6 +1757,86 @@ WEB_UI_SCRIPT = r'''
     `).join('') : `<div class="empty">${esc(t('events.empty'))}</div>`;
   }
 
+  async function loadWatches() {
+    const res = await fetch('/api/watches');
+    const data = await res.json();
+    state.watches = data.watches || [];
+    renderWatches();
+  }
+
+  function renderWatches() {
+    const watches = state.watches || [];
+    $('#watch-count').textContent = watches.length;
+    $('#watches-empty').style.display = watches.length ? 'none' : 'block';
+    $('#watches').innerHTML = watches.map(watch => `
+      <tr>
+        <td>${esc(t(`watches.${watch.type}`))}</td>
+        <td>${badge(watch.status || 'running')}</td>
+        <td class="mono">${esc(watch.source_link || '')}</td>
+        <td class="mono">${esc(watch.target_link || '')}${watch.error_message ? `<div>${esc(watch.error_message)}</div>` : ''}</td>
+        <td>
+          <button class="danger" type="button" onclick="deleteWatch('${encodeURIComponent(watch.id)}')">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="watches.delete">${esc(t('watches.delete'))}</span>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function deleteWatch(encodedId) {
+    if (!window.confirm(t('watches.delete'))) return;
+    const res = await fetch(`/api/watches/${encodedId}`, {method: 'DELETE'});
+    const data = await res.json();
+    if (!res.ok) {
+      showNotice('#watch-download-notice', translateApiError(data), false);
+      return;
+    }
+    showNotice('#watch-download-notice', t('watches.deleted'), true);
+    await loadWatches();
+  }
+  window.deleteWatch = deleteWatch;
+
+  async function loadStatistics() {
+    const res = await fetch('/api/statistics');
+    const data = await res.json();
+    state.statistics = data;
+    renderStatistics();
+  }
+
+  function renderStatistics() {
+    const tables = (state.statistics && state.statistics.tables) || {};
+    const rows = ['link', 'count', 'upload'];
+    $('#statistics').innerHTML = rows.map(type => {
+      const table = tables[type] || {};
+      const exportKey = type === 'link' ? 'statistics.exportLink' : type === 'count' ? 'statistics.exportCount' : 'statistics.exportUpload';
+      return `
+        <tr>
+          <td>${esc(t(`statistics.${type}`))}</td>
+          <td>${esc(table.available ? t('statistics.yes') : t('statistics.no'))}</td>
+          <td class="mono">${esc(table.rows || 0)}</td>
+          <td>
+            <button type="button" onclick="exportTable('${type}')">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v10M8 11l4 4 4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>${esc(t(exportKey))}</span>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function exportTable(tableType) {
+    try {
+      const data = await postJson('/api/tables/export', {table_type: tableType});
+      showNotice('#statistics-notice', interpolate(t('statistics.exported'), {directory: data.directory || ''}), true);
+      await loadStatistics();
+    } catch (payload) {
+      showNotice('#statistics-notice', translateApiError(payload), false);
+    }
+  }
+  window.exportTable = exportTable;
+
   async function deleteTask(event, taskId) {
     event.stopPropagation();
     const res = await fetch(`/api/tasks/${taskId}`, {method: 'DELETE'});
@@ -1104,9 +1844,10 @@ WEB_UI_SCRIPT = r'''
       state.selectedTaskId = null;
       state.items = [];
       state.events = [];
+      resetItemPages();
       $('#selected-task').textContent = t('items.selectTask');
-      $('#items').innerHTML = '';
-      $('#events').innerHTML = '';
+      renderItems(state.items);
+      renderEvents(state.events);
     }
     await loadTasks();
   }
@@ -1203,6 +1944,108 @@ WEB_UI_SCRIPT = r'''
     }
   }
 
+  async function createDownloadWatch(event) {
+    event.preventDefault();
+    const button = event.submitter;
+    await withLoading(button, async () => {
+      const sourceLinks = new FormData(event.currentTarget)
+        .get('source_links')
+        .split(/\r?\n/)
+        .map(value => value.trim())
+        .filter(Boolean);
+      try {
+        await postJson('/api/watches', {type: 'download', source_links: sourceLinks});
+        showNotice('#watch-download-notice', t('watches.created'), true);
+        event.currentTarget.reset();
+        await loadWatches();
+      } catch (payload) {
+        showNotice('#watch-download-notice', translateApiError(payload), false);
+      }
+    });
+  }
+
+  async function createForwardWatch(event) {
+    event.preventDefault();
+    const button = event.submitter;
+    await withLoading(button, async () => {
+      const form = new FormData(event.currentTarget);
+      try {
+        await postJson('/api/watches', {
+          type: 'forward',
+          source_link: form.get('source_link'),
+          target_link: form.get('target_link')
+        });
+        showNotice('#watch-forward-notice', t('watches.created'), true);
+        event.currentTarget.reset();
+        await loadWatches();
+      } catch (payload) {
+        showNotice('#watch-forward-notice', translateApiError(payload), false);
+      }
+    });
+  }
+
+  async function createChannelDownload(event) {
+    event.preventDefault();
+    const button = event.submitter;
+    await withLoading(button, async () => {
+      const form = new FormData(event.currentTarget);
+      const downloadType = Array.from(event.currentTarget.querySelectorAll('input[name="download_type"]:checked')).map(el => el.value);
+      const keywords = String(form.get('keywords') || '').split(',').map(value => value.trim()).filter(Boolean);
+      try {
+        await postJson('/api/channel-downloads', {
+          chat_link: form.get('chat_link'),
+          date_range: {
+            start_date: form.get('start_date') || null,
+            end_date: form.get('end_date') || null
+          },
+          download_type: downloadType,
+          keywords,
+          include_comment: Boolean(form.get('include_comment'))
+        });
+        showNotice('#channel-download-notice', t('channel.accepted'), true);
+      } catch (payload) {
+        showNotice('#channel-download-notice', translateApiError(payload), false);
+      }
+    });
+  }
+
+  async function createUpload(event) {
+    event.preventDefault();
+    const button = event.submitter;
+    await withLoading(button, async () => {
+      const form = new FormData(event.currentTarget);
+      try {
+        await postJson('/api/uploads', {
+          path: form.get('path'),
+          target_link: form.get('target_link'),
+          recursive: Boolean(form.get('recursive'))
+        });
+        showNotice('#upload-notice', t('uploads.accepted'), true);
+      } catch (payload) {
+        showNotice('#upload-notice', translateApiError(payload), false);
+      }
+    });
+  }
+
+  async function createForward(event) {
+    event.preventDefault();
+    const button = event.submitter;
+    await withLoading(button, async () => {
+      const form = new FormData(event.currentTarget);
+      try {
+        await postJson('/api/forwards', {
+          source_link: form.get('source_link'),
+          target_link: form.get('target_link'),
+          start_id: Number(form.get('start_id')),
+          end_id: Number(form.get('end_id'))
+        });
+        showNotice('#forward-notice', t('forward.accepted'), true);
+      } catch (payload) {
+        showNotice('#forward-notice', translateApiError(payload), false);
+      }
+    });
+  }
+
   async function loadRecords() {
     const res = await fetch('/api/download-records');
     const data = await res.json();
@@ -1231,10 +2074,21 @@ WEB_UI_SCRIPT = r'''
     applyLanguageAndRefresh();
   });
   $$('[data-nav]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.nav)));
+  $$('[data-item-tab]').forEach(button => button.addEventListener('click', () => switchItemTab(button.dataset.itemTab)));
+  $('#items-page-prev').addEventListener('click', () => {
+    state.itemPages[state.activeItemStatus] = Number(state.itemPages[state.activeItemStatus] || 1) - 1;
+    renderItems(state.items);
+  });
+  $('#items-page-next').addEventListener('click', () => {
+    state.itemPages[state.activeItemStatus] = Number(state.itemPages[state.activeItemStatus] || 1) + 1;
+    renderItems(state.items);
+  });
   $('#refresh').addEventListener('click', () => {
     loadTasks();
     if ($('#view-records').classList.contains('active')) loadRecords();
     if ($('#view-settings').classList.contains('active')) loadSettings();
+    if ($('#view-watches').classList.contains('active')) loadWatches();
+    if ($('#view-statistics').classList.contains('active')) loadStatistics();
   });
   $('#transfer-form').addEventListener('submit', async event => {
     event.preventDefault();
@@ -1258,6 +2112,11 @@ WEB_UI_SCRIPT = r'''
     await loadTasks();
   });
   $('#settings-form').addEventListener('submit', saveSettings);
+  $('#watch-download-form').addEventListener('submit', createDownloadWatch);
+  $('#watch-forward-form').addEventListener('submit', createForwardWatch);
+  $('#channel-download-form').addEventListener('submit', createChannelDownload);
+  $('#upload-form').addEventListener('submit', createUpload);
+  $('#forward-form').addEventListener('submit', createForward);
 
   applyLanguage();
   loadTasks();

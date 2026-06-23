@@ -3,8 +3,10 @@ import base64
 import http.client
 import json
 import os
+import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
@@ -12,6 +14,114 @@ install_pyrogram_stub()
 
 from module.transfer_store import TransferStatus, TransferStore
 from module.web_ui import WebUiServer
+
+
+class FakeWebUiOperations:
+    def __init__(self):
+        self.watches = {}
+        self.created_uploads = []
+        self.created_channel_downloads = []
+        self.created_forwards = []
+        self.exported_tables = []
+
+    def list_watches(self):
+        return list(self.watches.values())
+
+    def create_watch(self, payload):
+        watch_type = payload.get('type')
+        if watch_type == 'download':
+            created = []
+            for source_link in payload.get('source_links') or []:
+                if self._has_forward_source(source_link):
+                    raise ValueError('watch_source_conflict')
+                watch_id = f'download:{source_link}'
+                self.watches[watch_id] = {
+                    'id': watch_id,
+                    'type': 'download',
+                    'source_link': source_link,
+                    'target_link': None
+                }
+                created.append(self.watches[watch_id])
+            return {'watches': created}
+        if watch_type == 'forward':
+            source_link = payload.get('source_link')
+            target_link = payload.get('target_link')
+            if self._has_download_source(source_link):
+                raise ValueError('watch_source_conflict')
+            watch_id = f'forward:{source_link}->{target_link}'
+            self.watches[watch_id] = {
+                'id': watch_id,
+                'type': 'forward',
+                'source_link': source_link,
+                'target_link': target_link
+            }
+            return {'watches': [self.watches[watch_id]]}
+        raise ValueError('Unsupported watch type.')
+
+    def _has_download_source(self, source_link):
+        return any(
+            watch['type'] == 'download' and watch['source_link'] == source_link
+            for watch in self.watches.values()
+        )
+
+    def _has_forward_source(self, source_link):
+        return any(
+            watch['type'] == 'forward' and watch['source_link'] == source_link
+            for watch in self.watches.values()
+        )
+
+    def delete_watch(self, watch_id):
+        return self.watches.pop(watch_id, None) is not None
+
+    def create_upload(self, payload):
+        self.created_uploads.append(payload)
+        return {'accepted': True, 'upload_id': len(self.created_uploads)}
+
+    def create_channel_download(self, payload):
+        self.created_channel_downloads.append(payload)
+        return {'accepted': True, 'task_id': len(self.created_channel_downloads)}
+
+    def create_forward(self, payload):
+        self.created_forwards.append(payload)
+        return {'accepted': True, 'task_id': len(self.created_forwards)}
+
+    def statistics(self):
+        return {
+            'tables': {
+                'link': {'available': True, 'rows': 2},
+                'count': {'available': True, 'rows': 1},
+                'upload': {'available': False, 'rows': 0}
+            }
+        }
+
+    def export_table(self, table_type):
+        self.exported_tables.append(table_type)
+        return {'exported': True, 'table_type': table_type, 'directory': 'form'}
+
+
+class FakeTelegramClient:
+    def __init__(self):
+        self.added_handlers = []
+        self.removed_handlers = []
+
+    async def get_chat(self, _link):
+        return SimpleNamespace(id=12345, is_forum=False)
+
+    def add_handler(self, handler):
+        self.added_handlers.append(handler)
+
+    def remove_handler(self, handler):
+        self.removed_handlers.append(handler)
+
+
+def import_downloader_class():
+    original_argv = sys.argv
+    try:
+        sys.argv = [original_argv[0]]
+        from module.downloader import TelegramRestrictedMediaDownloader
+        return TelegramRestrictedMediaDownloader
+    finally:
+        sys.argv = original_argv
 
 
 class TransferStoreWebUiCase(unittest.TestCase):
@@ -187,6 +297,321 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.assertEqual('range_end_before_start', body['error_code'])
             finally:
                 server.stop()
+
+    def test_webui_exposes_live_transfer_watch_operations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request(
+                    'POST',
+                    '/api/watches',
+                    body=json.dumps({'type': 'download', 'source_links': ['https://t.me/source']}),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(201, response.status)
+                self.assertEqual('download', body['watches'][0]['type'])
+
+                conn.request('GET', '/api/watches', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(1, len(body['watches']))
+
+                watch_id = body['watches'][0]['id']
+                conn.request('DELETE', f'/api/watches/{watch_id}', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertTrue(body['deleted'])
+            finally:
+                server.stop()
+
+    def test_webui_rejects_conflicting_live_transfer_watch_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request(
+                    'POST',
+                    '/api/watches',
+                    body=json.dumps({'type': 'download', 'source_links': ['https://t.me/source']}),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                response.read()
+                self.assertEqual(201, response.status)
+
+                conn.request(
+                    'POST',
+                    '/api/watches',
+                    body=json.dumps({
+                        'type': 'forward',
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/target'
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(409, response.status)
+                self.assertEqual('watch_source_conflict', body['error_code'])
+            finally:
+                server.stop()
+
+    def test_webui_exposes_statistics_and_table_export_operations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request('GET', '/api/statistics', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertTrue(body['tables']['link']['available'])
+                self.assertFalse(body['tables']['upload']['available'])
+
+                conn.request(
+                    'POST',
+                    '/api/tables/export',
+                    body=json.dumps({'table_type': 'link'}),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertTrue(body['exported'])
+                self.assertEqual('link', body['table_type'])
+                self.assertEqual(['link'], operations.exported_tables)
+            finally:
+                server.stop()
+
+    def test_webui_exposes_upload_channel_download_and_forward_submission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            media_path = os.path.join(directory, 'media.bin')
+            with open(media_path, 'wb') as file:
+                file.write(b'12345')
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request(
+                    'POST',
+                    '/api/uploads',
+                    body=json.dumps({
+                        'path': media_path,
+                        'target_link': 'https://t.me/target',
+                        'recursive': False
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertTrue(body['accepted'])
+                self.assertEqual(media_path, operations.created_uploads[0]['path'])
+
+                conn.request(
+                    'POST',
+                    '/api/channel-downloads',
+                    body=json.dumps({
+                        'chat_link': 'https://t.me/source',
+                        'download_type': ['video', 'photo'],
+                        'keywords': ['demo'],
+                        'include_comment': True
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertTrue(body['accepted'])
+                self.assertEqual(['video', 'photo'], operations.created_channel_downloads[0]['download_type'])
+
+                conn.request(
+                    'POST',
+                    '/api/forwards',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/target',
+                        'start_id': 1,
+                        'end_id': 3
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertTrue(body['accepted'])
+                self.assertEqual(1, operations.created_forwards[0]['start_id'])
+            finally:
+                server.stop()
+
+    def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, 'media.bin'), 'wb') as file:
+                file.write(b'12345')
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/uploads',
+                    body=json.dumps({
+                        'path': directory,
+                        'target_link': 'https://t.me/target',
+                        'recursive': False
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertTrue(body['accepted'])
+                self.assertEqual(os.path.abspath(directory), operations.created_uploads[0]['path'])
+                self.assertFalse(operations.created_uploads[0]['recursive'])
+            finally:
+                server.stop()
+
+    def test_webui_rejects_invalid_upload_path_with_stable_error_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/uploads',
+                    body=json.dumps({
+                        'path': os.path.join(directory, 'missing.bin'),
+                        'target_link': 'https://t.me/target',
+                        'recursive': False
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(400, response.status)
+                self.assertEqual('upload_path_not_found', body['error_code'])
+            finally:
+                server.stop()
+
+    def test_webui_live_watch_delete_uses_client_that_registered_handler(self):
+        import pyrogram
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        user_client = FakeTelegramClient()
+        app_client = FakeTelegramClient()
+        pyrogram.filters.chat = lambda _chat_id: object()
+        downloader.user = user_client
+        downloader.app = SimpleNamespace(client=app_client)
+        downloader.listen_download_chat = {}
+        downloader.listen_forward_chat = {}
+        downloader.web_pending_watches = {
+            'download:https://t.me/source': {
+                'id': 'download:https://t.me/source',
+                'type': 'download',
+                'source_link': 'https://t.me/source',
+                'status': TransferStatus.PENDING
+            }
+        }
+        downloader.web_watch_handler_clients = {}
+
+        async def exercise_watch_lifecycle():
+            await downloader.apply_web_watch({
+                'watch_type': 'download',
+                'source_link': 'https://t.me/source'
+            })
+            return downloader.delete_watch('download:https://t.me/source')
+
+        deleted = __import__('asyncio').run(exercise_watch_lifecycle())
+        self.assertTrue(deleted)
+        self.assertEqual(1, len(user_client.added_handlers))
+        self.assertEqual(user_client.added_handlers, user_client.removed_handlers)
+        self.assertEqual([], app_client.removed_handlers)
+
+    def test_webui_live_watch_delete_defaults_to_user_client_for_existing_bot_watches(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        user_client = FakeTelegramClient()
+        app_client = FakeTelegramClient()
+        handler = object()
+        downloader.user = user_client
+        downloader.app = SimpleNamespace(client=app_client)
+        downloader.listen_download_chat = {'https://t.me/source': handler}
+        downloader.listen_forward_chat = {}
+        downloader.web_pending_watches = {}
+        downloader.web_watch_handler_clients = {}
+
+        deleted = downloader.delete_watch('download:https://t.me/source')
+
+        self.assertTrue(deleted)
+        self.assertEqual([handler], user_client.removed_handlers)
+        self.assertEqual([], app_client.removed_handlers)
+
+    def test_webui_live_watch_pending_sources_still_conflict(self):
+        import asyncio
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        loop = asyncio.new_event_loop()
+        try:
+            downloader.loop = loop
+            downloader.web_operation_queue = asyncio.Queue()
+            downloader.web_operation_counter = 0
+            downloader.web_operations = {}
+            downloader.web_pending_watches = {}
+            downloader.listen_download_chat = {}
+            downloader.listen_forward_chat = {}
+
+            downloader.create_watch({
+                'type': 'download',
+                'source_links': ['https://t.me/source']
+            })
+
+            with self.assertRaisesRegex(ValueError, 'watch_source_conflict'):
+                downloader.create_watch({
+                    'type': 'forward',
+                    'source_link': 'https://t.me/source',
+                    'target_link': 'https://t.me/target'
+                })
+        finally:
+            loop.close()
 
 
 if __name__ == '__main__':

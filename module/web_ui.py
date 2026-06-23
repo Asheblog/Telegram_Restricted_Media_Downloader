@@ -1,5 +1,6 @@
 # coding=UTF-8
 import base64
+import datetime
 import hmac
 import json
 import os
@@ -10,7 +11,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from module import log
 from module.enums import ENVIRON
@@ -26,6 +27,14 @@ SENSITIVE_SETTING_KEYS = {
 }
 
 
+class WebUiApiError(Exception):
+    def __init__(self, error_code: str, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST):
+        super().__init__(message)
+        self.error_code = error_code
+        self.message = message
+        self.status = status
+
+
 class WebUiServer:
     def __init__(
             self,
@@ -33,6 +42,7 @@ class WebUiServer:
             task_submitter: Optional[Callable[[int], None]] = None,
             settings_provider: Optional[Callable[[], dict]] = None,
             settings_updater: Optional[Callable[[dict], dict]] = None,
+            operations=None,
             host: str = '127.0.0.1',
             port: int = 0,
             username: Optional[str] = None,
@@ -42,6 +52,7 @@ class WebUiServer:
         self.task_submitter = task_submitter
         self.settings_provider = settings_provider
         self.settings_updater = settings_updater
+        self.operations = operations
         self.host = host
         self.port = self.resolve_port(port)
         self.username = (username or '').strip()
@@ -182,6 +193,12 @@ class WebUiServer:
                 if parsed.path == '/api/download-records':
                     self._send_json({'records': server.store.list_download_success_records()})
                     return
+                if parsed.path == '/api/statistics':
+                    self._send_json(server.statistics())
+                    return
+                if parsed.path == '/api/watches':
+                    self._send_json({'watches': server.list_watches()})
+                    return
                 if parsed.path.startswith('/api/tasks/'):
                     task_id = self._task_id_from_path()
                     if task_id is None:
@@ -198,6 +215,92 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path == '/api/watches':
+                    try:
+                        payload = self._read_json()
+                        result = server.create_watch(payload)
+                        self._send_json(result, HTTPStatus.CREATED)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 创建实时监听失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'create_watch_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/tables/export':
+                    try:
+                        payload = self._read_json()
+                        table_type = str(payload.get('table_type') or '').strip()
+                        result = server.export_table(table_type)
+                        self._send_json(result)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 导出统计表失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'export_table_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/uploads':
+                    try:
+                        payload = self._read_json()
+                        result = server.create_upload(payload)
+                        self._send_json(result, HTTPStatus.ACCEPTED)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 创建上传任务失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'create_upload_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/channel-downloads':
+                    try:
+                        payload = self._read_json()
+                        result = server.create_channel_download(payload)
+                        self._send_json(result, HTTPStatus.ACCEPTED)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 创建频道下载失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'create_channel_download_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/forwards':
+                    try:
+                        payload = self._read_json()
+                        result = server.create_forward(payload)
+                        self._send_json(result, HTTPStatus.ACCEPTED)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 创建转发任务失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'create_forward_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path != '/api/tasks':
                     self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
                     return
@@ -275,6 +378,17 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path.startswith('/api/watches/'):
+                    watch_id = unquote(parsed.path[len('/api/watches/'):])
+                    if not watch_id:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    deleted = server.delete_watch(watch_id)
+                    if not deleted:
+                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
+                        return
+                    self._send_json({'deleted': True, 'watch_id': watch_id})
+                    return
                 if not parsed.path.startswith('/api/tasks/'):
                     self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
                     return
@@ -311,6 +425,164 @@ class WebUiServer:
         if self.settings_provider:
             return self.settings_provider()
         return load_runtime_settings()
+
+    def list_watches(self) -> list:
+        if self.operations and hasattr(self.operations, 'list_watches'):
+            return self.operations.list_watches()
+        return []
+
+    def create_watch(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        watch_type = str(payload.get('type') or '').strip()
+        if watch_type not in ('download', 'forward'):
+            raise WebUiApiError('invalid_watch_type', 'Watch type must be download or forward.', HTTPStatus.BAD_REQUEST)
+        if watch_type == 'download':
+            source_links = payload.get('source_links')
+            if isinstance(source_links, str):
+                source_links = [source_links]
+            source_links = [str(link).strip() for link in (source_links or []) if str(link).strip()]
+            if not source_links:
+                raise WebUiApiError('watch_source_required', 'At least one source link is required.', HTTPStatus.BAD_REQUEST)
+            for link in source_links:
+                if not link.startswith('https://t.me/'):
+                    raise WebUiApiError('invalid_watch_source', 'Watch source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+            payload = {**payload, 'source_links': source_links}
+        else:
+            source_link = str(payload.get('source_link') or '').strip()
+            target_link = str(payload.get('target_link') or '').strip()
+            if not source_link:
+                raise WebUiApiError('watch_source_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
+            if not target_link:
+                raise WebUiApiError('watch_target_required', 'Target link is required.', HTTPStatus.BAD_REQUEST)
+            if not source_link.startswith('https://t.me/'):
+                raise WebUiApiError('invalid_watch_source', 'Watch source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+            if not target_link.startswith('https://t.me/'):
+                raise WebUiApiError('invalid_watch_target', 'Watch target link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+            payload = {**payload, 'source_link': source_link, 'target_link': target_link}
+        if self.operations and hasattr(self.operations, 'create_watch'):
+            try:
+                return self.operations.create_watch(payload)
+            except ValueError as e:
+                if str(e) == 'watch_source_conflict':
+                    raise WebUiApiError(
+                        'watch_source_conflict',
+                        'The same source cannot be watched by download and forward at the same time.',
+                        HTTPStatus.CONFLICT
+                    )
+                if str(e) == 'watch_already_exists':
+                    raise WebUiApiError(
+                        'watch_already_exists',
+                        'Watch already exists.',
+                        HTTPStatus.CONFLICT
+                    )
+                raise
+        raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def delete_watch(self, watch_id: str) -> bool:
+        if self.operations and hasattr(self.operations, 'delete_watch'):
+            return bool(self.operations.delete_watch(watch_id))
+        return False
+
+    def statistics(self) -> dict:
+        if self.operations and hasattr(self.operations, 'statistics'):
+            return self.operations.statistics()
+        return {
+            'tables': {
+                'link': {'available': False, 'rows': 0},
+                'count': {'available': False, 'rows': 0},
+                'upload': {'available': False, 'rows': 0}
+            }
+        }
+
+    def export_table(self, table_type: str) -> dict:
+        if table_type not in ('link', 'count', 'upload'):
+            raise WebUiApiError('invalid_table_type', 'Table type must be link, count, or upload.', HTTPStatus.BAD_REQUEST)
+        if self.operations and hasattr(self.operations, 'export_table'):
+            return self.operations.export_table(table_type)
+        raise WebUiApiError('table_operations_unavailable', 'Table operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def create_upload(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        path = str(payload.get('path') or '').strip()
+        target_link = str(payload.get('target_link') or '').strip()
+        recursive = bool(payload.get('recursive'))
+        if not path:
+            raise WebUiApiError('upload_path_required', 'Upload path is required.', HTTPStatus.BAD_REQUEST)
+        if not target_link:
+            raise WebUiApiError('upload_target_required', 'Target link is required.', HTTPStatus.BAD_REQUEST)
+        if not target_link.startswith('https://t.me/') and target_link not in ('me', 'self'):
+            raise WebUiApiError('invalid_upload_target', 'Upload target must be a Telegram link, me, or self.', HTTPStatus.BAD_REQUEST)
+        normalized_path = os.path.abspath(os.path.expanduser(path))
+        if not os.path.exists(normalized_path):
+            raise WebUiApiError('upload_path_not_found', 'Upload path does not exist on the server.', HTTPStatus.BAD_REQUEST)
+        if recursive and not os.path.isdir(normalized_path):
+            raise WebUiApiError('upload_recursive_requires_directory', 'Recursive upload requires a directory.', HTTPStatus.BAD_REQUEST)
+        payload = {**payload, 'path': normalized_path, 'target_link': target_link, 'recursive': recursive}
+        if self.operations and hasattr(self.operations, 'create_upload'):
+            return self.operations.create_upload(payload)
+        raise WebUiApiError('upload_operations_unavailable', 'Upload operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def create_channel_download(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        chat_link = str(payload.get('chat_link') or '').strip()
+        if not chat_link:
+            raise WebUiApiError('channel_link_required', 'Channel link is required.', HTTPStatus.BAD_REQUEST)
+        if not chat_link.startswith('https://t.me/'):
+            raise WebUiApiError('invalid_channel_link', 'Channel link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+        allowed_types = set(self.settings_schema()['download_type'])
+        download_type = payload.get('download_type') or sorted(allowed_types)
+        if isinstance(download_type, str):
+            download_type = [download_type]
+        download_type = [str(item).strip() for item in download_type if str(item).strip()]
+        if not download_type:
+            raise WebUiApiError('channel_download_type_required', 'At least one download type is required.', HTTPStatus.BAD_REQUEST)
+        invalid_types = [item for item in download_type if item not in allowed_types]
+        if invalid_types:
+            raise WebUiApiError('invalid_channel_download_type', 'Invalid channel download type.', HTTPStatus.BAD_REQUEST)
+        keywords = payload.get('keywords') or []
+        if isinstance(keywords, str):
+            keywords = [part.strip() for part in keywords.split(',') if part.strip()]
+        else:
+            keywords = [str(part).strip() for part in keywords if str(part).strip()]
+        normalized = {
+            **payload,
+            'chat_link': chat_link,
+            'download_type': download_type,
+            'keywords': keywords,
+            'include_comment': bool(payload.get('include_comment')),
+            'date_range': normalize_date_range(payload.get('date_range'))
+        }
+        if self.operations and hasattr(self.operations, 'create_channel_download'):
+            return self.operations.create_channel_download(normalized)
+        raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def create_forward(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        source_link = str(payload.get('source_link') or '').strip()
+        target_link = str(payload.get('target_link') or '').strip()
+        if not source_link:
+            raise WebUiApiError('forward_source_required', 'Forward source link is required.', HTTPStatus.BAD_REQUEST)
+        if not target_link:
+            raise WebUiApiError('forward_target_required', 'Forward target link is required.', HTTPStatus.BAD_REQUEST)
+        if not source_link.startswith('https://t.me/'):
+            raise WebUiApiError('invalid_forward_source', 'Forward source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+        if not target_link.startswith('https://t.me/'):
+            raise WebUiApiError('invalid_forward_target', 'Forward target link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+        try:
+            start_id = int(payload.get('start_id'))
+            end_id = int(payload.get('end_id'))
+        except (TypeError, ValueError):
+            raise WebUiApiError('forward_range_required', 'Forward start and end IDs are required.', HTTPStatus.BAD_REQUEST)
+        if end_id < start_id:
+            raise WebUiApiError('forward_end_before_start', 'Forward end ID must be greater than or equal to start ID.', HTTPStatus.BAD_REQUEST)
+        normalized = {**payload, 'source_link': source_link, 'target_link': target_link, 'start_id': start_id, 'end_id': end_id}
+        if self.operations and hasattr(self.operations, 'create_forward'):
+            return self.operations.create_forward(normalized)
+        raise WebUiApiError('forward_operations_unavailable', 'Forward operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())
@@ -349,6 +621,37 @@ def sanitize_settings(value):
     if isinstance(value, list):
         return [sanitize_settings(item) for item in value]
     return value
+
+
+def parse_optional_timestamp(value):
+    if value in (None, ''):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    try:
+        return datetime.datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        raise WebUiApiError('invalid_date_range', 'Date range values must be timestamps or ISO datetimes.', HTTPStatus.BAD_REQUEST)
+
+
+def normalize_date_range(value) -> dict:
+    if not isinstance(value, dict):
+        return {'start_date': None, 'end_date': None}
+    start_date = parse_optional_timestamp(value.get('start_date'))
+    end_date = parse_optional_timestamp(value.get('end_date'))
+    if start_date is not None and end_date is not None and end_date < start_date:
+        raise WebUiApiError('date_range_end_before_start', 'Date range end must be greater than or equal to start.', HTTPStatus.BAD_REQUEST)
+    return {
+        'start_date': start_date,
+        'end_date': end_date
+    }
 
 
 def load_runtime_settings() -> dict:

@@ -28,6 +28,10 @@ _Avoid_: Cache hit, finished file
 A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.
 _Avoid_: Preset, mode
 
+**Live Transfer Watch**:
+A sustained rule that watches a source Telegram conversation for new messages and triggers a transfer or forwarding action when matching messages arrive.
+_Avoid_: Listen job, bot listener
+
 **WebUI Credentials**:
 Environment-supplied Basic Auth credentials for the visual WebUI. They are required when the server listens on a non-localhost address and are never generated or logged by the application.
 _Avoid_: Random ttyd password, public WebUI

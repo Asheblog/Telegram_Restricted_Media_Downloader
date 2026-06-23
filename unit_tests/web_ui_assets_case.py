@@ -82,6 +82,99 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('.panel-head h3', WEB_UI_HTML)
         self.assertNotIn('.panel-head span', WEB_UI_HTML)
 
+    def test_file_progress_has_status_tabs_and_independent_pagination(self):
+        for fragment in (
+                'role="tablist"',
+                'data-item-tab="running"',
+                'data-item-tab="success"',
+                'data-item-tab="skipped"',
+                'data-item-tab="failure"',
+                'id="items-page-prev"',
+                'id="items-page-next"',
+                'id="items-page-summary"',
+                'itemPages:',
+                'activeItemStatus:',
+                'function categorizedItems(',
+                'function itemPageState(',
+                'function switchItemTab(',
+                'ITEMS_PAGE_SIZE = 10'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        for key in (
+                'items.tab.running',
+                'items.tab.success',
+                'items.tab.skipped',
+                'items.tab.failure',
+                'items.empty.running',
+                'items.empty.success',
+                'items.empty.skipped',
+                'items.empty.failure',
+                'items.page.previous',
+                'items.page.next',
+                'items.page.status',
+                'items.page.range'
+        ):
+            self.assertIn(key, WEB_UI_HTML)
+
+        self.assertIn("['pending', 'running'].includes(status)", WEB_UI_HTML)
+        self.assertIn("state.itemPages[state.activeItemStatus]", WEB_UI_HTML)
+
+    def test_webui_integrates_help_command_workflows_as_structured_views(self):
+        for fragment in (
+                'data-nav="watches"',
+                'data-nav="channel-downloads"',
+                'data-nav="uploads"',
+                'data-nav="statistics"',
+                'id="watch-download-form"',
+                'id="watch-forward-form"',
+                'id="channel-download-form"',
+                'id="upload-form"',
+                'id="forward-form"',
+                'id="statistics"',
+                'function loadWatches(',
+                'function createDownloadWatch(',
+                'function createForwardWatch(',
+                'function deleteWatch(',
+                'function createChannelDownload(',
+                'function createUpload(',
+                'function createForward(',
+                'function loadStatistics(',
+                'function exportTable(',
+                "fetch('/api/watches'",
+                "fetch('/api/statistics'",
+                "'/api/channel-downloads'",
+                "'/api/uploads'",
+                "'/api/forwards'",
+                "'/api/tables/export'"
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        for key in (
+                'nav.watches',
+                'nav.channelDownloads',
+                'nav.uploads',
+                'nav.statistics',
+                'watches.title',
+                'watches.downloadTitle',
+                'watches.forwardTitle',
+                'channel.title',
+                'uploads.title',
+                'uploads.serverPathHint',
+                'forward.title',
+                'statistics.title',
+                'statistics.exportLink',
+                'statistics.exportCount',
+                'statistics.exportUpload',
+                'error.watch_source_conflict',
+                'error.upload_path_not_found',
+                'error.invalid_table_type'
+        ):
+            self.assertIn(key, WEB_UI_HTML)
+
+        self.assertNotIn('/exit', WEB_UI_HTML)
+        self.assertNotIn('send bot command', WEB_UI_HTML.lower())
+
 
 if __name__ == '__main__':
     unittest.main()
