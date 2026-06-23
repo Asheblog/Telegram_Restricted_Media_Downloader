@@ -1408,7 +1408,7 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
 - 使用`docker`从远程仓库拉取镜像：
 
   ```bash
-  docker pull gentlesprite/telegram_restricted_media_downloader:latest
+  docker pull ghcr.io/asheblog/telegram_restricted_media_downloader:latest
   ```
 
 
@@ -1424,14 +1424,14 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
     -v ./form:/app/form \
     -e TZ=Asia/Shanghai \
     --restart unless-stopped \
-    gentlesprite/telegram_restricted_media_downloader:latest
+    ghcr.io/asheblog/telegram_restricted_media_downloader:latest
   ```
 
 
 - 如果是通过`Windows`使用`wsl2`运行`docker`：
 
     ```bash
-    docker run -it --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -e TZ=Asia/Shanghai --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:latest
+    docker run -it --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -e TZ=Asia/Shanghai --restart unless-stopped ghcr.io/asheblog/telegram_restricted_media_downloader:latest
     ```
 
 
@@ -1448,7 +1448,7 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
 - 使用`docker`从远程仓库拉取镜像：
 
   ```bash
-  docker pull gentlesprite/telegram_restricted_media_downloader:v0.0.2
+  docker pull ghcr.io/asheblog/telegram_restricted_media_downloader:latest
   ```
 
 - 创建并启动容器，`WebUI` 使用 `2921` 端口。请务必把 `TRMD_WEB_PASSWORD` 改成自己的强密码：
@@ -1468,14 +1468,14 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
     -e TRMD_WEB_USERNAME=admin \
     -e TRMD_WEB_PASSWORD=change-this-password \
     --restart unless-stopped \
-    gentlesprite/telegram_restricted_media_downloader:v0.0.2 \
+    ghcr.io/asheblog/telegram_restricted_media_downloader:latest \
     python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
   ```
 
 - 如果是通过`Windows`使用`wsl2`运行`docker`：
 
   ```bash
-  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai -e TRMD_WEB_HOST=0.0.0.0 -e TRMD_WEB_USERNAME=admin -e TRMD_WEB_PASSWORD=change-this-password --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:v0.0.2 python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
+  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai -e TRMD_WEB_HOST=0.0.0.0 -e TRMD_WEB_USERNAME=admin -e TRMD_WEB_PASSWORD=change-this-password --restart unless-stopped ghcr.io/asheblog/telegram_restricted_media_downloader:latest python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
   ```
 
 - 1Panel 编排模板：
@@ -1483,7 +1483,7 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
   ```yaml
   services:
     trmd:
-      image: gentlesprite/telegram_restricted_media_downloader:v0.0.2
+      image: ghcr.io/asheblog/telegram_restricted_media_downloader:latest
       container_name: trmd
       restart: unless-stopped
       stdin_open: true
