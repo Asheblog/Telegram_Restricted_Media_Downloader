@@ -1,6 +1,6 @@
 services:
   trmd:
-    image: gentlesprite/telegram_restricted_media_downloader:v0.0.2
+    image: ghcr.io/asheblog/telegram_restricted_media_downloader:latest
     container_name: trmd
     restart: unless-stopped
     stdin_open: true
