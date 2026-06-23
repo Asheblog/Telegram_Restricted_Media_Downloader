@@ -92,7 +92,13 @@ from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
 from module.stdio import ProgressBar, Base64Image, MetaData
 from module.uploader import TelegramUploader
-from module.web_ui import WebUiServer, get_web_host_from_env, get_web_port_from_env
+from module.web_ui import (
+    WebUiServer,
+    get_web_host_from_env,
+    get_web_password_from_env,
+    get_web_port_from_env,
+    get_web_username_from_env
+)
 from module.util import (
     is_docker,
     parse_link,
@@ -146,7 +152,9 @@ class TelegramRestrictedMediaDownloader(Bot):
             store=self.transfer_store,
             task_submitter=self.submit_web_task,
             host=get_web_host_from_env(),
-            port=get_web_port_from_env()
+            port=get_web_port_from_env(),
+            username=get_web_username_from_env(),
+            password=get_web_password_from_env()
         )
         self.web_ui.start(open_browser=True)
         for task in self.transfer_store.list_tasks():

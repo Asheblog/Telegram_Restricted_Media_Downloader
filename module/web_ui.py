@@ -1,4 +1,6 @@
 # coding=UTF-8
+import base64
+import hmac
 import json
 import os
 import socket
@@ -22,14 +24,19 @@ class WebUiServer:
             store: TransferStore,
             task_submitter: Optional[Callable[[int], None]] = None,
             host: str = '127.0.0.1',
-            port: int = 0
+            port: int = 0,
+            username: Optional[str] = None,
+            password: Optional[str] = None
     ):
         self.store = store
         self.task_submitter = task_submitter
         self.host = host
         self.port = self.resolve_port(port)
+        self.username = (username or '').strip()
+        self.password = password or ''
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
+        self.validate_auth_config()
 
     @staticmethod
     def resolve_port(port: int) -> int:
@@ -43,12 +50,62 @@ class WebUiServer:
     def url(self) -> str:
         return f'http://{self.host}:{self.port}'
 
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.username and self.password)
+
+    @property
+    def requires_auth(self) -> bool:
+        return self.host not in ('127.0.0.1', 'localhost', '::1')
+
+    def validate_auth_config(self) -> None:
+        if bool(self.username) != bool(self.password):
+            raise ValueError('TRMD_WEB_USERNAME 和 TRMD_WEB_PASSWORD 必须同时设置。')
+        if self.requires_auth and not self.auth_enabled:
+            raise ValueError('WebUI 对外监听时必须设置 TRMD_WEB_USERNAME 和 TRMD_WEB_PASSWORD。')
+
+    def is_authorized(self, authorization: Optional[str]) -> bool:
+        if not self.auth_enabled:
+            return True
+        if not authorization or not authorization.startswith('Basic '):
+            return False
+        try:
+            raw = base64.b64decode(authorization[6:].strip()).decode('utf-8')
+        except Exception:
+            return False
+        username, separator, password = raw.partition(':')
+        if not separator:
+            return False
+        return (
+            hmac.compare_digest(username, self.username)
+            and hmac.compare_digest(password, self.password)
+        )
+
     def start(self, open_browser: bool = True) -> None:
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, fmt, *args):
                 log.info('[WebUI] ' + fmt, *args)
+
+            def _send_auth_required(self):
+                data = json.dumps(
+                    {'error': 'Authentication required.'},
+                    ensure_ascii=False
+                ).encode('utf-8')
+                self.send_response(HTTPStatus.UNAUTHORIZED)
+                self.send_header('www-authenticate', 'Basic realm="TRMD WebUI"')
+                self.send_header('content-type', 'application/json; charset=utf-8')
+                self.send_header('cache-control', 'no-store')
+                self.send_header('content-length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def _check_auth(self):
+                if server.is_authorized(self.headers.get('authorization')):
+                    return True
+                self._send_auth_required()
+                return False
 
             def _send_json(self, payload, status=HTTPStatus.OK):
                 data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
@@ -76,6 +133,8 @@ class WebUiServer:
                 return json.loads(raw.decode('utf-8'))
 
             def do_GET(self):
+                if not self._check_auth():
+                    return
                 parsed = urlparse(self.path)
                 if parsed.path in ('/', '/index.html'):
                     self._send_html()
@@ -97,6 +156,8 @@ class WebUiServer:
                 self._send_json({'error': 'Not found.'}, HTTPStatus.NOT_FOUND)
 
             def do_POST(self):
+                if not self._check_auth():
+                    return
                 parsed = urlparse(self.path)
                 if parsed.path != '/api/tasks':
                     self._send_json({'error': 'Not found.'}, HTTPStatus.NOT_FOUND)
@@ -144,7 +205,8 @@ class WebUiServer:
         self.httpd = ThreadingHTTPServer((self.host, self.port), Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
-        log.info(f'WebUI started at {self.url}')
+        auth_status = 'enabled' if self.auth_enabled else 'disabled'
+        log.info(f'WebUI started at {self.url}, auth={auth_status}')
         if open_browser:
             try:
                 webbrowser.open(self.url)
@@ -169,4 +231,12 @@ def get_web_port_from_env(default: int = 0) -> int:
 
 
 def get_web_host_from_env(default: str = '127.0.0.1') -> str:
-    return os.environ.get('TRMD_WEB_HOST', default)
+    return os.environ.get(ENVIRON.TRMD_WEB_HOST, default)
+
+
+def get_web_username_from_env() -> Optional[str]:
+    return os.environ.get(ENVIRON.TRMD_WEB_USERNAME)
+
+
+def get_web_password_from_env() -> Optional[str]:
+    return os.environ.get(ENVIRON.TRMD_WEB_PASSWORD)

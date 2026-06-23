@@ -1223,7 +1223,18 @@ _**长参数与短参数最终结果一致。**_
    | _4.转存任务状态会保存到 `temp_directory` 下的 SQLite 数据库，程序重启后会继续处理待处理任务。_                          |
    | _5.可在此参数后指定一个`0`~`65535`范围内的**端口号**，若不指定，将**随机分配**端口。_       |
    | _6.默认仅监听 `127.0.0.1`；Docker/远程访问需要显式设置环境变量 `TRMD_WEB_HOST=0.0.0.0`。_                                           |
-   | _7.这是一次直接替换：旧 ttyd Web 入口无迁移，直接改为新 WebUI。_                                           |
+   | _7.远程监听时必须同时设置 `TRMD_WEB_USERNAME` 与 `TRMD_WEB_PASSWORD`，浏览器会弹出基础认证登录框。_                                           |
+   | _8.这是一次直接替换：旧 ttyd Web 入口无迁移，直接改为新 WebUI。_                                           |
+
+   WebUI 相关环境变量：
+
+   | 环境变量 | 默认值 | 说明 |
+   | -------- | ------ | ---- |
+   | `TRMD_WEB_HOST` | `127.0.0.1` | WebUI 监听地址；Docker/1Panel 需要设置为 `0.0.0.0`。 |
+   | `TRMD_WEB_USERNAME` | 空 | WebUI 登录账号；远程监听时必填。 |
+   | `TRMD_WEB_PASSWORD` | 空 | WebUI 登录密码；远程监听时必填，请改成自己的强密码。 |
+
+   _安全规则：当 `TRMD_WEB_HOST` 不是 `127.0.0.1`、`localhost` 或 `::1` 时，如果没有配置账号密码，程序会拒绝启动。_
    
    - 对于生产环境用户（**需要先完成前置步骤**"[_3.0.在生产环境中运行"_](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader?tab=readme-ov-file#30%E5%9C%A8%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E4%B8%AD%E8%BF%90%E8%A1%8C)）:
    
@@ -1430,17 +1441,17 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
   docker stop trmd && docker rm trmd
   ```
 
-方式3，使用`web模式`运行（`≥1.9.3`）：
+方式3，使用可视化 `WebUI` 模式运行（推荐 Docker/1Panel 使用）：
 
 - _确保`docker`已安装并配置**环境变量。**_
 
-- 使用`docker`从远程仓库拉取镜像，注意软件版本需要`≥1.9.3`：
+- 使用`docker`从远程仓库拉取镜像：
 
   ```bash
-  docker pull gentlesprite/telegram_restricted_media_downloader:latest
+  docker pull gentlesprite/telegram_restricted_media_downloader:v0.0.2
   ```
 
-- 创建并启动容器，`web模式`使用`2921`端口：
+- 创建并启动容器，`WebUI` 使用 `2921` 端口。请务必把 `TRMD_WEB_PASSWORD` 改成自己的强密码：
 
   ```bash
   docker run -d \
@@ -1454,16 +1465,54 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
     -w /app \
     -e TZ=Asia/Shanghai \
     -e TRMD_WEB_HOST=0.0.0.0 \
+    -e TRMD_WEB_USERNAME=admin \
+    -e TRMD_WEB_PASSWORD=change-this-password \
     --restart unless-stopped \
-    gentlesprite/telegram_restricted_media_downloader:latest \
+    gentlesprite/telegram_restricted_media_downloader:v0.0.2 \
     python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
   ```
 
 - 如果是通过`Windows`使用`wsl2`运行`docker`：
 
   ```bash
-  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai -e TRMD_WEB_HOST=0.0.0.0 --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:latest python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
+  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai -e TRMD_WEB_HOST=0.0.0.0 -e TRMD_WEB_USERNAME=admin -e TRMD_WEB_PASSWORD=change-this-password --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:v0.0.2 python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
   ```
+
+- 1Panel 编排模板：
+
+  ```yaml
+  services:
+    trmd:
+      image: gentlesprite/telegram_restricted_media_downloader:v0.0.2
+      container_name: trmd
+      restart: unless-stopped
+      stdin_open: true
+      tty: true
+      ports:
+        - "2921:2921"
+      volumes:
+        - /opt/trmd/config:/app/TRMD
+        - /opt/trmd/sessions:/app/sessions
+        - /opt/trmd/downloads:/app/downloads
+        - /opt/trmd/temp:/app/temp
+        - /opt/trmd/form:/app/form
+      environment:
+        - TZ=Asia/Singapore
+        - TRMD_WEB_HOST=0.0.0.0
+        - TRMD_WEB_USERNAME=admin
+        - TRMD_WEB_PASSWORD=change-this-password
+      command:
+        - python
+        - main.py
+        - --config
+        - /app/TRMD/config.yaml
+        - --web
+        - "2921"
+        - --mode
+        - SESSION
+  ```
+
+  _`TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD` 就是浏览器登录 WebUI 的账号密码，不会自动生成，也不会写入日志。_
 
 - 查看运行日志：
 
@@ -1471,17 +1520,9 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
   docker logs trmd
   ```
 
-- 正常运行时会在运行日志中输出一个`Web配置`表格，类似下表：
+  正常运行时会输出 `WebUI已启动` 日志。浏览器打开 `http://服务器IP:2921` 后，输入 `TRMD_WEB_USERNAME` 与 `TRMD_WEB_PASSWORD` 配置的账号密码即可进入。
 
-  | 属性     | 内容                    |
-  | -------- | ----------------------- |
-  | IP地址   | `127.0.0.1`             |
-  | 端口     | `2921`                  |
-  | 账号     | `cLJqKG3b`              |
-  | 密码     | `AiJaKSObcRCZ`          |
-  | 访问链接 | `http://127.0.0.1:2921` |
-
-  _账号密码由系统随机生成，使用浏览器打开[http://127.0.0.1:2921](http://127.0.0.1:2921)网页输入账号密码即可进入。_
+  _如果设置了 `TRMD_WEB_HOST=0.0.0.0`，但没有同时设置 `TRMD_WEB_USERNAME` 与 `TRMD_WEB_PASSWORD`，程序会拒绝启动，避免 WebUI 裸露到公网。_
 
 - **不再使用**时，停止并删除容器：
 
