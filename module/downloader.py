@@ -58,6 +58,7 @@ from module import (
 )
 from module.filter import Filter
 from module.app import Application
+from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.bot import (
     Bot,
@@ -66,6 +67,7 @@ from module.bot import (
 )
 from module.enums import (
     DownloadStatus,
+    UploadStatus,
     LinkType,
     KeyWord,
     BotCallbackText,
@@ -87,8 +89,10 @@ from module.path_tool import (
     validate_title
 )
 from module.task import DownloadTask, UploadTask
+from module.transfer_store import TransferStore, TransferStatus
 from module.stdio import ProgressBar, Base64Image, MetaData
 from module.uploader import TelegramUploader
+from module.web_ui import WebUiServer, get_web_host_from_env, get_web_port_from_env
 from module.util import (
     is_docker,
     parse_link,
@@ -123,6 +127,32 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.uploader: Union[TelegramUploader, None] = None
         self.cd: Union[CallbackData, None] = None
         self.my_id: int = 0
+        self.transfer_store: Union[TransferStore, None] = None
+        self.web_ui: Union[WebUiServer, None] = None
+        self.web_task_queue: asyncio.Queue = asyncio.Queue()
+        self.web_submitted_task_ids: Set[int] = set()
+
+    def submit_web_task(self, task_id: int) -> None:
+        if task_id in self.web_submitted_task_ids:
+            return
+        self.web_submitted_task_ids.add(task_id)
+        self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
+
+    def start_web_ui(self) -> None:
+        if PARSE_ARGS.web is None:
+            return
+        self.transfer_store = TransferStore(directory=self.app.temp_directory)
+        self.web_ui = WebUiServer(
+            store=self.transfer_store,
+            task_submitter=self.submit_web_task,
+            host=get_web_host_from_env(),
+            port=get_web_port_from_env()
+        )
+        self.web_ui.start(open_browser=True)
+        for task in self.transfer_store.list_tasks():
+            if task.get('status') in (TransferStatus.PENDING, TransferStatus.FAILURE):
+                self.submit_web_task(int(task.get('id')))
+        console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
 
     def env_save_directory(
             self,
@@ -246,6 +276,170 @@ class TelegramRestrictedMediaDownloader(Bot):
             link=valid_link_cache.get(target_link, None) or target_link if valid_link_cache else target_link,
             upload_task=upload_task,
         )
+
+    def refresh_transfer_task_counts(self, task_id: int) -> None:
+        if not self.transfer_store:
+            return
+        items = self.transfer_store.list_items(task_id)
+        total = len(items)
+        completed = len([item for item in items if item.get('status') in (TransferStatus.SUCCESS, TransferStatus.SKIPPED)])
+        failed = len([item for item in items if item.get('status') == TransferStatus.FAILURE])
+        status = TransferStatus.RUNNING
+        finished = False
+        if total and completed + failed >= total:
+            status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
+            finished = True
+        self.transfer_store.update_task(
+            task_id=task_id,
+            status=status,
+            total_items=total,
+            completed_items=completed,
+            failed_items=failed,
+            finished=finished
+        )
+
+    def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
+        if not self.transfer_store:
+            return 0
+        task_id = int(with_upload.get('task_id'))
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_message_id=with_upload.get('message_id'),
+            source_link=with_upload.get('source_link'),
+            target_link=with_upload.get('link'),
+            media_type=with_upload.get('media_type'),
+            local_path=file_path,
+            status=TransferStatus.RUNNING
+        )
+        self.transfer_store.add_event(task_id, f'File ready for target upload: {os.path.basename(file_path)}', item_id=item_id)
+        self.refresh_transfer_task_counts(task_id)
+        return item_id
+
+    def on_transfer_item_skipped(self, with_upload: dict, message: str) -> None:
+        if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
+            return
+        task_id = int(with_upload.get('task_id'))
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_message_id=with_upload.get('message_id'),
+            source_link=with_upload.get('source_link'),
+            target_link=with_upload.get('link'),
+            media_type=with_upload.get('media_type'),
+            status=TransferStatus.SKIPPED
+        )
+        self.transfer_store.add_event(task_id, message, level='warning', item_id=item_id)
+        self.refresh_transfer_task_counts(task_id)
+
+    def on_transfer_item_failed(self, with_upload: dict, message: str) -> None:
+        if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
+            return
+        task_id = int(with_upload.get('task_id'))
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_message_id=with_upload.get('message_id'),
+            source_link=with_upload.get('source_link'),
+            target_link=with_upload.get('link'),
+            media_type=with_upload.get('media_type'),
+            status=TransferStatus.FAILURE,
+            error_message=message
+        )
+        self.transfer_store.add_event(task_id, message, level='error', item_id=item_id)
+        self.refresh_transfer_task_counts(task_id)
+
+    def on_transfer_upload_status(self, upload_task: UploadTask) -> None:
+        if not self.transfer_store:
+            return
+        meta = getattr(upload_task, 'transfer_meta', {}) or {}
+        task_id = meta.get('task_id')
+        item_id = meta.get('item_id')
+        if not task_id or not item_id:
+            return
+        if upload_task.status == UploadStatus.SENT:
+            self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS)
+            self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
+        elif upload_task.status == UploadStatus.FAILURE:
+            self.transfer_store.update_item(
+                item_id,
+                status=TransferStatus.FAILURE,
+                error_message=upload_task.error_msg
+            )
+            self.transfer_store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
+        self.refresh_transfer_task_counts(int(task_id))
+
+    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
+        return {
+            'link': task.get('target_link'),
+            'file_name': None,
+            'with_delete': True if task.get('target_profile') == 'pikpak' else self.gc.upload_delete,
+            'send_as_media_group': False if task.get('target_profile') == 'pikpak' else True,
+            'task_id': task.get('id'),
+            'source_link': source_link or task.get('source_link'),
+            'target_profile': task.get('target_profile'),
+            'media_type': media_type,
+            'on_file_ready': self.on_transfer_file_ready,
+            'status_callback': self.on_transfer_upload_status,
+            'skip_callback': self.on_transfer_item_skipped,
+            'failure_callback': self.on_transfer_item_failed
+        }
+
+    async def process_web_transfer_task(self, task_id: int) -> None:
+        if not self.transfer_store:
+            return
+        task = self.transfer_store.get_task(task_id)
+        if not task:
+            return
+        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.FAILURE):
+            return
+        self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+        self.transfer_store.add_event(task_id, 'Transfer task started.')
+        try:
+            if not self.uploader:
+                self.uploader = TelegramUploader(download_object=self)
+            source_link = task.get('source_link')
+            start_id = task.get('start_id')
+            end_id = task.get('end_id')
+            if start_id is not None and end_id is not None:
+                source_prefix = source_link.rstrip('/')
+                for message_id in range(int(start_id), int(end_id) + 1):
+                    message_link = f'{source_prefix}/{message_id}?single'
+                    task_result = await self.create_download_task(
+                        message_ids=message_link,
+                        retry=None,
+                        single_link=True,
+                        with_upload=self.build_transfer_upload_meta(task=task, source_link=message_link),
+                        diy_download_type=[_ for _ in DownloadType()]
+                    )
+                    if task_result.get('status') == DownloadStatus.FAILURE:
+                        error = task_result.get('e_code') or {}
+                        raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
+                self.transfer_store.add_event(task_id, f'Range transfer assigned: {start_id}-{end_id}.')
+            else:
+                task_result = await self.create_download_task(
+                    message_ids=f'{source_link}?single' if '?single' not in source_link else source_link,
+                    retry=None,
+                    with_upload=self.build_transfer_upload_meta(task=task, source_link=source_link),
+                    diy_download_type=[_ for _ in DownloadType()]
+                )
+                if task_result.get('status') == DownloadStatus.FAILURE:
+                    error = task_result.get('e_code') or {}
+                    raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
+                self.transfer_store.add_event(task_id, 'Single-message transfer assigned.')
+        except Exception as e:
+            self.transfer_store.update_task(
+                task_id,
+                status=TransferStatus.FAILURE,
+                error_message=str(e),
+                finished=True
+            )
+            self.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
+
+    async def process_web_task_queue(self) -> None:
+        while not self.web_task_queue.empty():
+            task_id = await self.web_task_queue.get()
+            try:
+                await self.process_web_transfer_task(task_id)
+            finally:
+                self.web_task_queue.task_done()
 
     @staticmethod
     async def __send_pay_qr(
@@ -1790,6 +1984,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                     )
             else:
                 _error = '不支持或被忽略的类型(已取消)。'
+                if isinstance(with_upload, dict):
+                    with_upload['message_id'] = getattr(message, 'id', None)
+                    with_upload['media_type'] = valid_dtype
+                    callback = with_upload.get('skip_callback')
+                    if callable(callback):
+                        callback(with_upload, _error)
                 try:
                     _, __, ___, file_name, ____, format_file_size = self.get_media_meta(
                         message=message,
@@ -1961,6 +2161,10 @@ class TelegramRestrictedMediaDownloader(Bot):
                     )
                     DownloadTask.set_error(link=link, key=file_name, value=_error.replace('。', ''))
                     self.bot_task_link.discard(link)
+                    callback = with_upload.get('failure_callback') if isinstance(with_upload, dict) else None
+                    if callable(callback):
+                        with_upload['message_id'] = getattr(message, 'id', None)
+                        callback(with_upload, _error)
                     self.release_download_upload_window(with_upload)
                     self.queue.task_done()
                 link, file_name = None, None
@@ -2387,6 +2591,9 @@ class TelegramRestrictedMediaDownloader(Bot):
                     links.update(_link)
         if links:
             return links
+        elif PARSE_ARGS.web is not None:
+            console.log('🔗 WebUI模式未配置初始链接,等待浏览器创建转存任务。', style='#B1DB74')
+            return None
         elif not self.app.bot_token:
             console.log('🔗 没有找到有效链接,程序已退出。', style='#FF4689')
             sys.exit(1)
@@ -2399,9 +2606,12 @@ class TelegramRestrictedMediaDownloader(Bot):
         console.log(notice, style='#FF4689')
 
     async def __download_media_from_links(self) -> None:
+        self.start_web_ui()
         await self.app.client.start(use_qr=False)
         self.my_id = await get_my_id(self.app.client)
         self.pb.progress.start()  # v1.1.8修复登录输入手机号不显示文本问题。
+        self.is_running = True
+        self.running_log.add(self.is_running)
         if self.app.bot_token is not None:
             result = await self.start_bot(
                 self.app,
@@ -2427,14 +2637,18 @@ class TelegramRestrictedMediaDownloader(Bot):
                         f'如需关闭,前往机器人[帮助页面]->[设置]->[上传设置]进行修改。\n',
                         style='#FF4689'
                     )
-        self.is_running = True
-        self.running_log.add(self.is_running)
+        if self.web_ui and not self.uploader:
+            self.uploader = TelegramUploader(download_object=self)
         links: Union[set, None] = self.__process_links(link=self.app.links)
         # 将初始任务添加到队列中。
         [await self.loop.create_task(self.create_download_task(message_ids=link, retry=None)) for link in
          sorted(links)] if links else None
         # 处理队列中的任务与机器人事件。
-        while not self.queue.empty() or self.is_bot_running:
+        while not self.queue.empty() or self.is_bot_running or self.web_ui:
+            await self.process_web_task_queue()
+            if self.queue.empty():
+                await asyncio.sleep(0.5)
+                continue
             result = await self.queue.get()
             try:
                 await result
