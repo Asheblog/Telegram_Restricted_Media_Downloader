@@ -428,7 +428,7 @@ class UserConfig(BaseConfig):
                     if record_flag:
                         self.record_flag = record_flag
                         pre_load_config['bot_token'] = bot_token
-            if not _links or not _bot_token and self.re_config:
+            if (not _links or not _bot_token and self.re_config) and PARSE_ARGS.web is None:
                 links, record_flag = gsp.get_links(
                     last_record=self.last_record.get('links'),
                     valid_format='.txt',

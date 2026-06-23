@@ -68,7 +68,7 @@ class TelegramUploader:
         self.current_task_num: int = 0
         self.max_upload_task: int = self.app.max_upload_task
         self.max_upload_retries: int = self.app.max_upload_retries
-        self.is_bot_running = download_object.is_bot_running
+        self.download_object = download_object
         self.upload_queue: asyncio.Queue = asyncio.Queue()
         self.valid_link_cache = {}
         UploadTask.NOTIFY = download_object.done_notice
@@ -158,8 +158,9 @@ class TelegramUploader:
 
         mime_type = self.client.guess_mime_type(file_path) or get_mime_from_extension(file_path)
         file_name = split_path(file_path).get('file_name', 'file')
+        force_document = upload_task.transfer_meta.get('target_profile') == 'pikpak'
 
-        if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+        if not force_document and file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
             try:
                 media = raw.types.InputMediaUploadedPhoto(
                     file=file,
@@ -197,7 +198,7 @@ class TelegramUploader:
                 )
         else:
             attributes = [raw.types.DocumentAttributeFilename(file_name=file_name)]
-            if file_path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+            if not force_document and file_path.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
                 video_meta: Union[dict, None] = self.get_video_info(path)
                 if video_meta:
                     attributes.append(raw.types.DocumentAttributeVideo(
@@ -224,7 +225,7 @@ class TelegramUploader:
         media_group_cache = {}  # media_group_id -> {message_id: media, ...}
         media_group_poll_tasks = {}  # media_group_id -> polling_task
 
-        while self.is_bot_running:
+        while self.download_object.is_running or self.download_object.is_bot_running or getattr(self.download_object, 'web_ui', None):
             try:
                 media, upload_task = await self.upload_queue.get()
 
@@ -312,7 +313,7 @@ class TelegramUploader:
             media_group_poll_tasks: dict
     ):
         try:
-            while self.is_bot_running:
+            while self.download_object.is_running or self.download_object.is_bot_running or getattr(self.download_object, 'web_ui', None):
                 await asyncio.sleep(1)  # 每1秒检查一次。
 
                 # 检查两个条件：
@@ -406,10 +407,14 @@ class TelegramUploader:
                 )
             )
             upload_task.status = UploadStatus.SENT
+            self.notify_transfer_status(upload_task)
             self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
             log.info(f'[Upload Worker]单条消息发送完成,{_t(KeyWord.CHANNEL)}:"{chat_id}"')
         except Exception as e:
             log.error(f'"[Upload Worker]发送单条消息失败,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
+            upload_task.error_msg = str(e)
+            upload_task.status = UploadStatus.FAILURE
+            self.notify_transfer_status(upload_task)
 
     @staticmethod
     def get_video_info(video_path: str) -> Union[Dict[str, int], None]:
@@ -466,6 +471,7 @@ class TelegramUploader:
             upload_task.status = UploadStatus.FAILURE
         finally:
             if upload_task.status == UploadStatus.FAILURE:
+                self.notify_transfer_status(upload_task)
                 upload_task.release_window()
 
     async def __create_upload_task(
@@ -597,6 +603,9 @@ class TelegramUploader:
             self.pb.progress.remove_task(task_id=task_id)
             self.event.set()
             log.info(e)
+            upload_task.error_msg = str(e)
+            upload_task.status = UploadStatus.FAILURE
+            self.notify_transfer_status(upload_task)
             return
         file_path: str = upload_task.file_path
         self.current_task_num -= 1
@@ -615,8 +624,17 @@ class TelegramUploader:
             num=self.current_task_num
         )
 
+    @staticmethod
+    def notify_transfer_status(upload_task: UploadTask) -> None:
+        callback = getattr(upload_task, 'status_callback', None)
+        if callable(callback):
+            callback(upload_task)
+
     def download_upload(self, with_upload: dict, file_path: str):
         if isinstance(with_upload, dict):
+            item_id = with_upload.get('item_id')
+            if callable(with_upload.get('on_file_ready')):
+                item_id = with_upload.get('on_file_ready')(file_path, with_upload)
             asyncio.create_task(
                 self.create_upload_task(
                     link=with_upload.get('link'),
@@ -631,7 +649,13 @@ class TelegramUploader:
                         media_group=with_upload.get('media_group'),
                         message_id=with_upload.get('message_id'),
                         send_as_media_group=with_upload.get('send_as_media_group', False),
-                        release_callback=with_upload.get('_window_release')
+                        release_callback=with_upload.get('_window_release'),
+                        transfer_meta={
+                            'task_id': with_upload.get('task_id'),
+                            'item_id': item_id,
+                            'target_profile': with_upload.get('target_profile')
+                        },
+                        status_callback=with_upload.get('status_callback')
                     )
                 )
             )

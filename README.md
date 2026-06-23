@@ -1217,19 +1217,20 @@ _**长参数与短参数最终结果一致。**_
 
    | 使用须知                                                         |
    |--------------------------------------------------------------|
-   | _1.该参数用于控制是否通过浏览器运行。_                                        |
-   | _2.该参数设置后将自动使用**默认浏览器**作为软件的终端界面，**并自动打开**（运行环境不支持时，需手动打开）。_ |
-   | _3.`Web配置`信息会在运行的终端提供，以便启动时输入账号密码。_                          |
-   | _4.**关闭浏览器窗口即代表退出程序，且不会保留任何会话状态**。_                          |
+   | _1.该参数用于启动可视化 WebUI，不再使用 ttyd 终端网页。_                                        |
+   | _2.WebUI 可创建并查看 Telegram 受限内容转存任务，默认目标为 `https://t.me/pikpak_bot`。_ |
+   | _3.遇到受限内容时，系统会下载媒体并重新发送到目标会话；PikPak 模式默认以文档形式发送。_                          |
+   | _4.转存任务状态会保存到 `temp_directory` 下的 SQLite 数据库，程序重启后会继续处理待处理任务。_                          |
    | _5.可在此参数后指定一个`0`~`65535`范围内的**端口号**，若不指定，将**随机分配**端口。_       |
-   | _6.该参数为一次性设置，不记忆。_                                           |
+   | _6.默认仅监听 `127.0.0.1`；Docker/远程访问需要显式设置环境变量 `TRMD_WEB_HOST=0.0.0.0`。_                                           |
+   | _7.这是一次直接替换：旧 ttyd Web 入口无迁移，直接改为新 WebUI。_                                           |
    
    - 对于生产环境用户（**需要先完成前置步骤**"[_3.0.在生产环境中运行"_](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader?tab=readme-ov-file#30%E5%9C%A8%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E4%B8%AD%E8%BF%90%E8%A1%8C)）:
    
      此处假设使用随机端口。
    
      ```bash
-     python3 -w
+     python3 main.py -w
      ```
    
      ```bash
@@ -1452,6 +1453,7 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
     -p 2921:2921 \
     -w /app \
     -e TZ=Asia/Shanghai \
+    -e TRMD_WEB_HOST=0.0.0.0 \
     --restart unless-stopped \
     gentlesprite/telegram_restricted_media_downloader:latest \
     python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
@@ -1460,7 +1462,7 @@ temp_directory: /app/temp # 主机的路径为："temp/"。
 - 如果是通过`Windows`使用`wsl2`运行`docker`：
 
   ```bash
-  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:latest python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
+  docker run -d --name trmd -v ./config:/app/TRMD -v ./sessions:/app/sessions -v ./downloads:/app/downloads -v ./temp:/app/temp -v ./form:/app/form -p 2921:2921 -w /app -e TZ=Asia/Shanghai -e TRMD_WEB_HOST=0.0.0.0 --restart unless-stopped gentlesprite/telegram_restricted_media_downloader:latest python main.py --config /app/TRMD/config.yaml --web 2921 --mode SESSION
   ```
 
 - 查看运行日志：
