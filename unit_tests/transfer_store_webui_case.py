@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
@@ -545,6 +545,133 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertFalse(fallback['with_upload']['send_as_media_group'])
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
+
+    def test_webui_transfer_resumes_running_range_without_repeating_completed_items(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=2
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source-chat',
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                media_type='forward',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS
+            )
+            store.refresh_task_counts(task_id, expected_total=2, assignment_completed=False)
+            store.update_task(task_id, status=TransferStatus.RUNNING)
+            messages = [
+                SimpleNamespace(id=1, link='https://t.me/source/1'),
+                SimpleNamespace(id=2, link='https://t.me/source/2')
+            ]
+
+            class FakeClient:
+                def __init__(self, items):
+                    self.items = {item.id: item for item in items}
+
+                async def get_messages(self, chat_id, message_ids):
+                    return self.items.get(message_ids)
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=FakeClient(messages))
+            downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+
+            downloader.forward = fake_forward
+
+            async def fake_parse_link(client, link):
+                if link == 'https://t.me/source':
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/pikpak_bot':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
+
+            with patch('module.downloader.parse_link', side_effect=fake_parse_link), \
+                    patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
+                asyncio.run(downloader.process_web_transfer_task(task_id))
+
+            self.assertEqual([2], [call['message_id'] for call in downloader.forward_calls])
+            task = store.get_task(task_id)
+            self.assertEqual(2, task['total_items'])
+            self.assertEqual(2, task['completed_items'])
+            self.assertEqual(TransferStatus.SUCCESS, task['status'])
+
+    def test_forward_waits_and_retries_copy_message_flood_wait(self):
+        from pyrogram.errors import FloodWait
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        copy_attempts = []
+
+        class FakeClient:
+            name = 'test-client'
+
+            async def copy_message(self, **kwargs):
+                copy_attempts.append(kwargs)
+                if len(copy_attempts) == 1:
+                    raise FloodWait(9)
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader.transfer_store = None
+
+        async def run_case():
+            with patch('module.downloader.asyncio.sleep') as sleep_mock, \
+                    patch('module.downloader.random.uniform', return_value=0):
+                await downloader.forward(
+                    client=downloader.app.client,
+                    message=SimpleNamespace(id=1),
+                    message_id=1,
+                    origin_chat_id='source-chat',
+                    target_chat_id='target-chat',
+                    target_link='https://t.me/pikpak_bot',
+                    done_notice=False,
+                    ignore_type_filter=True
+                )
+                sleep_mock.assert_awaited_once_with(9)
+
+        asyncio.run(run_case())
+
+        self.assertEqual(2, len(copy_attempts))
+
+    def test_webui_start_requeues_running_tasks_after_container_restart(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        downloader.app = SimpleNamespace(temp_directory='tmp', save_directory='downloads')
+        submitted_task_ids = []
+        downloader.submit_web_task = lambda task_id: submitted_task_ids.append(task_id)
+        fake_store = SimpleNamespace(
+            list_tasks=lambda: [
+                {'id': 1, 'status': TransferStatus.SUCCESS},
+                {'id': 2, 'status': TransferStatus.RUNNING},
+                {'id': 3, 'status': TransferStatus.PENDING},
+                {'id': 4, 'status': TransferStatus.FAILURE}
+            ]
+        )
+        fake_web_ui = SimpleNamespace(
+            start=lambda open_browser: None,
+            url='http://127.0.0.1:8080'
+        )
+
+        with patch('module.downloader.PARSE_ARGS', SimpleNamespace(web=8080)), \
+                patch('module.downloader.TransferStore', return_value=fake_store), \
+                patch('module.downloader.WebUiServer', return_value=fake_web_ui):
+            downloader.start_web_ui()
+
+        self.assertEqual([2, 3, 4], submitted_task_ids)
 
     def test_webui_transfer_falls_back_when_direct_copy_caption_is_too_long(self):
         from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong

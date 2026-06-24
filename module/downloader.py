@@ -145,6 +145,24 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_pending_watches: dict = {}
         self.web_watch_handler_clients: dict = {}
 
+    @staticmethod
+    def transfer_send_interval() -> float:
+        return random.uniform(0.8, 2.4)
+
+    async def wait_between_transfer_messages(self) -> None:
+        await asyncio.sleep(self.transfer_send_interval())
+
+    async def wait_for_telegram_flood(self, error, task_id: Optional[int] = None, action: str = 'request') -> None:
+        amount = max(0, int(getattr(error, 'value', 0) or 0))
+        jitter = random.uniform(0.5, 2.0) if amount > 0 else 0
+        wait_seconds = amount + jitter
+        message = f'Telegram flood wait during {action}: waiting {amount} seconds before retry.'
+        console.log(message, style='#FF4689')
+        log.warning(message)
+        if self.transfer_store and task_id:
+            self.transfer_store.add_event(task_id, message, level='warning')
+        await asyncio.sleep(wait_seconds)
+
     def submit_web_task(self, task_id: int) -> None:
         if task_id in self.web_submitted_task_ids:
             return
@@ -402,7 +420,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         )
         self.web_ui.start(open_browser=True)
         for task in self.transfer_store.list_tasks():
-            if task.get('status') in (TransferStatus.PENDING, TransferStatus.FAILURE):
+            if task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
                 self.submit_web_task(int(task.get('id')))
         console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
 
@@ -831,56 +849,74 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link: str
     ) -> bool:
         message_id = getattr(message, 'id', None)
-        try:
-            await self.forward(
-                client=self.app.client,
-                message=message,
-                message_id=message_id,
-                origin_chat_id=origin_chat_id,
-                target_chat_id=target_chat_id,
-                target_link=task.get('target_link'),
-                download_upload=False,
-                done_notice=False,
-                ignore_type_filter=True
-            )
-            item_id = self.transfer_store.add_item(
-                task_id=int(task.get('id')),
-                source_chat_id=origin_chat_id,
-                source_message_id=message_id,
-                source_link=source_link,
-                target_link=task.get('target_link'),
-                media_type='forward',
-                phase='forwarded',
-                status=TransferStatus.SUCCESS
-            )
-            self.transfer_store.add_event(
-                int(task.get('id')),
-                f'Direct forward succeeded: {source_link}',
-                item_id=item_id
-            )
-            return False
-        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
-            if not self.gc.download_upload:
-                raise
-            fallback_link = getattr(message, 'link', None) or source_link
-            self.transfer_store.add_event(
-                int(task.get('id')),
-                f'Direct forward fallback for {source_link}: {e}',
-                level='warning'
-            )
-            await self.create_web_transfer_fallback_download(task=task, source_link=fallback_link)
-            return True
+        while True:
+            try:
+                await self.forward(
+                    client=self.app.client,
+                    message=message,
+                    message_id=message_id,
+                    origin_chat_id=origin_chat_id,
+                    target_chat_id=target_chat_id,
+                    target_link=task.get('target_link'),
+                    download_upload=False,
+                    done_notice=False,
+                    ignore_type_filter=True
+                )
+                item_id = self.transfer_store.add_item(
+                    task_id=int(task.get('id')),
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    source_link=source_link,
+                    target_link=task.get('target_link'),
+                    media_type='forward',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS
+                )
+                self.transfer_store.add_event(
+                    int(task.get('id')),
+                    f'Direct forward succeeded: {source_link}',
+                    item_id=item_id
+                )
+                return False
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, task_id=int(task.get('id')), action='web transfer forward')
+            except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
+                if not self.gc.download_upload:
+                    raise
+                fallback_link = getattr(message, 'link', None) or source_link
+                self.transfer_store.add_event(
+                    int(task.get('id')),
+                    f'Direct forward fallback for {source_link}: {e}',
+                    level='warning'
+                )
+                await self.create_web_transfer_fallback_download(task=task, source_link=fallback_link)
+                return True
 
     async def get_web_transfer_single_message(self, source_link: str):
-        meta = await get_message_by_link(
-            client=self.app.client,
-            link=self.transfer_single_link(source_link),
-            single_link=True
-        )
+        while True:
+            try:
+                meta = await get_message_by_link(
+                    client=self.app.client,
+                    link=self.transfer_single_link(source_link),
+                    single_link=True
+                )
+                break
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, action='load single transfer message')
         messages = meta.get('message') if isinstance(meta, dict) else None
         if isinstance(messages, list):
             return messages[0] if messages else None
         return messages
+
+    async def get_web_transfer_range_message(self, chat_id, message_id: int, task_id: int):
+        while True:
+            try:
+                return await self.app.client.get_messages(
+                    chat_id=chat_id,
+                    message_ids=message_id
+                )
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, task_id=task_id, action='load range transfer message')
 
     async def process_web_transfer_task(self, task_id: int) -> None:
         if not self.transfer_store:
@@ -888,7 +924,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         task = self.transfer_store.get_task(task_id)
         if not task:
             return
-        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.FAILURE):
+        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
             return
         self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
         self.transfer_store.add_event(task_id, 'Transfer task started.')
@@ -908,16 +944,17 @@ class TelegramRestrictedMediaDownloader(Bot):
             if start_id is not None and end_id is not None:
                 source_prefix = source_link.rstrip('/')
                 expected_total = int(end_id) - int(start_id) + 1
+                completed_message_ids = self.transfer_store.completed_source_message_ids(task_id)
                 self.transfer_store.refresh_task_counts(
                     task_id,
                     expected_total=expected_total,
                     assignment_completed=False
                 )
                 for message_id in range(int(start_id), int(end_id) + 1):
-                    message = await self.app.client.get_messages(
-                        chat_id=origin_chat_id,
-                        message_ids=message_id
-                    )
+                    if message_id in completed_message_ids:
+                        continue
+                    await self.wait_between_transfer_messages()
+                    message = await self.get_web_transfer_range_message(origin_chat_id, message_id, task_id)
                     if not message:
                         raise RuntimeError(f'Failed to load transfer message: {message_id}.')
                     message_link = f'{source_prefix}/{getattr(message, "id", "")}'
@@ -947,13 +984,17 @@ class TelegramRestrictedMediaDownloader(Bot):
                 message = await self.get_web_transfer_single_message(source_link)
                 if not message:
                     raise RuntimeError('Failed to load transfer message.')
-                fallback_count = 1 if await self.transfer_message_to_web_target(
-                    task=task,
-                    message=message,
-                    origin_chat_id=origin_chat_id,
-                    target_chat_id=target_chat_id,
-                    source_link=source_link
-                ) else 0
+                completed_message_ids = self.transfer_store.completed_source_message_ids(task_id)
+                message_id = getattr(message, 'id', None)
+                fallback_count = 0
+                if message_id not in completed_message_ids:
+                    fallback_count = 1 if await self.transfer_message_to_web_target(
+                        task=task,
+                        message=message,
+                        origin_chat_id=origin_chat_id,
+                        target_chat_id=target_chat_id,
+                        source_link=source_link
+                    ) else 0
                 self.transfer_store.add_event(
                     task_id,
                     f'Single-message transfer assigned. Fallback downloads: {fallback_count}.'
@@ -1896,12 +1937,17 @@ class TelegramRestrictedMediaDownloader(Bot):
                     )
                 return None
             if media_group:
-                await self.app.client.copy_media_group(
-                    chat_id=target_chat_id,
-                    from_chat_id=origin_chat_id,
-                    message_id=message_id,
-                    disable_notification=True
-                )
+                while True:
+                    try:
+                        await self.app.client.copy_media_group(
+                            chat_id=target_chat_id,
+                            from_chat_id=origin_chat_id,
+                            message_id=message_id,
+                            disable_notification=True
+                        )
+                        break
+                    except (FloodWait, FloodPremiumWait) as e:
+                        await self.wait_for_telegram_flood(e, action='copy media group')
             elif getattr(message, 'text', False):
                 while True:
                     try:
@@ -1913,22 +1959,22 @@ class TelegramRestrictedMediaDownloader(Bot):
                         )
                         break
                     except (FloodWait, FloodPremiumWait) as e:
-                        amount = e.value
-                        console.log(
-                            f'[{self.app.client.name}]发送消息请求频繁,要求等待{amount}秒后继续运行。',
-                            style='#FF4689'
-                        )
-                        await asyncio.sleep(amount)
+                        await self.wait_for_telegram_flood(e, action='send text')
                     except Exception as e:
                         log.error(f'无法转发"{message.text}"消息,{_t(KeyWord.REASON)}:"{e}"')
             else:
-                await self.app.client.copy_message(
-                    chat_id=target_chat_id,
-                    from_chat_id=origin_chat_id,
-                    message_id=message_id,
-                    disable_notification=True,
-                    protect_content=False
-                )
+                while True:
+                    try:
+                        await self.app.client.copy_message(
+                            chat_id=target_chat_id,
+                            from_chat_id=origin_chat_id,
+                            message_id=message_id,
+                            disable_notification=True,
+                            protect_content=False
+                        )
+                        break
+                    except (FloodWait, FloodPremiumWait) as e:
+                        await self.wait_for_telegram_flood(e, action='copy message')
             p_message_id = ','.join(map(str, media_group)) if media_group else message_id
             console.log(
                 f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{p_message_id}"'

@@ -395,6 +395,19 @@ class TransferStore:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def completed_source_message_ids(self, task_id: int) -> set[int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT source_message_id FROM transfer_items
+                WHERE task_id = ?
+                  AND source_message_id IS NOT NULL
+                  AND status IN (?, ?)
+                ''',
+                (task_id, TransferStatus.SUCCESS, TransferStatus.SKIPPED)
+            ).fetchall()
+            return {int(row['source_message_id']) for row in rows}
+
     def add_event(self, task_id: int, message: str, level: str = 'info', item_id: Optional[int] = None) -> None:
         with self.connect() as conn:
             conn.execute(

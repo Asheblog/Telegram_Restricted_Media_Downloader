@@ -29,9 +29,13 @@ class DummyModule(types.ModuleType):
 
 
 class DummyError(Exception):
+    def __init__(self, value=0, *args):
+        super().__init__(*args)
+        self._value = value
+
     @property
     def value(self):
-        return 0
+        return self._value
 
 
 class FileType:
