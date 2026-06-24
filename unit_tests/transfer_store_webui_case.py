@@ -1,5 +1,6 @@
 # coding=UTF-8
 import base64
+import asyncio
 import http.client
 import json
 import os
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
@@ -21,7 +23,6 @@ class FakeWebUiOperations:
         self.watches = {}
         self.created_uploads = []
         self.created_channel_downloads = []
-        self.created_forwards = []
         self.exported_tables = []
 
     def list_watches(self):
@@ -80,10 +81,6 @@ class FakeWebUiOperations:
     def create_channel_download(self, payload):
         self.created_channel_downloads.append(payload)
         return {'accepted': True, 'task_id': len(self.created_channel_downloads)}
-
-    def create_forward(self, payload):
-        self.created_forwards.append(payload)
-        return {'accepted': True, 'task_id': len(self.created_forwards)}
 
     def statistics(self):
         return {
@@ -452,7 +449,19 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.assertEqual(202, response.status)
                 self.assertTrue(body['accepted'])
                 self.assertEqual(['video', 'photo'], operations.created_channel_downloads[0]['download_type'])
+            finally:
+                server.stop()
 
+    def test_webui_no_longer_exposes_separate_forward_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
                     'POST',
                     '/api/forwards',
@@ -462,15 +471,80 @@ class TransferStoreWebUiCase(unittest.TestCase):
                         'start_id': 1,
                         'end_id': 3
                     }),
-                    headers={**headers, 'Content-Type': 'application/json'}
+                    headers=headers
                 )
                 response = conn.getresponse()
                 body = json.loads(response.read().decode('utf-8'))
-                self.assertEqual(202, response.status)
-                self.assertTrue(body['accepted'])
-                self.assertEqual(1, operations.created_forwards[0]['start_id'])
+                self.assertEqual(404, response.status)
+                self.assertEqual('not_found', body['error_code'])
             finally:
                 server.stop()
+
+    def test_webui_transfer_tries_native_forward_before_restricted_fallback_download(self):
+        from pyrogram.errors.exceptions.bad_request_400 import ChatForwardsRestricted
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=2
+            )
+            messages = [
+                SimpleNamespace(id=1, link='https://t.me/source/1'),
+                SimpleNamespace(id=2, link='https://t.me/source/2')
+            ]
+
+            class FakeClient:
+                def __init__(self, items):
+                    self.items = {item.id: item for item in items}
+
+                async def get_messages(self, chat_id, message_ids):
+                    return self.items.get(message_ids)
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=FakeClient(messages))
+            downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+            downloader.forward_calls = []
+            downloader.download_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+                if kwargs['message_id'] == 2:
+                    raise ChatForwardsRestricted()
+
+            async def fake_create_download_task(**kwargs):
+                downloader.download_calls.append(kwargs)
+                return {'status': 'success'}
+
+            downloader.forward = fake_forward
+            downloader.create_download_task = fake_create_download_task
+
+            async def fake_parse_link(client, link):
+                if link == 'https://t.me/source':
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/pikpak_bot':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
+
+            with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+                asyncio.run(downloader.process_web_transfer_task(task_id))
+
+            self.assertEqual([1, 2], [call['message_id'] for call in downloader.forward_calls])
+            self.assertTrue(all(call['ignore_type_filter'] for call in downloader.forward_calls))
+            self.assertEqual(1, len(downloader.download_calls))
+            fallback = downloader.download_calls[0]
+            self.assertEqual('https://t.me/source/2?single', fallback['message_ids'])
+            self.assertEqual('https://t.me/pikpak_bot', fallback['with_upload']['link'])
+            self.assertTrue(fallback['with_upload']['with_delete'])
+            self.assertFalse(fallback['with_upload']['send_as_media_group'])
+            task = store.get_task(task_id)
+            self.assertEqual(2, task['total_items'])
 
     def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
         with tempfile.TemporaryDirectory() as directory:

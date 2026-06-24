@@ -334,21 +334,6 @@ class TelegramRestrictedMediaDownloader(Bot):
         operation = self.submit_web_operation('channel_download', payload)
         return {'accepted': True, 'operation_id': operation['id']}
 
-    def create_forward(self, payload: dict) -> dict:
-        task_id = None
-        if self.transfer_store:
-            task_id = self.transfer_store.create_task(
-                source_link=payload.get('source_link'),
-                target_link=payload.get('target_link'),
-                target_profile='forward',
-                start_id=payload.get('start_id'),
-                end_id=payload.get('end_id')
-            )
-            self.transfer_store.add_event(task_id, 'Forward range accepted from WebUI.')
-            payload = {**payload, 'task_id': task_id}
-        operation = self.submit_web_operation('forward', payload)
-        return {'accepted': True, 'operation_id': operation['id'], 'task_id': task_id}
-
     def get_web_settings(self) -> dict:
         return {
             'user': {
@@ -820,6 +805,77 @@ class TelegramRestrictedMediaDownloader(Bot):
             'failure_callback': self.on_transfer_item_failed
         }
 
+    @staticmethod
+    def transfer_single_link(source_link: str) -> str:
+        return source_link if '?single' in source_link else f'{source_link}?single'
+
+    async def create_web_transfer_fallback_download(self, task: dict, source_link: str) -> None:
+        task_result = await self.create_download_task(
+            message_ids=self.transfer_single_link(source_link),
+            retry=None,
+            single_link=True,
+            with_upload=self.build_transfer_upload_meta(task=task, source_link=source_link),
+            diy_download_type=[_ for _ in DownloadType()]
+        )
+        if task_result.get('status') == DownloadStatus.FAILURE:
+            error = task_result.get('e_code') or {}
+            raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
+
+    async def transfer_message_to_web_target(
+            self,
+            task: dict,
+            message,
+            origin_chat_id,
+            target_chat_id,
+            source_link: str
+    ) -> bool:
+        message_id = getattr(message, 'id', None)
+        try:
+            await self.forward(
+                client=self.app.client,
+                message=message,
+                message_id=message_id,
+                origin_chat_id=origin_chat_id,
+                target_chat_id=target_chat_id,
+                target_link=task.get('target_link'),
+                download_upload=False,
+                done_notice=False,
+                ignore_type_filter=True
+            )
+            item_id = self.transfer_store.add_item(
+                task_id=int(task.get('id')),
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                source_link=source_link,
+                target_link=task.get('target_link'),
+                media_type='forward',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS
+            )
+            self.transfer_store.add_event(
+                int(task.get('id')),
+                f'Direct forward succeeded: {source_link}',
+                item_id=item_id
+            )
+            return False
+        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
+            if not self.gc.download_upload:
+                raise
+            fallback_link = getattr(message, 'link', None) or source_link
+            await self.create_web_transfer_fallback_download(task=task, source_link=fallback_link)
+            return True
+
+    async def get_web_transfer_single_message(self, source_link: str):
+        meta = await get_message_by_link(
+            client=self.app.client,
+            link=self.transfer_single_link(source_link),
+            single_link=True
+        )
+        messages = meta.get('message') if isinstance(meta, dict) else None
+        if isinstance(messages, list):
+            return messages[0] if messages else None
+        return messages
+
     async def process_web_transfer_task(self, task_id: int) -> None:
         if not self.transfer_store:
             return
@@ -836,38 +892,66 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link = task.get('source_link')
             start_id = task.get('start_id')
             end_id = task.get('end_id')
+            origin_meta = await parse_link(client=self.app.client, link=source_link)
+            target_meta = await parse_link(client=self.app.client, link=task.get('target_link'))
+            origin_chat_id = origin_meta.get('chat_id')
+            target_chat_id = target_meta.get('chat_id')
+            if not all([origin_chat_id, target_chat_id]):
+                raise ValueError('Invalid source or target link.')
+            fallback_count = 0
             if start_id is not None and end_id is not None:
                 source_prefix = source_link.rstrip('/')
                 expected_total = int(end_id) - int(start_id) + 1
+                self.transfer_store.refresh_task_counts(
+                    task_id,
+                    expected_total=expected_total,
+                    assignment_completed=False
+                )
                 for message_id in range(int(start_id), int(end_id) + 1):
-                    message_link = f'{source_prefix}/{message_id}?single'
-                    task_result = await self.create_download_task(
-                        message_ids=message_link,
-                        retry=None,
-                        single_link=True,
-                        with_upload=self.build_transfer_upload_meta(task=task, source_link=message_link),
-                        diy_download_type=[_ for _ in DownloadType()]
+                    message = await self.app.client.get_messages(
+                        chat_id=origin_chat_id,
+                        message_ids=message_id
                     )
-                    if task_result.get('status') == DownloadStatus.FAILURE:
-                        error = task_result.get('e_code') or {}
-                        raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
-                self.transfer_store.add_event(task_id, f'Range transfer assigned: {start_id}-{end_id}.')
+                    if not message:
+                        raise RuntimeError(f'Failed to load transfer message: {message_id}.')
+                    message_link = f'{source_prefix}/{getattr(message, "id", "")}'
+                    used_fallback = await self.transfer_message_to_web_target(
+                        task=task,
+                        message=message,
+                        origin_chat_id=origin_chat_id,
+                        target_chat_id=target_chat_id,
+                        source_link=message_link
+                    )
+                    fallback_count += 1 if used_fallback else 0
+                self.transfer_store.add_event(
+                    task_id,
+                    f'Range transfer assigned: {start_id}-{end_id}. Fallback downloads: {fallback_count}.'
+                )
                 self.transfer_store.refresh_task_counts(
                     task_id,
                     expected_total=expected_total,
                     assignment_completed=True
                 )
             else:
-                task_result = await self.create_download_task(
-                    message_ids=f'{source_link}?single' if '?single' not in source_link else source_link,
-                    retry=None,
-                    with_upload=self.build_transfer_upload_meta(task=task, source_link=source_link),
-                    diy_download_type=[_ for _ in DownloadType()]
+                self.transfer_store.refresh_task_counts(
+                    task_id,
+                    expected_total=1,
+                    assignment_completed=False
                 )
-                if task_result.get('status') == DownloadStatus.FAILURE:
-                    error = task_result.get('e_code') or {}
-                    raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
-                self.transfer_store.add_event(task_id, 'Single-message transfer assigned.')
+                message = await self.get_web_transfer_single_message(source_link)
+                if not message:
+                    raise RuntimeError('Failed to load transfer message.')
+                fallback_count = 1 if await self.transfer_message_to_web_target(
+                    task=task,
+                    message=message,
+                    origin_chat_id=origin_chat_id,
+                    target_chat_id=target_chat_id,
+                    source_link=source_link
+                ) else 0
+                self.transfer_store.add_event(
+                    task_id,
+                    f'Single-message transfer assigned. Fallback downloads: {fallback_count}.'
+                )
                 self.transfer_store.refresh_task_counts(
                     task_id,
                     expected_total=1,
@@ -897,8 +981,6 @@ class TelegramRestrictedMediaDownloader(Bot):
                 await self.apply_web_upload(payload)
             elif operation_type == 'channel_download':
                 await self.apply_web_channel_download(payload)
-            elif operation_type == 'forward':
-                await self.apply_web_forward(payload)
             else:
                 raise ValueError(f'Unsupported WebUI operation: {operation_type}')
             operation['status'] = TransferStatus.SUCCESS
@@ -1037,72 +1119,6 @@ class TelegramRestrictedMediaDownloader(Bot):
                 single_link=True,
                 diy_download_type=[_ for _ in DownloadType()]
             )
-
-    async def apply_web_forward(self, payload: dict) -> None:
-        source_link = payload.get('source_link')
-        target_link = payload.get('target_link')
-        start_id = int(payload.get('start_id'))
-        end_id = int(payload.get('end_id'))
-        origin_meta = await parse_link(client=self.app.client, link=source_link)
-        target_meta = await parse_link(client=self.app.client, link=target_link)
-        origin_chat_id = origin_meta.get('chat_id')
-        target_chat_id = target_meta.get('chat_id')
-        if not all([origin_chat_id, target_chat_id]):
-            raise ValueError('Invalid source or target link.')
-        task_id = payload.get('task_id')
-        if self.transfer_store and task_id:
-            self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
-            self.transfer_store.add_event(task_id, 'Forward range started.')
-        forwarded_count = 0
-        failed_count = 0
-        async for message in self.app.client.get_chat_history(
-                chat_id=origin_chat_id,
-                offset_id=start_id,
-                max_id=end_id,
-                reverse=True
-        ):
-            try:
-                await self.forward(
-                    client=self.app.client,
-                    message=message,
-                    message_id=message.id,
-                    origin_chat_id=origin_chat_id,
-                    target_chat_id=target_chat_id,
-                    target_link=target_link,
-                    download_upload=False,
-                    done_notice=False
-                )
-                forwarded_count += 1
-            except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
-                if not self.gc.download_upload or not getattr(message, 'link', None):
-                    raise
-                await self.create_download_task(
-                    message_ids=f'{message.link}?single' if '?single' not in message.link else message.link,
-                    retry=None,
-                    single_link=True,
-                    with_upload={
-                        'link': target_link,
-                        'file_name': None,
-                        'with_delete': self.gc.upload_delete,
-                        'send_as_media_group': True
-                    },
-                    diy_download_type=[_ for _ in DownloadType()]
-                )
-                forwarded_count += 1
-            except Exception as e:
-                failed_count += 1
-                log.warning(f'WebUI转发消息失败,message_id:{getattr(message, "id", None)},{_t(KeyWord.REASON)}:"{e}"')
-        if self.transfer_store and task_id:
-            self.transfer_store.update_task(
-                task_id,
-                status=TransferStatus.FAILURE if failed_count else TransferStatus.SUCCESS,
-                total_items=forwarded_count + failed_count,
-                completed_items=forwarded_count,
-                failed_items=failed_count,
-                finished=True,
-                assignment_completed=True
-            )
-            self.transfer_store.add_event(task_id, f'Forward range finished: {forwarded_count} forwarded, {failed_count} failed.')
 
     async def process_web_task_queue(self) -> None:
         while not self.web_task_queue.empty():
@@ -1853,10 +1869,11 @@ class TelegramRestrictedMediaDownloader(Bot):
             target_link: str,
             download_upload: Optional[bool] = False,
             media_group: Optional[list] = None,
-            done_notice: Optional[bool] = True
+            done_notice: Optional[bool] = True,
+            ignore_type_filter: Optional[bool] = False
     ):
         try:
-            if not self.check_type(message):
+            if not ignore_type_filter and not self.check_type(message):
                 console.log(
                     f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{message_id}"'
                     f' -> '

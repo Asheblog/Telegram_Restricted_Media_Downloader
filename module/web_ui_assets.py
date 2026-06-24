@@ -52,10 +52,16 @@ WEB_UI_CSS = r'''
     --warn: #a15c07;
     --ok: #127c52;
     --shadow: 0 18px 42px rgba(31, 48, 38, .08);
-    --panel-head-min-height: 60px;
+    --font-xs: 12px;
+    --font-sm: 13px;
+    --font-md: 14px;
+    --font-lg: 16px;
+    --font-xl: 22px;
+    --panel-head-min-height: 58px;
     --panel-head-padding-x: 18px;
     --panel-head-gap: 12px;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: var(--font-md);
   }
   * { box-sizing: border-box; }
   body {
@@ -81,6 +87,7 @@ WEB_UI_CSS = r'''
     transition: background .18s ease, border-color .18s ease;
     min-height: 38px;
     white-space: nowrap;
+    font-size: var(--font-md);
   }
   button:hover { background: var(--accent-strong); }
   button:disabled {
@@ -138,7 +145,7 @@ WEB_UI_CSS = r'''
     display: grid;
     gap: 7px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--font-sm);
   }
   .shell {
     min-height: 100svh;
@@ -176,7 +183,7 @@ WEB_UI_CSS = r'''
     color: #fff;
   }
   .brand h1 { font-size: 18px; margin: 0; letter-spacing: 0; }
-  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: var(--font-sm); }
   .nav {
     display: grid;
     gap: 8px;
@@ -196,7 +203,7 @@ WEB_UI_CSS = r'''
   }
   .nav-title {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--font-xs);
     text-transform: uppercase;
     letter-spacing: .08em;
     margin: 22px 0 8px;
@@ -207,13 +214,13 @@ WEB_UI_CSS = r'''
     padding: 9px 0;
     border-bottom: 1px solid var(--line);
     gap: 10px;
-    font-size: 14px;
+    font-size: var(--font-md);
   }
   .metric span { color: var(--muted); }
   .metric strong { font-weight: 650; }
   .hint {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--font-sm);
     line-height: 1.5;
     margin: 0;
   }
@@ -225,9 +232,9 @@ WEB_UI_CSS = r'''
     animation: rise .35s ease both;
   }
   .topbar h2 {
-    font-size: clamp(26px, 3vw, 42px);
-    line-height: 1.05;
-    margin: 0 0 8px;
+    font-size: var(--font-xl);
+    line-height: 1.2;
+    margin: 0 0 6px;
     letter-spacing: 0;
   }
   .topbar p {
@@ -235,6 +242,7 @@ WEB_UI_CSS = r'''
     color: var(--muted);
     max-width: 760px;
     line-height: 1.5;
+    font-size: var(--font-md);
   }
   .top-actions {
     display: flex;
@@ -251,7 +259,7 @@ WEB_UI_CSS = r'''
     display: grid;
     grid-template-columns: minmax(300px, 390px) minmax(0, 1fr);
     gap: 18px;
-    align-items: start;
+    align-items: stretch;
   }
   .operation-grid {
     display: grid;
@@ -267,6 +275,14 @@ WEB_UI_CSS = r'''
     box-shadow: var(--shadow);
     min-width: 0;
   }
+  .workspace > section {
+    display: flex;
+    flex-direction: column;
+  }
+  .workspace > section > form,
+  .workspace > section > .task-list {
+    flex: 1;
+  }
   .panel-head {
     min-height: var(--panel-head-min-height);
     padding: 12px var(--panel-head-padding-x);
@@ -278,14 +294,14 @@ WEB_UI_CSS = r'''
   }
   .panel-head__title {
     margin: 0;
-    font-size: 15px;
+    font-size: var(--font-lg);
     font-weight: 650;
     line-height: 1.25;
     letter-spacing: 0;
   }
   .panel-head__meta {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--font-sm);
     line-height: 1.35;
     text-align: right;
     overflow-wrap: anywhere;
@@ -313,7 +329,7 @@ WEB_UI_CSS = r'''
     border: 1px solid #f3b5ad;
     border-radius: 6px;
     padding: 10px 12px;
-    font-size: 13px;
+    font-size: var(--font-sm);
     line-height: 1.45;
   }
   .notice.ok {
@@ -327,22 +343,25 @@ WEB_UI_CSS = r'''
   }
   .task-list, .record-list, .watch-list, .statistics-list {
     overflow: auto;
-    min-height: 360px;
+    min-height: 0;
+  }
+  .task-list {
+    min-height: 0;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: var(--font-sm);
   }
   th, td {
-    padding: 13px 14px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--line);
     text-align: left;
     vertical-align: top;
   }
   th {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--font-xs);
     font-weight: 650;
     text-transform: uppercase;
     letter-spacing: .06em;
@@ -354,16 +373,20 @@ WEB_UI_CSS = r'''
   tr[data-task-id]:hover { background: #f8faf9; }
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: var(--font-xs);
     color: var(--muted);
     overflow-wrap: anywhere;
   }
+  .tasks-table th:nth-child(1) { width: 70px; }
+  .tasks-table th:nth-child(2) { width: 92px; }
+  .tasks-table th:nth-child(5) { width: 28%; min-width: 220px; }
+  .tasks-table th:nth-child(6) { width: 72px; }
   .badge {
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
     padding: 5px 9px;
-    font-size: 12px;
+    font-size: var(--font-xs);
     font-weight: 650;
     background: var(--surface-muted);
     color: var(--muted);
@@ -376,11 +399,34 @@ WEB_UI_CSS = r'''
   .badge.skipped { background: #eef2f7; color: #526070; }
   .progress {
     height: 8px;
-    width: min(180px, 100%);
+    width: 100%;
     background: #e7ece8;
     border-radius: 999px;
     overflow: hidden;
     margin-top: 6px;
+  }
+  .task-progress {
+    display: grid;
+    gap: 7px;
+    min-width: 210px;
+  }
+  .task-progress__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .task-progress__percent {
+    font-weight: 650;
+    color: var(--text);
+  }
+  .task-progress__detail {
+    color: var(--muted);
+    font-size: var(--font-xs);
+    white-space: nowrap;
+  }
+  .task-progress__failed {
+    color: var(--danger);
   }
   .progress div {
     height: 100%;
@@ -419,7 +465,7 @@ WEB_UI_CSS = r'''
     padding: 2px 7px;
     background: #fff;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--font-xs);
     font-weight: 650;
   }
   .item-tab.active .item-tab__count {
@@ -443,7 +489,7 @@ WEB_UI_CSS = r'''
     flex-wrap: wrap;
     padding: 0 18px 18px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--font-sm);
   }
   .item-page-controls {
     display: flex;
@@ -472,7 +518,7 @@ WEB_UI_CSS = r'''
     gap: 12px;
     padding: 9px 0;
     border-bottom: 1px solid var(--line);
-    font-size: 13px;
+    font-size: var(--font-sm);
   }
   .event time, .event span { color: var(--muted); }
   .empty {
@@ -578,7 +624,7 @@ WEB_UI_BODY = f'''
       <div class="metric"><span data-i18n="side.running">运行中</span><strong id="metric-running">0</strong></div>
       <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
       <div class="nav-title" data-i18n="side.policy">策略</div>
-      <p class="hint" data-i18n="side.policyText">受限内容会先下载媒体，再默认以文档形式发送到目标会话。</p>
+      <p class="hint" data-i18n="side.policyText">转存会先尝试直接发送到目标，遇到转发限制时再下载到本地后上传。</p>
     </aside>
     <main>
       <div class="topbar">
@@ -641,7 +687,7 @@ WEB_UI_BODY = f'''
           <section>
 {panel_head(title_i18n='tasks.title', title_text='转存任务', meta_i18n='tasks.notSynced', meta_text='尚未同步', meta_id='last-sync', indent=12)}
             <div class="task-list">
-              <table>
+              <table class="tasks-table">
                 <thead>
                   <tr>
                     <th data-i18n="tasks.id">ID</th>
@@ -649,7 +695,6 @@ WEB_UI_BODY = f'''
                     <th data-i18n="tasks.source">来源</th>
                     <th data-i18n="tasks.target">目标</th>
                     <th data-i18n="tasks.progress">进度</th>
-                    <th data-i18n="tasks.updated">更新</th>
                     <th data-i18n="tasks.actions">操作</th>
                   </tr>
                 </thead>
@@ -659,39 +704,6 @@ WEB_UI_BODY = f'''
             </div>
           </section>
         </div>
-        <section>
-{panel_head(title_i18n='forward.title', title_text='原生转发范围', meta_i18n='forward.meta', meta_text='一次性操作', indent=10)}
-          <form id="forward-form">
-            <div class="range">
-              <label>
-                <span data-i18n="forward.source">来源频道</span>
-                <input name="source_link" type="url" placeholder="https://t.me/source" required>
-              </label>
-              <label>
-                <span data-i18n="forward.target">目标频道</span>
-                <input name="target_link" type="url" placeholder="https://t.me/target" required>
-              </label>
-            </div>
-            <div class="range">
-              <label>
-                <span data-i18n="forward.startId">起始 ID</span>
-                <input name="start_id" inputmode="numeric" required>
-              </label>
-              <label>
-                <span data-i18n="forward.endId">结束 ID</span>
-                <input name="end_id" inputmode="numeric" required>
-              </label>
-            </div>
-            <p class="hint" data-i18n="forward.hint">用于可原生转发的消息范围；遇到受限内容时按设置下载后上传。</p>
-            <div class="notice" id="forward-notice" role="alert" aria-live="polite"></div>
-            <div class="actions">
-              <button type="submit">
-                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span data-i18n="forward.create">提交转发</span>
-              </button>
-            </div>
-          </form>
-        </section>
         <section>
 {panel_head(title_i18n='items.title', title_text='文件进度', meta_i18n='items.selectTask', meta_text='选择一个任务', meta_id='selected-task', indent=10)}
           <div class="item-tabs" role="tablist" aria-label="文件状态分类" data-i18n-aria-label="items.tabsLabel">
@@ -988,7 +1000,7 @@ WEB_UI_SCRIPT = r'''
       'side.running': '运行中',
       'side.failed': '失败',
       'side.policy': '策略',
-      'side.policyText': '受限内容会先下载媒体，再默认以文档形式发送到目标会话。',
+      'side.policyText': '转存会先尝试直接发送到目标，遇到转发限制时再下载到本地后上传。',
       'hero.title': 'PikPak 转存队列',
       'hero.body': '创建、监控和配置 Telegram 受限内容转存任务。状态、文件进度、失败事件和下载成功记录会持久化保存。',
       'action.refresh': '刷新',
@@ -1005,15 +1017,6 @@ WEB_UI_SCRIPT = r'''
       'new.optional': '可选',
       'new.hint': '单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。',
       'new.create': '创建任务',
-      'forward.title': '原生转发范围',
-      'forward.meta': '一次性操作',
-      'forward.source': '来源频道',
-      'forward.target': '目标频道',
-      'forward.startId': '起始 ID',
-      'forward.endId': '结束 ID',
-      'forward.hint': '用于可原生转发的消息范围；遇到受限内容时按设置下载后上传。',
-      'forward.create': '提交转发',
-      'forward.accepted': '转发任务已接收。',
       'watches.title': '当前实时监听',
       'watches.downloadTitle': '监听下载',
       'watches.downloadMeta': '新消息转存',
@@ -1074,7 +1077,6 @@ WEB_UI_SCRIPT = r'''
       'tasks.source': '来源',
       'tasks.target': '目标',
       'tasks.progress': '进度',
-      'tasks.updated': '更新',
       'tasks.actions': '操作',
       'tasks.delete': '删除',
       'tasks.empty': '还没有转存任务。',
@@ -1170,13 +1172,6 @@ WEB_UI_SCRIPT = r'''
       'error.channel_download_operations_unavailable': '频道下载操作不可用。',
       'error.invalid_date_range': '时间范围格式无效。',
       'error.date_range_end_before_start': '结束时间必须大于或等于起始时间。',
-      'error.forward_source_required': '请填写转发来源。',
-      'error.forward_target_required': '请填写转发目标。',
-      'error.invalid_forward_source': '转发来源必须以 https://t.me/ 开头。',
-      'error.invalid_forward_target': '转发目标必须以 https://t.me/ 开头。',
-      'error.forward_range_required': '转发必须填写起始 ID 和结束 ID。',
-      'error.forward_end_before_start': '结束 ID 必须大于或等于起始 ID。',
-      'error.forward_operations_unavailable': '转发操作不可用。',
       'event.level.info': '信息',
       'event.level.warning': '警告',
       'event.level.error': '错误',
@@ -1184,8 +1179,11 @@ WEB_UI_SCRIPT = r'''
       'event.sentToTarget': '已发送到目标：{name}',
       'event.uploadFailed': '上传失败：{reason}',
       'event.reusedDownload': '已复用下载成功记录：{name}',
+      'event.directForward': '已直接发送到目标：{link}',
       'event.rangeAssigned': '范围转存已分配：{range}',
+      'event.rangeAssignedWithFallback': '范围转存已分配：{range}，回退下载 {count} 条。',
       'event.singleAssigned': '单条消息转存已分配。',
+      'event.singleAssignedWithFallback': '单条消息转存已分配，回退下载 {count} 条。',
       'status.pending': '等待',
       'status.running': '运行中',
       'status.success': '成功',
@@ -1209,7 +1207,7 @@ WEB_UI_SCRIPT = r'''
       'side.running': 'Running',
       'side.failed': 'Failed',
       'side.policy': 'Policy',
-      'side.policyText': 'Restricted content is downloaded first, then sent to the target conversation as a document by default.',
+      'side.policyText': 'Transfers try direct delivery first, then download locally and upload when Telegram blocks forwarding.',
       'hero.title': 'PikPak transfer queue',
       'hero.body': 'Create, monitor, and configure Telegram restricted content transfer tasks. State, file progress, failure events, and download success records are persisted.',
       'action.refresh': 'Refresh',
@@ -1226,15 +1224,6 @@ WEB_UI_SCRIPT = r'''
       'new.optional': 'Optional',
       'new.hint': 'For a single message link, leave the range empty. For a channel range, provide the channel link plus start and end message IDs.',
       'new.create': 'Create task',
-      'forward.title': 'Forward range',
-      'forward.meta': 'One-time action',
-      'forward.source': 'Source channel',
-      'forward.target': 'Target channel',
-      'forward.startId': 'Start ID',
-      'forward.endId': 'End ID',
-      'forward.hint': 'For messages that can be forwarded natively; restricted content follows the download-then-upload setting.',
-      'forward.create': 'Submit forward',
-      'forward.accepted': 'Forward request accepted.',
       'watches.title': 'Current live watches',
       'watches.downloadTitle': 'Download watch',
       'watches.downloadMeta': 'Transfer new messages',
@@ -1295,7 +1284,6 @@ WEB_UI_SCRIPT = r'''
       'tasks.source': 'Source',
       'tasks.target': 'Target',
       'tasks.progress': 'Progress',
-      'tasks.updated': 'Updated',
       'tasks.actions': 'Actions',
       'tasks.delete': 'Delete',
       'tasks.empty': 'No transfer tasks yet.',
@@ -1391,13 +1379,6 @@ WEB_UI_SCRIPT = r'''
       'error.channel_download_operations_unavailable': 'Channel download operations are unavailable.',
       'error.invalid_date_range': 'Invalid date range.',
       'error.date_range_end_before_start': 'End time must be greater than or equal to start time.',
-      'error.forward_source_required': 'Forward source is required.',
-      'error.forward_target_required': 'Forward target is required.',
-      'error.invalid_forward_source': 'Forward source must start with https://t.me/.',
-      'error.invalid_forward_target': 'Forward target must start with https://t.me/.',
-      'error.forward_range_required': 'Forward start and end IDs are required.',
-      'error.forward_end_before_start': 'End ID must be greater than or equal to start ID.',
-      'error.forward_operations_unavailable': 'Forward operations are unavailable.',
       'event.level.info': 'info',
       'event.level.warning': 'warning',
       'event.level.error': 'error',
@@ -1405,8 +1386,11 @@ WEB_UI_SCRIPT = r'''
       'event.sentToTarget': 'Sent to target: {name}',
       'event.uploadFailed': 'Upload failed: {reason}',
       'event.reusedDownload': 'Reused download success record: {name}',
+      'event.directForward': 'Directly sent to target: {link}',
       'event.rangeAssigned': 'Range transfer assigned: {range}',
+      'event.rangeAssignedWithFallback': 'Range transfer assigned: {range}; fallback downloads: {count}.',
       'event.singleAssigned': 'Single-message transfer assigned.',
+      'event.singleAssignedWithFallback': 'Single-message transfer assigned; fallback downloads: {count}.',
       'status.pending': 'pending',
       'status.running': 'running',
       'status.success': 'success',
@@ -1520,8 +1504,14 @@ WEB_UI_SCRIPT = r'''
     if (match) return interpolate(t('event.uploadFailed'), {reason: match[1]});
     match = message.match(/^Reused download success record: (.+)$/);
     if (match) return interpolate(t('event.reusedDownload'), {name: match[1]});
+    match = message.match(/^Direct forward succeeded: (.+)$/);
+    if (match) return interpolate(t('event.directForward'), {link: match[1]});
+    match = message.match(/^Range transfer assigned: (.+)\. Fallback downloads: (\d+)\.$/);
+    if (match) return interpolate(t('event.rangeAssignedWithFallback'), {range: match[1], count: match[2]});
     match = message.match(/^Range transfer assigned: (.+)\.$/);
     if (match) return interpolate(t('event.rangeAssigned'), {range: match[1]});
+    match = message.match(/^Single-message transfer assigned\. Fallback downloads: (\d+)\.$/);
+    if (match) return interpolate(t('event.singleAssignedWithFallback'), {count: match[1]});
     if (message === 'Single-message transfer assigned.') return t('event.singleAssigned');
     return message;
   }
@@ -1582,7 +1572,18 @@ WEB_UI_SCRIPT = r'''
     const done = Number(task.completed_items || 0);
     const failed = Number(task.failed_items || 0);
     const percent = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
-    return `<div>${done}/${total}, ${failed} ${esc(t('side.failed'))}</div><div class="progress"><div style="width:${percent}%"></div></div>`;
+    const progressLabel = `${percent}% · ${done}/${total}${failed ? ` · ${failed} ${t('side.failed')}` : ''}`;
+    return `
+      <div class="task-progress" aria-label="${esc(progressLabel)}">
+        <div class="task-progress__head">
+          <span class="task-progress__percent">${percent}%</span>
+          <span class="task-progress__detail">
+            ${done}/${total}${failed ? ` <span class="task-progress__failed">${failed} ${esc(t('side.failed'))}</span>` : ''}
+          </span>
+        </div>
+        <div class="progress" title="${esc(progressLabel)}"><div style="width:${percent}%"></div></div>
+      </div>
+    `;
   }
 
   function renderTasks() {
@@ -1599,7 +1600,6 @@ WEB_UI_SCRIPT = r'''
         <td class="mono">${esc(task.source_link)}</td>
         <td class="mono">${esc(task.target_link)}</td>
         <td>${taskProgress(task)}</td>
-        <td class="mono">${esc(task.updated_at)}</td>
         <td>
           <button class="danger icon-only" type="button" title="${esc(t('tasks.delete'))}" aria-label="${esc(t('tasks.delete'))}" onclick="deleteTask(event, ${task.id})">
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2027,25 +2027,6 @@ WEB_UI_SCRIPT = r'''
     });
   }
 
-  async function createForward(event) {
-    event.preventDefault();
-    const button = event.submitter;
-    await withLoading(button, async () => {
-      const form = new FormData(event.currentTarget);
-      try {
-        await postJson('/api/forwards', {
-          source_link: form.get('source_link'),
-          target_link: form.get('target_link'),
-          start_id: Number(form.get('start_id')),
-          end_id: Number(form.get('end_id'))
-        });
-        showNotice('#forward-notice', t('forward.accepted'), true);
-      } catch (payload) {
-        showNotice('#forward-notice', translateApiError(payload), false);
-      }
-    });
-  }
-
   async function loadRecords() {
     const res = await fetch('/api/download-records');
     const data = await res.json();
@@ -2116,7 +2097,6 @@ WEB_UI_SCRIPT = r'''
   $('#watch-forward-form').addEventListener('submit', createForwardWatch);
   $('#channel-download-form').addEventListener('submit', createChannelDownload);
   $('#upload-form').addEventListener('submit', createUpload);
-  $('#forward-form').addEventListener('submit', createForward);
 
   applyLanguage();
   loadTasks();
