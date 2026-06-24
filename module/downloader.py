@@ -30,7 +30,8 @@ from pyrogram.errors.exceptions.bad_request_400 import (
     PeerIdInvalid,
     MessageNotModified,
     ChannelPrivate as ChannelPrivate_400,
-    ChatForwardsRestricted as ChatForwardsRestricted_400
+    ChatForwardsRestricted as ChatForwardsRestricted_400,
+    MediaCaptionTooLong as MediaCaptionTooLong_400
 )
 from pyrogram.errors.exceptions.not_acceptable_406 import (
     ChannelPrivate as ChannelPrivate_406,
@@ -858,10 +859,15 @@ class TelegramRestrictedMediaDownloader(Bot):
                 item_id=item_id
             )
             return False
-        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
+        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
             if not self.gc.download_upload:
                 raise
             fallback_link = getattr(message, 'link', None) or source_link
+            self.transfer_store.add_event(
+                int(task.get('id')),
+                f'Direct forward fallback for {source_link}: {e}',
+                level='warning'
+            )
             await self.create_web_transfer_fallback_download(task=task, source_link=fallback_link)
             return True
 
