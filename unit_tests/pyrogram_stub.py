@@ -97,7 +97,8 @@ def install_pyrogram_stub() -> None:
     for name in (
             'MsgIdInvalid', 'UsernameInvalid', 'ChannelInvalid', 'BotMethodInvalid',
             'UsernameNotOccupied', 'PeerIdInvalid', 'MessageNotModified',
-            'ChannelPrivate', 'ChatForwardsRestricted', 'AccessTokenInvalid'
+            'ChannelPrivate', 'ChatForwardsRestricted', 'AccessTokenInvalid',
+            'MediaCaptionTooLong'
     ):
         setattr(bad_request, name, type(name, (DummyError,), {}))
 

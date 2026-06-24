@@ -546,6 +546,57 @@ class TransferStoreWebUiCase(unittest.TestCase):
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
 
+    def test_webui_transfer_falls_back_when_direct_copy_caption_is_too_long(self):
+        from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source/1',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak'
+            )
+            message = SimpleNamespace(id=1, link='https://t.me/source/1', caption='x' * 5000)
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=object())
+            downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+            downloader.forward_calls = []
+            downloader.download_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+                raise MediaCaptionTooLong()
+
+            async def fake_create_download_task(**kwargs):
+                downloader.download_calls.append(kwargs)
+                return {'status': 'success'}
+
+            downloader.forward = fake_forward
+            downloader.create_download_task = fake_create_download_task
+
+            used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
+                task=store.get_task(task_id),
+                message=message,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
+
+            self.assertTrue(used_fallback)
+            self.assertEqual(1, len(downloader.forward_calls))
+            self.assertEqual(1, len(downloader.download_calls))
+            fallback = downloader.download_calls[0]
+            self.assertEqual('https://t.me/source/1?single', fallback['message_ids'])
+            self.assertEqual('https://t.me/pikpak_bot', fallback['with_upload']['link'])
+            self.assertTrue(fallback['with_upload']['with_delete'])
+            self.assertFalse(fallback['with_upload']['send_as_media_group'])
+            events = store.list_events(task_id)
+            self.assertFalse(any('Transfer task failed' in event['message'] for event in events))
+
     def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
         with tempfile.TemporaryDirectory() as directory:
             with open(os.path.join(directory, 'media.bin'), 'wb') as file:
