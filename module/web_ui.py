@@ -284,23 +284,6 @@ class WebUiServer:
                             HTTPStatus.BAD_REQUEST
                         )
                     return
-                if parsed.path == '/api/forwards':
-                    try:
-                        payload = self._read_json()
-                        result = server.create_forward(payload)
-                        self._send_json(result, HTTPStatus.ACCEPTED)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        log.exception('[WebUI] 创建转发任务失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'create_forward_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
                 if parsed.path != '/api/tasks':
                     self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
                     return
@@ -558,31 +541,6 @@ class WebUiServer:
         if self.operations and hasattr(self.operations, 'create_channel_download'):
             return self.operations.create_channel_download(normalized)
         raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
-
-    def create_forward(self, payload: dict) -> dict:
-        if not isinstance(payload, dict):
-            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
-        source_link = str(payload.get('source_link') or '').strip()
-        target_link = str(payload.get('target_link') or '').strip()
-        if not source_link:
-            raise WebUiApiError('forward_source_required', 'Forward source link is required.', HTTPStatus.BAD_REQUEST)
-        if not target_link:
-            raise WebUiApiError('forward_target_required', 'Forward target link is required.', HTTPStatus.BAD_REQUEST)
-        if not source_link.startswith('https://t.me/'):
-            raise WebUiApiError('invalid_forward_source', 'Forward source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
-        if not target_link.startswith('https://t.me/'):
-            raise WebUiApiError('invalid_forward_target', 'Forward target link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
-        try:
-            start_id = int(payload.get('start_id'))
-            end_id = int(payload.get('end_id'))
-        except (TypeError, ValueError):
-            raise WebUiApiError('forward_range_required', 'Forward start and end IDs are required.', HTTPStatus.BAD_REQUEST)
-        if end_id < start_id:
-            raise WebUiApiError('forward_end_before_start', 'Forward end ID must be greater than or equal to start ID.', HTTPStatus.BAD_REQUEST)
-        normalized = {**payload, 'source_link': source_link, 'target_link': target_link, 'start_id': start_id, 'end_id': end_id}
-        if self.operations and hasattr(self.operations, 'create_forward'):
-            return self.operations.create_forward(normalized)
-        raise WebUiApiError('forward_operations_unavailable', 'Forward operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())

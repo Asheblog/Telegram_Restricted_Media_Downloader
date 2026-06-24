@@ -120,6 +120,22 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("['pending', 'running'].includes(status)", WEB_UI_HTML)
         self.assertIn("state.itemPages[state.activeItemStatus]", WEB_UI_HTML)
 
+    def test_transfer_view_removes_legacy_forward_range_entry(self):
+        for removed_fragment in (
+                '原生转发范围',
+                'id="forward-form"',
+                'function createForward(',
+                "'/api/forwards'",
+                'data-i18n="forward.title"',
+                'forward.accepted'
+        ):
+            self.assertNotIn(removed_fragment, WEB_UI_HTML)
+
+        self.assertNotIn('<th data-i18n="tasks.updated">', WEB_UI_HTML)
+        self.assertNotIn('<td class="mono">${esc(task.updated_at)}</td>', WEB_UI_HTML)
+        self.assertIn('class="task-progress"', WEB_UI_HTML)
+        self.assertIn('aria-label="${esc(progressLabel)}"', WEB_UI_HTML)
+
     def test_webui_integrates_help_command_workflows_as_structured_views(self):
         for fragment in (
                 'data-nav="watches"',
@@ -130,7 +146,6 @@ class WebUiAssetsCase(unittest.TestCase):
                 'id="watch-forward-form"',
                 'id="channel-download-form"',
                 'id="upload-form"',
-                'id="forward-form"',
                 'id="statistics"',
                 'function loadWatches(',
                 'function createDownloadWatch(',
@@ -138,14 +153,12 @@ class WebUiAssetsCase(unittest.TestCase):
                 'function deleteWatch(',
                 'function createChannelDownload(',
                 'function createUpload(',
-                'function createForward(',
                 'function loadStatistics(',
                 'function exportTable(',
                 "fetch('/api/watches'",
                 "fetch('/api/statistics'",
                 "'/api/channel-downloads'",
                 "'/api/uploads'",
-                "'/api/forwards'",
                 "'/api/tables/export'"
         ):
             self.assertIn(fragment, WEB_UI_HTML)
@@ -161,7 +174,6 @@ class WebUiAssetsCase(unittest.TestCase):
                 'channel.title',
                 'uploads.title',
                 'uploads.serverPathHint',
-                'forward.title',
                 'statistics.title',
                 'statistics.exportLink',
                 'statistics.exportCount',
