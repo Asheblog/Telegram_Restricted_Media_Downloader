@@ -20,6 +20,10 @@ _Avoid_: Download task, forward job
 One source message or media item inside a Transfer Task.
 _Avoid_: File task, message job
 
+**Transfer Progress**:
+The set of Transfer Items in a Transfer Task that have reached a final outcome and can be skipped when the same Transfer Task continues later.
+_Avoid_: Chapter cursor, runtime offset
+
 **Download Success Record**:
 A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
 _Avoid_: Cache hit, finished file

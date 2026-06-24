@@ -7,6 +7,7 @@ import os
 import hashlib
 import asyncio
 import inspect
+import random
 
 from functools import partial
 from typing import (
@@ -18,6 +19,7 @@ from typing import (
 
 import pyrogram
 from pyrogram import raw, utils
+from pyrogram.errors import FloodWait, FloodPremiumWait
 from pyrogram.errors.exceptions import (
     FilePartMissing,
     ChatAdminRequired,
@@ -74,6 +76,20 @@ class TelegramUploader:
         UploadTask.NOTIFY = download_object.done_notice
         UploadTask.DIRECTORY_NAME = os.path.join(UploadTask.DIRECTORY_NAME, str(download_object.my_id))
         asyncio.create_task(self.send_media_worker())
+
+    async def wait_for_telegram_flood(self, error, upload_task: UploadTask, action: str) -> None:
+        task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+        download_object = getattr(self, 'download_object', None)
+        waiter = getattr(download_object, 'wait_for_telegram_flood', None)
+        if callable(waiter):
+            await waiter(error, task_id=task_id, action=action)
+            return
+        amount = max(0, int(getattr(error, 'value', 0) or 0))
+        jitter = random.uniform(0.5, 2.0) if amount > 0 else 0
+        message = f'Telegram flood wait during {action}: waiting {amount} seconds before retry.'
+        console.log(message, style='#FF4689')
+        log.warning(message)
+        await asyncio.sleep(amount + jitter)
 
     async def resume_upload(
             self,
@@ -341,13 +357,32 @@ class TelegramUploader:
                             log.info(
                                 f'[Upload Worker]发送媒体组"{media_group_id}",包含{len(sorted_media_group)}个媒体（共预期{len(message_ids)}个）。')
                             try:
-                                await self.client.invoke(
-                                    raw.functions.messages.SendMultiMedia(
-                                        peer=await self.client.resolve_peer(chat_id),
-                                        multi_media=sorted_media_group
-                                    ),
-                                    sleep_threshold=60
-                                )
+                                while True:
+                                    try:
+                                        await self.client.invoke(
+                                            raw.functions.messages.SendMultiMedia(
+                                                peer=await self.client.resolve_peer(chat_id),
+                                                multi_media=sorted_media_group
+                                            ),
+                                            sleep_threshold=60
+                                        )
+                                        break
+                                    except (FloodWait, FloodPremiumWait) as flood_error:
+                                        group_task = next(
+                                            (
+                                                task for task in UploadTask.TASKS
+                                                if task.message_id in message_ids and task.status == UploadStatus.SUCCESS
+                                            ),
+                                            None
+                                        )
+                                        if group_task:
+                                            await self.wait_for_telegram_flood(
+                                                flood_error,
+                                                group_task,
+                                                action='send media group'
+                                            )
+                                        else:
+                                            await asyncio.sleep(max(0, int(getattr(flood_error, 'value', 0) or 0)))
                                 prompt = f'[媒体组]:"{media_group_id}"上传完成,包含{len(sorted_media_group)}个媒体。'
                                 console.log(f'{_t(KeyWord.UPLOAD_TASK)}{prompt}')
                                 # 将已发送的媒体组任务状态更新为SENT。
@@ -395,19 +430,24 @@ class TelegramUploader:
         """发送单条媒体消息。"""
         try:
             chat_id = upload_task.chat_id
-            await self.client.invoke(
-                raw.functions.messages.SendMedia(
-                    peer=await self.client.resolve_peer(chat_id),
-                    media=media,
-                    random_id=self.client.rnd_id(),
-                    **await utils.parse_text_entities(
-                        self.client,
-                        text='',
-                        parse_mode=None,
-                        entities=None
+            while True:
+                try:
+                    await self.client.invoke(
+                        raw.functions.messages.SendMedia(
+                            peer=await self.client.resolve_peer(chat_id),
+                            media=media,
+                            random_id=self.client.rnd_id(),
+                            **await utils.parse_text_entities(
+                                self.client,
+                                text='',
+                                parse_mode=None,
+                                entities=None
+                            )
+                        )
                     )
-                )
-            )
+                    break
+                except (FloodWait, FloodPremiumWait) as flood_error:
+                    await self.wait_for_telegram_flood(flood_error, upload_task, action='send media')
             upload_task.status = UploadStatus.SENT
             self.notify_transfer_status(upload_task)
             self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
