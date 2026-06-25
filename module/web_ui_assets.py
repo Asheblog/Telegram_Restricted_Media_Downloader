@@ -60,6 +60,7 @@ WEB_UI_CSS = r'''
     --panel-head-min-height: 58px;
     --panel-head-padding-x: 18px;
     --panel-head-gap: 12px;
+    --control-height: 42px;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: var(--font-md);
   }
@@ -129,6 +130,7 @@ WEB_UI_CSS = r'''
     background: #fff;
     color: var(--text);
     border-radius: 6px;
+    min-height: var(--control-height);
     padding: 10px 11px;
     outline: none;
     transition: border-color .18s ease, box-shadow .18s ease;
@@ -306,7 +308,7 @@ WEB_UI_CSS = r'''
     text-align: right;
     overflow-wrap: anywhere;
   }
-  form, .settings-form {
+  form {
     padding: 18px;
     display: grid;
     gap: 14px;
@@ -526,15 +528,86 @@ WEB_UI_CSS = r'''
     color: var(--muted);
     text-align: center;
   }
+  .settings-form {
+    padding: 0;
+    display: block;
+  }
+  .settings-layout {
+    padding: 18px;
+    display: grid;
+    gap: 18px;
+  }
   .settings-columns {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
+    align-items: start;
+  }
+  .settings-stack {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
+  }
+  .settings-section {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .settings-section__head {
+    min-height: 52px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid #edf1f3;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .settings-section__title {
+    margin: 0;
+    color: var(--text);
+    font-size: var(--font-lg);
+    font-weight: 650;
+    line-height: 1.3;
+    letter-spacing: 0;
+  }
+  .settings-section__body {
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .field-grid--single {
+    grid-template-columns: 1fr;
+  }
+  .field {
+    display: grid;
+    gap: 7px;
+    align-content: start;
+    color: var(--muted);
+    font-size: var(--font-sm);
+  }
+  .field > span {
+    min-height: 18px;
+    line-height: 1.35;
   }
   .check-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+  .settings-check-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+  }
+  .settings-check-grid--single {
+    grid-template-columns: 1fr;
   }
   .check {
     display: flex;
@@ -547,6 +620,48 @@ WEB_UI_CSS = r'''
     background: #fff;
   }
   .check input { width: auto; }
+  .check-card {
+    min-height: var(--control-height);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .check-card:hover,
+  .check-card:focus-within {
+    background: #f8fbfa;
+    border-color: #9fcfbe;
+    box-shadow: 0 0 0 4px rgba(15, 143, 114, .08);
+  }
+  .check-card input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+  .check-card span {
+    line-height: 1.35;
+  }
+  .settings-actions {
+    padding: 14px 18px 18px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .settings-actions .notice {
+    flex: 1 1 260px;
+  }
+  .settings-actions button {
+    min-height: var(--control-height);
+  }
   @keyframes rise {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -566,8 +681,12 @@ WEB_UI_CSS = r'''
   }
   @media (max-width: 680px) {
     main { padding: 14px; }
-    .range, .settings-grid, .check-grid { grid-template-columns: 1fr; }
+    .range, .settings-grid, .field-grid, .check-grid, .settings-check-grid { grid-template-columns: 1fr; }
     .file-row { grid-template-columns: 1fr; }
+    .settings-layout { padding: 14px; gap: 14px; }
+    .settings-section__head { min-height: auto; align-items: flex-start; flex-direction: column; }
+    .settings-actions { align-items: stretch; }
+    .settings-actions button { width: 100%; }
     .item-tab { flex: 1 1 calc(50% - 8px); }
     .item-pagination { align-items: stretch; }
     .item-page-controls, .item-page-controls button { width: 100%; }
@@ -750,51 +869,91 @@ WEB_UI_BODY = f'''
         <section>
 {panel_head(title_i18n='settings.title', title_text='设置', meta_i18n='settings.safeNote', meta_text='敏感字段只显示是否已配置', indent=10)}
           <form id="settings-form" class="settings-form">
-            <div class="settings-columns">
-              <div class="settings-form">
-                <h3 data-i18n="settings.paths">路径与任务</h3>
-                <label><span data-i18n="settings.saveDirectory">保存目录</span><input name="user.save_directory"></label>
-                <label><span data-i18n="settings.tempDirectory">临时目录</span><input name="user.temp_directory"></label>
-                <label><span data-i18n="settings.sessionDirectory">会话目录</span><input name="user.session_directory"></label>
-                <div class="settings-grid">
-                  <label><span data-i18n="settings.maxDownload">最大下载任务</span><input name="user.max_tasks.download" type="number" min="1"></label>
-                  <label><span data-i18n="settings.maxUpload">最大上传任务</span><input name="user.max_tasks.upload" type="number" min="1"></label>
-                  <label><span data-i18n="settings.retryDownload">下载重试</span><input name="user.max_retries.download" type="number" min="0"></label>
-                  <label><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
+            <div class="settings-layout">
+              <div class="settings-columns">
+                <div class="settings-stack">
+                  <div class="settings-section">
+                    <div class="settings-section__head">
+                      <h3 class="settings-section__title" data-i18n="settings.paths">路径与任务</h3>
+                    </div>
+                    <div class="settings-section__body">
+                      <div class="field-grid field-grid--single">
+                        <label class="field"><span data-i18n="settings.saveDirectory">保存目录</span><input name="user.save_directory"></label>
+                        <label class="field"><span data-i18n="settings.tempDirectory">临时目录</span><input name="user.temp_directory"></label>
+                        <label class="field"><span data-i18n="settings.sessionDirectory">会话目录</span><input name="user.session_directory"></label>
+                      </div>
+                      <div class="field-grid">
+                        <label class="field"><span data-i18n="settings.maxDownload">最大下载任务</span><input name="user.max_tasks.download" type="number" min="1"></label>
+                        <label class="field"><span data-i18n="settings.maxUpload">最大上传任务</span><input name="user.max_tasks.upload" type="number" min="1"></label>
+                        <label class="field"><span data-i18n="settings.retryDownload">下载重试</span><input name="user.max_retries.download" type="number" min="0"></label>
+                        <label class="field"><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-section">
+                    <div class="settings-section__head">
+                      <h3 class="settings-section__title" data-i18n="settings.sensitive">账号与代理</h3>
+                    </div>
+                    <div class="settings-section__body">
+                      <div class="field-grid field-grid--single">
+                        <label class="field"><span>API ID</span><input name="user.api_id"></label>
+                        <label class="field"><span>API Hash</span><input name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+                        <label class="field"><span>Bot Token</span><input name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+                        <label class="field"><span data-i18n="settings.proxyPassword">代理密码</span><input name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="settings-stack">
+                  <div class="settings-section">
+                    <div class="settings-section__head">
+                      <h3 class="settings-section__title" data-i18n="settings.behavior">行为</h3>
+                    </div>
+                    <div class="settings-section__body">
+                      <div class="settings-check-grid settings-check-grid--single">
+                        <label class="check-card"><input name="global.notice" type="checkbox"><span data-i18n="settings.notice">机器人通知</span></label>
+                        <label class="check-card"><input name="user.is_shutdown" type="checkbox"><span data-i18n="settings.shutdown">退出后关机</span></label>
+                        <label class="check-card"><input name="global.upload.download_upload" type="checkbox"><span data-i18n="settings.downloadUpload">受限转发时下载后上传</span></label>
+                        <label class="check-card"><input name="global.upload.delete" type="checkbox"><span data-i18n="settings.uploadDelete">上传完成删除本地文件</span></label>
+                      </div>
+                      <div class="field-grid field-grid--single">
+                        <label class="field"><span data-i18n="settings.pendingLimit">下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5"></label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="settings-section">
+                    <div class="settings-section__head">
+                      <h3 class="settings-section__title" data-i18n="settings.exports">导出表格</h3>
+                    </div>
+                    <div class="settings-section__body">
+                      <div class="settings-check-grid">
+                        <label class="check-card"><input name="global.export_table.link" type="checkbox"><span data-i18n="settings.exportLink">链接统计表</span></label>
+                        <label class="check-card"><input name="global.export_table.count" type="checkbox"><span data-i18n="settings.exportCount">计数统计表</span></label>
+                        <label class="check-card"><input name="global.export_table.upload" type="checkbox"><span data-i18n="settings.exportUpload">上传统计表</span></label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div class="settings-form">
-                <h3 data-i18n="settings.behavior">行为</h3>
-                <label class="check"><input name="global.notice" type="checkbox"><span data-i18n="settings.notice">机器人通知</span></label>
-                <label class="check"><input name="user.is_shutdown" type="checkbox"><span data-i18n="settings.shutdown">退出后关机</span></label>
-                <label class="check"><input name="global.upload.download_upload" type="checkbox"><span data-i18n="settings.downloadUpload">受限转发时下载后上传</span></label>
-                <label class="check"><input name="global.upload.delete" type="checkbox"><span data-i18n="settings.uploadDelete">上传完成删除本地文件</span></label>
-                <label><span data-i18n="settings.pendingLimit">下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5"></label>
-                <h3 data-i18n="settings.sensitive">账号与代理</h3>
-                <label><span>API ID</span><input name="user.api_id"></label>
-                <label><span>API Hash</span><input name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
-                <label><span>Bot Token</span><input name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
-                <label><span data-i18n="settings.proxyPassword">代理密码</span><input name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.downloadTypes">下载类型</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="settings-check-grid" id="download-type-settings"></div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.forwardTypes">转发类型</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="settings-check-grid" id="forward-type-settings"></div>
+                </div>
               </div>
             </div>
-            <div>
-              <h3 data-i18n="settings.downloadTypes">下载类型</h3>
-              <div class="check-grid" id="download-type-settings"></div>
-            </div>
-            <div>
-              <h3 data-i18n="settings.forwardTypes">转发类型</h3>
-              <div class="check-grid" id="forward-type-settings"></div>
-            </div>
-            <div>
-              <h3 data-i18n="settings.exports">导出表格</h3>
-              <div class="check-grid">
-                <label class="check"><input name="global.export_table.link" type="checkbox"><span data-i18n="settings.exportLink">链接统计表</span></label>
-                <label class="check"><input name="global.export_table.count" type="checkbox"><span data-i18n="settings.exportCount">计数统计表</span></label>
-                <label class="check"><input name="global.export_table.upload" type="checkbox"><span data-i18n="settings.exportUpload">上传统计表</span></label>
-              </div>
-            </div>
-            <div class="notice" id="settings-notice"></div>
-            <div class="actions">
+            <div class="settings-actions">
+              <div class="notice" id="settings-notice" role="alert" aria-live="polite"></div>
               <button type="submit">
                 <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span data-i18n="settings.save">保存设置</span>
@@ -1880,10 +2039,10 @@ WEB_UI_SCRIPT = r'''
     const downloadTypes = state.schema.download_type || [];
     const forwardTypes = state.schema.forward_type || [];
     $('#download-type-settings').innerHTML = downloadTypes.map(type => `
-      <label class="check"><input name="user.download_type" value="${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
+      <label class="check-card"><input name="user.download_type" value="${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
     `).join('');
     $('#forward-type-settings').innerHTML = forwardTypes.map(type => `
-      <label class="check"><input name="global.forward_type.${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
+      <label class="check-card"><input name="global.forward_type.${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
     `).join('');
   }
 
