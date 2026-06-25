@@ -206,6 +206,20 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('/exit', WEB_UI_HTML)
         self.assertNotIn('send bot command', WEB_UI_HTML.lower())
 
+    def test_webui_exposes_discussion_reply_options_for_transfers_and_forward_watches(self):
+        for fragment in (
+                'name="include_comment"',
+                'id="transfer-include-comment"',
+                'id="watch-forward-include-comment"',
+                'new.includeComment',
+                'watches.includeComment',
+                'include_comment: Boolean(form.get',
+                'include_comment: Boolean(form.get(\'include_comment\'))'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        self.assertGreaterEqual(WEB_UI_HTML.count('name="include_comment"'), 3)
+
 
 if __name__ == '__main__':
     unittest.main()

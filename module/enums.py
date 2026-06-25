@@ -1408,12 +1408,18 @@ class BotCommandText:
     DOWNLOAD: tuple = (
         'download', '分配新的下载任务(多种使用方式见使用说明)。\n`/download https://t.me/x/x 起始ID 结束ID`')
     TABLE: tuple = ('table', '在终端输出当前下载情况的统计信息。')
-    FORWARD: tuple = ('forward', '从频道A转发至频道B 起始ID 结束ID。\n`/forward https://t.me/A https://t.me/B 1 100`')
+    FORWARD: tuple = (
+        'forward',
+        '从频道A转发至频道B 起始ID 结束ID，可追加 --include-comment 包含评论区。\n'
+        '`/forward https://t.me/A https://t.me/B 1 100 --include-comment`'
+    )
     EXIT: tuple = ('exit', '退出软件。')
     LISTEN_DOWNLOAD: tuple = ('listen_download',
                               '实时监听该链接的最新消息(视频和图片)进行下载。\n`/listen_download https://t.me/A https://t.me/B https://t.me/n`')
     LISTEN_FORWARD: tuple = (
-        'listen_forward', '实时监听该链接的最新消息(任意消息)进行转发。\n`/listen_forward 监听频道 转发频道`')
+        'listen_forward',
+        '实时监听该链接的最新消息(任意消息)进行转发，可追加 --include-comment 包含评论区。\n'
+        '`/listen_forward 监听频道 转发频道 --include-comment`')
     LISTEN_INFO: tuple = ('listen_info', '查看当前已经创建的监听信息。')
     UPLOAD: tuple = ('upload', '上传本地的文件到指定频道。`/upload 本地文件 目标频道`')
     UPLOAD_R: tuple = ('upload_r', '递归上传文件夹(包含子文件夹)到指定频道。`/upload_r 本地文件夹 目标频道`')

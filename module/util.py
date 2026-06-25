@@ -36,6 +36,34 @@ def safe_index(lst: list, index: int, default=None):
         return default
 
 
+INCLUDE_COMMENT_FLAGS = {'--include-comment', '--include-comments', '--comment'}
+
+
+def split_include_comment_flag(args: list) -> Tuple[list, bool]:
+    include_comment = False
+    clean_args = []
+    for arg in args:
+        if str(arg).strip().lower() in INCLUDE_COMMENT_FLAGS:
+            include_comment = True
+        else:
+            clean_args.append(arg)
+    return clean_args, include_comment
+
+
+def make_forward_watch_rule(source_link: str, target_link: str, include_comment: bool = False) -> str:
+    rule = f'{source_link} {target_link}'
+    return f'{rule} --include-comment' if include_comment else rule
+
+
+def parse_forward_watch_rule(rule: str) -> dict:
+    args, include_comment = split_include_comment_flag(str(rule).split())
+    return {
+        'source_link': safe_index(args, 0, ''),
+        'target_link': safe_index(args, 1, ''),
+        'include_comment': include_comment
+    }
+
+
 def get_terminal_width() -> int:
     terminal_width: int = 120
     try:

@@ -793,6 +793,7 @@ WEB_UI_BODY = f'''
                   <input name="end_id" inputmode="numeric" data-i18n-placeholder="new.optional">
                 </label>
               </div>
+              <label class="check"><input id="transfer-include-comment" name="include_comment" type="checkbox"><span data-i18n="new.includeComment">包含评论区</span></label>
               <p class="hint" data-i18n="new.hint">单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。</p>
               <div class="form-error" id="form-error" role="alert" aria-live="polite"></div>
               <div class="actions">
@@ -994,6 +995,7 @@ WEB_UI_BODY = f'''
                 <span data-i18n="watches.target">目标频道</span>
                 <input name="target_link" type="url" placeholder="https://t.me/target" required>
               </label>
+              <label class="check"><input id="watch-forward-include-comment" name="include_comment" type="checkbox"><span data-i18n="watches.includeComment">包含评论区</span></label>
               <p class="hint" data-i18n="watches.forwardHint">同一来源不能同时存在监听下载和监听转发。</p>
               <div class="notice" id="watch-forward-notice" role="alert" aria-live="polite"></div>
               <div class="actions">
@@ -1175,6 +1177,7 @@ WEB_UI_SCRIPT = r'''
       'new.startId': '起始 ID',
       'new.endId': '结束 ID',
       'new.optional': '可选',
+      'new.includeComment': '包含评论区',
       'new.hint': '单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。',
       'new.create': '创建任务',
       'watches.title': '当前实时监听',
@@ -1186,6 +1189,7 @@ WEB_UI_SCRIPT = r'''
       'watches.sourcesHint': '每行一个 Telegram 频道链接。监听下载会处理新到达的视频和图片。',
       'watches.source': '来源频道',
       'watches.target': '目标频道',
+      'watches.includeComment': '包含评论区',
       'watches.forwardHint': '同一来源不能同时存在监听下载和监听转发。',
       'watches.createDownload': '新增监听下载',
       'watches.createForward': '新增监听转发',
@@ -1383,6 +1387,7 @@ WEB_UI_SCRIPT = r'''
       'new.startId': 'Start ID',
       'new.endId': 'End ID',
       'new.optional': 'Optional',
+      'new.includeComment': 'Include discussion replies',
       'new.hint': 'For a single message link, leave the range empty. For a channel range, provide the channel link plus start and end message IDs.',
       'new.create': 'Create task',
       'watches.title': 'Current live watches',
@@ -1394,6 +1399,7 @@ WEB_UI_SCRIPT = r'''
       'watches.sourcesHint': 'One Telegram channel link per line. Download watches handle new video and photo messages.',
       'watches.source': 'Source channel',
       'watches.target': 'Target channel',
+      'watches.includeComment': 'Include discussion replies',
       'watches.forwardHint': 'The same source cannot have a download watch and a forward watch at the same time.',
       'watches.createDownload': 'Add download watch',
       'watches.createForward': 'Add forward watch',
@@ -1935,7 +1941,7 @@ WEB_UI_SCRIPT = r'''
         <td>${esc(t(`watches.${watch.type}`))}</td>
         <td>${badge(watch.status || 'running')}</td>
         <td class="mono">${esc(watch.source_link || '')}</td>
-        <td class="mono">${esc(watch.target_link || '')}${watch.error_message ? `<div>${esc(watch.error_message)}</div>` : ''}</td>
+        <td class="mono">${esc(watch.target_link || '')}${watch.include_comment ? `<div>${esc(t('watches.includeComment'))}</div>` : ''}${watch.error_message ? `<div>${esc(watch.error_message)}</div>` : ''}</td>
         <td>
           <button class="danger" type="button" onclick="deleteWatch('${encodeURIComponent(watch.id)}')">
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2135,7 +2141,8 @@ WEB_UI_SCRIPT = r'''
         await postJson('/api/watches', {
           type: 'forward',
           source_link: form.get('source_link'),
-          target_link: form.get('target_link')
+          target_link: form.get('target_link'),
+          include_comment: Boolean(form.get('include_comment'))
         });
         showNotice('#watch-forward-notice', t('watches.created'), true);
         event.currentTarget.reset();
@@ -2239,6 +2246,7 @@ WEB_UI_SCRIPT = r'''
     const payload = Object.fromEntries(form.entries());
     payload.start_id = payload.start_id ? Number(payload.start_id) : null;
     payload.end_id = payload.end_id ? Number(payload.end_id) : null;
+    payload.include_comment = Boolean(form.get('include_comment'));
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: {'content-type': 'application/json'},

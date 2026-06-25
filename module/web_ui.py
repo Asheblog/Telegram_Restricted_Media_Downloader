@@ -292,6 +292,7 @@ class WebUiServer:
                     source_link = str(payload.get('source_link') or '').strip()
                     target_link = str(payload.get('target_link') or 'https://t.me/pikpak_bot').strip()
                     target_profile = str(payload.get('target_profile') or 'pikpak').strip()
+                    include_comment = bool(payload.get('include_comment'))
                     start_id = payload.get('start_id')
                     end_id = payload.get('end_id')
                     if not source_link:
@@ -318,7 +319,8 @@ class WebUiServer:
                         target_link=target_link,
                         target_profile=target_profile,
                         start_id=start_id,
-                        end_id=end_id
+                        end_id=end_id,
+                        include_comment=include_comment
                     )
                     if server.task_submitter:
                         server.task_submitter(task_id)
@@ -434,6 +436,7 @@ class WebUiServer:
         else:
             source_link = str(payload.get('source_link') or '').strip()
             target_link = str(payload.get('target_link') or '').strip()
+            include_comment = bool(payload.get('include_comment'))
             if not source_link:
                 raise WebUiApiError('watch_source_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
             if not target_link:
@@ -442,7 +445,12 @@ class WebUiServer:
                 raise WebUiApiError('invalid_watch_source', 'Watch source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
             if not target_link.startswith('https://t.me/'):
                 raise WebUiApiError('invalid_watch_target', 'Watch target link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
-            payload = {**payload, 'source_link': source_link, 'target_link': target_link}
+            payload = {
+                **payload,
+                'source_link': source_link,
+                'target_link': target_link,
+                'include_comment': include_comment
+            }
         if self.operations and hasattr(self.operations, 'create_watch'):
             try:
                 return self.operations.create_watch(payload)

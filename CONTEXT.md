@@ -40,6 +40,10 @@ _Avoid_: Upload cap, file size check
 A sustained rule that watches a source Telegram conversation for new messages and triggers a transfer or forwarding action when matching messages arrive.
 _Avoid_: Listen job, bot listener
 
+**Discussion Reply Inclusion**:
+An optional transfer behavior that includes Telegram discussion replies attached to a source message in the same transfer or forwarding action.
+_Avoid_: Comment scraping, reply mirroring
+
 **WebUI Credentials**:
 Environment-supplied Basic Auth credentials for the visual WebUI. They are required when the server listens on a non-localhost address and are never generated or logged by the application.
 _Avoid_: Random ttyd password, public WebUI

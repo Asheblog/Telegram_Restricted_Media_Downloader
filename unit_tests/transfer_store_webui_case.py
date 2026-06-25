@@ -54,7 +54,8 @@ class FakeWebUiOperations:
                 'id': watch_id,
                 'type': 'forward',
                 'source_link': source_link,
-                'target_link': target_link
+                'target_link': target_link,
+                'include_comment': bool(payload.get('include_comment'))
             }
             return {'watches': [self.watches[watch_id]]}
         raise ValueError('Unsupported watch type.')
@@ -162,6 +163,19 @@ class TransferStoreWebUiCase(unittest.TestCase):
             allowed={'target_profiles'}
         )
         self.assertEqual(1024, settings['target_profiles']['pikpak']['max_file_size'])
+
+    def test_transfer_task_persists_discussion_reply_inclusion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                include_comment=True
+            )
+
+            task = store.get_task(task_id)
+            self.assertEqual(1, task['include_comment'])
+            self.assertEqual(1, store.list_tasks()[0]['include_comment'])
 
     def test_task_progress_counts_delete_and_download_records_are_public_behaviors(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -469,6 +483,63 @@ class TransferStoreWebUiCase(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_webui_task_api_accepts_discussion_reply_inclusion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            server = WebUiServer(store=store, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/tasks',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/pikpak_bot',
+                        'start_id': 1,
+                        'end_id': 2,
+                        'include_comment': True
+                    }),
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(201, response.status)
+                self.assertEqual(1, store.get_task(body['task_id'])['include_comment'])
+            finally:
+                server.stop()
+
+    def test_webui_forward_watch_accepts_discussion_reply_inclusion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/watches',
+                    body=json.dumps({
+                        'type': 'forward',
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/target',
+                        'include_comment': True
+                    }),
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(201, response.status)
+                self.assertTrue(body['watches'][0]['include_comment'])
+                self.assertTrue(operations.watches['forward:https://t.me/source->https://t.me/target']['include_comment'])
+            finally:
+                server.stop()
+
     def test_webui_no_longer_exposes_separate_forward_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
@@ -562,6 +633,123 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertFalse(fallback['with_upload']['send_as_media_group'])
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
+
+    def test_webui_transfer_includes_discussion_replies_when_enabled(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1,
+                include_comment=True
+            )
+            source_message = SimpleNamespace(id=1, link='https://t.me/source/1')
+            reply_message = SimpleNamespace(
+                id=10,
+                link='https://t.me/discuss/10',
+                chat=SimpleNamespace(id='discussion-chat'),
+                video=SimpleNamespace(file_size=10, file_name='reply.mp4')
+            )
+
+            class FakeClient:
+                async def get_messages(self, chat_id, message_ids):
+                    return source_message if message_ids == 1 else None
+
+                async def get_discussion_replies(self, chat_id, message_id):
+                    if chat_id == 'source-chat' and message_id == 1:
+                        yield reply_message
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=FakeClient())
+            downloader.gc = SimpleNamespace(
+                download_upload=True,
+                upload_delete=False,
+                forward_type={'video': True, 'photo': False, 'text': False}
+            )
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+
+            downloader.forward = fake_forward
+
+            async def fake_parse_link(client, link):
+                if link == 'https://t.me/source':
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/pikpak_bot':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
+
+            with patch('module.downloader.parse_link', side_effect=fake_parse_link), \
+                    patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
+                asyncio.run(downloader.process_web_transfer_task(task_id))
+
+            self.assertEqual([1, 10], [call['message_id'] for call in downloader.forward_calls])
+            self.assertEqual('discussion-chat', downloader.forward_calls[1]['origin_chat_id'])
+            task = store.get_task(task_id)
+            self.assertEqual(2, task['total_items'])
+            self.assertEqual(2, task['completed_items'])
+            self.assertEqual(TransferStatus.SUCCESS, task['status'])
+
+    def test_webui_discussion_reply_without_link_fallback_uses_message_object(self):
+        from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source/1',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                include_comment=True
+            )
+            reply_message = SimpleNamespace(
+                id=10,
+                link=None,
+                chat=SimpleNamespace(id='discussion-chat'),
+                video=SimpleNamespace(file_size=10, file_name='reply.mp4')
+            )
+
+            class FakeClient:
+                async def get_discussion_replies(self, chat_id, message_id):
+                    yield reply_message
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=FakeClient())
+            downloader.gc = SimpleNamespace(
+                download_upload=True,
+                upload_delete=False,
+                forward_type={'video': True}
+            )
+            downloader.download_calls = []
+
+            async def fake_forward(**kwargs):
+                raise MediaCaptionTooLong()
+
+            async def fake_create_download_task(**kwargs):
+                downloader.download_calls.append(kwargs)
+                return {'status': 'downloading'}
+
+            downloader.forward = fake_forward
+            downloader.create_download_task = fake_create_download_task
+
+            reply_count, fallback_count = asyncio.run(downloader.transfer_web_discussion_replies_to_target(
+                task=store.get_task(task_id),
+                source_chat_id='source-chat',
+                source_message_id=1,
+                target_chat_id='target-chat',
+                expected_total=1
+            ))
+
+            self.assertEqual(1, reply_count)
+            self.assertEqual(1, fallback_count)
+            self.assertIs(reply_message, downloader.download_calls[0]['message_ids'])
 
     def test_direct_forward_updates_task_progress_before_assignment_completes(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
@@ -830,6 +1018,84 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertFalse(fallback['with_upload']['send_as_media_group'])
             events = store.list_events(task_id)
             self.assertFalse(any('Transfer task failed' in event['message'] for event in events))
+
+    def test_bot_forward_and_listen_forward_parse_discussion_reply_flag(self):
+        from module.bot import Bot
+
+        bot = object.__new__(Bot)
+        bot.listen_download_chat = {}
+        bot.listen_forward_chat = {}
+        bot.check_download_range = AsyncMock(return_value=True)
+
+        class FakeClient:
+            async def send_message(self, *args, **kwargs):
+                return SimpleNamespace(id=1, text=kwargs.get('text', ''))
+
+        client = FakeClient()
+        message = SimpleNamespace(
+            id=1,
+            text='/forward https://t.me/source https://t.me/target 1 2 --include-comment',
+            from_user=SimpleNamespace(id=123)
+        )
+
+        forward_meta = asyncio.run(Bot.get_forward_link_from_bot(bot, client, message))
+        self.assertTrue(forward_meta['include_comment'])
+
+        message.text = '/listen_forward https://t.me/source https://t.me/target --include-comment'
+        listen_meta = asyncio.run(Bot.on_listen(bot, client, message))
+        self.assertTrue(listen_meta['include_comment'])
+        self.assertEqual(['https://t.me/source', 'https://t.me/target'], listen_meta['links'])
+
+    def test_listen_forward_includes_discussion_replies_when_enabled(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeMessage:
+            id = 5
+            link = 'https://t.me/source/5'
+            video = SimpleNamespace(file_size=10, file_name='source.mp4')
+            chat = SimpleNamespace(id='source-chat')
+
+            async def get_media_group(self):
+                raise ValueError
+
+        reply_message = SimpleNamespace(
+            id=15,
+            link='https://t.me/discuss/15',
+            chat=SimpleNamespace(id='discussion-chat'),
+            video=SimpleNamespace(file_size=10, file_name='reply.mp4')
+        )
+
+        class FakeClient:
+            async def get_discussion_replies(self, chat_id, message_id):
+                if chat_id == 'source-chat' and message_id == 5:
+                    yield reply_message
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader.gc = SimpleNamespace(forward_type={'video': True, 'photo': False, 'text': False})
+        downloader.listen_forward_chat = {
+            'https://t.me/source https://t.me/target --include-comment': object()
+        }
+        downloader.handle_media_groups = {}
+        downloader.forward_calls = []
+
+        async def fake_forward(**kwargs):
+            downloader.forward_calls.append(kwargs)
+
+        downloader.forward = fake_forward
+
+        async def fake_parse_link(client, link):
+            if link in ('https://t.me/source', 'https://t.me/source/5'):
+                return {'chat_id': 'source-chat'}
+            if link == 'https://t.me/target':
+                return {'chat_id': 'target-chat'}
+            return {'chat_id': 'unknown'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            asyncio.run(downloader.listen_forward(object(), FakeMessage()))
+
+        self.assertEqual([5, 15], [call['message_id'] for call in downloader.forward_calls])
+        self.assertEqual('discussion-chat', downloader.forward_calls[1]['origin_chat_id'])
 
     def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
         with tempfile.TemporaryDirectory() as directory:
