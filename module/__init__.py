@@ -144,8 +144,11 @@ max_retries:
   download: 5 # 最大的下载任务的重试次数。
   upload: 3 # 最大的上传任务的重试次数。
 max_tasks:
-  download: 5 # 最大同时下载的任务数。
+  download: 1 # 最大同时下载的任务数。
   upload: 3 # 最大同时上传的任务数。
+target_profiles:
+  pikpak:
+    max_file_size: 4294967296 # PikPak目标允许的最大文件大小,默认4GiB。
 proxy: # 代理部分，如不使用请全部填null注意冒号后面有空格，否则不生效导致报错。
   enable_proxy: true # 是否开启代理。支持的参数：true,false。
   hostname: 127.0.0.1 # 代理的ip地址。

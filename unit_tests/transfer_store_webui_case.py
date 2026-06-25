@@ -146,6 +146,23 @@ class TransferStoreWebUiCase(unittest.TestCase):
             os.remove(media_path)
             self.assertIsNone(store.get_download_success_record('-100123', 42, expected_size=5))
 
+    def test_default_download_concurrency_and_pikpak_size_limit_are_system_defaults(self):
+        from module.config import GlobalConfig, UserConfig
+        from module.web_ui import merge_allowed_settings
+
+        self.assertEqual(1, UserConfig.TEMPLATE['max_tasks']['download'])
+        self.assertEqual(
+            4 * 1024 ** 3,
+            GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']
+        )
+
+        settings = merge_allowed_settings(
+            target=GlobalConfig.TEMPLATE.copy(),
+            patch={'target_profiles': {'pikpak': {'max_file_size': 1024}}},
+            allowed={'target_profiles'}
+        )
+        self.assertEqual(1024, settings['target_profiles']['pikpak']['max_file_size'])
+
     def test_task_progress_counts_delete_and_download_records_are_public_behaviors(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
@@ -584,6 +601,57 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, task['failed_items'])
             self.assertEqual(0, task['assignment_completed'])
             self.assertEqual(TransferStatus.RUNNING, task['status'])
+
+    def test_pikpak_transfer_over_target_limit_fails_before_forward_or_download(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source/1',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak'
+            )
+            task = store.get_task(task_id)
+            message = SimpleNamespace(
+                id=1,
+                link='https://t.me/source/1',
+                video=SimpleNamespace(file_size=4 * 1024 ** 3 + 1, file_name='large.mp4')
+            )
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.forward_calls = []
+            downloader.download_calls = []
+            downloader.gc = SimpleNamespace(download_upload=True)
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+
+            async def fake_create_download_task(**kwargs):
+                downloader.download_calls.append(kwargs)
+                return {'status': 'success'}
+
+            downloader.forward = fake_forward
+            downloader.create_download_task = fake_create_download_task
+
+            used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=message,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
+
+            self.assertFalse(used_fallback)
+            self.assertEqual([], downloader.forward_calls)
+            self.assertEqual([], downloader.download_calls)
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            self.assertIn('PikPak', items[0]['error_message'])
+            events = store.list_events(task_id)
+            self.assertTrue(any('PikPak' in event['message'] for event in events))
 
     def test_webui_transfer_resumes_running_range_without_repeating_completed_items(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()

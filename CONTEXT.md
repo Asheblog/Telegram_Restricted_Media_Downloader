@@ -32,6 +32,10 @@ _Avoid_: Cache hit, finished file
 A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.
 _Avoid_: Preset, mode
 
+**Target Size Limit**:
+A target-specific maximum media size for a Transfer Item. Transfer Items above this limit are rejected before expensive transfer work for that target begins.
+_Avoid_: Upload cap, file size check
+
 **Live Transfer Watch**:
 A sustained rule that watches a source Telegram conversation for new messages and triggers a transfer or forwarding action when matching messages arrive.
 _Avoid_: Listen job, bot listener

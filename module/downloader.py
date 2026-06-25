@@ -89,6 +89,10 @@ from module.path_tool import (
     safe_replace,
     validate_title
 )
+from module.target_profiles import (
+    target_profile_limit,
+    target_profile_size_error
+)
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
 from module.stdio import ProgressBar, Base64Image, MetaData
@@ -391,7 +395,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.app.config = user_config
         self.app.download_type = user_config.get('download_type')
         self.app.is_shutdown = user_config.get('is_shutdown')
-        self.app.max_download_task = user_config.get('max_tasks', {'download': 3}).get('download')
+        self.app.max_download_task = (user_config.get('max_tasks') or {}).get('download', 1) or 1
         self.app.max_upload_task = (user_config.get('max_tasks') or {}).get('upload', 3) or 3
         self.app.max_download_retries = user_config.get('max_retries', {'download': 5}).get('download')
         self.app.max_upload_retries = (user_config.get('max_retries') or {}).get('upload', 3) or 3
@@ -824,6 +828,58 @@ class TelegramRestrictedMediaDownloader(Bot):
             'failure_callback': self.on_transfer_item_failed
         }
 
+    def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
+        for dtype in DownloadType():
+            media = getattr(message, dtype, None)
+            if not media:
+                continue
+            file_size = getattr(media, 'file_size', None)
+            if file_size is None:
+                continue
+            return {
+                'media_type': dtype,
+                'file_size': int(file_size),
+                'file_name': getattr(media, 'file_name', None)
+            }
+        return None
+
+    def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]:
+        target_profile = task.get('target_profile')
+        limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
+        media_meta = self.get_message_media_target_limit_meta(message)
+        if not media_meta or limit is None or media_meta.get('file_size') <= limit:
+            return None
+        return {
+            **media_meta,
+            'message': target_profile_size_error(target_profile, media_meta.get('file_size'), limit)
+        }
+
+    def fail_transfer_item_for_target_limit(
+            self,
+            task: dict,
+            message,
+            source_link: str,
+            origin_chat_id,
+            limit_error: dict
+    ) -> int:
+        task_id = int(task.get('id'))
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_chat_id=origin_chat_id,
+            source_message_id=getattr(message, 'id', None),
+            source_link=source_link,
+            target_link=task.get('target_link'),
+            media_type=limit_error.get('media_type'),
+            file_name=limit_error.get('file_name'),
+            file_size=limit_error.get('file_size'),
+            phase='failure',
+            status=TransferStatus.FAILURE,
+            error_message=limit_error.get('message')
+        )
+        self.transfer_store.add_event(task_id, limit_error.get('message'), level='error', item_id=item_id)
+        self.refresh_transfer_task_counts(task_id)
+        return item_id
+
     @staticmethod
     def transfer_single_link(source_link: str) -> str:
         return source_link if '?single' in source_link else f'{source_link}?single'
@@ -849,6 +905,16 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link: str
     ) -> bool:
         message_id = getattr(message, 'id', None)
+        limit_error = self.get_task_target_size_limit_error(task, message)
+        if limit_error:
+            self.fail_transfer_item_for_target_limit(
+                task=task,
+                message=message,
+                source_link=source_link,
+                origin_chat_id=origin_chat_id,
+                limit_error=limit_error
+            )
+            return False
         while True:
             try:
                 await self.forward(
@@ -2673,6 +2739,27 @@ class TelegramRestrictedMediaDownloader(Bot):
                     final_path=save_directory,
                     file_size=sever_file_size
                 )
+                target_profile = task_with_upload.get('target_profile') if isinstance(task_with_upload, dict) else None
+                limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
+                if limit is not None and sever_file_size > limit:
+                    _error = target_profile_size_error(target_profile, sever_file_size, limit)
+                    console.log(
+                        f'{_t(KeyWord.DOWNLOAD_TASK)}'
+                        f'{_t(KeyWord.FILE)}:"{file_name}",'
+                        f'{_t(KeyWord.SIZE)}:{format_file_size},'
+                        f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}'
+                        f'{_error}'
+                    )
+                    DownloadTask.set_error(link=link, key=file_name, value=_error)
+                    callback = task_with_upload.get('failure_callback') if isinstance(task_with_upload, dict) else None
+                    if callable(callback):
+                        task_with_upload['message_id'] = getattr(message, 'id', None)
+                        task_with_upload['media_type'] = valid_dtype
+                        task_with_upload['file_name'] = file_name
+                        task_with_upload['file_size'] = sever_file_size
+                        callback(task_with_upload, _error)
+                    self.release_download_upload_window(task_with_upload)
+                    return None
                 retry['id'] = file_id
                 if is_file_duplicate(
                         save_directory=save_directory,

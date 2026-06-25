@@ -44,6 +44,10 @@ from module.path_tool import (
     split_path,
     safe_delete
 )
+from module.target_profiles import (
+    target_profile_limit,
+    target_profile_size_error
+)
 from module.enums import (
     KeyWord,
     UploadStatus
@@ -545,13 +549,23 @@ class TelegramUploader:
         file_path = upload_task.file_path
         file_size: int = os.path.getsize(file_path)
         upload_task.chat_id = chat_id
+        target_profile = upload_task.transfer_meta.get('target_profile')
+        download_object = getattr(self, 'download_object', None)
+        limit = target_profile_limit(getattr(download_object, 'gc', None), target_profile)
+        if limit is not None and file_size > limit:
+            upload_task.error_msg = target_profile_size_error(target_profile, file_size, limit)
+            upload_task.status = UploadStatus.FAILURE
+            safe_delete(file_path) if upload_task.with_delete else None
+            return None
         if not is_allow_upload(file_size, self.is_premium):
             upload_task.error_msg = '上传大小超过限制(普通用户2000MiB,会员用户4000MiB)'
             upload_task.status = UploadStatus.FAILURE
+            safe_delete(file_path) if upload_task.with_delete else None
             return None
         elif file_size == 0:
             upload_task.error_msg = '上传文件大小为0'
             upload_task.status = UploadStatus.FAILURE
+            safe_delete(file_path) if upload_task.with_delete else None
             return None
 
         retry = 0
