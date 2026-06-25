@@ -1175,7 +1175,7 @@ class GetStdioParams:
                 if max_download_task == '' and last_record is not None:
                     max_download_task = last_record
                 if max_download_task == '':
-                    max_download_task = 3
+                    max_download_task = 1
                 if Validator.is_valid_number(max_download_task):
                     console.print(f'已设置「max_download_task」为:「{max_download_task}」',
                                   style=ProcessConfig.stdio_style('max_download_task'))

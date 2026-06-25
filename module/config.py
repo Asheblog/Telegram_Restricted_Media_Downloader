@@ -28,6 +28,7 @@ from module.path_tool import (
     gen_backup_config,
     safe_scan_directory_file
 )
+from module.target_profiles import DEFAULT_TARGET_PROFILES
 from module.enums import (
     KeyWord,
     GetStdioParams,
@@ -152,8 +153,8 @@ class UserConfig(BaseConfig):
         'save_directory': None,  # v1.3.0 将配置文件中save_path的参数名修改为save_directory。
         'temp_directory': None,
         'max_tasks': {
-            'download': None,
-            'upload': None
+            'download': 1,
+            'upload': 3
         },
         'is_shutdown': None,
         'download_type': None,
@@ -190,7 +191,7 @@ class UserConfig(BaseConfig):
         self.download_type: list = self.config.get('download_type')
         self.is_shutdown: bool = self.config.get('is_shutdown')
         self.links: str = self.config.get('links')
-        self.max_download_task: int = self.config.get('max_tasks', {'download': 3}).get('download')
+        self.max_download_task: int = (self.config.get('max_tasks') or {}).get('download', 1) or 1
         self.max_download_retries: int = self.config.get('max_retries', {'download': 5}).get('download')
         self.max_upload_task: int = (self.config.get('max_tasks') or {}).get('upload', 3) or 3
         self.max_upload_retries: int = (self.config.get('max_retries') or {}).get('upload', 3) or 3
@@ -388,7 +389,7 @@ class UserConfig(BaseConfig):
             _bot_token: Union[str, None] = pre_load_config.get('bot_token')
             _links: Union[str, None] = pre_load_config.get('links')
             _save_directory: Union[str, None] = pre_load_config.get('save_directory')
-            _max_download_task: Union[int, None] = pre_load_config.get('max_tasks', {'download': 3}).get('download')
+            _max_download_task: Union[int, None] = pre_load_config.get('max_tasks', {'download': 1}).get('download')
             _max_download_retries: Union[int, None] = pre_load_config.get('max_retries', {'download': 5}).get(
                 'download')
             _download_type: Union[list, None] = pre_load_config.get('download_type')
@@ -444,7 +445,7 @@ class UserConfig(BaseConfig):
                     pre_load_config['save_directory'] = save_directory
             if not _max_download_task or self.re_config:
                 max_download_task, record_flag = gsp.get_max_download_task(
-                    last_record=self.last_record.get('max_tasks', {'download': 3}).get('download')).values()
+                    last_record=self.last_record.get('max_tasks', {'download': 1}).get('download')).values()
                 if record_flag:
                     self.record_flag = record_flag
                     pre_load_config.get('max_tasks')['download'] = max_download_task
@@ -541,6 +542,13 @@ class UserConfig(BaseConfig):
                 'download': _max_download_task,
                 'upload': 3
             }
+        )['download'] = (pre_load_config.get('max_tasks') or {}).get('download', 1) or 1
+        pre_load_config.get(
+            'max_tasks',
+            {
+                'download': 1,
+                'upload': 3
+            }
         )['upload'] = (pre_load_config.get('max_tasks') or {}).get('upload', 3) or 3
         pre_load_config.get(
             'max_retries',
@@ -602,6 +610,7 @@ class GlobalConfig(BaseConfig):
                 'delete': False,
                 'pending_limit': 3
             },
+        'target_profiles': {name: profile.copy() for name, profile in DEFAULT_TARGET_PROFILES.items()},
         'forward_type':
             {
                 'video': True,
@@ -618,6 +627,7 @@ class GlobalConfig(BaseConfig):
     def __init__(self):
         super().__init__()
         self.default_upload_nesting = self.TEMPLATE.get('upload')
+        self.default_target_profiles_nesting = self.TEMPLATE.get('target_profiles')
         self.default_forward_type_nesting = self.TEMPLATE.get('forward_type')
         self.load_config()
         self.__check_params(self.config.copy())
@@ -632,6 +642,7 @@ class GlobalConfig(BaseConfig):
             nesting_param='delete'
         )
         self.upload_pending_limit: int = self.get_upload_pending_limit()
+        self.target_profiles: dict = self.config.get('target_profiles', self.default_target_profiles_nesting)
         self.forward_type: dict = self.config.get('forward_type')
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
@@ -661,10 +672,37 @@ class GlobalConfig(BaseConfig):
             nesting_param='delete'
         )
         self.upload_pending_limit = self.get_upload_pending_limit()
+        self.target_profiles = self.config.get('target_profiles', self.default_target_profiles_nesting)
         self.forward_type: dict = self.config.get('forward_type')
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')
         log.info(f'{p}{self.config}')
+
+    def process_target_profiles(self, config: dict) -> None:
+        target_profiles = config.get('target_profiles')
+        if not isinstance(target_profiles, dict):
+            target_profiles = {}
+            config['target_profiles'] = target_profiles
+        self.add_missing_keys(
+            target=target_profiles,
+            template=self.TEMPLATE.get('target_profiles'),
+            log_message='"{}"不在target_profiles配置文件中,已添加。'
+        )
+        for profile_name, profile_template in self.TEMPLATE.get('target_profiles', {}).items():
+            profile_config = target_profiles.get(profile_name)
+            if not isinstance(profile_config, dict):
+                profile_config = {}
+                target_profiles[profile_name] = profile_config
+            self.add_missing_keys(
+                target=profile_config,
+                template=profile_template,
+                log_message=f'"{{}}"不在target_profiles.{profile_name}配置文件中,已添加。'
+            )
+            self.remove_extra_keys(
+                target=profile_config,
+                template=profile_template,
+                log_message=f'"{{}}"不在target_profiles.{profile_name}模板中,已删除。'
+            )
 
     def __check_params(self, config: dict) -> None:
         if config is None:
@@ -679,6 +717,7 @@ class GlobalConfig(BaseConfig):
         # 处理嵌套参数。
         self.process_nesting(param_name='export_table', config=config)
         self.process_nesting(param_name='upload', config=config)
+        self.process_target_profiles(config=config)
         self.process_nesting(param_name='forward_type', config=config)
         # 删除父级模板中没有的字段。
         self.remove_extra_keys(

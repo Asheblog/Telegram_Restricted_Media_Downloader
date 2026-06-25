@@ -887,6 +887,7 @@ WEB_UI_BODY = f'''
                         <label class="field"><span data-i18n="settings.maxUpload">最大上传任务</span><input name="user.max_tasks.upload" type="number" min="1"></label>
                         <label class="field"><span data-i18n="settings.retryDownload">下载重试</span><input name="user.max_retries.download" type="number" min="0"></label>
                         <label class="field"><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
+                        <label class="field"><span data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</span><input name="global.target_profiles.pikpak.max_file_size" type="number" min="1"></label>
                       </div>
                     </div>
                   </div>
@@ -1269,6 +1270,7 @@ WEB_UI_SCRIPT = r'''
       'settings.maxUpload': '最大上传任务',
       'settings.retryDownload': '下载重试',
       'settings.retryUpload': '上传重试',
+      'settings.pikpakMaxFileSize': 'PikPak大小上限(字节)',
       'settings.behavior': '行为',
       'settings.notice': '机器人通知',
       'settings.shutdown': '退出后关机',
@@ -1476,6 +1478,7 @@ WEB_UI_SCRIPT = r'''
       'settings.maxUpload': 'Max upload tasks',
       'settings.retryDownload': 'Download retries',
       'settings.retryUpload': 'Upload retries',
+      'settings.pikpakMaxFileSize': 'PikPak size limit (bytes)',
       'settings.behavior': 'Behavior',
       'settings.notice': 'Bot notifications',
       'settings.shutdown': 'Shutdown after exit',

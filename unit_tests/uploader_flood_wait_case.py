@@ -19,6 +19,42 @@ from pyrogram.errors import FloodWait
 
 
 class UploaderFloodWaitCase(unittest.TestCase):
+    def test_pikpak_upload_over_target_limit_fails_and_deletes_transfer_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'oversize.bin')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            status_updates = []
+            uploader = object.__new__(TelegramUploader)
+            uploader.valid_link_cache = {}
+            uploader.is_premium = True
+            uploader.max_upload_retries = 1
+            uploader.current_task_num = 0
+
+            upload_task = UploadTask(
+                chat_id=None,
+                file_path=file_path,
+                file_id=1,
+                file_size=4 * 1024 ** 3 + 1,
+                file_part=[],
+                status=UploadStatus.PENDING,
+                with_delete=True,
+                transfer_meta={'target_profile': 'pikpak'},
+                status_callback=lambda task: status_updates.append(task.status)
+            )
+
+            async def run_case():
+                with patch('module.uploader.os.path.getsize', return_value=4 * 1024 ** 3 + 1):
+                    await uploader.create_upload_task(link='target-chat', upload_task=upload_task)
+
+            asyncio.run(run_case())
+
+            self.assertEqual(UploadStatus.FAILURE, upload_task.status)
+            self.assertIn('PikPak', upload_task.error_msg)
+            self.assertFalse(os.path.exists(file_path))
+            self.assertIn(UploadStatus.FAILURE, status_updates)
+
     def test_send_media_waits_and_retries_flood_wait_without_marking_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'media.bin')

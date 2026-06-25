@@ -146,11 +146,14 @@ download_type:
 is_shutdown: false
 links: null
 max_tasks:
-  download: 3
+  download: 1
   upload: 3
 max_retries:
   download: 5
   upload: 3
+target_profiles:
+  pikpak:
+    max_file_size: 4294967296
 proxy:
   enable_proxy: false
   hostname: null

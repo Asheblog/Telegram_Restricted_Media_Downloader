@@ -560,6 +560,11 @@ class WebUiServer:
                 'video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'
             ],
             'upload_pending_limit': {'min': 1, 'max': 5},
+            'target_profiles': {
+                'pikpak': {
+                    'max_file_size': {'min': 1}
+                }
+            },
             'sensitive_keys': sorted(SENSITIVE_SETTING_KEYS)
         }
 
@@ -653,7 +658,7 @@ def save_runtime_settings(payload: dict) -> dict:
     global_settings = merge_allowed_settings(
         target=global_config.config.copy(),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type'}
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'}
     )
     user.save_config(user_config)
     global_config.save_config(global_settings)
