@@ -82,6 +82,25 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('.panel-head h3', WEB_UI_HTML)
         self.assertNotIn('.panel-head span', WEB_UI_HTML)
 
+    def test_settings_view_uses_unified_component_layout(self):
+        for fragment in (
+                'class="settings-layout"',
+                'class="settings-section"',
+                'class="settings-section__head"',
+                'class="settings-section__body"',
+                'class="field-grid"',
+                'class="field"',
+                'class="check-card"',
+                'class="settings-actions"',
+                'role="alert" aria-live="polite"'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        self.assertEqual(WEB_UI_BODY.count('class="settings-form"'), 1)
+        self.assertNotIn('form, .settings-form', WEB_UI_HTML)
+        self.assertIn('.settings-form {', WEB_UI_HTML)
+        self.assertIn('min-height: var(--control-height);', WEB_UI_HTML)
+
     def test_file_progress_has_status_tabs_and_independent_pagination(self):
         for fragment in (
                 'role="tablist"',
