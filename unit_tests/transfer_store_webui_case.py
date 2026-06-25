@@ -1190,6 +1190,58 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual(user_client.added_handlers, user_client.removed_handlers)
         self.assertEqual([], app_client.removed_handlers)
 
+    def test_webui_live_watch_persists_and_restores_after_restart(self):
+        import asyncio
+        import pyrogram
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        def build_downloader(store):
+            downloader = object.__new__(TelegramRestrictedMediaDownloader)
+            loop = asyncio.new_event_loop()
+            downloader.loop = loop
+            downloader.web_operation_queue = asyncio.Queue()
+            downloader.web_operation_counter = 0
+            downloader.web_operations = {}
+            downloader.web_pending_watches = {}
+            downloader.listen_download_chat = {}
+            downloader.listen_forward_chat = {}
+            downloader.web_watch_handler_clients = {}
+            downloader.transfer_store = store
+            downloader.user = FakeTelegramClient()
+            downloader.app = SimpleNamespace(client=FakeTelegramClient())
+            return downloader, loop
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            original, original_loop = build_downloader(store)
+            restored, restored_loop = build_downloader(store)
+            pyrogram.filters.chat = lambda _chat_id: object()
+            try:
+                original.create_watch({
+                    'type': 'download',
+                    'source_links': ['https://t.me/source']
+                })
+
+                self.assertEqual(
+                    ['download:https://t.me/source'],
+                    [watch['id'] for watch in restored.list_watches()]
+                )
+
+                asyncio.run(restored.restore_live_transfer_watches())
+
+                self.assertEqual(1, len(restored.user.added_handlers))
+                self.assertIn('https://t.me/source', restored.listen_download_chat)
+                self.assertEqual(TransferStatus.RUNNING, restored.list_watches()[0]['status'])
+
+                self.assertTrue(restored.delete_watch('download:https://t.me/source'))
+                self.assertEqual([], restored.list_watches())
+                self.assertEqual([], store.list_live_transfer_watches())
+                self.assertEqual(restored.user.added_handlers, restored.user.removed_handlers)
+            finally:
+                original_loop.close()
+                restored_loop.close()
+
     def test_webui_live_watch_delete_defaults_to_user_client_for_existing_bot_watches(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)

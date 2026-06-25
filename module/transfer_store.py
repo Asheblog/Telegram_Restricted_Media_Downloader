@@ -102,6 +102,18 @@ class TransferStore:
                     updated_at TEXT NOT NULL,
                     UNIQUE(source_chat_id, source_message_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS live_transfer_watches (
+                    id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,
+                    source_link TEXT NOT NULL,
+                    target_link TEXT,
+                    include_comment INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 '''
             )
             self._ensure_columns(
@@ -124,6 +136,16 @@ class TransferStore:
                     'download_total': 'INTEGER NOT NULL DEFAULT 0',
                     'upload_current': 'INTEGER NOT NULL DEFAULT 0',
                     'upload_total': 'INTEGER NOT NULL DEFAULT 0'
+                }
+            )
+            self._ensure_columns(
+                conn,
+                'live_transfer_watches',
+                {
+                    'target_link': 'TEXT',
+                    'include_comment': 'INTEGER NOT NULL DEFAULT 0',
+                    'status': f"TEXT NOT NULL DEFAULT '{TransferStatus.PENDING}'",
+                    'error_message': 'TEXT'
                 }
             )
 
@@ -561,3 +583,97 @@ class TransferStore:
                 (limit,)
             ).fetchall()
             return [dict(row) for row in rows]
+
+    @staticmethod
+    def _live_transfer_watch_row(row: sqlite3.Row) -> Dict[str, Any]:
+        watch = dict(row)
+        watch['include_comment'] = bool(watch.get('include_comment'))
+        return watch
+
+    def upsert_live_transfer_watch(
+            self,
+            watch_id: str,
+            watch_type: str,
+            source_link: str,
+            target_link: Optional[str] = None,
+            include_comment: bool = False,
+            status: str = TransferStatus.PENDING,
+            error_message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        now = self.utc_now()
+        with self.connect() as conn:
+            conn.execute(
+                '''
+                INSERT INTO live_transfer_watches (
+                    id, type, source_link, target_link, include_comment,
+                    status, error_message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    type = excluded.type,
+                    source_link = excluded.source_link,
+                    target_link = excluded.target_link,
+                    include_comment = excluded.include_comment,
+                    status = excluded.status,
+                    error_message = excluded.error_message,
+                    updated_at = excluded.updated_at
+                ''',
+                (
+                    watch_id, watch_type, source_link, target_link,
+                    int(bool(include_comment)), status, error_message, now, now
+                )
+            )
+        return self.get_live_transfer_watch(watch_id) or {
+            'id': watch_id,
+            'type': watch_type,
+            'source_link': source_link,
+            'target_link': target_link,
+            'include_comment': bool(include_comment),
+            'status': status,
+            'error_message': error_message,
+            'created_at': now,
+            'updated_at': now
+        }
+
+    def list_live_transfer_watches(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT * FROM live_transfer_watches
+                ORDER BY created_at ASC, id ASC
+                LIMIT ?
+                ''',
+                (limit,)
+            ).fetchall()
+            return [self._live_transfer_watch_row(row) for row in rows]
+
+    def get_live_transfer_watch(self, watch_id: str) -> Optional[Dict[str, Any]]:
+        with self.connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM live_transfer_watches WHERE id = ?',
+                (watch_id,)
+            ).fetchone()
+            return self._live_transfer_watch_row(row) if row else None
+
+    def update_live_transfer_watch_status(
+            self,
+            watch_id: str,
+            status: str,
+            error_message: Optional[str] = None
+    ) -> bool:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                UPDATE live_transfer_watches
+                SET status = ?,
+                    error_message = ?,
+                    updated_at = ?
+                WHERE id = ?
+                ''',
+                (status, error_message, self.utc_now(), watch_id)
+            )
+            return cursor.rowcount > 0
+
+    def delete_live_transfer_watch(self, watch_id: str) -> bool:
+        with self.connect() as conn:
+            cursor = conn.execute('DELETE FROM live_transfer_watches WHERE id = ?', (watch_id,))
+            return cursor.rowcount > 0

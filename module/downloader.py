@@ -194,30 +194,91 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.loop.call_soon_threadsafe(self.web_operation_queue.put_nowait, operation_id)
         return operation
 
+    @staticmethod
+    def download_watch_id(source_link: str) -> str:
+        return f'download:{source_link}'
+
+    @staticmethod
+    def forward_watch_id(rule: str) -> str:
+        return f'forward:{rule}'
+
+    @staticmethod
+    def watch_payload_from_record(watch: dict) -> dict:
+        payload = {
+            'watch_type': watch.get('type'),
+            'source_link': watch.get('source_link')
+        }
+        if watch.get('type') == 'forward':
+            payload['target_link'] = watch.get('target_link')
+            payload['include_comment'] = bool(watch.get('include_comment'))
+        return payload
+
+    def persisted_watches(self) -> list:
+        transfer_store = getattr(self, 'transfer_store', None)
+        if not transfer_store:
+            return []
+        return transfer_store.list_live_transfer_watches()
+
+    def persist_watch(self, watch: dict) -> dict:
+        transfer_store = getattr(self, 'transfer_store', None)
+        if not transfer_store:
+            return watch
+        return transfer_store.upsert_live_transfer_watch(
+            watch_id=watch.get('id'),
+            watch_type=watch.get('type'),
+            source_link=watch.get('source_link'),
+            target_link=watch.get('target_link'),
+            include_comment=bool(watch.get('include_comment')),
+            status=watch.get('status') or TransferStatus.PENDING,
+            error_message=watch.get('error_message')
+        )
+
+    def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
+        if watch_id in self.web_pending_watches:
+            self.web_pending_watches[watch_id]['status'] = status
+            self.web_pending_watches[watch_id]['error_message'] = error_message
+        transfer_store = getattr(self, 'transfer_store', None)
+        if transfer_store:
+            transfer_store.update_live_transfer_watch_status(
+                watch_id=watch_id,
+                status=status,
+                error_message=error_message
+            )
+
     def list_watches(self) -> list:
-        watches = []
+        watches_by_id = {
+            watch.get('id'): watch
+            for watch in self.persisted_watches()
+            if watch.get('id')
+        }
         for link in sorted(self.listen_download_chat):
-            watches.append({
-                'id': f'download:{link}',
+            watch_id = self.download_watch_id(link)
+            watches_by_id[watch_id] = {
+                **watches_by_id.get(watch_id, {}),
+                'id': watch_id,
                 'type': 'download',
                 'source_link': link,
                 'target_link': None,
-                'include_comment': False
-            })
+                'include_comment': False,
+                'status': TransferStatus.RUNNING
+            }
         for rule in sorted(self.listen_forward_chat):
             parsed = parse_forward_watch_rule(rule)
-            watches.append({
-                'id': f'forward:{rule}',
+            watch_id = self.forward_watch_id(rule)
+            watches_by_id[watch_id] = {
+                **watches_by_id.get(watch_id, {}),
+                'id': watch_id,
                 'type': 'forward',
                 'source_link': parsed.get('source_link'),
                 'target_link': parsed.get('target_link'),
-                'include_comment': bool(parsed.get('include_comment'))
-            })
-        running_ids = {watch.get('id') for watch in watches}
+                'include_comment': bool(parsed.get('include_comment')),
+                'status': TransferStatus.RUNNING
+            }
+        running_ids = set(watches_by_id)
         for watch_id, watch in sorted(self.web_pending_watches.items()):
             if watch_id not in running_ids:
-                watches.append(watch)
-        return watches
+                watches_by_id[watch_id] = watch
+        return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
 
     def pending_watch_sources(self, watch_type: str) -> set:
         return {
@@ -226,15 +287,30 @@ class TelegramRestrictedMediaDownloader(Bot):
             if watch.get('type') == watch_type and watch.get('source_link')
         }
 
+    def persisted_watch_sources(self, watch_type: str) -> set:
+        return {
+            watch.get('source_link')
+            for watch in self.persisted_watches()
+            if watch.get('type') == watch_type and watch.get('source_link')
+        }
+
     def has_download_watch_source(self, source_link: str) -> bool:
-        return source_link in self.listen_download_chat or source_link in self.pending_watch_sources('download')
+        return (
+            source_link in self.listen_download_chat
+            or source_link in self.pending_watch_sources('download')
+            or source_link in self.persisted_watch_sources('download')
+        )
 
     def has_forward_watch_source(self, source_link: str) -> bool:
         running_sources = {
             parse_forward_watch_rule(rule).get('source_link')
             for rule in self.listen_forward_chat
         }
-        return source_link in running_sources or source_link in self.pending_watch_sources('forward')
+        return (
+            source_link in running_sources
+            or source_link in self.pending_watch_sources('forward')
+            or source_link in self.persisted_watch_sources('forward')
+        )
 
     def create_watch(self, payload: dict) -> dict:
         watch_type = payload.get('type')
@@ -253,6 +329,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     'include_comment': False,
                     'status': TransferStatus.PENDING
                 }
+                watch = self.persist_watch(watch)
                 self.web_pending_watches[watch['id']] = watch
                 self.create_live_watch_operation('download', {'source_link': link})
                 created.append(watch)
@@ -269,13 +346,19 @@ class TelegramRestrictedMediaDownloader(Bot):
                 parse_forward_watch_rule(existing).get('target_link') == target_link
                 for existing in self.listen_forward_chat
             )
+            same_persisted_exists = any(
+                watch.get('type') == 'forward' and
+                watch.get('source_link') == source_link and
+                watch.get('target_link') == target_link
+                for watch in self.persisted_watches()
+            )
             same_pending_exists = any(
                 watch.get('type') == 'forward' and
                 watch.get('source_link') == source_link and
                 watch.get('target_link') == target_link
                 for watch in self.web_pending_watches.values()
             )
-            if same_target_exists or same_pending_exists:
+            if same_target_exists or same_persisted_exists or same_pending_exists:
                 raise ValueError('watch_already_exists')
             watch = {
                 'id': f'forward:{rule}',
@@ -285,6 +368,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 'include_comment': include_comment,
                 'status': TransferStatus.PENDING
             }
+            watch = self.persist_watch(watch)
             self.web_pending_watches[watch['id']] = watch
             self.create_live_watch_operation(
                 'forward',
@@ -306,21 +390,33 @@ class TelegramRestrictedMediaDownloader(Bot):
         if watch_type == 'download':
             handler = self.listen_download_chat.get(value)
             if not handler:
-                return self.web_pending_watches.pop(watch_id, None) is not None
+                pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
+                transfer_store = getattr(self, 'transfer_store', None)
+                store_deleted = transfer_store.delete_live_transfer_watch(watch_id) if transfer_store else False
+                return pending_deleted or store_deleted
             client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
             client.remove_handler(handler)
             self.listen_download_chat.pop(value, None)
             self.web_pending_watches.pop(watch_id, None)
+            transfer_store = getattr(self, 'transfer_store', None)
+            if transfer_store:
+                transfer_store.delete_live_transfer_watch(watch_id)
             log.info(f'已通过WebUI删除监听下载,频道链接:"{value}"。')
             return True
         if watch_type == 'forward':
             handler = self.listen_forward_chat.get(value)
             if not handler:
-                return self.web_pending_watches.pop(watch_id, None) is not None
+                pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
+                transfer_store = getattr(self, 'transfer_store', None)
+                store_deleted = transfer_store.delete_live_transfer_watch(watch_id) if transfer_store else False
+                return pending_deleted or store_deleted
             client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
             client.remove_handler(handler)
             self.listen_forward_chat.pop(value, None)
             self.web_pending_watches.pop(watch_id, None)
+            transfer_store = getattr(self, 'transfer_store', None)
+            if transfer_store:
+                transfer_store.delete_live_transfer_watch(watch_id)
             log.info(f'已通过WebUI删除监听转发,转发规则:"{value}"。')
             return True
         return False
@@ -1202,12 +1298,42 @@ class TelegramRestrictedMediaDownloader(Bot):
         finally:
             operation['updated_at'] = TransferStore.utc_now()
 
+    async def restore_live_transfer_watches(self) -> None:
+        for watch in self.persisted_watches():
+            watch_id = watch.get('id')
+            if not watch_id:
+                continue
+            if watch.get('type') == 'download' and watch.get('source_link') in self.listen_download_chat:
+                continue
+            if watch.get('type') == 'forward':
+                rule = make_forward_watch_rule(
+                    watch.get('source_link'),
+                    watch.get('target_link'),
+                    bool(watch.get('include_comment'))
+                )
+                if rule in self.listen_forward_chat:
+                    continue
+            self.web_pending_watches[watch_id] = {
+                **watch,
+                'status': TransferStatus.PENDING,
+                'error_message': None
+            }
+            self.set_live_watch_status(watch_id, TransferStatus.PENDING)
+            try:
+                await self.apply_web_watch(self.watch_payload_from_record(watch))
+            except Exception as e:
+                self.mark_pending_watch(self.watch_payload_from_record(watch), TransferStatus.FAILURE, str(e))
+                log.exception(f'恢复WebUI实时监听失败:{watch_id},{_t(KeyWord.REASON)}:"{e}"')
+
     async def apply_web_watch(self, payload: dict) -> None:
         watch_type = payload.get('watch_type')
         user_client = self.user or self.app.client
         if watch_type == 'download':
             link = payload.get('source_link')
+            watch_id = self.download_watch_id(link)
             if link in self.listen_download_chat:
+                self.set_live_watch_status(watch_id, TransferStatus.RUNNING)
+                self.web_pending_watches.pop(watch_id, None)
                 return
             chat = await user_client.get_chat(link)
             if getattr(chat, 'is_forum', False):
@@ -1215,8 +1341,9 @@ class TelegramRestrictedMediaDownloader(Bot):
             handler = MessageHandler(self.listen_download, filters=pyrogram.filters.chat(chat.id))
             self.listen_download_chat[link] = handler
             user_client.add_handler(handler)
-            self.web_watch_handler_clients[f'download:{link}'] = user_client
-            self.web_pending_watches.pop(f'download:{link}', None)
+            self.web_watch_handler_clients[watch_id] = user_client
+            self.set_live_watch_status(watch_id, TransferStatus.RUNNING)
+            self.web_pending_watches.pop(watch_id, None)
             log.info(f'已通过WebUI新增监听下载,频道链接:"{link}"。')
             return
         if watch_type == 'forward':
@@ -1224,7 +1351,10 @@ class TelegramRestrictedMediaDownloader(Bot):
             target_link = payload.get('target_link')
             include_comment = bool(payload.get('include_comment'))
             rule = make_forward_watch_rule(source_link, target_link, include_comment)
+            watch_id = self.forward_watch_id(rule)
             if rule in self.listen_forward_chat:
+                self.set_live_watch_status(watch_id, TransferStatus.RUNNING)
+                self.web_pending_watches.pop(watch_id, None)
                 return
             try:
                 chat = await user_client.get_chat(source_link)
@@ -1239,8 +1369,9 @@ class TelegramRestrictedMediaDownloader(Bot):
             handler = MessageHandler(self.listen_forward, filters=filters)
             self.listen_forward_chat[rule] = handler
             user_client.add_handler(handler)
-            self.web_watch_handler_clients[f'forward:{rule}'] = user_client
-            self.web_pending_watches.pop(f'forward:{rule}', None)
+            self.web_watch_handler_clients[watch_id] = user_client
+            self.set_live_watch_status(watch_id, TransferStatus.RUNNING)
+            self.web_pending_watches.pop(watch_id, None)
             comment_status = '包含评论区' if include_comment else '不包含评论区'
             log.info(f'已通过WebUI新增监听转发,转发规则:"{source_link} -> {target_link}",{comment_status}。')
             return
@@ -1259,9 +1390,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             watch_id = f'forward:{rule}'
         else:
             return
-        if watch_id in self.web_pending_watches:
-            self.web_pending_watches[watch_id]['status'] = status
-            self.web_pending_watches[watch_id]['error_message'] = error_message
+        self.set_live_watch_status(watch_id, status, error_message)
 
     async def apply_web_upload(self, payload: dict) -> None:
         if not self.uploader:
@@ -1745,6 +1874,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                 link: str = args[1]
                 self.app.client.remove_handler(self.listen_download_chat.get(link))
                 self.listen_download_chat.pop(link)
+                watch_id = self.download_watch_id(link)
+                self.web_watch_handler_clients.pop(watch_id, None)
+                self.web_pending_watches.pop(watch_id, None)
+                if self.transfer_store:
+                    self.transfer_store.delete_live_transfer_watch(watch_id)
                 await callback_query.message.edit_text(link)
                 await callback_query.message.edit_reply_markup(
                     KeyboardButton.single_button(text=BotButton.ALREADY_REMOVE, callback_data=BotCallbackText.NULL)
@@ -1760,6 +1894,11 @@ class TelegramRestrictedMediaDownloader(Bot):
             link: str = meta.get('link')
             self.app.client.remove_handler(self.listen_forward_chat.get(link))
             self.listen_forward_chat.pop(link)
+            watch_id = self.forward_watch_id(link)
+            self.web_watch_handler_clients.pop(watch_id, None)
+            self.web_pending_watches.pop(watch_id, None)
+            if self.transfer_store:
+                self.transfer_store.delete_live_transfer_watch(watch_id)
             rule = parse_forward_watch_rule(link)
             m: list = [rule.get('source_link'), rule.get('target_link')]
             display_rule = ' -> '.join(m)
@@ -3654,6 +3793,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.start_web_ui()
         await self.app.client.start(use_qr=False)
         self.my_id = await get_my_id(self.app.client)
+        await self.restore_live_transfer_watches()
         self.pb.progress.start()  # v1.1.8修复登录输入手机号不显示文本问题。
         self.is_running = True
         self.running_log.add(self.is_running)

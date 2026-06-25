@@ -184,7 +184,7 @@ docker compose restart
 | `./temp` | `/app/temp` | 临时文件与 SQLite 转存状态 |
 | `./form` | `/app/form` | 统计表导出目录 |
 
-`transfer_tasks.sqlite3` 位于 `/app/temp` 对应的挂载目录中。保留 `./temp` 可以保留 WebUI 任务历史、文件进度、事件和下载成功记录。
+`transfer_tasks.sqlite3` 位于 `/app/temp` 对应的挂载目录中。保留 `./temp` 可以保留 WebUI 任务历史、文件进度、事件、下载成功记录和实时监听规则。
 
 ## 常用命令
 
