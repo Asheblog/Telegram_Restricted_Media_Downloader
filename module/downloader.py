@@ -877,6 +877,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     f'Direct forward succeeded: {source_link}',
                     item_id=item_id
                 )
+                self.refresh_transfer_task_counts(int(task.get('id')))
                 return False
             except (FloodWait, FloodPremiumWait) as e:
                 await self.wait_for_telegram_flood(e, task_id=int(task.get('id')), action='web transfer forward')
