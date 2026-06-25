@@ -54,7 +54,8 @@ class TransferStore:
                     updated_at TEXT NOT NULL,
                     started_at TEXT,
                     finished_at TEXT,
-                    assignment_completed INTEGER NOT NULL DEFAULT 0
+                    assignment_completed INTEGER NOT NULL DEFAULT 0,
+                    include_comment INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS transfer_items (
@@ -107,7 +108,8 @@ class TransferStore:
                 conn,
                 'transfer_tasks',
                 {
-                    'assignment_completed': 'INTEGER NOT NULL DEFAULT 0'
+                    'assignment_completed': 'INTEGER NOT NULL DEFAULT 0',
+                    'include_comment': 'INTEGER NOT NULL DEFAULT 0'
                 }
             )
             self._ensure_columns(
@@ -141,7 +143,8 @@ class TransferStore:
             target_link: str = 'https://t.me/pikpak_bot',
             target_profile: str = 'pikpak',
             start_id: Optional[int] = None,
-            end_id: Optional[int] = None
+            end_id: Optional[int] = None,
+            include_comment: bool = False
     ) -> int:
         now = self.utc_now()
         with self.connect() as conn:
@@ -149,10 +152,13 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    include_comment, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
-                (source_link, target_link, target_profile, start_id, end_id, TransferStatus.PENDING, now, now)
+                (
+                    source_link, target_link, target_profile, start_id, end_id,
+                    int(bool(include_comment)), TransferStatus.PENDING, now, now
+                )
             )
             task_id = int(cursor.lastrowid)
             conn.execute(
@@ -256,11 +262,13 @@ class TransferStore:
                 row = conn.execute(
                     '''
                     SELECT id FROM transfer_items
-                    WHERE task_id = ? AND source_message_id = ?
+                    WHERE task_id = ?
+                      AND source_message_id = ?
+                      AND COALESCE(source_chat_id, '') = COALESCE(?, '')
                     ORDER BY id ASC
                     LIMIT 1
                     ''',
-                    (task_id, source_message_id)
+                    (task_id, source_message_id, str(source_chat_id) if source_chat_id is not None else None)
                 ).fetchone()
                 if row:
                     item_id = int(row['id'])

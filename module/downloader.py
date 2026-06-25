@@ -115,7 +115,9 @@ from module.util import (
     safe_message,
     safe_delete_message,
     truncate_display_filename,
-    Issues
+    Issues,
+    make_forward_watch_rule,
+    parse_forward_watch_rule
 )
 
 
@@ -199,17 +201,17 @@ class TelegramRestrictedMediaDownloader(Bot):
                 'id': f'download:{link}',
                 'type': 'download',
                 'source_link': link,
-                'target_link': None
+                'target_link': None,
+                'include_comment': False
             })
         for rule in sorted(self.listen_forward_chat):
-            parts = rule.split(maxsplit=1)
-            source_link = parts[0] if parts else ''
-            target_link = parts[1] if len(parts) > 1 else ''
+            parsed = parse_forward_watch_rule(rule)
             watches.append({
                 'id': f'forward:{rule}',
                 'type': 'forward',
-                'source_link': source_link,
-                'target_link': target_link
+                'source_link': parsed.get('source_link'),
+                'target_link': parsed.get('target_link'),
+                'include_comment': bool(parsed.get('include_comment'))
             })
         running_ids = {watch.get('id') for watch in watches}
         for watch_id, watch in sorted(self.web_pending_watches.items()):
@@ -229,7 +231,7 @@ class TelegramRestrictedMediaDownloader(Bot):
 
     def has_forward_watch_source(self, source_link: str) -> bool:
         running_sources = {
-            rule.split(maxsplit=1)[0]
+            parse_forward_watch_rule(rule).get('source_link')
             for rule in self.listen_forward_chat
         }
         return source_link in running_sources or source_link in self.pending_watch_sources('forward')
@@ -248,6 +250,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     'type': 'download',
                     'source_link': link,
                     'target_link': None,
+                    'include_comment': False,
                     'status': TransferStatus.PENDING
                 }
                 self.web_pending_watches[watch['id']] = watch
@@ -257,20 +260,36 @@ class TelegramRestrictedMediaDownloader(Bot):
         if watch_type == 'forward':
             source_link = payload.get('source_link')
             target_link = payload.get('target_link')
+            include_comment = bool(payload.get('include_comment'))
             if self.has_download_watch_source(source_link):
                 raise ValueError('watch_source_conflict')
-            rule = f'{source_link} {target_link}'
-            if rule in self.listen_forward_chat or f'forward:{rule}' in self.web_pending_watches:
+            rule = make_forward_watch_rule(source_link, target_link, include_comment)
+            same_target_exists = any(
+                parse_forward_watch_rule(existing).get('source_link') == source_link and
+                parse_forward_watch_rule(existing).get('target_link') == target_link
+                for existing in self.listen_forward_chat
+            )
+            same_pending_exists = any(
+                watch.get('type') == 'forward' and
+                watch.get('source_link') == source_link and
+                watch.get('target_link') == target_link
+                for watch in self.web_pending_watches.values()
+            )
+            if same_target_exists or same_pending_exists:
                 raise ValueError('watch_already_exists')
             watch = {
                 'id': f'forward:{rule}',
                 'type': 'forward',
                 'source_link': source_link,
                 'target_link': target_link,
+                'include_comment': include_comment,
                 'status': TransferStatus.PENDING
             }
             self.web_pending_watches[watch['id']] = watch
-            self.create_live_watch_operation('forward', {'source_link': source_link, 'target_link': target_link})
+            self.create_live_watch_operation(
+                'forward',
+                {'source_link': source_link, 'target_link': target_link, 'include_comment': include_comment}
+            )
             return {
                 'watches': [watch]
             }
@@ -884,9 +903,15 @@ class TelegramRestrictedMediaDownloader(Bot):
     def transfer_single_link(source_link: str) -> str:
         return source_link if '?single' in source_link else f'{source_link}?single'
 
-    async def create_web_transfer_fallback_download(self, task: dict, source_link: str) -> None:
+    async def create_web_transfer_fallback_download(
+            self,
+            task: dict,
+            source_link: Optional[str] = None,
+            message: Optional[pyrogram.types.Message] = None
+    ) -> None:
+        message_ids = message if message is not None else self.transfer_single_link(source_link)
         task_result = await self.create_download_task(
-            message_ids=self.transfer_single_link(source_link),
+            message_ids=message_ids,
             retry=None,
             single_link=True,
             with_upload=self.build_transfer_upload_meta(task=task, source_link=source_link),
@@ -956,8 +981,50 @@ class TelegramRestrictedMediaDownloader(Bot):
                     f'Direct forward fallback for {source_link}: {e}',
                     level='warning'
                 )
-                await self.create_web_transfer_fallback_download(task=task, source_link=fallback_link)
+                await self.create_web_transfer_fallback_download(
+                    task=task,
+                    source_link=fallback_link,
+                    message=None if fallback_link else message
+                )
                 return True
+
+    async def transfer_web_discussion_replies_to_target(
+            self,
+            task: dict,
+            source_chat_id,
+            source_message_id: int,
+            target_chat_id,
+            expected_total: int
+    ) -> tuple[int, int]:
+        task_id = int(task.get('id'))
+        reply_count = 0
+        fallback_count = 0
+        try:
+            async for comment in self.app.client.get_discussion_replies(
+                    chat_id=source_chat_id,
+                    message_id=source_message_id
+            ):
+                if not self.check_type(comment):
+                    continue
+                reply_count += 1
+                self.transfer_store.refresh_task_counts(
+                    task_id,
+                    expected_total=expected_total + reply_count,
+                    assignment_completed=False
+                )
+                comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
+                comment_link = getattr(comment, 'link', None)
+                used_fallback = await self.transfer_message_to_web_target(
+                    task=task,
+                    message=comment,
+                    origin_chat_id=comment_chat_id,
+                    target_chat_id=target_chat_id,
+                    source_link=comment_link
+                )
+                fallback_count += 1 if used_fallback else 0
+        except (ValueError, AttributeError, MsgIdInvalid):
+            pass
+        return reply_count, fallback_count
 
     async def get_web_transfer_single_message(self, source_link: str):
         while True:
@@ -1001,6 +1068,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link = task.get('source_link')
             start_id = task.get('start_id')
             end_id = task.get('end_id')
+            include_comment = bool(task.get('include_comment'))
             origin_meta = await parse_link(client=self.app.client, link=source_link)
             target_meta = await parse_link(client=self.app.client, link=task.get('target_link'))
             origin_chat_id = origin_meta.get('chat_id')
@@ -1033,6 +1101,16 @@ class TelegramRestrictedMediaDownloader(Bot):
                         source_link=message_link
                     )
                     fallback_count += 1 if used_fallback else 0
+                    if include_comment:
+                        reply_count, reply_fallback_count = await self.transfer_web_discussion_replies_to_target(
+                            task=task,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_chat_id=target_chat_id,
+                            expected_total=expected_total
+                        )
+                        expected_total += reply_count
+                        fallback_count += reply_fallback_count
                 self.transfer_store.add_event(
                     task_id,
                     f'Range transfer assigned: {start_id}-{end_id}. Fallback downloads: {fallback_count}.'
@@ -1054,6 +1132,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 completed_message_ids = self.transfer_store.completed_source_message_ids(task_id)
                 message_id = getattr(message, 'id', None)
                 fallback_count = 0
+                expected_total = 1
                 if message_id not in completed_message_ids:
                     fallback_count = 1 if await self.transfer_message_to_web_target(
                         task=task,
@@ -1062,13 +1141,28 @@ class TelegramRestrictedMediaDownloader(Bot):
                         target_chat_id=target_chat_id,
                         source_link=source_link
                     ) else 0
+                    if include_comment:
+                        reply_count, reply_fallback_count = await self.transfer_web_discussion_replies_to_target(
+                            task=task,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_chat_id=target_chat_id,
+                            expected_total=1
+                        )
+                        fallback_count += reply_fallback_count
+                        expected_total += reply_count
+                        self.transfer_store.refresh_task_counts(
+                            task_id,
+                            expected_total=expected_total,
+                            assignment_completed=False
+                        )
                 self.transfer_store.add_event(
                     task_id,
                     f'Single-message transfer assigned. Fallback downloads: {fallback_count}.'
                 )
                 self.transfer_store.refresh_task_counts(
                     task_id,
-                    expected_total=1,
+                    expected_total=expected_total,
                     assignment_completed=True
                 )
         except Exception as e:
@@ -1128,7 +1222,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         if watch_type == 'forward':
             source_link = payload.get('source_link')
             target_link = payload.get('target_link')
-            rule = f'{source_link} {target_link}'
+            include_comment = bool(payload.get('include_comment'))
+            rule = make_forward_watch_rule(source_link, target_link, include_comment)
             if rule in self.listen_forward_chat:
                 return
             try:
@@ -1146,7 +1241,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             user_client.add_handler(handler)
             self.web_watch_handler_clients[f'forward:{rule}'] = user_client
             self.web_pending_watches.pop(f'forward:{rule}', None)
-            log.info(f'已通过WebUI新增监听转发,转发规则:"{source_link} -> {target_link}"。')
+            comment_status = '包含评论区' if include_comment else '不包含评论区'
+            log.info(f'已通过WebUI新增监听转发,转发规则:"{source_link} -> {target_link}",{comment_status}。')
             return
         raise ValueError('Unsupported watch type.')
 
@@ -1155,7 +1251,12 @@ class TelegramRestrictedMediaDownloader(Bot):
         if watch_type == 'download':
             watch_id = f'download:{payload.get("source_link")}'
         elif watch_type == 'forward':
-            watch_id = f'forward:{payload.get("source_link")} {payload.get("target_link")}'
+            rule = make_forward_watch_rule(
+                payload.get('source_link'),
+                payload.get('target_link'),
+                bool(payload.get('include_comment'))
+            )
+            watch_id = f'forward:{rule}'
         else:
             return
         if watch_id in self.web_pending_watches:
@@ -1659,11 +1760,13 @@ class TelegramRestrictedMediaDownloader(Bot):
             link: str = meta.get('link')
             self.app.client.remove_handler(self.listen_forward_chat.get(link))
             self.listen_forward_chat.pop(link)
-            m: list = link.split()
-            _ = ' -> '.join(m)
-            p = f'已删除监听转发,转发规则:"{_}"。'
+            rule = parse_forward_watch_rule(link)
+            m: list = [rule.get('source_link'), rule.get('target_link')]
+            display_rule = ' -> '.join(m)
+            include_text = ',包含评论区' if rule.get('include_comment') else ''
+            p = f'已删除监听转发,转发规则:"{display_rule}{include_text}"。'
             await callback_query.message.edit_text(
-                ' ➡️ '.join(m)
+                f'{" ➡️ ".join(m)}{" 👥" if rule.get("include_comment") else ""}'
             )
             await callback_query.message.edit_reply_markup(
                 KeyboardButton.single_button(text=BotButton.ALREADY_REMOVE, callback_data=BotCallbackText.NULL)
@@ -2068,7 +2171,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 ):
                     return None
                 raise
-            link = message.link
+            link = getattr(message, 'link', None)
             if not self.gc.download_upload:
                 await self.bot.send_message(
                     chat_id=client.me.id,
@@ -2081,17 +2184,27 @@ class TelegramRestrictedMediaDownloader(Bot):
                         callback_data=BotCallbackText.SETTING
                     )]]))
                 return None
-            self.last_message.text = f'/download {link}?single'
-            await self.get_download_link_from_bot(
-                client=self.last_client,
-                message=self.last_message,
-                with_upload={
-                    'link': target_link,
-                    'file_name': None,
-                    'with_delete': self.gc.upload_delete,
-                    'send_as_media_group': True
-                }
-            )
+            upload_meta = {
+                'link': target_link,
+                'file_name': None,
+                'with_delete': self.gc.upload_delete,
+                'send_as_media_group': True
+            }
+            if link:
+                self.last_message.text = f'/download {link}?single'
+                await self.get_download_link_from_bot(
+                    client=self.last_client,
+                    message=self.last_message,
+                    with_upload=upload_meta
+                )
+            else:
+                await self.create_download_task(
+                    message_ids=message,
+                    retry=None,
+                    single_link=True,
+                    with_upload=upload_meta,
+                    diy_download_type=[_ for _ in DownloadType()]
+                )
             p = f'{_t(KeyWord.DOWNLOAD_AND_UPLOAD_TASK)}{_t(KeyWord.CHANNEL)}:"{target_chat_id}",{_t(KeyWord.LINK)}:"{link}"。'
             console.log(p, style='#FF4689')
             log.info(p)
@@ -2109,6 +2222,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         target_link: str = meta.get('target_link')
         start_id: int = meta.get('message_range')[0]
         end_id: int = meta.get('message_range')[1]
+        include_comment: bool = bool(meta.get('include_comment'))
         last_message: Union[pyrogram.types.Message, None] = None
         loading = '🚛消息转发中,请稍候...'
         try:
@@ -2170,8 +2284,18 @@ class TelegramRestrictedMediaDownloader(Bot):
                         origin_chat_id=origin_chat_id,
                         target_chat_id=target_chat_id,
                         target_link=target_link,
+                        download_upload=include_comment,
                         done_notice=False
                     )
+                    if include_comment:
+                        await self.forward_discussion_replies(
+                            client=client,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_chat_id=target_chat_id,
+                            target_link=target_link,
+                            done_notice=False
+                        )
                     record_id.append(message_id)
                 except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
                     # TODO 存在内容保护限制时，文本类型的消息无需下载，而是直接send_message。
@@ -2321,12 +2445,14 @@ class TelegramRestrictedMediaDownloader(Bot):
             self.cd.data = {
                 'link': link
             }
-        args: list = link.split()
+        rule = parse_forward_watch_rule(link)
+        args: list = [part for part in (rule.get('source_link'), rule.get('target_link')) if part]
         forward_emoji = ' ➡️ '
+        include_text = ' 👥' if rule.get('include_comment') else ''
         await client.send_message(
             chat_id=message.from_user.id,
             reply_parameters=ReplyParameters(message_id=message.id),
-            text=f'`{link if len(args) == 1 else forward_emoji.join(args)}`\n🚛已经在监听列表中。',
+            text=f'`{link if len(args) == 1 else forward_emoji.join(args) + include_text}`\n🚛已经在监听列表中。',
             link_preview_options=LINK_PREVIEW_OPTIONS,
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -2405,6 +2531,7 @@ class TelegramRestrictedMediaDownloader(Bot):
 
         links: list = meta.get('links')
         command: str = meta.get('command')
+        include_comment: bool = bool(meta.get('include_comment'))
         if command == '/listen_download':
             last_message: Union[pyrogram.types.Message, None] = None
             for link in links:
@@ -2432,12 +2559,14 @@ class TelegramRestrictedMediaDownloader(Bot):
                     log.info(f'{p}当前的监听下载信息:{self.listen_download_chat}')
         elif command == '/listen_forward':
             listen_link, target_link = links
-            if await add_listen_chat(f'{listen_link} {target_link}', self.listen_forward_chat, self.listen_forward):
+            rule = make_forward_watch_rule(listen_link, target_link, include_comment)
+            if await add_listen_chat(rule, self.listen_forward_chat, self.listen_forward):
+                comment_status = '\n👥包含评论区:开' if include_comment else ''
                 await client.send_message(
                     chat_id=message.from_user.id,
                     reply_parameters=ReplyParameters(message_id=message.id),
                     link_preview_options=LINK_PREVIEW_OPTIONS,
-                    text=f'✅新增`监听转发`频道:\n{listen_link} ➡️ {target_link}',
+                    text=f'✅新增`监听转发`频道:\n{listen_link} ➡️ {target_link}{comment_status}',
                     reply_markup=InlineKeyboardMarkup(
                         [
                             [
@@ -2449,7 +2578,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                         ]
                     )
                 )
-                p = f'已新增监听转发,转发规则:"{listen_link} -> {target_link}"。'
+                p = f'已新增监听转发,转发规则:"{listen_link} -> {target_link}",包含评论区:{include_comment}。'
                 console.log(p, style='#FF4689')
                 log.info(f'{p}当前的监听转发信息:{self.listen_forward_chat}')
 
@@ -2466,10 +2595,43 @@ class TelegramRestrictedMediaDownloader(Bot):
     def check_type(self, message: pyrogram.types.Message):
         for dtype, is_forward in self.gc.forward_type.items():
             if is_forward:
-                result = getattr(message, dtype)
+                result = getattr(message, dtype, None)
                 if result:
                     return True
         return False
+
+    async def forward_discussion_replies(
+            self,
+            client: pyrogram.Client,
+            source_chat_id: Union[str, int],
+            source_message_id: int,
+            target_chat_id: Union[str, int],
+            target_link: str,
+            done_notice: Optional[bool] = True
+    ) -> int:
+        count = 0
+        try:
+            async for comment in self.app.client.get_discussion_replies(
+                    chat_id=source_chat_id,
+                    message_id=source_message_id
+            ):
+                if not self.check_type(comment):
+                    continue
+                comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
+                await self.forward(
+                    client=client,
+                    message=comment,
+                    message_id=comment.id,
+                    origin_chat_id=comment_chat_id,
+                    target_chat_id=target_chat_id,
+                    target_link=target_link,
+                    download_upload=True,
+                    done_notice=done_notice
+                )
+                count += 1
+        except (ValueError, AttributeError, MsgIdInvalid):
+            pass
+        return count
 
     async def listen_forward(
             self,
@@ -2481,7 +2643,10 @@ class TelegramRestrictedMediaDownloader(Bot):
             meta = await parse_link(client=self.app.client, link=link)
             listen_chat_id = meta.get('chat_id')
             for m in self.listen_forward_chat:
-                listen_link, target_link = m.split()
+                rule = parse_forward_watch_rule(m)
+                listen_link = rule.get('source_link')
+                target_link = rule.get('target_link')
+                include_comment = bool(rule.get('include_comment'))
                 _listen_link_meta = await parse_link(
                     client=self.app.client,
                     link=listen_link
@@ -2542,6 +2707,14 @@ class TelegramRestrictedMediaDownloader(Bot):
                                 download_upload=False,
                                 media_group=sorted(ids)
                             )
+                            if include_comment:
+                                await self.forward_discussion_replies(
+                                    client=client,
+                                    source_chat_id=_listen_chat_id,
+                                    source_message_id=message.id,
+                                    target_chat_id=_target_chat_id,
+                                    target_link=target_link
+                                )
                             break
                         break
                     except ValueError:
@@ -2555,6 +2728,14 @@ class TelegramRestrictedMediaDownloader(Bot):
                         target_link=target_link,
                         download_upload=True
                     )
+                    if include_comment:
+                        await self.forward_discussion_replies(
+                            client=client,
+                            source_chat_id=_listen_chat_id,
+                            source_message_id=message.id,
+                            target_chat_id=_target_chat_id,
+                            target_link=target_link
+                        )
         except (ValueError, KeyError, UsernameInvalid, ChatWriteForbidden) as e:
             log.error(
                 f'监听转发出现错误,{_t(KeyWord.REASON)}:{e}频道性质可能发生改变,包括但不限于(频道解散、频道名改变、频道类型改变、该账户没有在目标频道上传的权限、该账号被当前频道移除)。')

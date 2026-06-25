@@ -48,7 +48,9 @@ from module.util import (
     safe_index,
     safe_message,
     is_allow_upload,
-    get_valid_chat_id
+    get_valid_chat_id,
+    split_include_comment_flag,
+    parse_forward_watch_rule
 )
 from module.enums import (
     CalenderKeyboard,
@@ -575,16 +577,16 @@ class Bot:
     ) -> Union[Dict[str, Union[list, str]], None]:
 
         text: str = message.text
-        args: list = text.split(maxsplit=5)
+        args, include_comment = split_include_comment_flag(text.split(maxsplit=5))
         if text == '/forward':
             await client.send_message(
                 chat_id=message.from_user.id,
                 reply_parameters=ReplyParameters(message_id=message.id),
                 text='❌❌❌命令语法无效❌❌❌\n'
                      '⬇️⬇️⬇️语法如下⬇️⬇️⬇️\n'
-                     '`/forward 原始频道 目标频道 起始ID 结束ID`\n'
+                     '`/forward 原始频道 目标频道 起始ID 结束ID [--include-comment]`\n'
                      '⬇️⬇️⬇️请使用⬇️⬇️⬇️\n'
-                     '`/forward https://t.me/A https://t.me/B 1 100`\n'
+                     '`/forward https://t.me/A https://t.me/B 1 100 --include-comment`\n'
             )
             return None
         try:
@@ -600,13 +602,14 @@ class Bot:
             await client.send_message(
                 chat_id=message.from_user.id,
                 reply_parameters=ReplyParameters(message_id=message.id),
-                text=f'❌❌❌命令错误❌❌❌\n{e}\n请使用`/forward https://t.me/A https://t.me/B 1 100`'
+                text=f'❌❌❌命令错误❌❌❌\n{e}\n请使用`/forward https://t.me/A https://t.me/B 1 100 --include-comment`'
             )
             return None
         return {
             'origin_link': args[1],
             'target_link': args[2],
-            'message_range': [start_id, end_id]
+            'message_range': [start_id, end_id],
+            'include_comment': include_comment
         }
 
     async def get_upload_link_from_bot(
@@ -777,7 +780,7 @@ class Bot:
             message: pyrogram.types.Message
     ) -> Union[Dict[str, list], None]:
         text: str = message.text
-        args: list = text.split()
+        args, include_comment = split_include_comment_flag(text.split())
         command: str = args[0]
         links: list = args[1:]
         if text.startswith('/listen_download'):
@@ -810,7 +813,8 @@ class Bot:
                         text=safe_message(f'{last_message.text}\n{link}')
                     )
                 for meta in self.listen_forward_chat:
-                    listen_link, target_link = meta.split()
+                    rule = parse_forward_watch_rule(meta)
+                    listen_link = rule.get('source_link')
                     if listen_link == link:
                         invalid_links.append(listen_link)
                         if not last_message:
@@ -853,9 +857,9 @@ class Bot:
                     reply_parameters=ReplyParameters(message_id=message.id),
                     text=f'❌❌❌{e}❌❌❌\n'
                          '⬇️⬇️⬇️语法如下⬇️⬇️⬇️\n'
-                         f'`/listen_forward 监听频道 转发频道`\n'
+                         f'`/listen_forward 监听频道 转发频道 [--include-comment]`\n'
                          '⬇️⬇️⬇️请使用⬇️⬇️⬇️\n'
-                         f'`/listen_forward https://t.me/A https://t.me/B`\n'
+                         f'`/listen_forward https://t.me/A https://t.me/B --include-comment`\n'
                 )
                 return None
             listen_link: str = args[1]
@@ -878,12 +882,12 @@ class Bot:
                     reply_parameters=ReplyParameters(message_id=message.id),
                     text=f'❌❌❌{e}❌❌❌\n'
                          '⬇️⬇️⬇️语法如下⬇️⬇️⬇️\n'
-                         f'`/listen_forward 监听频道 转发频道`\n'
+                         f'`/listen_forward 监听频道 转发频道 [--include-comment]`\n'
                          '⬇️⬇️⬇️请使用⬇️⬇️⬇️\n'
-                         f'`/listen_forward https://t.me/A https://t.me/B`\n'
+                         f'`/listen_forward https://t.me/A https://t.me/B --include-comment`\n'
                 )
                 return None
-        return {'command': command, 'links': links}
+        return {'command': command, 'links': links, 'include_comment': include_comment}
 
     @staticmethod
     async def listen_download(
@@ -921,7 +925,8 @@ class Bot:
                 text=_text
             )
             for link in _listen_chat:
-                args: list = link.split()
+                rule = parse_forward_watch_rule(link)
+                args: list = [part for part in (rule.get('source_link'), rule.get('target_link')) if part]
                 len_args: int = len(args)
                 if len_args == 1:
                     last_message = await self.safe_edit_message(
@@ -932,11 +937,12 @@ class Bot:
                     )
                 elif len_args == 2:
                     forward_emoji = ' ➡️ '
+                    include_text = ' 👥' if rule.get('include_comment') else ''
                     last_message = await self.safe_edit_message(
                         client=client,
                         message=message,
                         last_message_id=last_message.id,
-                        text=safe_message(f'{last_message.text}\n{args[0]}{forward_emoji}{args[1]}')
+                        text=safe_message(f'{last_message.text}\n{args[0]}{forward_emoji}{args[1]}{include_text}')
                     )
 
         if not self.listen_forward_chat and not self.listen_download_chat:
