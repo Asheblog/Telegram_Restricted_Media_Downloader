@@ -546,6 +546,45 @@ class TransferStoreWebUiCase(unittest.TestCase):
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
 
+    def test_direct_forward_updates_task_progress_before_assignment_completes(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=2
+            )
+            store.refresh_task_counts(task_id, expected_total=2, assignment_completed=False)
+            task = store.get_task(task_id)
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+
+            downloader.forward = fake_forward
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
+
+            task = store.get_task(task_id)
+            self.assertEqual(2, task['total_items'])
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
+            self.assertEqual(0, task['assignment_completed'])
+            self.assertEqual(TransferStatus.RUNNING, task['status'])
+
     def test_webui_transfer_resumes_running_range_without_repeating_completed_items(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
