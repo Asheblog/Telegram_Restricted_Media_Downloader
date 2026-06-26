@@ -381,7 +381,7 @@ class WebUiServer:
                 task_id = self._task_id_from_path()
                 if task_id is None:
                     return
-                deleted = server.store.delete_task(task_id)
+                deleted = server.delete_task(task_id)
                 if not deleted:
                     self._send_error('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
                     return
@@ -556,6 +556,11 @@ class WebUiServer:
         if self.operations and hasattr(self.operations, 'delete_watch'):
             return bool(self.operations.delete_watch(watch_id))
         return False
+
+    def delete_task(self, task_id: int) -> bool:
+        if self.operations and hasattr(self.operations, 'delete_web_task'):
+            return bool(self.operations.delete_web_task(task_id))
+        return self.store.delete_task(task_id)
 
     def statistics(self) -> dict:
         if self.operations and hasattr(self.operations, 'statistics'):

@@ -19,6 +19,15 @@ from module.transfer_store import TransferStatus, TransferStore
 from module.web_ui import WebUiServer
 
 
+def import_with_clean_argv(importer):
+    original_argv = sys.argv
+    try:
+        sys.argv = [original_argv[0]]
+        return importer()
+    finally:
+        sys.argv = original_argv
+
+
 class FakeWebUiOperations:
     def __init__(self):
         self.watches = {}
@@ -107,6 +116,16 @@ class FakeWebUiOperations:
         return {'exported': True, 'table_type': table_type, 'directory': 'form'}
 
 
+class TaskDeletingOperations:
+    def __init__(self, store):
+        self.store = store
+        self.deleted_task_ids = []
+
+    def delete_web_task(self, task_id):
+        self.deleted_task_ids.append(task_id)
+        return self.store.delete_task(task_id)
+
+
 class FakeTelegramClient:
     def __init__(self):
         self.added_handlers = []
@@ -123,13 +142,11 @@ class FakeTelegramClient:
 
 
 def import_downloader_class():
-    original_argv = sys.argv
-    try:
-        sys.argv = [original_argv[0]]
+    def importer():
         from module.downloader import TelegramRestrictedMediaDownloader
         return TelegramRestrictedMediaDownloader
-    finally:
-        sys.argv = original_argv
+
+    return import_with_clean_argv(importer)
 
 
 class TransferStoreWebUiCase(unittest.TestCase):
@@ -158,7 +175,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertIsNone(store.get_download_success_record('-100123', 42, expected_size=5))
 
     def test_default_download_concurrency_and_pikpak_size_limit_are_system_defaults(self):
-        from module.config import GlobalConfig, UserConfig
+        config_module = import_with_clean_argv(
+            lambda: __import__('module.config', fromlist=['GlobalConfig', 'UserConfig'])
+        )
+        GlobalConfig = config_module.GlobalConfig
+        UserConfig = config_module.UserConfig
         from module.web_ui import merge_allowed_settings
 
         self.assertEqual(1, UserConfig.TEMPLATE['max_tasks']['download'])
@@ -184,7 +205,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
         )
 
     def test_global_target_profile_archive_config_is_completed_recursively(self):
-        from module.config import GlobalConfig
+        GlobalConfig = import_with_clean_argv(
+            lambda: __import__('module.config', fromlist=['GlobalConfig'])
+        ).GlobalConfig
 
         config = {
             'notice': True,
@@ -1543,6 +1566,81 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         self.assertEqual([2, 3, 4], submitted_task_ids)
 
+    def test_webui_delete_task_uses_operations_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+            operations = TaskDeletingOperations(store)
+            server = WebUiServer(store=store, operations=operations)
+            server.start(open_browser=False)
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port)
+                conn.request('DELETE', f'/api/tasks/{task_id}')
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertTrue(body['deleted'])
+                self.assertEqual([task_id], operations.deleted_task_ids)
+                self.assertIsNone(store.get_task(task_id))
+            finally:
+                server.stop()
+
+    def test_deleting_running_web_task_cancels_and_schedules_next_task(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            downloader = object.__new__(TelegramRestrictedMediaDownloader)
+            downloader.loop = asyncio.get_running_loop()
+            downloader.web_task_queue = asyncio.Queue()
+            downloader.web_submitted_task_ids = set()
+            downloader.web_operation_queue = asyncio.Queue()
+            downloader.web_running_task = None
+            downloader.web_running_task_id = None
+            started_task_ids = []
+            cancelled_task_ids = []
+
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                running_task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+                next_task_id = store.create_task('https://t.me/source/2', 'https://t.me/pikpak_bot')
+                downloader.transfer_store = store
+
+                async def fake_process_web_transfer_task(task_id):
+                    started_task_ids.append(task_id)
+                    try:
+                        await asyncio.sleep(60)
+                    except asyncio.CancelledError:
+                        cancelled_task_ids.append(task_id)
+                        raise
+
+                downloader.process_web_transfer_task = fake_process_web_transfer_task
+                downloader.submit_web_task(running_task_id)
+                await asyncio.wait_for(downloader.process_web_task_queue(), timeout=0.2)
+                await asyncio.sleep(0)
+
+                self.assertEqual([running_task_id], started_task_ids)
+                self.assertEqual(running_task_id, downloader.web_running_task_id)
+                self.assertIn(running_task_id, downloader.web_submitted_task_ids)
+
+                self.assertTrue(downloader.delete_web_task(running_task_id))
+                downloader.submit_web_task(next_task_id)
+                for _ in range(10):
+                    await asyncio.sleep(0)
+                    await downloader.process_web_task_queue()
+                    if started_task_ids[-1] == next_task_id:
+                        break
+
+                self.assertEqual([running_task_id, next_task_id], started_task_ids)
+                self.assertEqual([running_task_id], cancelled_task_ids)
+                self.assertNotIn(running_task_id, downloader.web_submitted_task_ids)
+                self.assertEqual(next_task_id, downloader.web_running_task_id)
+
+                if downloader.web_running_task:
+                    downloader.web_running_task.cancel()
+                    await asyncio.gather(downloader.web_running_task, return_exceptions=True)
+
+        asyncio.run(run_case())
+
     def test_webui_transfer_falls_back_when_direct_copy_caption_is_too_long(self):
         from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong
 
@@ -1595,7 +1693,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertFalse(any('Transfer task failed' in event['message'] for event in events))
 
     def test_bot_forward_and_listen_forward_parse_discussion_reply_flag(self):
-        from module.bot import Bot
+        Bot = import_with_clean_argv(
+            lambda: __import__('module.bot', fromlist=['Bot'])
+        ).Bot
 
         bot = object.__new__(Bot)
         bot.listen_download_chat = {}
