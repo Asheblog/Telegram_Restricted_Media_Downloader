@@ -1403,6 +1403,47 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertIn('Direct forward did not produce a target message', items[0]['error_message'])
             self.assertEqual(0, store.get_task(task_id)['completed_items'])
 
+    def test_webui_transfer_skips_empty_source_message_without_forwarding(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=74097,
+                end_id=74097
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.forward = AsyncMock(return_value=SimpleNamespace(id=100))
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+
+            used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(id=74097, empty=True),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/74097'
+            ))
+
+            self.assertFalse(used_fallback)
+            downloader.forward.assert_not_awaited()
+            downloader.wait_for_pikpak_ingest_confirmation.assert_not_awaited()
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.SKIPPED, items[0]['status'])
+            self.assertEqual('skipped', items[0]['phase'])
+            self.assertIn('Telegram API returned an empty source message', items[0]['error_message'])
+            task = store.get_task(task_id)
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
+            self.assertEqual({74097}, store.completed_source_message_ids(task_id))
+
     def test_direct_pikpak_forward_timeout_recovers_when_archive_finds_ingested_file(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -2169,6 +2210,47 @@ class TransferStoreWebUiCase(unittest.TestCase):
         asyncio.run(run_case())
 
         self.assertEqual(2, len(copy_attempts))
+
+    def test_forward_uses_forward_messages_when_copy_returns_empty_result(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            name = 'test-client'
+
+            def __init__(self):
+                self.copy_calls = []
+                self.forward_calls = []
+
+            async def copy_message(self, **kwargs):
+                self.copy_calls.append(kwargs)
+                return None
+
+            async def forward_messages(self, **kwargs):
+                self.forward_calls.append(kwargs)
+                return SimpleNamespace(id=101)
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+        downloader.transfer_store = None
+
+        result = asyncio.run(downloader.forward(
+            client=client,
+            message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+            message_id=1,
+            origin_chat_id='source-chat',
+            target_chat_id='target-chat',
+            target_link='https://t.me/pikpak_bot',
+            done_notice=False,
+            ignore_type_filter=True
+        ))
+
+        self.assertEqual(101, result.id)
+        self.assertEqual(1, len(client.copy_calls))
+        self.assertEqual(1, len(client.forward_calls))
+        self.assertEqual('target-chat', client.forward_calls[0]['chat_id'])
+        self.assertEqual('source-chat', client.forward_calls[0]['from_chat_id'])
+        self.assertEqual(1, client.forward_calls[0]['message_ids'])
 
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()

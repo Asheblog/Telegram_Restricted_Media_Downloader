@@ -32,7 +32,8 @@ from pyrogram.errors.exceptions.bad_request_400 import (
     MessageNotModified,
     ChannelPrivate as ChannelPrivate_400,
     ChatForwardsRestricted as ChatForwardsRestricted_400,
-    MediaCaptionTooLong as MediaCaptionTooLong_400
+    MediaCaptionTooLong as MediaCaptionTooLong_400,
+    MessageIdInvalid
 )
 from pyrogram.errors.exceptions.not_acceptable_406 import (
     ChannelPrivate as ChannelPrivate_406,
@@ -1286,6 +1287,35 @@ class TelegramRestrictedMediaDownloader(Bot):
         )
         self.refresh_transfer_task_counts(task_id)
 
+    def skip_empty_transfer_source_message(
+            self,
+            task: dict,
+            origin_chat_id,
+            source_link: str,
+            message_id: Optional[int]
+    ) -> int:
+        task_id = int(task.get('id'))
+        error_message = f'Telegram API returned an empty source message: {source_link}'
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_chat_id=origin_chat_id,
+            source_message_id=message_id,
+            source_link=source_link,
+            target_link=task.get('target_link'),
+            media_type='empty',
+            phase='skipped',
+            status=TransferStatus.SKIPPED,
+            error_message=error_message
+        )
+        self.transfer_store.add_event(
+            task_id,
+            error_message,
+            level='warning',
+            item_id=item_id
+        )
+        self.refresh_transfer_task_counts(task_id)
+        return item_id
+
     def complete_forwarded_pikpak_item(
             self,
             task: dict,
@@ -1365,6 +1395,23 @@ class TelegramRestrictedMediaDownloader(Bot):
         if isinstance(forwarded_message, list):
             return any(getattr(message, 'id', None) is not None for message in forwarded_message)
         return getattr(forwarded_message, 'id', None) is not None
+
+    async def forward_messages_with_flood_retry(
+            self,
+            target_chat_id: Union[str, int],
+            origin_chat_id: Union[str, int],
+            message_id: int
+    ):
+        while True:
+            try:
+                return await self.app.client.forward_messages(
+                    chat_id=target_chat_id,
+                    from_chat_id=origin_chat_id,
+                    message_ids=message_id,
+                    disable_notification=True
+                )
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, action='forward message')
 
     @staticmethod
     def is_pikpak_ingest_success_message(message) -> bool:
@@ -1490,6 +1537,14 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link: str
     ) -> bool:
         message_id = getattr(message, 'id', None)
+        if getattr(message, 'empty', False):
+            self.skip_empty_transfer_source_message(
+                task=task,
+                origin_chat_id=origin_chat_id,
+                source_link=source_link,
+                message_id=message_id
+            )
+            return False
         limit_error = self.get_task_target_size_limit_error(task, message)
         if limit_error:
             self.fail_transfer_item_for_target_limit(
@@ -2904,6 +2959,18 @@ class TelegramRestrictedMediaDownloader(Bot):
                         break
                     except (FloodWait, FloodPremiumWait) as e:
                         await self.wait_for_telegram_flood(e, action='copy message')
+                if not self.forwarded_message_has_identity(forwarded_message):
+                    try:
+                        forwarded_message = await self.forward_messages_with_flood_retry(
+                            target_chat_id=target_chat_id,
+                            origin_chat_id=origin_chat_id,
+                            message_id=message_id
+                        )
+                    except MessageIdInvalid as e:
+                        log.error(
+                            f'Unable to forward invalid source message: '
+                            f'{getattr(message, "link", None) or message_id},{_t(KeyWord.REASON)}:"{e}"'
+                        )
             if not self.forwarded_message_has_identity(forwarded_message):
                 log.error(
                     f'Direct forward did not produce a target message: {getattr(message, "link", None) or message_id}'
