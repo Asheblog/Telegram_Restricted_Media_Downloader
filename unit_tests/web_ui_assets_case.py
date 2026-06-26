@@ -122,9 +122,11 @@ class WebUiAssetsCase(unittest.TestCase):
         for fragment in (
                 'global.target_profiles.pikpak.archive.enable',
                 'global.target_profiles.pikpak.archive.remote',
+                'global.target_profiles.pikpak.archive.source_directory',
                 'global.target_profiles.pikpak.archive.root_directory',
                 'settings.pikpakArchiveEnable',
                 'settings.pikpakArchiveRemote',
+                'settings.pikpakArchiveSource',
                 'settings.pikpakArchiveRoot'
         ):
             self.assertIn(fragment, WEB_UI_HTML)

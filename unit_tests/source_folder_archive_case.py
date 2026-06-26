@@ -54,6 +54,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             {
                 'enable': True,
                 'remote': 'pikpak',
+                'source_directory': 'My Telegram',
                 'root_directory': 'Telegram',
                 'poll_seconds': 0,
                 'poll_interval_seconds': 0,
@@ -73,8 +74,9 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual('Telegram/ctuxas/video.mp4', result.archive_path)
         self.assertIn(['rclone', 'mkdir', 'pikpak:Telegram/ctuxas'], calls)
+        self.assertIn(['rclone', 'lsjson', 'pikpak:My Telegram', '--recursive', '--files-only'], calls)
         self.assertIn(
-            ['rclone', 'moveto', 'pikpak:Telegram/video.mp4', 'pikpak:Telegram/ctuxas/video.mp4'],
+            ['rclone', 'moveto', 'pikpak:My Telegram/video.mp4', 'pikpak:Telegram/ctuxas/video.mp4'],
             calls
         )
 
@@ -134,6 +136,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             {
                 'enable': True,
                 'remote': 'pikpak',
+                'source_directory': 'My Telegram',
                 'root_directory': 'Telegram',
                 'poll_seconds': 0,
                 'match_window_seconds': 3600
@@ -150,6 +153,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual('Telegram/ctuxas/photo_2026-06-26.jpg', result.archive_path)
+        self.assertIn(['rclone', 'lsjson', 'pikpak:My Telegram', '--recursive', '--files-only'], calls)
 
     def test_disabled_archive_is_noop(self):
         from module.pikpak_archive import build_pikpak_archive_client

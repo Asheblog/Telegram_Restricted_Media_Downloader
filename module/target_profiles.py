@@ -11,6 +11,7 @@ DEFAULT_TARGET_PROFILES = {
         'archive': {
             'enable': True,
             'remote': 'pikpak',
+            'source_directory': 'My Telegram',
             'root_directory': 'Telegram',
             'poll_seconds': 60,
             'poll_interval_seconds': 5,
