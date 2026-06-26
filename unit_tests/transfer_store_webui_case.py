@@ -582,6 +582,134 @@ class TransferStoreWebUiCase(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_downloader_retry_failed_recovers_pikpak_timeout_before_resubmitting(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/chengdudiyi8',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=73962,
+                end_id=73962
+            )
+            failed_item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=73962,
+                source_link='https://t.me/chengdudiyi8/73962',
+                target_link='https://t.me/pikpak_bot',
+                media_type='forward',
+                file_name='video.mp4',
+                file_size=5,
+                source_folder='chengdudiyi8',
+                archive_status='pending',
+                phase='failure',
+                status=TransferStatus.FAILURE,
+                error_message='PikPak ingest confirmation timeout or failure: https://t.me/chengdudiyi8/73962'
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=True)
+            archive_calls = []
+            submitted = []
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=True, status='success', archive_path='Telegram/chengdudiyi8/video.mp4')
+
+            downloader.transfer_store = store
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
+
+            reset_items = downloader.retry_failed_web_task(task_id)
+
+            self.assertEqual(0, reset_items)
+            self.assertEqual([], submitted)
+            self.assertEqual(1, len(archive_calls))
+            self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
+            self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+            item = store.list_items(task_id)[0]
+            self.assertEqual(failed_item_id, item['id'])
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertEqual('forwarded', item['phase'])
+            self.assertEqual('success', item['archive_status'])
+            self.assertEqual('', item['error_message'])
+            task = store.get_task(task_id)
+            self.assertEqual(TransferStatus.SUCCESS, task['status'])
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
+            events = store.list_events(task_id)
+            self.assertTrue(any('recovered before retry' in event['message'] for event in events))
+
+    def test_downloader_retry_failed_resubmits_items_that_cannot_be_recovered(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/chengdudiyi8',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=2
+            )
+            recovered_item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/chengdudiyi8/1',
+                target_link='https://t.me/pikpak_bot',
+                media_type='forward',
+                file_name='done.mp4',
+                file_size=5,
+                source_folder='chengdudiyi8',
+                phase='failure',
+                status=TransferStatus.FAILURE,
+                error_message='PikPak ingest confirmation timeout or failure: https://t.me/chengdudiyi8/1'
+            )
+            retry_item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/chengdudiyi8/2',
+                target_link='https://t.me/pikpak_bot',
+                media_type='forward',
+                file_name='missing.mp4',
+                file_size=7,
+                source_folder='chengdudiyi8',
+                phase='failure',
+                status=TransferStatus.FAILURE,
+                error_message='PikPak ingest confirmation timeout or failure: https://t.me/chengdudiyi8/2'
+            )
+            store.refresh_task_counts(task_id, expected_total=2, assignment_completed=True)
+            archive_calls = []
+            submitted = []
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    if kwargs.get('file_name') == 'done.mp4':
+                        return SimpleNamespace(ok=True, status='success', archive_path='Telegram/chengdudiyi8/done.mp4')
+                    return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
+
+            downloader.transfer_store = store
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
+
+            reset_items = downloader.retry_failed_web_task(task_id)
+
+            self.assertEqual(1, reset_items)
+            self.assertEqual([task_id], submitted)
+            self.assertEqual(2, len(archive_calls))
+            items = {item['id']: item for item in store.list_items(task_id)}
+            self.assertEqual(TransferStatus.SUCCESS, items[recovered_item_id]['status'])
+            self.assertEqual('success', items[recovered_item_id]['archive_status'])
+            self.assertEqual(TransferStatus.PENDING, items[retry_item_id]['status'])
+            self.assertEqual('pending', items[retry_item_id]['phase'])
+            self.assertIsNone(items[retry_item_id]['error_message'])
+            task = store.get_task(task_id)
+            self.assertEqual(TransferStatus.RUNNING, task['status'])
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
+
     def test_webui_task_pause_blocks_scheduling_and_resume_resubmits(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)

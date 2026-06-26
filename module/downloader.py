@@ -253,10 +253,61 @@ class TelegramRestrictedMediaDownloader(Bot):
     def retry_failed_web_task(self, task_id: int) -> int:
         if not self.transfer_store:
             return 0
-        reset_items = self.transfer_store.retry_failed_items(task_id)
+        task = self.transfer_store.get_task(task_id)
+        if not task:
+            return 0
+        failed_items = [
+            item for item in self.transfer_store.list_items(task_id)
+            if item.get('status') == TransferStatus.FAILURE
+        ]
+        retry_item_ids = [
+            int(item['id'])
+            for item in failed_items
+            if not self.recover_pikpak_failed_item_before_retry(task, item)
+        ]
+        reset_items = self.transfer_store.retry_failed_item_ids(task_id, retry_item_ids)
         if reset_items:
             self.submit_web_task(task_id)
         return reset_items
+
+    def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
+        if not self.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):
+            return False
+        if 'PikPak ingest confirmation' not in str(item.get('error_message') or ''):
+            return False
+        if not item.get('file_name') and item.get('file_size') is None:
+            return False
+        item_id = int(item.get('id'))
+        task_id = int(task.get('id'))
+        result = self.archive_pikpak_item(
+            target_profile='pikpak',
+            item_id=item_id,
+            task_id=task_id,
+            message=None,
+            source_link=item.get('source_link') or task.get('source_link'),
+            source_folder=(
+                item.get('source_folder')
+                or source_folder_from_link(item.get('source_link') or task.get('source_link'))
+            ),
+            file_name=item.get('file_name'),
+            file_size=item.get('file_size'),
+            transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+        )
+        if not bool(getattr(result, 'ok', False)):
+            return False
+        self.transfer_store.update_item(
+            item_id,
+            phase='forwarded',
+            status=TransferStatus.SUCCESS,
+            error_message=''
+        )
+        self.transfer_store.add_event(
+            task_id,
+            f'PikPak ingest confirmation recovered before retry: {item.get("source_link") or task.get("source_link")}',
+            item_id=item_id
+        )
+        self.refresh_transfer_task_counts(task_id)
+        return True
 
     def next_web_operation_id(self, operation_type: str) -> str:
         self.web_operation_counter += 1

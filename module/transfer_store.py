@@ -551,10 +551,25 @@ class TransferStore:
         task = self.get_task(task_id)
         if not task:
             return 0
+        failed_item_ids = [
+            int(item['id'])
+            for item in self.list_items(task_id)
+            if item.get('status') == TransferStatus.FAILURE
+        ]
+        return self.retry_failed_item_ids(task_id, failed_item_ids)
+
+    def retry_failed_item_ids(self, task_id: int, item_ids: List[int]) -> int:
+        task = self.get_task(task_id)
+        if not task:
+            return 0
+        item_ids = [int(item_id) for item_id in item_ids]
+        if not item_ids:
+            return 0
         now = self.utc_now()
+        placeholders = ','.join(['?'] * len(item_ids))
         with self.connect() as conn:
             cursor = conn.execute(
-                '''
+                f'''
                 UPDATE transfer_items
                 SET status = ?,
                     phase = 'pending',
@@ -564,8 +579,9 @@ class TransferStore:
                     updated_at = ?
                 WHERE task_id = ?
                   AND status = ?
+                  AND id IN ({placeholders})
                 ''',
-                (TransferStatus.PENDING, now, task_id, TransferStatus.FAILURE)
+                (TransferStatus.PENDING, now, task_id, TransferStatus.FAILURE, *item_ids)
             )
             reset_items = int(cursor.rowcount)
         if reset_items:
