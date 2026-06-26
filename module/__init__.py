@@ -149,6 +149,13 @@ max_tasks:
 target_profiles:
   pikpak:
     max_file_size: 4294967296 # PikPak目标允许的最大文件大小,默认4GiB。
+    archive:
+      enable: true # 是否使用rclone将PikPak入库后的文件按来源频道归档。
+      remote: pikpak # rclone中的PikPak remote名称。
+      root_directory: Telegram # PikPak归档根目录。
+      poll_seconds: 60 # 等待PikPak入库的最长轮询秒数。
+      poll_interval_seconds: 5 # 轮询间隔秒数。
+      match_window_seconds: 3600 # 按时间匹配入库文件的窗口秒数。
 proxy: # 代理部分，如不使用请全部填null注意冒号后面有空格，否则不生效导致报错。
   enable_proxy: true # 是否开启代理。支持的参数：true,false。
   hostname: 127.0.0.1 # 代理的ip地址。

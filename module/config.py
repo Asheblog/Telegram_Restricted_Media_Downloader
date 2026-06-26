@@ -8,6 +8,7 @@ import sys
 import logging
 import datetime
 import subprocess
+from copy import deepcopy
 
 from typing import Union
 
@@ -42,7 +43,7 @@ class BaseConfig:
     TEMPLATE: dict = {}
 
     def __init__(self):
-        self.config: dict = self.TEMPLATE.copy()
+        self.config: dict = deepcopy(self.TEMPLATE)
         self.config_path: str = self.PATH
 
     @staticmethod
@@ -50,7 +51,7 @@ class BaseConfig:
         """添加缺失的配置文件参数。"""
         for key, value in template.items():
             if key not in target:
-                target[key] = value
+                target[key] = deepcopy(value)
                 console.log(log_message.format(key))
 
     @staticmethod
@@ -112,7 +113,7 @@ class BaseConfig:
                     raise ValueError('The file is empty or has invalid format.')
         except Exception as e:
             log.error(f'检测到无效或损坏的全局配置文件。已生成新的模板文件. . .{_t(KeyWord.REASON)}:"{e}"')
-            self.config: dict = self.TEMPLATE.copy()
+            self.config: dict = deepcopy(self.TEMPLATE)
             self.save_config(self.config)
 
     def save_config(self, config: dict) -> None:
@@ -313,7 +314,7 @@ class UserConfig(BaseConfig):
 
     def load_config(self) -> dict:
         """加载一次当前的配置文件,并附带合法性验证、缺失参数的检测以及各种异常时的处理措施。"""
-        config: dict = UserConfig.TEMPLATE.copy()
+        config: dict = deepcopy(UserConfig.TEMPLATE)
         try:
             if not os.path.exists(self.config_path):
                 with open(file=self.config_path, mode='w', encoding='UTF-8') as f:
@@ -322,7 +323,7 @@ class UserConfig(BaseConfig):
                 self.re_config = True  # v1.3.4 修复配置文件不存在时,无法重新生成配置文件的问题。
             with open(self.config_path, 'r', encoding='UTF-8') as f:
                 config: dict = yaml.safe_load(f)  # v1.1.4 加入对每个字段的完整性检测。
-            compare_config: dict = config.copy() if config else {}
+            compare_config: dict = deepcopy(config) if config else {}
             config: dict = self.__check_params(config) if compare_config else None
             if config != compare_config or config == UserConfig.TEMPLATE:  # v1.3.4 修复配置文件所有参数都为空时报错问题。
                 self.re_config = True
@@ -341,7 +342,7 @@ class UserConfig(BaseConfig):
             if config is None:
                 self.re_config = True
                 log.warning('检测到空的配置文件。已生成新的模板文件. . .')
-                config: dict = UserConfig.TEMPLATE.copy()
+                config: dict = deepcopy(UserConfig.TEMPLATE)
         return config
 
     def backup_config(
@@ -374,7 +375,7 @@ class UserConfig(BaseConfig):
                     self.re_config = re_config
                     # 缓存原有的session_directory，防止重新配置时丢失。
                     origin_session_directory = pre_load_config.get('session_directory')
-                    pre_load_config: dict = UserConfig.TEMPLATE.copy()
+                    pre_load_config: dict = deepcopy(UserConfig.TEMPLATE)
                     self.backup_config(backup_config=pre_load_config, error_config=False, force=True)
                     self.get_last_history_record()  # 更新到上次填写的记录。
                     if not PARSE_ARGS.session:
@@ -610,7 +611,7 @@ class GlobalConfig(BaseConfig):
                 'delete': False,
                 'pending_limit': 3
             },
-        'target_profiles': {name: profile.copy() for name, profile in DEFAULT_TARGET_PROFILES.items()},
+        'target_profiles': deepcopy(DEFAULT_TARGET_PROFILES),
         'forward_type':
             {
                 'video': True,
@@ -630,7 +631,7 @@ class GlobalConfig(BaseConfig):
         self.default_target_profiles_nesting = self.TEMPLATE.get('target_profiles')
         self.default_forward_type_nesting = self.TEMPLATE.get('forward_type')
         self.load_config()
-        self.__check_params(self.config.copy())
+        self.__check_params(deepcopy(self.config))
         self.download_upload: bool = self.get_nesting_config(
             default_nesting=self.default_upload_nesting,
             param='upload',
@@ -698,6 +699,23 @@ class GlobalConfig(BaseConfig):
                 template=profile_template,
                 log_message=f'"{{}}"不在target_profiles.{profile_name}配置文件中,已添加。'
             )
+            for nested_name, nested_template in profile_template.items():
+                if not isinstance(nested_template, dict):
+                    continue
+                nested_config = profile_config.get(nested_name)
+                if not isinstance(nested_config, dict):
+                    nested_config = {}
+                    profile_config[nested_name] = nested_config
+                self.add_missing_keys(
+                    target=nested_config,
+                    template=nested_template,
+                    log_message=f'"{{}}"不在target_profiles.{profile_name}.{nested_name}配置文件中,已添加。'
+                )
+                self.remove_extra_keys(
+                    target=nested_config,
+                    template=nested_template,
+                    log_message=f'"{{}}"不在target_profiles.{profile_name}.{nested_name}模板中,已删除。'
+                )
             self.remove_extra_keys(
                 target=profile_config,
                 template=profile_template,

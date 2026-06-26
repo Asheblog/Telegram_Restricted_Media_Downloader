@@ -12,6 +12,10 @@ _Avoid_: Forward bypass, restricted forward, mirror
 The Telegram conversation with the official PikPak bot that receives transferred media so PikPak can ingest it.
 _Avoid_: PikPak API, cloud drive target
 
+**PikPak Archive**:
+A target-side organization step that places media received by the PikPak Target into a durable PikPak folder after the transfer reaches PikPak.
+_Avoid_: Local download folder, bot chat folder
+
 **Transfer Task**:
 A persisted user request to move one or more source messages to a target conversation.
 _Avoid_: Download task, forward job
@@ -27,6 +31,10 @@ _Avoid_: Chapter cursor, runtime offset
 **Download Success Record**:
 A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
 _Avoid_: Cache hit, finished file
+
+**Source Channel Folder**:
+A filesystem-safe folder name derived from the source Telegram conversation so transferred media from the same source can be grouped together.
+_Avoid_: Target folder, chat title cache
 
 **Target Profile**:
 A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.

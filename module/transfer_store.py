@@ -74,6 +74,10 @@ class TransferStore:
                     download_total INTEGER NOT NULL DEFAULT 0,
                     upload_current INTEGER NOT NULL DEFAULT 0,
                     upload_total INTEGER NOT NULL DEFAULT 0,
+                    source_folder TEXT,
+                    archive_path TEXT,
+                    archive_status TEXT,
+                    archive_error TEXT,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     created_at TEXT NOT NULL,
@@ -135,7 +139,11 @@ class TransferStore:
                     'download_current': 'INTEGER NOT NULL DEFAULT 0',
                     'download_total': 'INTEGER NOT NULL DEFAULT 0',
                     'upload_current': 'INTEGER NOT NULL DEFAULT 0',
-                    'upload_total': 'INTEGER NOT NULL DEFAULT 0'
+                    'upload_total': 'INTEGER NOT NULL DEFAULT 0',
+                    'source_folder': 'TEXT',
+                    'archive_path': 'TEXT',
+                    'archive_status': 'TEXT',
+                    'archive_error': 'TEXT'
                 }
             )
             self._ensure_columns(
@@ -274,6 +282,10 @@ class TransferStore:
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             local_path: Optional[str] = None,
+            source_folder: Optional[str] = None,
+            archive_path: Optional[str] = None,
+            archive_status: Optional[str] = None,
+            archive_error: Optional[str] = None,
             phase: str = 'pending',
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None
@@ -303,6 +315,10 @@ class TransferStore:
                         local_path=local_path,
                         file_name=file_name,
                         file_size=file_size,
+                        source_folder=source_folder,
+                        archive_path=archive_path,
+                        archive_status=archive_status,
+                        archive_error=archive_error,
                         phase=phase,
                         error_message=error_message,
                         now=now
@@ -312,13 +328,15 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_items (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
-                    media_type, file_name, file_size, local_path, phase, status,
+                    media_type, file_name, file_size, local_path, source_folder,
+                    archive_path, archive_status, archive_error, phase, status,
                     error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
-                    media_type, file_name, file_size, local_path, phase, status,
+                    media_type, file_name, file_size, local_path, source_folder,
+                    archive_path, archive_status, archive_error, phase, status,
                     error_message, now, now
                 )
             )
@@ -334,6 +352,10 @@ class TransferStore:
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             phase: Optional[str] = None,
+            source_folder: Optional[str] = None,
+            archive_path: Optional[str] = None,
+            archive_status: Optional[str] = None,
+            archive_error: Optional[str] = None,
             error_message: Optional[str] = None
     ) -> None:
         now = self.utc_now()
@@ -347,6 +369,10 @@ class TransferStore:
                 local_path=local_path,
                 file_name=file_name,
                 file_size=file_size,
+                source_folder=source_folder,
+                archive_path=archive_path,
+                archive_status=archive_status,
+                archive_error=archive_error,
                 phase=phase,
                 error_message=error_message,
                 now=now
@@ -363,6 +389,10 @@ class TransferStore:
             local_path: Optional[str] = None,
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
+            source_folder: Optional[str] = None,
+            archive_path: Optional[str] = None,
+            archive_status: Optional[str] = None,
+            archive_error: Optional[str] = None,
             phase: Optional[str] = None,
             error_message: Optional[str] = None
     ) -> None:
@@ -374,6 +404,10 @@ class TransferStore:
             'local_path': local_path,
             'file_name': file_name,
             'file_size': file_size,
+            'source_folder': source_folder,
+            'archive_path': archive_path,
+            'archive_status': archive_status,
+            'archive_error': archive_error,
             'phase': phase,
             'error_message': error_message
         }

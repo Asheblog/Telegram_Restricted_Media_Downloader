@@ -116,6 +116,38 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertEqual(9, meta['message_id'])
         self.assertEqual('video', meta['media_type'])
 
+    def test_transfer_download_meta_includes_source_folder_and_final_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.transfer_store = TransferStore(directory=directory)
+            downloader.app = SimpleNamespace(save_directory=directory)
+            downloader.refresh_transfer_task_counts = lambda task_id: None
+            task_id = downloader.transfer_store.create_task(
+                source_link='https://t.me/ctuxas/7',
+                target_link='https://t.me/pikpak_bot'
+            )
+            message = SimpleNamespace(
+                id=7,
+                link='https://t.me/ctuxas/7',
+                chat=SimpleNamespace(id=-100123, username='ctuxas')
+            )
+
+            meta = downloader.create_transfer_item_for_download(
+                task_with_upload={'task_id': task_id, 'link': 'https://t.me/pikpak_bot'},
+                chat_id='ctuxas',
+                link='https://t.me/ctuxas/7',
+                message=message,
+                media_type='video',
+                file_name='video.mp4',
+                final_path=os.path.join(directory, 'video.mp4'),
+                file_size=9
+            )
+
+            self.assertEqual('ctuxas', meta['source_folder'])
+            item = downloader.transfer_store.list_items(task_id)[0]
+            self.assertEqual('ctuxas', item['source_folder'])
+            self.assertEqual(os.path.join(directory, 'ctuxas', 'video.mp4'), item['local_path'])
+
 
 if __name__ == '__main__':
     unittest.main()

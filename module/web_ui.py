@@ -8,6 +8,7 @@ import socket
 import threading
 import webbrowser
 
+from copy import deepcopy
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
@@ -655,7 +656,7 @@ def save_runtime_settings(payload: dict) -> dict:
     user = UserConfig()
     global_config = GlobalConfig()
     user_config = merge_allowed_settings(
-        target=user.config.copy(),
+        target=deepcopy(user.config),
         patch=payload.get('user', {}) if isinstance(payload, dict) else {},
         allowed={
             'api_id', 'api_hash', 'bot_token', 'session_directory', 'save_directory',
@@ -664,7 +665,7 @@ def save_runtime_settings(payload: dict) -> dict:
         }
     )
     global_settings = merge_allowed_settings(
-        target=global_config.config.copy(),
+        target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
         allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'}
     )
@@ -681,7 +682,7 @@ def merge_allowed_settings(target: dict, patch: dict, allowed: set) -> dict:
             continue
         if isinstance(value, dict) and isinstance(target.get(key), dict):
             target[key] = merge_allowed_settings(
-                target=target.get(key, {}).copy(),
+                target=deepcopy(target.get(key, {})),
                 patch=value,
                 allowed=set(target.get(key, {}).keys()) | set(value.keys())
             )
