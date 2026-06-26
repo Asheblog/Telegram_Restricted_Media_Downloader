@@ -1992,6 +1992,14 @@ WEB_UI_SCRIPT = r'''
     renderWatches();
   }
 
+  async function refreshWatchesAfterMutation() {
+    try {
+      await loadWatches();
+    } catch (error) {
+      console.warn('Failed to refresh watches after mutation.', error);
+    }
+  }
+
   function renderWatches() {
     const watches = state.watches || [];
     $('#watch-count').textContent = watches.length;
@@ -2183,12 +2191,13 @@ WEB_UI_SCRIPT = r'''
         .filter(Boolean);
       try {
         await postJson('/api/watches', {type: 'download', source_links: sourceLinks});
-        showNotice('#watch-download-notice', t('watches.created'), true);
-        event.currentTarget.reset();
-        await loadWatches();
       } catch (payload) {
         showNotice('#watch-download-notice', translateApiError(payload), false);
+        return;
       }
+      showNotice('#watch-download-notice', t('watches.created'), true);
+      event.currentTarget.reset();
+      await refreshWatchesAfterMutation();
     });
   }
 
@@ -2204,12 +2213,13 @@ WEB_UI_SCRIPT = r'''
           target_link: form.get('target_link'),
           include_comment: Boolean(form.get('include_comment'))
         });
-        showNotice('#watch-forward-notice', t('watches.created'), true);
-        event.currentTarget.reset();
-        await loadWatches();
       } catch (payload) {
         showNotice('#watch-forward-notice', translateApiError(payload), false);
+        return;
       }
+      showNotice('#watch-forward-notice', t('watches.created'), true);
+      event.currentTarget.reset();
+      await refreshWatchesAfterMutation();
     });
   }
 

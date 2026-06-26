@@ -66,6 +66,23 @@ class WebUiAssetsCase(unittest.TestCase):
         ):
             self.assertIn(fragment, WEB_UI_HTML)
 
+    def test_watch_creation_success_notice_survives_refresh_failure(self):
+        self.assertIn('async function refreshWatchesAfterMutation()', WEB_UI_HTML)
+        self.assertIn("console.warn('Failed to refresh watches after mutation.', error);", WEB_UI_HTML)
+
+        for notice_selector in ('#watch-download-notice', '#watch-forward-notice'):
+            self.assertIn(
+                f"showNotice('{notice_selector}', translateApiError(payload), false);\n"
+                "        return;",
+                WEB_UI_HTML
+            )
+            self.assertIn(
+                f"showNotice('{notice_selector}', t('watches.created'), true);",
+                WEB_UI_HTML
+            )
+
+        self.assertEqual(WEB_UI_HTML.count('await refreshWatchesAfterMutation();'), 2)
+
     def test_panel_heads_use_shared_component_and_stable_styles(self):
         expected_header = (
             '            <div class="panel-head" data-component="panel-head">\n'
