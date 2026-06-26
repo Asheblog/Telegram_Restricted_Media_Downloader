@@ -148,6 +148,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_ui: Union[WebUiServer, None] = None
         self.web_task_queue: asyncio.Queue = asyncio.Queue()
         self.web_submitted_task_ids: Set[int] = set()
+        self.web_running_task: Optional[asyncio.Task] = None
+        self.web_running_task_id: Optional[int] = None
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operation_counter: int = 0
         self.web_operations: dict = {}
@@ -177,7 +179,57 @@ class TelegramRestrictedMediaDownloader(Bot):
         if task_id in self.web_submitted_task_ids:
             return
         self.web_submitted_task_ids.add(task_id)
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                self.web_task_queue.put_nowait(task_id)
+                return
+        except RuntimeError:
+            pass
         self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
+
+    def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
+        def cleanup() -> None:
+            self.web_submitted_task_ids.discard(task_id)
+            self.drop_web_task_from_queue(task_id)
+            if (
+                    cancel_running
+                    and self.web_running_task_id == task_id
+                    and self.web_running_task
+                    and not self.web_running_task.done()
+            ):
+                self.web_running_task.cancel()
+
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                cleanup()
+                return
+        except RuntimeError:
+            pass
+        if self.loop.is_running():
+            self.loop.call_soon_threadsafe(cleanup)
+        else:
+            cleanup()
+
+    def drop_web_task_from_queue(self, task_id: int) -> None:
+        kept_task_ids = []
+        while True:
+            try:
+                queued_task_id = self.web_task_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if queued_task_id != task_id:
+                kept_task_ids.append(queued_task_id)
+            self.web_task_queue.task_done()
+        for queued_task_id in kept_task_ids:
+            self.web_task_queue.put_nowait(queued_task_id)
+
+    def delete_web_task(self, task_id: int) -> bool:
+        if not self.transfer_store:
+            return False
+        deleted = self.transfer_store.delete_task(task_id)
+        if deleted:
+            self.discard_web_task_submission(task_id, cancel_running=True)
+        return deleted
 
     def next_web_operation_id(self, operation_type: str) -> str:
         self.web_operation_counter += 1
@@ -1709,18 +1761,71 @@ class TelegramRestrictedMediaDownloader(Bot):
             )
 
     async def process_web_task_queue(self) -> None:
+        self.start_next_web_transfer_task()
         while not self.web_task_queue.empty():
-            task_id = await self.web_task_queue.get()
-            try:
-                await self.process_web_transfer_task(task_id)
-            finally:
-                self.web_task_queue.task_done()
+            if self.web_running_task and not self.web_running_task.done():
+                break
+            self.start_next_web_transfer_task()
+            if self.web_running_task and not self.web_running_task.done():
+                break
         while not self.web_operation_queue.empty():
             operation_id = await self.web_operation_queue.get()
             try:
                 await self.process_web_operation(operation_id)
             finally:
                 self.web_operation_queue.task_done()
+
+    def start_next_web_transfer_task(self) -> None:
+        if self.web_running_task and not self.web_running_task.done():
+            return
+        if self.web_running_task and self.web_running_task.done():
+            self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
+        while not self.web_task_queue.empty():
+            try:
+                task_id = int(self.web_task_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                return
+            try:
+                if not self.is_web_transfer_task_schedulable(task_id):
+                    self.web_submitted_task_ids.discard(task_id)
+                    continue
+                runner = self.loop.create_task(self.process_web_transfer_task(task_id))
+                self.web_running_task = runner
+                self.web_running_task_id = task_id
+                runner.add_done_callback(
+                    lambda completed_task, completed_task_id=task_id: self.finish_web_transfer_task(
+                        completed_task_id,
+                        completed_task
+                    )
+                )
+                return
+            finally:
+                self.web_task_queue.task_done()
+
+    def is_web_transfer_task_schedulable(self, task_id: int) -> bool:
+        if not self.transfer_store:
+            return False
+        task = self.transfer_store.get_task(task_id)
+        return bool(
+            task
+            and task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
+        )
+
+    def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
+        if task_id is not None:
+            self.web_submitted_task_ids.discard(task_id)
+        if self.web_running_task is completed_task:
+            self.web_running_task = None
+            self.web_running_task_id = None
+        if not completed_task.cancelled():
+            error = completed_task.exception()
+            if error:
+                log.error(
+                    f'WebUI转存任务执行失败:{task_id},{_t(KeyWord.REASON)}:"{error}"',
+                    exc_info=(type(error), error, error.__traceback__)
+                )
+        if not self.web_task_queue.empty():
+            self.loop.create_task(self.process_web_task_queue())
 
     @staticmethod
     async def __send_pay_qr(
