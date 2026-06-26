@@ -1027,6 +1027,55 @@ class TransferStoreWebUiCase(unittest.TestCase):
             events = store.list_events(task_id)
             self.assertTrue(any(event['level'] == 'warning' and 'PikPak archive' in event['message'] for event in events))
 
+    def test_direct_pikpak_forward_without_media_metadata_skips_archive(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/ctuxas',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+            archive_calls = []
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+
+            async def fake_forward(**kwargs):
+                return None
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=False, status='missing_metadata', message='metadata missing')
+
+            downloader.forward = fake_forward
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/ctuxas/1',
+                    chat=SimpleNamespace(id=-100123, username='ctuxas')
+                ),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/ctuxas/1'
+            ))
+
+            self.assertEqual([], archive_calls)
+            item = store.list_items(task_id)[0]
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertIsNone(item['archive_status'])
+            events = store.list_events(task_id)
+            self.assertFalse(any('PikPak archive missing_metadata' in event['message'] for event in events))
+
     def test_pikpak_transfer_over_target_limit_fails_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -1207,11 +1256,18 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         class FakeClient:
             def __init__(self):
+                self.pages = [
+                    [SimpleNamespace(id=99)],
+                    [SimpleNamespace(id=3)],
+                    []
+                ]
                 self.calls = []
 
-            async def get_chat_history(self, chat_id, limit=0, reverse=False, **_kwargs):
-                self.calls.append({'chat_id': chat_id, 'limit': limit, 'reverse': reverse})
-                yield SimpleNamespace(id=3 if reverse else 99)
+            async def get_chat_history(self, chat_id, limit=0, offset_id=0, **_kwargs):
+                self.calls.append({'chat_id': chat_id, 'limit': limit, 'offset_id': offset_id})
+                page = self.pages.pop(0)
+                for message in page:
+                    yield message
 
         client = FakeClient()
         downloader.app = SimpleNamespace(client=client)
@@ -1225,8 +1281,47 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual({'start_id': 3, 'end_id': 99}, detected)
         self.assertEqual(
             [
-                {'chat_id': 'source-chat', 'limit': 1, 'reverse': False},
-                {'chat_id': 'source-chat', 'limit': 1, 'reverse': True}
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 99},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 3}
+            ],
+            client.calls
+        )
+
+    def test_downloader_detects_transfer_range_start_from_actual_history_tail(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.pages = [
+                    [SimpleNamespace(id=99), SimpleNamespace(id=98)],
+                    [SimpleNamespace(id=51), SimpleNamespace(id=50)],
+                    []
+                ]
+                self.calls = []
+
+            async def get_chat_history(self, chat_id, limit=0, offset_id=0, **_kwargs):
+                self.calls.append({'chat_id': chat_id, 'limit': limit, 'offset_id': offset_id})
+                page = self.pages.pop(0)
+                for message in page:
+                    yield message
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'source-chat'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            detected = asyncio.run(downloader.detect_transfer_range_async('https://t.me/source'))
+
+        self.assertEqual({'start_id': 50, 'end_id': 99}, detected)
+        self.assertEqual(
+            [
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 98},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset_id': 50}
             ],
             client.calls
         )

@@ -210,29 +210,39 @@ class TelegramRestrictedMediaDownloader(Bot):
         chat_id = origin_meta.get('chat_id')
         if not chat_id:
             raise ValueError('Invalid source link.')
-        newest = await self.first_chat_history_message(chat_id=chat_id, reverse=False)
-        if not newest:
+        oldest = None
+        newest = None
+        async for message in self.iter_transfer_range_history(chat_id=chat_id):
+            newest = newest or message
+            oldest = message
+        if not newest or not oldest:
             return None
-        oldest = await self.first_chat_history_message(chat_id=chat_id, reverse=True)
-        if not oldest:
-            oldest = newest
         return {
             'start_id': int(getattr(oldest, 'id')),
             'end_id': int(getattr(newest, 'id'))
         }
 
-    async def first_chat_history_message(self, chat_id, reverse: bool):
+    async def iter_transfer_range_history(self, chat_id, limit: int = 100):
+        offset_id = 0
         while True:
+            last_message_id = None
             try:
                 async for message in self.app.client.get_chat_history(
                         chat_id=chat_id,
-                        limit=1,
-                        reverse=reverse
+                        limit=limit,
+                        offset_id=offset_id
                 ):
-                    return message
-                return None
+                    last_message_id = getattr(message, 'id', None)
+                    yield message
             except (FloodWait, FloodPremiumWait) as e:
                 await self.wait_for_telegram_flood(e, action='detect transfer range')
+                continue
+            if last_message_id is None:
+                return
+            next_offset_id = int(last_message_id)
+            if next_offset_id <= 0 or next_offset_id == offset_id:
+                return
+            offset_id = next_offset_id
 
     @staticmethod
     def download_watch_id(source_link: str) -> str:
@@ -1044,6 +1054,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
         file_name = file_name or (media_meta or {}).get('file_name')
         file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
+        if not file_name and (file_size is None or transferred_at is None):
+            return None
         result = self.get_pikpak_archive_client().archive_file(
             source_folder=folder,
             file_name=file_name,
@@ -1180,6 +1192,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     ignore_type_filter=True,
                     archive_after_success=False
                 )
+                media_meta = self.get_message_media_target_limit_meta(message)
                 item_id = self.transfer_store.add_item(
                     task_id=int(task.get('id')),
                     source_chat_id=origin_chat_id,
@@ -1187,14 +1200,14 @@ class TelegramRestrictedMediaDownloader(Bot):
                     source_link=source_link,
                     target_link=task.get('target_link'),
                     media_type='forward',
-                    file_name=(self.get_message_media_target_limit_meta(message) or {}).get('file_name'),
-                    file_size=(self.get_message_media_target_limit_meta(message) or {}).get('file_size'),
+                    file_name=(media_meta or {}).get('file_name'),
+                    file_size=(media_meta or {}).get('file_size'),
                     source_folder=source_folder_from_message(
                         message,
                         fallback_chat_id=origin_chat_id,
                         fallback_link=source_link
                     ),
-                    archive_status='pending' if task.get('target_profile') == 'pikpak' else None,
+                    archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,
                     phase='forwarded',
                     status=TransferStatus.SUCCESS
                 )
