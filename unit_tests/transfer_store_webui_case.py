@@ -25,6 +25,9 @@ class FakeWebUiOperations:
         self.created_uploads = []
         self.created_channel_downloads = []
         self.exported_tables = []
+        self.transfer_range = None
+        self.transfer_range_error = None
+        self.detected_transfer_ranges = []
 
     def list_watches(self):
         return list(self.watches.values())
@@ -83,6 +86,12 @@ class FakeWebUiOperations:
     def create_channel_download(self, payload):
         self.created_channel_downloads.append(payload)
         return {'accepted': True, 'task_id': len(self.created_channel_downloads)}
+
+    def detect_transfer_range(self, source_link):
+        self.detected_transfer_ranges.append(source_link)
+        if self.transfer_range_error:
+            raise self.transfer_range_error
+        return self.transfer_range
 
     def statistics(self):
         return {
@@ -372,6 +381,120 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(400, response.status)
                 self.assertEqual('range_end_before_start', body['error_code'])
+
+                conn.request(
+                    'POST',
+                    '/api/tasks',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/pikpak_bot',
+                        'start_id': 1
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(400, response.status)
+                self.assertEqual('range_ids_required', body['error_code'])
+            finally:
+                server.stop()
+
+    def test_webui_task_api_detects_transfer_range_when_chat_link_has_no_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            submitted = []
+            operations = FakeWebUiOperations()
+            operations.transfer_range = {'start_id': 1, 'end_id': 9}
+            server = WebUiServer(
+                store=store,
+                task_submitter=submitted.append,
+                operations=operations,
+                username='admin',
+                password='pass'
+            )
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/tasks',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/pikpak_bot'
+                    }),
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+
+                self.assertEqual(201, response.status)
+                task = store.get_task(body['task_id'])
+                self.assertEqual(1, task['start_id'])
+                self.assertEqual(9, task['end_id'])
+                self.assertEqual([body['task_id']], submitted)
+                self.assertEqual(['https://t.me/source'], operations.detected_transfer_ranges)
+            finally:
+                server.stop()
+
+    def test_webui_task_api_keeps_message_link_without_auto_range(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            operations.transfer_range = {'start_id': 1, 'end_id': 9}
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/tasks',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source/123',
+                        'target_link': 'https://t.me/pikpak_bot'
+                    }),
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+
+                self.assertEqual(201, response.status)
+                task = store.get_task(body['task_id'])
+                self.assertIsNone(task['start_id'])
+                self.assertIsNone(task['end_id'])
+                self.assertEqual([], operations.detected_transfer_ranges)
+            finally:
+                server.stop()
+
+    def test_webui_task_api_reports_empty_detected_transfer_range(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            operations.transfer_range = None
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'POST',
+                    '/api/tasks',
+                    body=json.dumps({
+                        'source_link': 'https://t.me/source',
+                        'target_link': 'https://t.me/pikpak_bot'
+                    }),
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+
+                self.assertEqual(400, response.status)
+                self.assertEqual('transfer_range_empty', body['error_code'])
+                self.assertEqual([], store.list_tasks())
             finally:
                 server.stop()
 
@@ -1018,6 +1141,95 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(2, task['total_items'])
             self.assertEqual(2, task['completed_items'])
             self.assertEqual(TransferStatus.SUCCESS, task['status'])
+
+    def test_webui_transfer_skips_missing_range_messages_and_continues(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=3
+            )
+            messages = [
+                SimpleNamespace(id=1, link='https://t.me/source/1'),
+                SimpleNamespace(id=3, link='https://t.me/source/3')
+            ]
+
+            class FakeClient:
+                def __init__(self, items):
+                    self.items = {item.id: item for item in items}
+
+                async def get_messages(self, chat_id, message_ids):
+                    return self.items.get(message_ids)
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=FakeClient(messages))
+            downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+
+            downloader.forward = fake_forward
+
+            async def fake_parse_link(client, link):
+                if link == 'https://t.me/source':
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/pikpak_bot':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
+
+            with patch('module.downloader.parse_link', side_effect=fake_parse_link), \
+                    patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
+                asyncio.run(downloader.process_web_transfer_task(task_id))
+
+            self.assertEqual([1, 3], [call['message_id'] for call in downloader.forward_calls])
+            items = store.list_items(task_id)
+            skipped = [item for item in items if item['source_message_id'] == 2]
+            self.assertEqual(1, len(skipped))
+            self.assertEqual(TransferStatus.SKIPPED, skipped[0]['status'])
+            self.assertIn('not found', skipped[0]['error_message'])
+            events = store.list_events(task_id)
+            self.assertTrue(any(event['level'] == 'warning' and '2' in event['message'] for event in events))
+            task = store.get_task(task_id)
+            self.assertEqual(3, task['total_items'])
+            self.assertEqual(3, task['completed_items'])
+            self.assertEqual(TransferStatus.SUCCESS, task['status'])
+
+    def test_downloader_detects_transfer_range_from_accessible_chat_history(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            async def get_chat_history(self, chat_id, limit=0, reverse=False, **_kwargs):
+                self.calls.append({'chat_id': chat_id, 'limit': limit, 'reverse': reverse})
+                yield SimpleNamespace(id=3 if reverse else 99)
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'source-chat'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            detected = asyncio.run(downloader.detect_transfer_range_async('https://t.me/source'))
+
+        self.assertEqual({'start_id': 3, 'end_id': 99}, detected)
+        self.assertEqual(
+            [
+                {'chat_id': 'source-chat', 'limit': 1, 'reverse': False},
+                {'chat_id': 'source-chat', 'limit': 1, 'reverse': True}
+            ],
+            client.calls
+        )
 
     def test_forward_waits_and_retries_copy_message_flood_wait(self):
         from pyrogram.errors import FloodWait

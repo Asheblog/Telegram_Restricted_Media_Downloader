@@ -36,6 +36,39 @@ class WebUiApiError(Exception):
         self.status = status
 
 
+def normalize_optional_int(value):
+    return int(value) if value not in (None, '') else None
+
+
+def is_message_link(link: str) -> bool:
+    try:
+        parsed = urlparse(str(link).strip())
+    except ValueError:
+        return False
+    paths = [part for part in parsed.path.split('/') if part]
+    if not paths:
+        return False
+    if paths[0] == 'c':
+        return len(paths) >= 3 and paths[-1].isdigit()
+    return len(paths) >= 2 and paths[-1].isdigit()
+
+
+def normalize_detected_transfer_range(value) -> Optional[tuple[int, int]]:
+    if value in (None, ''):
+        return None
+    if isinstance(value, dict):
+        start_id = value.get('start_id')
+        end_id = value.get('end_id')
+    else:
+        try:
+            start_id, end_id = value
+        except (TypeError, ValueError):
+            return None
+    if start_id in (None, '') or end_id in (None, ''):
+        return None
+    return int(start_id), int(end_id)
+
+
 class WebUiServer:
     def __init__(
             self,
@@ -290,42 +323,9 @@ class WebUiServer:
                     return
                 try:
                     payload = self._read_json()
-                    source_link = str(payload.get('source_link') or '').strip()
-                    target_link = str(payload.get('target_link') or 'https://t.me/pikpak_bot').strip()
-                    target_profile = str(payload.get('target_profile') or 'pikpak').strip()
-                    include_comment = bool(payload.get('include_comment'))
-                    start_id = payload.get('start_id')
-                    end_id = payload.get('end_id')
-                    if not source_link:
-                        self._send_error('source_link_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
-                        return
-                    if not target_link:
-                        self._send_error('target_link_required', 'Target link is required.', HTTPStatus.BAD_REQUEST)
-                        return
-                    start_id = int(start_id) if start_id not in (None, '') else None
-                    end_id = int(end_id) if end_id not in (None, '') else None
-                    if (start_id is None) != (end_id is None):
-                        self._send_error('range_ids_required', 'Start ID and End ID must be provided together.', HTTPStatus.BAD_REQUEST)
-                        return
-                    if start_id is not None and end_id is not None:
-                        if end_id < start_id:
-                            self._send_error('range_end_before_start', 'End ID must be greater than or equal to Start ID.', HTTPStatus.BAD_REQUEST)
-                            return
-                        normalized_source = source_link.rstrip('/')
-                        if normalized_source.count('/') >= 4 and normalized_source.rsplit('/', 1)[-1].isdigit():
-                            self._send_error('range_source_must_be_chat_link', 'Range transfer source must be a chat link, not a message link.', HTTPStatus.BAD_REQUEST)
-                            return
-                    task_id = server.store.create_task(
-                        source_link=source_link,
-                        target_link=target_link,
-                        target_profile=target_profile,
-                        start_id=start_id,
-                        end_id=end_id,
-                        include_comment=include_comment
-                    )
-                    if server.task_submitter:
-                        server.task_submitter(task_id)
-                    self._send_json({'task_id': task_id}, HTTPStatus.CREATED)
+                    self._send_json(server.create_task(payload), HTTPStatus.CREATED)
+                except WebUiApiError as e:
+                    self._send_error(e.error_code, e.message, e.status)
                 except Exception as e:
                     log.exception('[WebUI] 创建任务失败。')
                     self._send_json(
@@ -411,6 +411,87 @@ class WebUiServer:
         if self.settings_provider:
             return self.settings_provider()
         return load_runtime_settings()
+
+    def create_task(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        source_link = str(payload.get('source_link') or '').strip()
+        target_link = str(payload.get('target_link') or 'https://t.me/pikpak_bot').strip()
+        target_profile = str(payload.get('target_profile') or 'pikpak').strip()
+        include_comment = bool(payload.get('include_comment'))
+        if not source_link:
+            raise WebUiApiError('source_link_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
+        if not target_link:
+            raise WebUiApiError('target_link_required', 'Target link is required.', HTTPStatus.BAD_REQUEST)
+        start_id = normalize_optional_int(payload.get('start_id'))
+        end_id = normalize_optional_int(payload.get('end_id'))
+        if (start_id is None) != (end_id is None):
+            raise WebUiApiError(
+                'range_ids_required',
+                'Start ID and End ID must be provided together.',
+                HTTPStatus.BAD_REQUEST
+            )
+        source_is_message_link = is_message_link(source_link)
+        if start_id is None and end_id is None and not source_is_message_link:
+            start_id, end_id = self.detect_transfer_range(source_link)
+        if start_id is not None and end_id is not None:
+            if end_id < start_id:
+                raise WebUiApiError(
+                    'range_end_before_start',
+                    'End ID must be greater than or equal to Start ID.',
+                    HTTPStatus.BAD_REQUEST
+                )
+            if source_is_message_link:
+                raise WebUiApiError(
+                    'range_source_must_be_chat_link',
+                    'Range transfer source must be a chat link, not a message link.',
+                    HTTPStatus.BAD_REQUEST
+                )
+        task_id = self.store.create_task(
+            source_link=source_link,
+            target_link=target_link,
+            target_profile=target_profile,
+            start_id=start_id,
+            end_id=end_id,
+            include_comment=include_comment
+        )
+        if self.task_submitter:
+            self.task_submitter(task_id)
+        return {'task_id': task_id}
+
+    def detect_transfer_range(self, source_link: str) -> tuple[int, int]:
+        if not self.operations or not hasattr(self.operations, 'detect_transfer_range'):
+            raise WebUiApiError(
+                'transfer_range_detection_unavailable',
+                'Transfer range detection is unavailable.',
+                HTTPStatus.BAD_REQUEST
+            )
+        try:
+            detected = normalize_detected_transfer_range(
+                self.operations.detect_transfer_range(source_link)
+            )
+        except WebUiApiError:
+            raise
+        except Exception as e:
+            raise WebUiApiError(
+                'transfer_range_detection_failed',
+                str(e) or 'Transfer range detection failed.',
+                HTTPStatus.BAD_REQUEST
+            ) from e
+        if detected is None:
+            raise WebUiApiError(
+                'transfer_range_empty',
+                'No accessible messages were found for the source.',
+                HTTPStatus.BAD_REQUEST
+            )
+        start_id, end_id = detected
+        if start_id > end_id:
+            raise WebUiApiError(
+                'range_end_before_start',
+                'End ID must be greater than or equal to Start ID.',
+                HTTPStatus.BAD_REQUEST
+            )
+        return start_id, end_id
 
     def list_watches(self) -> list:
         if self.operations and hasattr(self.operations, 'list_watches'):
