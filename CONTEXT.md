@@ -20,6 +20,10 @@ _Avoid_: Local download folder, bot chat folder
 The PikPak folder where the PikPak Target initially stores media before a PikPak Archive moves it into a Source Channel Folder.
 _Avoid_: Archive root, source channel folder
 
+**PikPak Ingest Confirmation**:
+A reply from the PikPak Target showing that PikPak has accepted and saved a transferred media item. Telegram delivery to the PikPak Target is not enough to make a transfer successful.
+_Avoid_: Forward success, copy success
+
 **Transfer Task**:
 A persisted user request to move one or more source messages to a target conversation.
 _Avoid_: Download task, forward job
