@@ -1420,6 +1420,28 @@ class TelegramRestrictedMediaDownloader(Bot):
                         forwarded_message=forwarded_message
                     )
                     if not confirmed:
+                        archive_result = self.archive_pikpak_item(
+                            target_profile=task.get('target_profile'),
+                            item_id=item_id,
+                            task_id=task_id,
+                            message=message,
+                            source_link=source_link,
+                            transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                        )
+                        if bool(getattr(archive_result, 'ok', False)):
+                            self.transfer_store.update_item(
+                                item_id,
+                                phase='forwarded',
+                                status=TransferStatus.SUCCESS,
+                                error_message=''
+                            )
+                            self.transfer_store.add_event(
+                                task_id,
+                                f'PikPak ingest confirmation recovered by archive: {source_link}',
+                                item_id=item_id
+                            )
+                            self.refresh_transfer_task_counts(task_id)
+                            return False
                         error_message = f'PikPak ingest confirmation timeout or failure: {source_link}'
                         self.transfer_store.update_item(
                             item_id,

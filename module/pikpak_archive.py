@@ -76,6 +76,23 @@ class RclonePikPakArchiveClient:
                 transferred_at=transferred_at
             )
             if not candidates:
+                archived_candidates = self._list_matching_candidates(
+                    root=target_dir,
+                    file_name=file_name,
+                    file_size=file_size,
+                    transferred_at=transferred_at
+                )
+                if len(archived_candidates) == 1:
+                    archived_name = clean_remote_segment(file_name or archived_candidates[0].get('Name'))
+                    if not archived_name:
+                        return PikPakArchiveResult(False, 'not_found', 'No archived PikPak file name was available.')
+                    archived_path = candidate_remote_path(
+                        target_dir,
+                        archived_candidates[0].get('Path') or archived_name
+                    )
+                    return PikPakArchiveResult(True, 'already_archived', archive_path=archived_path)
+                if len(archived_candidates) > 1:
+                    return PikPakArchiveResult(False, 'ambiguous', f'Multiple archived PikPak files matched {file_name}.')
                 return PikPakArchiveResult(False, 'not_found', f'No PikPak file matched {file_name}.')
             if len(candidates) > 1:
                 return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {file_name}.')
