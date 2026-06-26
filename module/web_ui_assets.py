@@ -809,7 +809,7 @@ WEB_UI_BODY = f'''
                 </label>
               </div>
               <label class="check"><input id="transfer-include-comment" name="include_comment" type="checkbox"><span data-i18n="new.includeComment">包含评论区</span></label>
-              <p class="hint" data-i18n="new.hint">单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。</p>
+              <p class="hint" data-i18n="new.hint">单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。</p>
               <div class="form-error" id="form-error" role="alert" aria-live="polite"></div>
               <div class="actions">
                 <button type="submit">
@@ -1203,7 +1203,7 @@ WEB_UI_SCRIPT = r'''
       'new.endId': '结束 ID',
       'new.optional': '可选',
       'new.includeComment': '包含评论区',
-      'new.hint': '单条消息链接不需要填写范围。频道范围转存请填写频道链接、起始 ID 和结束 ID。',
+      'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
       'new.create': '创建任务',
       'watches.title': '当前实时监听',
       'watches.downloadTitle': '监听下载',
@@ -1342,6 +1342,9 @@ WEB_UI_SCRIPT = r'''
       'error.range_ids_required': '起始 ID 和结束 ID 必须同时填写。',
       'error.range_end_before_start': '结束 ID 必须大于或等于起始 ID。',
       'error.range_source_must_be_chat_link': '范围转存的来源必须是频道链接，不能是单条消息链接。',
+      'error.transfer_range_detection_unavailable': '当前运行模式无法自动探测消息范围。',
+      'error.transfer_range_detection_failed': '自动探测消息范围失败。',
+      'error.transfer_range_empty': '来源中没有可访问的消息。',
       'error.create_task_failed': '创建任务失败。',
       'error.update_settings_failed': '更新设置失败。',
       'error.watch_source_conflict': '同一来源不能同时存在监听下载和监听转发。',
@@ -1419,7 +1422,7 @@ WEB_UI_SCRIPT = r'''
       'new.endId': 'End ID',
       'new.optional': 'Optional',
       'new.includeComment': 'Include discussion replies',
-      'new.hint': 'For a single message link, leave the range empty. For a channel range, provide the channel link plus start and end message IDs.',
+      'new.hint': 'Leave the range empty for a message link. For a channel or group link, empty IDs auto-detect the accessible range, or you can set start and end IDs manually.',
       'new.create': 'Create task',
       'watches.title': 'Current live watches',
       'watches.downloadTitle': 'Download watch',
@@ -1558,6 +1561,9 @@ WEB_UI_SCRIPT = r'''
       'error.range_ids_required': 'Start ID and End ID must be provided together.',
       'error.range_end_before_start': 'End ID must be greater than or equal to Start ID.',
       'error.range_source_must_be_chat_link': 'Range transfer source must be a chat link, not a message link.',
+      'error.transfer_range_detection_unavailable': 'Automatic message range detection is unavailable in this runtime.',
+      'error.transfer_range_detection_failed': 'Automatic message range detection failed.',
+      'error.transfer_range_empty': 'No accessible messages were found for the source.',
       'error.create_task_failed': 'Create task failed.',
       'error.update_settings_failed': 'Update settings failed.',
       'error.watch_source_conflict': 'The same source cannot have a download watch and a forward watch at the same time.',

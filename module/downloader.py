@@ -198,6 +198,42 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.loop.call_soon_threadsafe(self.web_operation_queue.put_nowait, operation_id)
         return operation
 
+    def detect_transfer_range(self, source_link: str) -> Optional[dict]:
+        future = asyncio.run_coroutine_threadsafe(
+            self.detect_transfer_range_async(source_link),
+            self.loop
+        )
+        return future.result(timeout=60)
+
+    async def detect_transfer_range_async(self, source_link: str) -> Optional[dict]:
+        origin_meta = await parse_link(client=self.app.client, link=source_link)
+        chat_id = origin_meta.get('chat_id')
+        if not chat_id:
+            raise ValueError('Invalid source link.')
+        newest = await self.first_chat_history_message(chat_id=chat_id, reverse=False)
+        if not newest:
+            return None
+        oldest = await self.first_chat_history_message(chat_id=chat_id, reverse=True)
+        if not oldest:
+            oldest = newest
+        return {
+            'start_id': int(getattr(oldest, 'id')),
+            'end_id': int(getattr(newest, 'id'))
+        }
+
+    async def first_chat_history_message(self, chat_id, reverse: bool):
+        while True:
+            try:
+                async for message in self.app.client.get_chat_history(
+                        chat_id=chat_id,
+                        limit=1,
+                        reverse=reverse
+                ):
+                    return message
+                return None
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, action='detect transfer range')
+
     @staticmethod
     def download_watch_id(source_link: str) -> str:
         return f'download:{source_link}'
@@ -1259,6 +1295,33 @@ class TelegramRestrictedMediaDownloader(Bot):
             except (FloodWait, FloodPremiumWait) as e:
                 await self.wait_for_telegram_flood(e, task_id=task_id, action='load range transfer message')
 
+    def skip_missing_web_transfer_range_message(
+            self,
+            task: dict,
+            origin_chat_id,
+            source_link: str,
+            message_id: int
+    ) -> None:
+        task_id = int(task.get('id'))
+        message_link = f'{source_link.rstrip("/")}/{message_id}'
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_chat_id=origin_chat_id,
+            source_message_id=message_id,
+            source_link=message_link,
+            target_link=task.get('target_link'),
+            phase='skipped',
+            status=TransferStatus.SKIPPED,
+            error_message=f'Source message not found: {message_id}.'
+        )
+        self.transfer_store.add_event(
+            task_id,
+            f'Source message not found, skipped: {message_id}.',
+            level='warning',
+            item_id=item_id
+        )
+        self.refresh_transfer_task_counts(task_id)
+
     async def process_web_transfer_task(self, task_id: int) -> None:
         if not self.transfer_store:
             return
@@ -1298,7 +1361,13 @@ class TelegramRestrictedMediaDownloader(Bot):
                     await self.wait_between_transfer_messages()
                     message = await self.get_web_transfer_range_message(origin_chat_id, message_id, task_id)
                     if not message:
-                        raise RuntimeError(f'Failed to load transfer message: {message_id}.')
+                        self.skip_missing_web_transfer_range_message(
+                            task=task,
+                            origin_chat_id=origin_chat_id,
+                            source_link=source_link,
+                            message_id=message_id
+                        )
+                        continue
                     message_link = f'{source_prefix}/{getattr(message, "id", "")}'
                     used_fallback = await self.transfer_message_to_web_target(
                         task=task,
