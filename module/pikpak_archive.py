@@ -12,6 +12,7 @@ from typing import Callable, Optional
 DEFAULT_ARCHIVE_CONFIG = {
     'enable': False,
     'remote': '',
+    'source_directory': 'My Telegram',
     'root_directory': 'Telegram',
     'poll_seconds': 60,
     'poll_interval_seconds': 5,
@@ -64,11 +65,12 @@ class RclonePikPakArchiveClient:
         try:
             source_folder = clean_remote_segment(source_folder)
             file_name = clean_remote_segment(file_name) if file_name else None
-            root = clean_remote_path(self.config.get('root_directory') or '')
-            target_dir = join_remote_path(root, source_folder)
+            source_root = clean_remote_path(self.config.get('source_directory') or '')
+            target_root = clean_remote_path(self.config.get('root_directory') or '')
+            target_dir = join_remote_path(target_root, source_folder)
             self.ensure_directory(target_dir)
             candidates = self.find_candidates(
-                root=root,
+                root=source_root,
                 file_name=file_name,
                 file_size=file_size,
                 transferred_at=transferred_at
@@ -77,7 +79,7 @@ class RclonePikPakArchiveClient:
                 return PikPakArchiveResult(False, 'not_found', f'No PikPak file matched {file_name}.')
             if len(candidates) > 1:
                 return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {file_name}.')
-            source_path = candidate_remote_path(root, candidates[0].get('Path') or candidates[0].get('Name'))
+            source_path = candidate_remote_path(source_root, candidates[0].get('Path') or candidates[0].get('Name'))
             target_name = clean_remote_segment(file_name or candidates[0].get('Name'))
             target_path = join_remote_path(target_dir, target_name)
             if not source_path:
@@ -177,6 +179,7 @@ def normalize_archive_config(config: Optional[dict]) -> dict:
         result.update(config)
     result['enable'] = bool(result.get('enable'))
     result['remote'] = str(result.get('remote') or '').strip().rstrip(':')
+    result['source_directory'] = clean_remote_path(str(result.get('source_directory') or ''))
     result['root_directory'] = clean_remote_path(str(result.get('root_directory') or ''))
     for key in ('poll_seconds', 'poll_interval_seconds', 'match_window_seconds'):
         try:

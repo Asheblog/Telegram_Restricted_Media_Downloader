@@ -190,6 +190,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         archive = GlobalConfig.TEMPLATE['target_profiles']['pikpak']['archive']
         self.assertTrue(archive['enable'])
         self.assertEqual('pikpak', archive['remote'])
+        self.assertEqual('My Telegram', archive['source_directory'])
         self.assertEqual('Telegram', archive['root_directory'])
 
         settings = merge_allowed_settings(
@@ -240,6 +241,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         archive = config['target_profiles']['pikpak']['archive']
         self.assertTrue(archive['enable'])
         self.assertEqual('pikpak', archive['remote'])
+        self.assertEqual('My Telegram', archive['source_directory'])
         self.assertEqual('Telegram', archive['root_directory'])
         self.assertEqual(60, archive['poll_seconds'])
         self.assertEqual(5, archive['poll_interval_seconds'])

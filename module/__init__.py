@@ -152,6 +152,7 @@ target_profiles:
     archive:
       enable: true # 是否使用rclone将PikPak入库后的文件按来源频道归档。
       remote: pikpak # rclone中的PikPak remote名称。
+      source_directory: My Telegram # PikPak bot入库后的默认目录。
       root_directory: Telegram # PikPak归档根目录。
       poll_seconds: 60 # 等待PikPak入库的最长轮询秒数。
       poll_interval_seconds: 5 # 轮询间隔秒数。

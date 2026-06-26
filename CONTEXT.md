@@ -16,6 +16,10 @@ _Avoid_: PikPak API, cloud drive target
 A target-side organization step that places media received by the PikPak Target into a durable PikPak folder after the transfer reaches PikPak.
 _Avoid_: Local download folder, bot chat folder
 
+**PikPak Ingest Folder**:
+The PikPak folder where the PikPak Target initially stores media before a PikPak Archive moves it into a Source Channel Folder.
+_Avoid_: Archive root, source channel folder
+
 **Transfer Task**:
 A persisted user request to move one or more source messages to a target conversation.
 _Avoid_: Download task, forward job

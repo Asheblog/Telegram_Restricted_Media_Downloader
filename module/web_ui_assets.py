@@ -911,6 +911,7 @@ WEB_UI_BODY = f'''
                       </div>
                       <div class="field-grid">
                         <label class="field"><span data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote"></label>
+                        <label class="field"><span data-i18n="settings.pikpakArchiveSource">PikPak入库目录</span><input name="global.target_profiles.pikpak.archive.source_directory"></label>
                         <label class="field"><span data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</span><input name="global.target_profiles.pikpak.archive.root_directory"></label>
                         <label class="field"><span data-i18n="settings.pikpakArchivePoll">入库轮询秒数</span><input name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0"></label>
                         <label class="field"><span data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0"></label>
@@ -1303,6 +1304,7 @@ WEB_UI_SCRIPT = r'''
       'settings.pikpakMaxFileSize': 'PikPak大小上限(字节)',
       'settings.pikpakArchiveEnable': 'PikPak按来源频道归档',
       'settings.pikpakArchiveRemote': 'PikPak rclone remote',
+      'settings.pikpakArchiveSource': 'PikPak入库目录',
       'settings.pikpakArchiveRoot': 'PikPak归档根目录',
       'settings.pikpakArchivePoll': '入库轮询秒数',
       'settings.pikpakArchiveInterval': '轮询间隔秒数',
@@ -1525,6 +1527,7 @@ WEB_UI_SCRIPT = r'''
       'settings.pikpakMaxFileSize': 'PikPak size limit (bytes)',
       'settings.pikpakArchiveEnable': 'Archive PikPak by source channel',
       'settings.pikpakArchiveRemote': 'PikPak rclone remote',
+      'settings.pikpakArchiveSource': 'PikPak source folder',
       'settings.pikpakArchiveRoot': 'PikPak archive root',
       'settings.pikpakArchivePoll': 'Ingest poll seconds',
       'settings.pikpakArchiveInterval': 'Poll interval seconds',
