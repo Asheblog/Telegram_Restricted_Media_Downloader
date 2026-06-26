@@ -2,6 +2,7 @@
 import base64
 import asyncio
 import http.client
+import inspect
 import json
 import os
 import sys
@@ -809,6 +810,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.create_download_task = fake_create_download_task
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             async def fake_parse_link(client, link):
                 if link == 'https://t.me/source':
@@ -875,6 +877,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 downloader.forward_calls.append(kwargs)
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             async def fake_parse_link(client, link):
                 if link == 'https://t.me/source':
@@ -935,6 +938,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return {'status': 'downloading'}
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
             downloader.create_download_task = fake_create_download_task
 
             reply_count, fallback_count = asyncio.run(downloader.transfer_web_discussion_replies_to_target(
@@ -972,6 +976,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 downloader.forward_calls.append(kwargs)
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -1030,6 +1035,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -1051,6 +1057,241 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual('not_found', item['archive_status'])
             events = store.list_events(task_id)
             self.assertTrue(any(event['level'] == 'warning' and 'PikPak archive' in event['message'] for event in events))
+
+    def test_direct_pikpak_forward_without_ingest_confirmation_records_failure(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+                return SimpleNamespace(id=100)
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+
+            with self.assertRaisesRegex(RuntimeError, 'PikPak ingest confirmation'):
+                asyncio.run(downloader.transfer_message_to_web_target(
+                    task=task,
+                    message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                    origin_chat_id='source-chat',
+                    target_chat_id='target-chat',
+                    source_link='https://t.me/source/1'
+                ))
+
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            self.assertIn('PikPak ingest confirmation', items[0]['error_message'])
+            self.assertEqual(0, store.get_task(task_id)['completed_items'])
+            self.assertEqual(set(), store.completed_source_message_ids(task_id))
+
+    def test_webui_pikpak_confirmation_failure_stops_range_assignment(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=2
+            )
+            messages = [
+                SimpleNamespace(id=1, link='https://t.me/source/1'),
+                SimpleNamespace(id=2, link='https://t.me/source/2')
+            ]
+
+            class FakeClient:
+                def __init__(self, items):
+                    self.items = {item.id: item for item in items}
+
+                async def get_messages(self, chat_id, message_ids):
+                    return self.items.get(message_ids)
+
+            downloader.transfer_store = store
+            downloader.uploader = object()
+            downloader.app = SimpleNamespace(client=FakeClient(messages))
+            downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+            downloader.forward_calls = []
+
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
+                return SimpleNamespace(id=100 + kwargs['message_id'])
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+
+            async def fake_parse_link(client, link):
+                if link == 'https://t.me/source':
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/pikpak_bot':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
+
+            with patch('module.downloader.parse_link', side_effect=fake_parse_link), \
+                    patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
+                asyncio.run(downloader.process_web_transfer_task(task_id))
+
+            self.assertEqual([1], [call['message_id'] for call in downloader.forward_calls])
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            task = store.get_task(task_id)
+            self.assertEqual(TransferStatus.FAILURE, task['status'])
+            self.assertIn('PikPak ingest confirmation', task['error_message'])
+
+    def test_direct_pikpak_forward_with_ingest_confirmation_records_success(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+            archive_calls = []
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.gc = SimpleNamespace(
+                config={
+                    'target_profiles': {
+                        'pikpak': {
+                            'archive': {
+                                'enable': True,
+                                'remote': 'pikpak',
+                                'root_directory': 'Telegram'
+                            }
+                        }
+                    }
+                }
+            )
+
+            async def fake_forward(**_kwargs):
+                return SimpleNamespace(id=100)
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=True, status='success', archive_path='Telegram/source/video.mp4')
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    chat=SimpleNamespace(id='source-chat'),
+                    video=SimpleNamespace(file_size=5, file_name='video.mp4')
+                ),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
+
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
+            self.assertEqual(1, store.get_task(task_id)['completed_items'])
+            self.assertEqual(1, len(archive_calls))
+
+    def test_direct_non_pikpak_forward_does_not_wait_for_ingest_confirmation(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/target',
+                target_profile='telegram',
+                start_id=1,
+                end_id=1
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+
+            async def fake_forward(**_kwargs):
+                return SimpleNamespace(id=100)
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
+
+            downloader.wait_for_pikpak_ingest_confirmation.assert_not_awaited()
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
+
+    def test_pikpak_ingest_confirmation_ignores_success_before_forwarded_message(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = 0
+
+            async def get_chat_history(self, chat_id, limit):
+                self.calls += 1
+                messages = (
+                    [SimpleNamespace(id=99, text='保存成功')]
+                    if self.calls == 1
+                    else [SimpleNamespace(id=101, text='保存成功')]
+                )
+                for message in messages:
+                    yield message
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+
+        async def run_case():
+            with patch('module.downloader.asyncio.sleep', new=AsyncMock()):
+                return await downloader.wait_for_pikpak_ingest_confirmation(
+                    target_chat_id='target-chat',
+                    forwarded_message=SimpleNamespace(id=100),
+                    timeout_seconds=1,
+                    poll_interval=0
+                )
+
+        self.assertTrue(asyncio.run(run_case()))
+        self.assertEqual(2, downloader.app.client.calls)
+
+    def test_pikpak_ingest_confirmation_default_timeout_is_short(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        signature = inspect.signature(TelegramRestrictedMediaDownloader.wait_for_pikpak_ingest_confirmation)
+        self.assertEqual(15, signature.parameters['timeout_seconds'].default)
 
     def test_direct_pikpak_forward_without_media_metadata_skips_archive(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
@@ -1081,6 +1322,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -1132,6 +1374,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return {'status': 'success'}
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
             downloader.create_download_task = fake_create_download_task
 
             used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
@@ -1198,6 +1441,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 downloader.forward_calls.append(kwargs)
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             async def fake_parse_link(client, link):
                 if link == 'https://t.me/source':
@@ -1250,6 +1494,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 downloader.forward_calls.append(kwargs)
 
             downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             async def fake_parse_link(client, link):
                 if link == 'https://t.me/source':
