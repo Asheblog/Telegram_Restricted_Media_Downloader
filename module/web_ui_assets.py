@@ -341,6 +341,7 @@ WEB_UI_CSS = r'''
     font-size: var(--font-sm);
     line-height: 1.45;
   }
+  .form-error.ok,
   .notice.ok {
     color: var(--ok);
     background: #e5f5ed;
@@ -1333,6 +1334,9 @@ WEB_UI_SCRIPT = r'''
       'records.empty': '还没有下载成功记录。',
       'form.createFailed': '创建任务失败。',
       'form.requestFailed': '请求失败。',
+      'form.creatingTransfer': '正在分析来源消息范围，Telegram 限流时可能需要等待。请保持页面打开。',
+      'form.creatingTransferShort': '正在分析',
+      'form.createSuccess': '任务已创建并开始排队。可以关闭页面，也可以继续查看进度。',
       'error.auth_required': '需要登录。',
       'error.invalid_task_id': '任务 ID 无效。',
       'error.task_not_found': '找不到任务。',
@@ -1552,6 +1556,9 @@ WEB_UI_SCRIPT = r'''
       'records.empty': 'No download success records yet.',
       'form.createFailed': 'Create task failed.',
       'form.requestFailed': 'Request failed.',
+      'form.creatingTransfer': 'Analyzing the source message range. Telegram flood waits can take a while; keep this page open.',
+      'form.creatingTransferShort': 'Analyzing',
+      'form.createSuccess': 'Task created and queued. You can close this page or keep watching progress.',
       'error.auth_required': 'Authentication required.',
       'error.invalid_task_id': 'Invalid task ID.',
       'error.task_not_found': 'Task not found.',
@@ -1682,6 +1689,13 @@ WEB_UI_SCRIPT = r'''
     notice.textContent = message;
     notice.classList.toggle('ok', ok);
     notice.classList.add('is-visible');
+  }
+
+  function showFormMessage(message, ok = true) {
+    const formNotice = $('#form-error');
+    formNotice.textContent = message;
+    formNotice.classList.toggle('ok', ok);
+    formNotice.classList.add('is-visible');
   }
 
   async function withLoading(button, task) {
@@ -2285,25 +2299,37 @@ WEB_UI_SCRIPT = r'''
   });
   $('#transfer-form').addEventListener('submit', async event => {
     event.preventDefault();
+    const submitButton = event.submitter;
+    const submitLabel = submitButton ? submitButton.querySelector('span') : null;
+    const previousLabel = submitLabel ? submitLabel.textContent : '';
+    if (submitButton) submitButton.disabled = true;
+    if (submitLabel) submitLabel.textContent = t('form.creatingTransferShort');
+    showFormMessage(t('form.creatingTransfer'), true);
     const form = new FormData(event.currentTarget);
     const payload = Object.fromEntries(form.entries());
     payload.start_id = payload.start_id ? Number(payload.start_id) : null;
     payload.end_id = payload.end_id ? Number(payload.end_id) : null;
     payload.include_comment = Boolean(form.get('include_comment'));
-    const res = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      $('#form-error').textContent = translateApiError(data, 'form.createFailed');
-      $('#form-error').style.display = 'block';
-      return;
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showFormMessage(translateApiError(data, 'form.createFailed'), false);
+        return;
+      }
+      showFormMessage(t('form.createSuccess'), true);
+      state.selectedTaskId = data.task_id;
+      await loadTasks();
+    } catch (_error) {
+      showFormMessage(t('form.requestFailed'), false);
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+      if (submitLabel) submitLabel.textContent = previousLabel;
     }
-    $('#form-error').style.display = 'none';
-    state.selectedTaskId = data.task_id;
-    await loadTasks();
   });
   $('#settings-form').addEventListener('submit', saveSettings);
   $('#watch-download-form').addEventListener('submit', createDownloadWatch);

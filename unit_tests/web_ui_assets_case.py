@@ -29,6 +29,9 @@ class WebUiAssetsCase(unittest.TestCase):
                 'settings.secretNotConfigured',
                 'form.createFailed',
                 'form.requestFailed',
+                'form.creatingTransfer',
+                'form.creatingTransferShort',
+                'form.createSuccess',
                 'new.optional',
                 'language.label',
                 'event.fileReady',
@@ -48,6 +51,20 @@ class WebUiAssetsCase(unittest.TestCase):
 
         self.assertIn('translateApiError(data,', WEB_UI_HTML)
         self.assertIn('localizeEventMessage(event)', WEB_UI_HTML)
+
+    def test_transfer_form_shows_loading_and_success_feedback(self):
+        for fragment in (
+                "showFormMessage(t('form.creatingTransfer'), true);",
+                "showFormMessage(t('form.createSuccess'), true);",
+                "submitButton.disabled = true;",
+                "submitLabel.textContent = t('form.creatingTransferShort');",
+                "submitButton.disabled = false;",
+                "submitLabel.textContent = previousLabel;",
+                "formNotice.classList.add('is-visible');",
+                "formNotice.classList.toggle('ok', ok);",
+                ".form-error.ok,"
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
 
     def test_panel_heads_use_shared_component_and_stable_styles(self):
         expected_header = (
