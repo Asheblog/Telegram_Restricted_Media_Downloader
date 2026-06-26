@@ -390,7 +390,16 @@ WEB_UI_CSS = r'''
   .tasks-table th:nth-child(1) { width: 70px; }
   .tasks-table th:nth-child(2) { width: 92px; }
   .tasks-table th:nth-child(5) { width: 28%; min-width: 220px; }
-  .tasks-table th:nth-child(6) { width: 72px; }
+  .tasks-table th:nth-child(6) { width: 150px; }
+  .task-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 134px;
+  }
+  .task-actions .icon-only {
+    flex: 0 0 38px;
+  }
   .badge {
     display: inline-flex;
     align-items: center;
@@ -406,6 +415,7 @@ WEB_UI_CSS = r'''
   .badge.failure { background: #fbe9e7; color: var(--danger); }
   .badge.running { background: #e8f2ff; color: #145db2; }
   .badge.pending { background: #fff4df; color: var(--warn); }
+  .badge.paused { background: #eef2f7; color: #475569; }
   .badge.skipped { background: #eef2f7; color: #526070; }
   .progress {
     height: 8px;
@@ -455,6 +465,13 @@ WEB_UI_CSS = r'''
     gap: 8px;
     flex-wrap: wrap;
     padding: 14px 18px 0;
+  }
+  .item-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 18px 0;
   }
   .item-tab {
     min-height: 44px;
@@ -857,6 +874,12 @@ WEB_UI_BODY = f'''
             <button class="item-tab" type="button" role="tab" aria-selected="false" data-item-tab="failure">
               <span data-i18n="items.tab.failure">失败</span>
               <span class="item-tab__count" data-item-count="failure">0</span>
+            </button>
+          </div>
+          <div class="item-toolbar">
+            <button class="secondary" type="button" id="retry-selected-failed" disabled>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-i18n="items.retryFailed">重试当前任务失败项</span>
             </button>
           </div>
           <div class="file-progress" id="items" role="tabpanel"></div>
@@ -1269,6 +1292,9 @@ WEB_UI_SCRIPT = r'''
       'tasks.target': '目标',
       'tasks.progress': '进度',
       'tasks.actions': '操作',
+      'tasks.pause': '暂停',
+      'tasks.resume': '继续',
+      'tasks.retryFailed': '重试失败',
       'tasks.delete': '删除',
       'tasks.empty': '还没有转存任务。',
       'items.title': '文件进度',
@@ -1283,6 +1309,7 @@ WEB_UI_SCRIPT = r'''
       'items.empty.success': '当前没有已完成的文件。',
       'items.empty.skipped': '当前没有跳过的文件。',
       'items.empty.failure': '当前没有失败的文件。',
+      'items.retryFailed': '重试当前任务失败项',
       'items.page.previous': '上一页',
       'items.page.next': '下一页',
       'items.page.status': '第 {page} / {pages} 页',
@@ -1376,6 +1403,7 @@ WEB_UI_SCRIPT = r'''
       'error.channel_download_type_required': '请至少选择一种下载类型。',
       'error.invalid_channel_download_type': '频道下载类型无效。',
       'error.channel_download_operations_unavailable': '频道下载操作不可用。',
+      'action.taskUpdated': '任务操作已提交。',
       'error.invalid_date_range': '时间范围格式无效。',
       'error.date_range_end_before_start': '结束时间必须大于或等于起始时间。',
       'event.level.info': '信息',
@@ -1392,6 +1420,7 @@ WEB_UI_SCRIPT = r'''
       'event.singleAssignedWithFallback': '单条消息转存已分配，回退下载 {count} 条。',
       'status.pending': '等待',
       'status.running': '运行中',
+      'status.paused': '已暂停',
       'status.success': '成功',
       'status.failure': '失败',
       'status.skipped': '跳过'
@@ -1493,6 +1522,9 @@ WEB_UI_SCRIPT = r'''
       'tasks.target': 'Target',
       'tasks.progress': 'Progress',
       'tasks.actions': 'Actions',
+      'tasks.pause': 'Pause',
+      'tasks.resume': 'Resume',
+      'tasks.retryFailed': 'Retry failed',
       'tasks.delete': 'Delete',
       'tasks.empty': 'No transfer tasks yet.',
       'items.title': 'File progress',
@@ -1507,6 +1539,7 @@ WEB_UI_SCRIPT = r'''
       'items.empty.success': 'No completed files in this task.',
       'items.empty.skipped': 'No skipped files in this task.',
       'items.empty.failure': 'No failed files in this task.',
+      'items.retryFailed': 'Retry failed items in this task',
       'items.page.previous': 'Previous',
       'items.page.next': 'Next',
       'items.page.status': 'Page {page} / {pages}',
@@ -1602,6 +1635,7 @@ WEB_UI_SCRIPT = r'''
       'error.channel_download_operations_unavailable': 'Channel download operations are unavailable.',
       'error.invalid_date_range': 'Invalid date range.',
       'error.date_range_end_before_start': 'End time must be greater than or equal to start time.',
+      'action.taskUpdated': 'Task action submitted.',
       'event.level.info': 'info',
       'event.level.warning': 'warning',
       'event.level.error': 'error',
@@ -1616,6 +1650,7 @@ WEB_UI_SCRIPT = r'''
       'event.singleAssignedWithFallback': 'Single-message transfer assigned; fallback downloads: {count}.',
       'status.pending': 'pending',
       'status.running': 'running',
+      'status.paused': 'paused',
       'status.success': 'success',
       'status.failure': 'failure',
       'status.skipped': 'skipped'
@@ -1831,10 +1866,22 @@ WEB_UI_SCRIPT = r'''
         <td class="mono">${esc(task.target_link)}</td>
         <td>${taskProgress(task)}</td>
         <td>
-          <button class="danger icon-only" type="button" title="${esc(t('tasks.delete'))}" aria-label="${esc(t('tasks.delete'))}" onclick="deleteTask(event, ${task.id})">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="sr-only" data-i18n="tasks.delete">${esc(t('tasks.delete'))}</span>
-          </button>
+          <div class="task-actions">
+            <button class="secondary icon-only" type="button" title="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" aria-label="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" onclick="${task.status === 'paused' ? `resumeTask(event, ${task.id})` : `pauseTask(event, ${task.id})`}">
+              ${task.status === 'paused'
+                ? '<svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7L8 5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+                : '<svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'}
+              <span class="sr-only">${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}</span>
+            </button>
+            <button class="secondary icon-only" type="button" title="${esc(t('tasks.retryFailed'))}" aria-label="${esc(t('tasks.retryFailed'))}" onclick="retryFailedTask(event, ${task.id})" ${Number(task.failed_items || 0) ? '' : 'disabled'}>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="sr-only">${esc(t('tasks.retryFailed'))}</span>
+            </button>
+            <button class="danger icon-only" type="button" title="${esc(t('tasks.delete'))}" aria-label="${esc(t('tasks.delete'))}" onclick="deleteTask(event, ${task.id})">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="sr-only" data-i18n="tasks.delete">${esc(t('tasks.delete'))}</span>
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -1936,6 +1983,11 @@ WEB_UI_SCRIPT = r'''
     const page = itemPageState(activeItems.length);
     const visibleItems = activeItems.slice(page.startIndex, page.endIndex);
     renderItemTabs(groups);
+    const retryButton = $('#retry-selected-failed');
+    if (retryButton) {
+      retryButton.disabled = !(state.selectedTaskId && groups.failure.length);
+      retryButton.style.display = state.activeItemStatus === 'failure' ? 'inline-flex' : 'none';
+    }
     $('#items').innerHTML = visibleItems.length ? visibleItems.map(item => `
       <div class="file-row">
         <div>
@@ -2074,6 +2126,42 @@ WEB_UI_SCRIPT = r'''
     }
   }
   window.exportTable = exportTable;
+
+  async function postTaskAction(taskId, action) {
+    const res = await fetch(`/api/tasks/${taskId}/${action}`, {method: 'POST'});
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return data;
+  }
+
+  async function runTaskAction(event, taskId, action) {
+    event.stopPropagation();
+    const button = event.currentTarget;
+    await withLoading(button, async () => {
+      try {
+        await postTaskAction(taskId, action);
+        showFormMessage(t('action.taskUpdated'), true);
+        await loadTasks();
+      } catch (payload) {
+        showFormMessage(translateApiError(payload), false);
+      }
+    });
+  }
+
+  function pauseTask(event, taskId) {
+    return runTaskAction(event, taskId, 'pause');
+  }
+  window.pauseTask = pauseTask;
+
+  function resumeTask(event, taskId) {
+    return runTaskAction(event, taskId, 'resume');
+  }
+  window.resumeTask = resumeTask;
+
+  function retryFailedTask(event, taskId) {
+    return runTaskAction(event, taskId, 'retry-failed');
+  }
+  window.retryFailedTask = retryFailedTask;
 
   async function deleteTask(event, taskId) {
     event.stopPropagation();
@@ -2304,6 +2392,10 @@ WEB_UI_SCRIPT = r'''
   $('#items-page-next').addEventListener('click', () => {
     state.itemPages[state.activeItemStatus] = Number(state.itemPages[state.activeItemStatus] || 1) + 1;
     renderItems(state.items);
+  });
+  $('#retry-selected-failed').addEventListener('click', event => {
+    if (!state.selectedTaskId) return;
+    retryFailedTask(event, state.selectedTaskId);
   });
   $('#refresh').addEventListener('click', () => {
     loadTasks();

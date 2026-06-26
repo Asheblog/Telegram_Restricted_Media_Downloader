@@ -191,6 +191,32 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("['pending', 'running'].includes(status)", WEB_UI_HTML)
         self.assertIn("state.itemPages[state.activeItemStatus]", WEB_UI_HTML)
 
+    def test_webui_exposes_pause_resume_and_retry_failed_task_controls(self):
+        for fragment in (
+                'pauseTask(event, ${task.id})',
+                'resumeTask(event, ${task.id})',
+                'retryFailedTask(event, ${task.id})',
+                "runTaskAction(event, taskId, 'pause')",
+                "runTaskAction(event, taskId, 'resume')",
+                "runTaskAction(event, taskId, 'retry-failed')",
+                'async function postTaskAction(taskId, action)',
+                'id="retry-selected-failed"',
+                'data-i18n="items.retryFailed"',
+                'tasks.pause',
+                'tasks.resume',
+                'tasks.retryFailed',
+                'items.retryFailed',
+                'action.taskUpdated',
+                'status.paused'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        for fragment in (
+                "task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'",
+                "aria-label=\"${esc(t('tasks.retryFailed'))}\""
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
     def test_transfer_view_removes_legacy_forward_range_entry(self):
         for removed_fragment in (
                 '原生转发范围',

@@ -249,6 +249,23 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                task_action = server.parse_task_action_path(parsed.path)
+                if task_action:
+                    task_id, action = task_action
+                    try:
+                        self._send_json(server.apply_task_action(task_id, action), HTTPStatus.ACCEPTED)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        log.exception('[WebUI] 执行任务操作失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'task_action_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path == '/api/watches':
                     try:
                         payload = self._read_json()
@@ -561,6 +578,52 @@ class WebUiServer:
         if self.operations and hasattr(self.operations, 'delete_web_task'):
             return bool(self.operations.delete_web_task(task_id))
         return self.store.delete_task(task_id)
+
+    @staticmethod
+    def parse_task_action_path(path: str):
+        prefix = '/api/tasks/'
+        if not path.startswith(prefix):
+            return None
+        parts = [part for part in path[len(prefix):].split('/') if part]
+        if len(parts) != 2 or not parts[0].isdigit():
+            return None
+        action = parts[1]
+        if action not in ('pause', 'resume', 'retry-failed'):
+            return None
+        return int(parts[0]), action
+
+    def apply_task_action(self, task_id: int, action: str) -> dict:
+        if not self.store.get_task(task_id):
+            raise WebUiApiError('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
+        if action == 'retry-failed':
+            if self.operations and hasattr(self.operations, 'retry_failed_web_task'):
+                reset_items = int(self.operations.retry_failed_web_task(task_id))
+            else:
+                reset_items = self.store.retry_failed_items(task_id)
+                if reset_items and self.task_submitter:
+                    self.task_submitter(task_id)
+            return {'task_id': task_id, 'action': action, 'reset_items': reset_items}
+        if action == 'pause':
+            if self.operations and hasattr(self.operations, 'pause_web_task'):
+                ok = bool(self.operations.pause_web_task(task_id))
+            else:
+                self.store.update_task(task_id, status='paused')
+                ok = True
+            if not ok:
+                raise WebUiApiError('task_action_failed', 'Task action failed.', HTTPStatus.BAD_REQUEST)
+            return {'task_id': task_id, 'action': action}
+        if action == 'resume':
+            if self.operations and hasattr(self.operations, 'resume_web_task'):
+                ok = bool(self.operations.resume_web_task(task_id))
+            else:
+                self.store.update_task(task_id, status='pending')
+                ok = True
+                if self.task_submitter:
+                    self.task_submitter(task_id)
+            if not ok:
+                raise WebUiApiError('task_action_failed', 'Task action failed.', HTTPStatus.BAD_REQUEST)
+            return {'task_id': task_id, 'action': action}
+        raise WebUiApiError('invalid_task_action', 'Invalid task action.', HTTPStatus.BAD_REQUEST)
 
     def statistics(self) -> dict:
         if self.operations and hasattr(self.operations, 'statistics'):

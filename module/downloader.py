@@ -231,6 +231,33 @@ class TelegramRestrictedMediaDownloader(Bot):
             self.discard_web_task_submission(task_id, cancel_running=True)
         return deleted
 
+    def pause_web_task(self, task_id: int) -> bool:
+        if not self.transfer_store or not self.transfer_store.get_task(task_id):
+            return False
+        self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
+        self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
+        self.discard_web_task_submission(task_id, cancel_running=False)
+        return True
+
+    def resume_web_task(self, task_id: int) -> bool:
+        if not self.transfer_store:
+            return False
+        task = self.transfer_store.get_task(task_id)
+        if not task or task.get('status') != TransferStatus.PAUSED:
+            return False
+        self.transfer_store.update_task(task_id, status=TransferStatus.PENDING)
+        self.transfer_store.add_event(task_id, 'Transfer task resumed.')
+        self.submit_web_task(task_id)
+        return True
+
+    def retry_failed_web_task(self, task_id: int) -> int:
+        if not self.transfer_store:
+            return 0
+        reset_items = self.transfer_store.retry_failed_items(task_id)
+        if reset_items:
+            self.submit_web_task(task_id)
+        return reset_items
+
     def next_web_operation_id(self, operation_type: str) -> str:
         self.web_operation_counter += 1
         return f'{operation_type}-{self.web_operation_counter}'
@@ -1407,7 +1434,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                             item_id=item_id
                         )
                         self.refresh_transfer_task_counts(task_id)
-                        raise RuntimeError(error_message)
+                        return False
                 self.transfer_store.update_item(
                     item_id,
                     phase='forwarded',
@@ -1572,6 +1599,10 @@ class TelegramRestrictedMediaDownloader(Bot):
                     assignment_completed=False
                 )
                 for message_id in range(int(start_id), int(end_id) + 1):
+                    latest_task = self.transfer_store.get_task(task_id)
+                    if latest_task and latest_task.get('status') == TransferStatus.PAUSED:
+                        self.transfer_store.add_event(task_id, f'Transfer task paused before message: {message_id}.')
+                        return
                     if message_id in completed_message_ids:
                         continue
                     await self.wait_between_transfer_messages()
