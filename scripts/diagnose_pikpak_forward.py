@@ -3,7 +3,10 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
+import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -66,29 +69,71 @@ async def run(args: argparse.Namespace) -> int:
     config = load_config(config_path)
     source_link = args.source
     target_link = args.target
-    source_meta = await parse_link_for_config(config, source_link)
-    target_meta = await parse_link_for_config(config, target_link)
-    return await diagnose(config, source_link, target_link, source_meta, target_meta, args.copy)
+    session_directory = None
+    copied_session_directory = None
+    if not args.live_session:
+        copied_session_directory = copy_session_to_temp_directory(config)
+        session_directory = copied_session_directory
+    try:
+        source_meta = await parse_link_for_config(config, source_link, session_directory=session_directory)
+        target_meta = await parse_link_for_config(config, target_link, session_directory=session_directory)
+        return await diagnose(
+            config,
+            source_link,
+            target_link,
+            source_meta,
+            target_meta,
+            args.copy,
+            args.forward,
+            session_directory=session_directory,
+            copied_session_directory=copied_session_directory
+        )
+    finally:
+        if copied_session_directory:
+            shutil.rmtree(copied_session_directory, ignore_errors=True)
 
 
-async def parse_link_for_config(config: dict, link: str) -> dict:
-    async with build_client(config) as client:
+async def parse_link_for_config(config: dict, link: str, session_directory: Path | None = None) -> dict:
+    async with build_client(config, session_directory=session_directory) as client:
         from module.util import parse_link
 
         return await parse_link(client=client, link=link)
 
 
-def build_client(config: dict):
-    import pyrogram
-    from module import SLEEP_THRESHOLD, SOFTWARE_FULL_NAME
+def session_name() -> str:
+    from module import SOFTWARE_FULL_NAME
 
-    session_directory = config.get('session_directory') or Path.home() / '.config' / 'TRMD'
+    return SOFTWARE_FULL_NAME.replace(' ', '')
+
+
+def configured_session_directory(config: dict) -> Path:
+    return Path(config.get('session_directory') or Path.home() / '.config' / 'TRMD').expanduser()
+
+
+def copy_session_to_temp_directory(config: dict) -> Path:
+    source_directory = configured_session_directory(config)
+    source_session = source_directory / f'{session_name()}.session'
+    if not source_session.exists():
+        raise FileNotFoundError(f'Session file not found: {source_session}')
+    target_directory = Path(tempfile.mkdtemp(prefix='trmd_diag_session_'))
+    target_session = target_directory / source_session.name
+    with sqlite3.connect(f'file:{source_session}?mode=ro', uri=True, timeout=30) as source:
+        with sqlite3.connect(target_session) as target:
+            source.backup(target)
+    return target_directory
+
+
+def build_client(config: dict, session_directory: Path | None = None):
+    import pyrogram
+    from module import SLEEP_THRESHOLD
+
+    workdir = session_directory or configured_session_directory(config)
     return pyrogram.Client(
-        name=SOFTWARE_FULL_NAME.replace(' ', ''),
+        name=session_name(),
         api_id=config.get('api_id'),
         api_hash=config.get('api_hash'),
         proxy=config.get('proxy') if (config.get('proxy') or {}).get('enable_proxy') else None,
-        workdir=str(session_directory),
+        workdir=str(workdir),
         sleep_threshold=SLEEP_THRESHOLD
     )
 
@@ -99,7 +144,10 @@ async def diagnose(
         target_link: str,
         source_meta: dict,
         target_meta: dict,
-        do_copy: bool
+        do_copy: bool,
+        do_forward: bool,
+        session_directory: Path | None = None,
+        copied_session_directory: Path | None = None
 ) -> int:
     source_chat_id = source_meta.get('chat_id')
     source_message_id = source_meta.get('comment_id')
@@ -110,9 +158,12 @@ async def diagnose(
         'source_chat_id': source_chat_id,
         'source_message_id': source_message_id,
         'target_chat_id': target_chat_id,
-        'copy_requested': do_copy
+        'copy_requested': do_copy,
+        'forward_requested': do_forward,
+        'session_directory': str(session_directory or configured_session_directory(config)),
+        'copied_session_directory': str(copied_session_directory) if copied_session_directory else None
     }
-    async with build_client(config) as client:
+    async with build_client(config, session_directory=session_directory) as client:
         me = await client.get_me()
         result['account'] = {
             'id': getattr(me, 'id', None),
@@ -141,6 +192,17 @@ async def diagnose(
                 result['copy_result'] = message_summary(copied)
             except Exception as e:
                 result['copy_error'] = exception_summary(e)
+        if do_forward:
+            try:
+                forwarded = await client.forward_messages(
+                    chat_id=target_chat_id,
+                    from_chat_id=source_chat_id,
+                    message_ids=source_message_id,
+                    disable_notification=True
+                )
+                result['forward_result'] = message_summary(forwarded)
+            except Exception as e:
+                result['forward_error'] = exception_summary(e)
         result['target_recent_messages'] = []
         try:
             async for message in client.get_chat_history(target_chat_id, limit=5):
@@ -177,6 +239,16 @@ def parse_args() -> argparse.Namespace:
         '--copy',
         action='store_true',
         help='Actually call copy_message to the target. Without this, only reads metadata.'
+    )
+    parser.add_argument(
+        '--forward',
+        action='store_true',
+        help='Actually call forward_messages to the target.'
+    )
+    parser.add_argument(
+        '--live-session',
+        action='store_true',
+        help='Use the configured session file directly instead of a temporary read-only backup.'
     )
     return parser.parse_args()
 

@@ -31,6 +31,7 @@ RUN mkdir -p /app/TRMD /app/downloads /app/sessions /app/temp /app/form /app/rcl
 # 复制项目文件。
 COPY main.py .
 COPY module/ ./module/
+COPY scripts/ ./scripts/
 
 # 设置挂载点。
 VOLUME ["/app/TRMD", "/app/downloads", "/app/sessions", "/app/temp", "/app/form", "/app/rclone"]
