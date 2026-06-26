@@ -524,6 +524,132 @@ class TransferStoreWebUiCase(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_webui_task_retry_failed_resets_failed_items_and_resubmits_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                start_id=1,
+                end_id=2
+            )
+            failed_item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                phase='failure',
+                status=TransferStatus.FAILURE,
+                error_message='PikPak ingest confirmation timeout or failure'
+            )
+            success_item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS
+            )
+            store.refresh_task_counts(task_id, expected_total=2, assignment_completed=True)
+            submitted = []
+            server = WebUiServer(
+                store=store,
+                task_submitter=submitted.append,
+                username='admin',
+                password='pass'
+            )
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request('POST', f'/api/tasks/{task_id}/retry-failed', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+
+                self.assertEqual(202, response.status)
+                self.assertEqual(1, body['reset_items'])
+                self.assertEqual([task_id], submitted)
+                items = {item['id']: item for item in store.list_items(task_id)}
+                self.assertEqual(TransferStatus.PENDING, items[failed_item_id]['status'])
+                self.assertEqual('pending', items[failed_item_id]['phase'])
+                self.assertIsNone(items[failed_item_id]['error_message'])
+                self.assertEqual(TransferStatus.SUCCESS, items[success_item_id]['status'])
+                task = store.get_task(task_id)
+                self.assertEqual(TransferStatus.RUNNING, task['status'])
+                self.assertEqual(1, task['completed_items'])
+                self.assertEqual(0, task['failed_items'])
+            finally:
+                server.stop()
+
+    def test_webui_task_pause_blocks_scheduling_and_resume_resubmits(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
+            downloader.transfer_store = store
+            downloader.web_submitted_task_ids = set()
+            submitted = []
+            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
+            downloader.discard_web_task_submission = lambda discarded_task_id, cancel_running=False: submitted.append(
+                f'discard:{discarded_task_id}:{cancel_running}'
+            )
+
+            self.assertTrue(downloader.pause_web_task(task_id))
+            self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+            store.refresh_task_counts(task_id)
+            self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+            self.assertFalse(downloader.is_web_transfer_task_schedulable(task_id))
+            self.assertEqual([f'discard:{task_id}:False'], submitted)
+
+            self.assertTrue(downloader.resume_web_task(task_id))
+            self.assertEqual(TransferStatus.PENDING, store.get_task(task_id)['status'])
+            self.assertEqual([f'discard:{task_id}:False', task_id], submitted)
+
+    def test_webui_task_pause_and_resume_api_use_operations(self):
+        class TaskControlOperations:
+            def __init__(self, store):
+                self.store = store
+                self.calls = []
+
+            def pause_web_task(self, task_id):
+                self.calls.append(('pause', task_id))
+                self.store.update_task(task_id, status=TransferStatus.PAUSED)
+                return True
+
+            def resume_web_task(self, task_id):
+                self.calls.append(('resume', task_id))
+                self.store.update_task(task_id, status=TransferStatus.PENDING)
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
+            operations = TaskControlOperations(store)
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request('POST', f'/api/tasks/{task_id}/pause', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertEqual('pause', body['action'])
+                self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+
+                conn.request('POST', f'/api/tasks/{task_id}/resume', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(202, response.status)
+                self.assertEqual('resume', body['action'])
+                self.assertEqual(TransferStatus.PENDING, store.get_task(task_id)['status'])
+                self.assertEqual([('pause', task_id), ('resume', task_id)], operations.calls)
+            finally:
+                server.stop()
+
     def test_webui_exposes_live_transfer_watch_operations(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
@@ -1084,15 +1210,15 @@ class TransferStoreWebUiCase(unittest.TestCase):
             downloader.forward = fake_forward
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
 
-            with self.assertRaisesRegex(RuntimeError, 'PikPak ingest confirmation'):
-                asyncio.run(downloader.transfer_message_to_web_target(
-                    task=task,
-                    message=SimpleNamespace(id=1, link='https://t.me/source/1'),
-                    origin_chat_id='source-chat',
-                    target_chat_id='target-chat',
-                    source_link='https://t.me/source/1'
-                ))
+            used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1'
+            ))
 
+            self.assertFalse(used_fallback)
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
             self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
@@ -1100,7 +1226,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, store.get_task(task_id)['completed_items'])
             self.assertEqual(set(), store.completed_source_message_ids(task_id))
 
-    def test_webui_pikpak_confirmation_failure_stops_range_assignment(self):
+    def test_webui_pikpak_confirmation_failure_continues_range_assignment(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
         with tempfile.TemporaryDirectory() as directory:
@@ -1135,7 +1261,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return SimpleNamespace(id=100 + kwargs['message_id'])
 
             downloader.forward = fake_forward
-            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(side_effect=[False, True])
 
             async def fake_parse_link(client, link):
                 if link == 'https://t.me/source':
@@ -1148,13 +1274,19 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
                 asyncio.run(downloader.process_web_transfer_task(task_id))
 
-            self.assertEqual([1], [call['message_id'] for call in downloader.forward_calls])
+            self.assertEqual([1, 2], [call['message_id'] for call in downloader.forward_calls])
             items = store.list_items(task_id)
-            self.assertEqual(1, len(items))
-            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            self.assertEqual(2, len(items))
+            by_message_id = {item['source_message_id']: item for item in items}
+            self.assertEqual(TransferStatus.FAILURE, by_message_id[1]['status'])
+            self.assertEqual(TransferStatus.SUCCESS, by_message_id[2]['status'])
             task = store.get_task(task_id)
             self.assertEqual(TransferStatus.FAILURE, task['status'])
-            self.assertIn('PikPak ingest confirmation', task['error_message'])
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(1, task['failed_items'])
+            self.assertIsNone(task['error_message'])
+            events = store.list_events(task_id)
+            self.assertFalse(any('Transfer task failed' in event['message'] for event in events))
 
     def test_direct_pikpak_forward_with_ingest_confirmation_records_success(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()

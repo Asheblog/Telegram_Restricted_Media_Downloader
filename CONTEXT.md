@@ -36,6 +36,14 @@ _Avoid_: File task, message job
 The set of Transfer Items in a Transfer Task that have reached a final outcome and can be skipped when the same Transfer Task continues later.
 _Avoid_: Chapter cursor, runtime offset
 
+**Transfer Task Pause**:
+A user-requested stop point for a Transfer Task that prevents the next Transfer Item from starting while preserving already completed Transfer Progress.
+_Avoid_: Cancel task, delete task, kill transfer
+
+**Failed Item Retry**:
+A user-requested continuation of a Transfer Task that makes failed Transfer Items eligible to run again while keeping successful and skipped Transfer Items as completed Transfer Progress.
+_Avoid_: Restart task, rerun all, clear history
+
 **Automatic Transfer Range**:
 A Transfer Task range inferred from the earliest and latest source conversation messages that the current account can access when the user provides a source conversation link without explicit message IDs.
 _Avoid_: Auto dump, guessed range

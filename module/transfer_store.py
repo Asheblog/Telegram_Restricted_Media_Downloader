@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 class TransferStatus:
     PENDING = 'pending'
     RUNNING = 'running'
+    PAUSED = 'paused'
     SKIPPED = 'skipped'
     SUCCESS = 'success'
     FAILURE = 'failure'
@@ -528,6 +529,8 @@ class TransferStore:
 
         status = TransferStatus.RUNNING
         finished = False
+        if task.get('status') == TransferStatus.PAUSED:
+            status = TransferStatus.PAUSED
         if expected > 0 and assigned and len(items) >= expected and terminal >= expected:
             status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
             finished = True
@@ -543,6 +546,38 @@ class TransferStore:
             finished=finished,
             assignment_completed=assigned
         )
+
+    def retry_failed_items(self, task_id: int) -> int:
+        task = self.get_task(task_id)
+        if not task:
+            return 0
+        now = self.utc_now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                UPDATE transfer_items
+                SET status = ?,
+                    phase = 'pending',
+                    download_current = 0,
+                    upload_current = 0,
+                    error_message = NULL,
+                    updated_at = ?
+                WHERE task_id = ?
+                  AND status = ?
+                ''',
+                (TransferStatus.PENDING, now, task_id, TransferStatus.FAILURE)
+            )
+            reset_items = int(cursor.rowcount)
+        if reset_items:
+            self.refresh_task_counts(task_id)
+            self.update_task(
+                task_id,
+                status=TransferStatus.RUNNING,
+                error_message='',
+                finished=False
+            )
+            self.add_event(task_id, f'Retry failed items requested: {reset_items}.')
+        return reset_items
 
     def delete_task(self, task_id: int) -> bool:
         with self.connect() as conn:
