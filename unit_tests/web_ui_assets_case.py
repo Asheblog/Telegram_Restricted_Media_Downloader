@@ -220,6 +220,38 @@ class WebUiAssetsCase(unittest.TestCase):
 
         self.assertGreaterEqual(WEB_UI_HTML.count('name="include_comment"'), 3)
 
+    def test_live_watch_forms_use_equal_height_panels_and_compact_checks(self):
+        for fragment in (
+                '.operation-grid {\n    display: grid;\n'
+                '    grid-template-columns: repeat(2, minmax(0, 1fr));\n'
+                '    gap: 18px;\n'
+                '    align-items: stretch;',
+                '.operation-grid > section,\n  .workspace > section {\n'
+                '    display: flex;\n'
+                '    flex-direction: column;',
+                '.operation-grid > section > form {\n    flex: 1;',
+                '.operation-grid > section > form > .actions {\n'
+                '    margin-top: auto;',
+                'id="watch-forward-include-comment"',
+                '.check {\n    min-height: 24px;\n'
+                '    display: inline-flex;',
+                'min-height: 24px;',
+                '.check input {\n    width: 16px;\n'
+                '    height: 16px;\n'
+                '    min-height: 0;\n'
+                '    padding: 0;\n'
+                '    margin: 0;'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
+        check_rule = WEB_UI_HTML[
+            WEB_UI_HTML.index('  .check {'):
+            WEB_UI_HTML.index('  .check-card {')
+        ]
+        self.assertNotIn('border:', check_rule)
+        self.assertNotIn('background:', check_rule)
+        self.assertNotIn('padding: 9px 10px;', check_rule)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -267,7 +267,7 @@ WEB_UI_CSS = r'''
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
-    align-items: start;
+    align-items: stretch;
   }
   .wide-section { grid-column: 1 / -1; }
   section {
@@ -277,9 +277,13 @@ WEB_UI_CSS = r'''
     box-shadow: var(--shadow);
     min-width: 0;
   }
+  .operation-grid > section,
   .workspace > section {
     display: flex;
     flex-direction: column;
+  }
+  .operation-grid > section > form {
+    flex: 1;
   }
   .workspace > section > form,
   .workspace > section > .task-list {
@@ -323,6 +327,9 @@ WEB_UI_CSS = r'''
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+  .operation-grid > section > form > .actions {
+    margin-top: auto;
   }
   .form-error, .notice {
     display: none;
@@ -610,16 +617,24 @@ WEB_UI_CSS = r'''
     grid-template-columns: 1fr;
   }
   .check {
-    display: flex;
+    min-height: 24px;
+    display: inline-flex;
     align-items: center;
     gap: 8px;
     color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 9px 10px;
-    background: #fff;
+    cursor: pointer;
   }
-  .check input { width: auto; }
+  .check input {
+    width: 16px;
+    height: 16px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    flex: 0 0 auto;
+  }
+  .check span {
+    line-height: 1.35;
+  }
   .check-card {
     min-height: var(--control-height);
     display: flex;
