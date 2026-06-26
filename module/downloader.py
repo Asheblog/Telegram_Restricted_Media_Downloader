@@ -1266,6 +1266,67 @@ class TelegramRestrictedMediaDownloader(Bot):
             )
         return result
 
+    def fail_transfer_item(
+            self,
+            task_id: int,
+            item_id: int,
+            message: str
+    ) -> None:
+        self.transfer_store.update_item(
+            item_id,
+            phase='failure',
+            status=TransferStatus.FAILURE,
+            error_message=message
+        )
+        self.transfer_store.add_event(
+            task_id,
+            message,
+            level='error',
+            item_id=item_id
+        )
+        self.refresh_transfer_task_counts(task_id)
+
+    def complete_forwarded_pikpak_item(
+            self,
+            task: dict,
+            item_id: int,
+            task_id: int,
+            message,
+            source_link: str,
+            transferred_at: float
+    ) -> bool:
+        archive_result = self.archive_pikpak_item(
+            target_profile=task.get('target_profile'),
+            item_id=item_id,
+            task_id=task_id,
+            message=message,
+            source_link=source_link,
+            transferred_at=transferred_at
+        )
+        if (
+                archive_result is not None
+                and getattr(archive_result, 'status', None) != 'disabled'
+                and not bool(getattr(archive_result, 'ok', False))
+        ):
+            archive_status = getattr(archive_result, 'status', 'error')
+            archive_message = getattr(archive_result, 'message', '')
+            error_message = f'PikPak archive {archive_status}: {archive_message or source_link}'
+            self.fail_transfer_item(task_id, item_id, error_message)
+            return False
+        self.transfer_store.update_item(
+            item_id,
+            phase='forwarded',
+            status=TransferStatus.SUCCESS,
+            error_message=''
+        )
+        self.transfer_store.add_event(
+            task_id,
+            f'Direct forward succeeded: {source_link}',
+            item_id=item_id
+        )
+        self.refresh_transfer_task_counts(task_id)
+        return True
+
     def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
         for dtype in DownloadType():
             media = getattr(message, dtype, None)
@@ -1298,6 +1359,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                 str(target_profile or '').lower() == 'pikpak'
                 or 'pikpak' in str(target_link or '').lower()
         )
+
+    @staticmethod
+    def forwarded_message_has_identity(forwarded_message) -> bool:
+        if isinstance(forwarded_message, list):
+            return any(getattr(message, 'id', None) is not None for message in forwarded_message)
+        return getattr(forwarded_message, 'id', None) is not None
 
     @staticmethod
     def is_pikpak_ingest_success_message(message) -> bool:
@@ -1346,6 +1413,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             forwarded_message_ids = {
                 int(getattr(forwarded_message, 'id'))
             } if getattr(forwarded_message, 'id', None) is not None else set()
+        if not forwarded_message_ids:
+            return False
         first_forwarded_message_id = min(forwarded_message_ids) if forwarded_message_ids else None
         while loop.time() < deadline:
             async for target_message in self.app.client.get_chat_history(target_chat_id, limit=10):
@@ -1466,6 +1535,13 @@ class TelegramRestrictedMediaDownloader(Bot):
                     status=TransferStatus.RUNNING
                 )
                 if self.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
+                    if not self.forwarded_message_has_identity(forwarded_message):
+                        self.fail_transfer_item(
+                            task_id,
+                            item_id,
+                            f'Direct forward did not produce a target message: {source_link}'
+                        )
+                        return False
                     confirmed = await self.wait_for_pikpak_ingest_confirmation(
                         target_chat_id=target_chat_id,
                         forwarded_message=forwarded_message
@@ -1494,20 +1570,17 @@ class TelegramRestrictedMediaDownloader(Bot):
                             self.refresh_transfer_task_counts(task_id)
                             return False
                         error_message = f'PikPak ingest confirmation timeout or failure: {source_link}'
-                        self.transfer_store.update_item(
-                            item_id,
-                            phase='failure',
-                            status=TransferStatus.FAILURE,
-                            error_message=error_message
-                        )
-                        self.transfer_store.add_event(
-                            task_id,
-                            error_message,
-                            level='error',
-                            item_id=item_id
-                        )
-                        self.refresh_transfer_task_counts(task_id)
+                        self.fail_transfer_item(task_id, item_id, error_message)
                         return False
+                    self.complete_forwarded_pikpak_item(
+                        task=task,
+                        item_id=item_id,
+                        task_id=task_id,
+                        message=message,
+                        source_link=source_link,
+                        transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                    )
+                    return False
                 self.transfer_store.update_item(
                     item_id,
                     phase='forwarded',
@@ -1518,14 +1591,6 @@ class TelegramRestrictedMediaDownloader(Bot):
                     task_id,
                     f'Direct forward succeeded: {source_link}',
                     item_id=item_id
-                )
-                self.archive_pikpak_item(
-                    target_profile=task.get('target_profile'),
-                    item_id=item_id,
-                    task_id=task_id,
-                    message=message,
-                    source_link=source_link,
-                    transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
                 )
                 self.refresh_transfer_task_counts(task_id)
                 return False
@@ -2799,6 +2864,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                         )
                     )
                 return None
+            forwarded_message = None
             if media_group:
                 while True:
                     try:
@@ -2838,6 +2904,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                         break
                     except (FloodWait, FloodPremiumWait) as e:
                         await self.wait_for_telegram_flood(e, action='copy message')
+            if not self.forwarded_message_has_identity(forwarded_message):
+                log.error(
+                    f'Direct forward did not produce a target message: {getattr(message, "link", None) or message_id}'
+                )
+                return None
             p_message_id = ','.join(map(str, media_group)) if media_group else message_id
             console.log(
                 f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{p_message_id}"'
