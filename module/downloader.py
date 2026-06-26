@@ -210,6 +210,12 @@ class TelegramRestrictedMediaDownloader(Bot):
         chat_id = origin_meta.get('chat_id')
         if not chat_id:
             raise ValueError('Invalid source link.')
+        detected = await self.detect_transfer_range_fast(chat_id)
+        if detected:
+            return detected
+        return await self.detect_transfer_range_by_history_scan(chat_id)
+
+    async def detect_transfer_range_by_history_scan(self, chat_id) -> Optional[dict]:
         oldest = None
         newest = None
         async for message in self.iter_transfer_range_history(chat_id=chat_id):
@@ -221,6 +227,51 @@ class TelegramRestrictedMediaDownloader(Bot):
             'start_id': int(getattr(oldest, 'id')),
             'end_id': int(getattr(newest, 'id'))
         }
+
+    async def detect_transfer_range_fast(self, chat_id) -> Optional[dict]:
+        client = self.app.client
+        history_count = getattr(client, 'get_chat_history_count', None)
+        if not callable(history_count):
+            return None
+        try:
+            newest = await self.get_first_transfer_range_history_message(chat_id=chat_id, limit=1)
+            if not newest:
+                return None
+            count = int(await history_count(chat_id))
+            if count <= 1:
+                oldest = newest
+            else:
+                oldest = await self.get_first_transfer_range_history_message(
+                    chat_id=chat_id,
+                    limit=1,
+                    offset=count - 1
+                )
+            if not oldest:
+                return None
+            start_id = int(getattr(oldest, 'id'))
+            end_id = int(getattr(newest, 'id'))
+            if start_id > end_id:
+                return None
+            if count > 1 and start_id == end_id:
+                return None
+        except (FloodWait, FloodPremiumWait) as e:
+            await self.wait_for_telegram_flood(e, action='detect transfer range')
+            return None
+        except Exception:
+            return None
+        return {
+            'start_id': start_id,
+            'end_id': end_id
+        }
+
+    async def get_first_transfer_range_history_message(self, chat_id, limit: int = 1, **kwargs):
+        async for message in self.app.client.get_chat_history(
+                chat_id=chat_id,
+                limit=limit,
+                **kwargs
+        ):
+            return message
+        return None
 
     async def iter_transfer_range_history(self, chat_id, limit: int = 100):
         offset_id = 0

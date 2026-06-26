@@ -1288,6 +1288,160 @@ class TransferStoreWebUiCase(unittest.TestCase):
             client.calls
         )
 
+    def test_downloader_detects_transfer_range_uses_count_offset_fast_path(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+                self.count_calls = []
+
+            async def get_chat_history_count(self, chat_id):
+                self.count_calls.append(chat_id)
+                return 5000
+
+            async def get_chat_history(self, chat_id, limit=0, offset=0, offset_id=0, **_kwargs):
+                self.calls.append({
+                    'chat_id': chat_id,
+                    'limit': limit,
+                    'offset': offset,
+                    'offset_id': offset_id
+                })
+                if offset == 0:
+                    yield SimpleNamespace(id=9999)
+                    return
+                if offset == 4999:
+                    yield SimpleNamespace(id=42)
+                    return
+                raise AssertionError(f'unexpected history offset: {offset}')
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'source-chat'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            detected = asyncio.run(downloader.detect_transfer_range_async('https://t.me/source'))
+
+        self.assertEqual({'start_id': 42, 'end_id': 9999}, detected)
+        self.assertEqual(['source-chat'], client.count_calls)
+        self.assertEqual(
+            [
+                {'chat_id': 'source-chat', 'limit': 1, 'offset': 0, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 1, 'offset': 4999, 'offset_id': 0}
+            ],
+            client.calls
+        )
+
+    def test_downloader_detects_transfer_range_falls_back_when_fast_count_fails(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.pages = [
+                    [SimpleNamespace(id=99)],
+                    [SimpleNamespace(id=3)],
+                    []
+                ]
+                self.calls = []
+                self.count_calls = []
+
+            async def get_chat_history_count(self, chat_id):
+                self.count_calls.append(chat_id)
+                raise RuntimeError('count unavailable')
+
+            async def get_chat_history(self, chat_id, limit=0, offset=0, offset_id=0, **_kwargs):
+                self.calls.append({
+                    'chat_id': chat_id,
+                    'limit': limit,
+                    'offset': offset,
+                    'offset_id': offset_id
+                })
+                if offset == 0 and offset_id == 0 and limit == 1:
+                    yield SimpleNamespace(id=99)
+                    return
+                page = self.pages.pop(0)
+                for message in page:
+                    yield message
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'source-chat'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            detected = asyncio.run(downloader.detect_transfer_range_async('https://t.me/source'))
+
+        self.assertEqual({'start_id': 3, 'end_id': 99}, detected)
+        self.assertEqual(['source-chat'], client.count_calls)
+        self.assertEqual(
+            [
+                {'chat_id': 'source-chat', 'limit': 1, 'offset': 0, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 99},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 3}
+            ],
+            client.calls
+        )
+
+    def test_downloader_detects_transfer_range_falls_back_when_fast_tail_matches_newest(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            def __init__(self):
+                self.pages = [
+                    [SimpleNamespace(id=99)],
+                    [SimpleNamespace(id=3)],
+                    []
+                ]
+                self.calls = []
+
+            async def get_chat_history_count(self, _chat_id):
+                return 5000
+
+            async def get_chat_history(self, chat_id, limit=0, offset=0, offset_id=0, **_kwargs):
+                self.calls.append({
+                    'chat_id': chat_id,
+                    'limit': limit,
+                    'offset': offset,
+                    'offset_id': offset_id
+                })
+                if offset == 0 and offset_id == 0 and limit == 1:
+                    yield SimpleNamespace(id=99)
+                    return
+                if offset == 4999 and limit == 1:
+                    yield SimpleNamespace(id=99)
+                    return
+                page = self.pages.pop(0)
+                for message in page:
+                    yield message
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'source-chat'}
+
+        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+            detected = asyncio.run(downloader.detect_transfer_range_async('https://t.me/source'))
+
+        self.assertEqual({'start_id': 3, 'end_id': 99}, detected)
+        self.assertEqual(
+            [
+                {'chat_id': 'source-chat', 'limit': 1, 'offset': 0, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 1, 'offset': 4999, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 0},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 99},
+                {'chat_id': 'source-chat', 'limit': 100, 'offset': 0, 'offset_id': 3}
+            ],
+            client.calls
+        )
+
     def test_downloader_detects_transfer_range_start_from_actual_history_tail(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
