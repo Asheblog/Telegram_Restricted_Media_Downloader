@@ -7,7 +7,15 @@ PIKPAK_DEFAULT_MAX_FILE_SIZE = 4 * 1024 ** 3
 
 DEFAULT_TARGET_PROFILES = {
     PIKPAK_TARGET_PROFILE: {
-        'max_file_size': PIKPAK_DEFAULT_MAX_FILE_SIZE
+        'max_file_size': PIKPAK_DEFAULT_MAX_FILE_SIZE,
+        'archive': {
+            'enable': True,
+            'remote': 'pikpak',
+            'root_directory': 'Telegram',
+            'poll_seconds': 60,
+            'poll_interval_seconds': 5,
+            'match_window_seconds': 3600
+        }
     }
 }
 

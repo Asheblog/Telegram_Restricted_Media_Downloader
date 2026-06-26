@@ -905,6 +905,16 @@ WEB_UI_BODY = f'''
                         <label class="field"><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
                         <label class="field"><span data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</span><input name="global.target_profiles.pikpak.max_file_size" type="number" min="1"></label>
                       </div>
+                      <div class="settings-check-grid settings-check-grid--single">
+                        <label class="check-card"><input name="global.target_profiles.pikpak.archive.enable" type="checkbox"><span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span></label>
+                      </div>
+                      <div class="field-grid">
+                        <label class="field"><span data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote"></label>
+                        <label class="field"><span data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</span><input name="global.target_profiles.pikpak.archive.root_directory"></label>
+                        <label class="field"><span data-i18n="settings.pikpakArchivePoll">入库轮询秒数</span><input name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0"></label>
+                        <label class="field"><span data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0"></label>
+                        <label class="field"><span data-i18n="settings.pikpakArchiveWindow">匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0"></label>
+                      </div>
                     </div>
                   </div>
                   <div class="settings-section">
@@ -1290,6 +1300,12 @@ WEB_UI_SCRIPT = r'''
       'settings.retryDownload': '下载重试',
       'settings.retryUpload': '上传重试',
       'settings.pikpakMaxFileSize': 'PikPak大小上限(字节)',
+      'settings.pikpakArchiveEnable': 'PikPak按来源频道归档',
+      'settings.pikpakArchiveRemote': 'PikPak rclone remote',
+      'settings.pikpakArchiveRoot': 'PikPak归档根目录',
+      'settings.pikpakArchivePoll': '入库轮询秒数',
+      'settings.pikpakArchiveInterval': '轮询间隔秒数',
+      'settings.pikpakArchiveWindow': '匹配时间窗口秒数',
       'settings.behavior': '行为',
       'settings.notice': '机器人通知',
       'settings.shutdown': '退出后关机',
@@ -1500,6 +1516,12 @@ WEB_UI_SCRIPT = r'''
       'settings.retryDownload': 'Download retries',
       'settings.retryUpload': 'Upload retries',
       'settings.pikpakMaxFileSize': 'PikPak size limit (bytes)',
+      'settings.pikpakArchiveEnable': 'Archive PikPak by source channel',
+      'settings.pikpakArchiveRemote': 'PikPak rclone remote',
+      'settings.pikpakArchiveRoot': 'PikPak archive root',
+      'settings.pikpakArchivePoll': 'Ingest poll seconds',
+      'settings.pikpakArchiveInterval': 'Poll interval seconds',
+      'settings.pikpakArchiveWindow': 'Match window seconds',
       'settings.behavior': 'Behavior',
       'settings.notice': 'Bot notifications',
       'settings.shutdown': 'Shutdown after exit',

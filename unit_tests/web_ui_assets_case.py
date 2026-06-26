@@ -101,6 +101,17 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('.settings-form {', WEB_UI_HTML)
         self.assertIn('min-height: var(--control-height);', WEB_UI_HTML)
 
+    def test_webui_exposes_pikpak_archive_settings(self):
+        for fragment in (
+                'global.target_profiles.pikpak.archive.enable',
+                'global.target_profiles.pikpak.archive.remote',
+                'global.target_profiles.pikpak.archive.root_directory',
+                'settings.pikpakArchiveEnable',
+                'settings.pikpakArchiveRemote',
+                'settings.pikpakArchiveRoot'
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
     def test_file_progress_has_status_tabs_and_independent_pagination(self):
         for fragment in (
                 'role="tablist"',

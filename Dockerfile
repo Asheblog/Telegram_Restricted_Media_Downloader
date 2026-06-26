@@ -13,22 +13,27 @@ ENV PYTHONUNBUFFERED=1 \
 COPY requirements.txt .
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
         libmediainfo0v5 \
+        unzip \
         gcc \
         g++ \
+    && curl -fsSL https://rclone.org/install.sh | bash \
+    && rclone help backends | grep -E '(^|[[:space:]])pikpak([[:space:]]|$)' \
     && pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y gcc g++ \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
-# 创建配置目录、下载目录、会话目录、临时目录、统计表目录。
-RUN mkdir -p /app/TRMD /app/downloads /app/sessions /app/temp /app/form
+# 创建配置目录、下载目录、会话目录、临时目录、统计表目录、rclone配置目录。
+RUN mkdir -p /app/TRMD /app/downloads /app/sessions /app/temp /app/form /app/rclone
 
 # 复制项目文件。
 COPY main.py .
 COPY module/ ./module/
 
 # 设置挂载点。
-VOLUME ["/app/TRMD", "/app/downloads", "/app/sessions", "/app/temp", "/app/form"]
+VOLUME ["/app/TRMD", "/app/downloads", "/app/sessions", "/app/temp", "/app/form", "/app/rclone"]
 
 # 运行应用。
 # --config: 用户配置存到挂载目录，容器重启不丢失。

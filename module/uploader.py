@@ -709,7 +709,9 @@ class TelegramUploader:
                         transfer_meta={
                             'task_id': with_upload.get('task_id'),
                             'item_id': item_id,
-                            'target_profile': with_upload.get('target_profile')
+                            'target_profile': with_upload.get('target_profile'),
+                            'source_link': with_upload.get('source_link'),
+                            'source_folder': with_upload.get('source_folder')
                         },
                         status_callback=with_upload.get('status_callback'),
                         progress_callback=with_upload.get('progress_callback')

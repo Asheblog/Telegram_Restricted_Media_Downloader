@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -156,13 +157,61 @@ class TransferStoreWebUiCase(unittest.TestCase):
             4 * 1024 ** 3,
             GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']
         )
+        archive = GlobalConfig.TEMPLATE['target_profiles']['pikpak']['archive']
+        self.assertTrue(archive['enable'])
+        self.assertEqual('pikpak', archive['remote'])
+        self.assertEqual('Telegram', archive['root_directory'])
 
         settings = merge_allowed_settings(
-            target=GlobalConfig.TEMPLATE.copy(),
+            target=deepcopy(GlobalConfig.TEMPLATE),
             patch={'target_profiles': {'pikpak': {'max_file_size': 1024}}},
             allowed={'target_profiles'}
         )
         self.assertEqual(1024, settings['target_profiles']['pikpak']['max_file_size'])
+        self.assertTrue(settings['target_profiles']['pikpak']['archive']['enable'])
+        self.assertEqual(
+            4 * 1024 ** 3,
+            GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']
+        )
+
+    def test_global_target_profile_archive_config_is_completed_recursively(self):
+        from module.config import GlobalConfig
+
+        config = {
+            'notice': True,
+            'file_log_level': 'INFO',
+            'console_log_level': 'INFO',
+            'export_table': {'link': False, 'count': False, 'upload': False},
+            'upload': {'download_upload': True, 'delete': False, 'pending_limit': 3},
+            'target_profiles': {
+                'pikpak': {
+                    'max_file_size': 1024,
+                    'archive': {
+                        'enable': True
+                    }
+                }
+            },
+            'forward_type': {
+                'video': True,
+                'photo': True,
+                'audio': True,
+                'document': True,
+                'voice': True,
+                'text': True,
+                'animation': True,
+                'video_note': True
+            }
+        }
+
+        GlobalConfig.process_target_profiles(GlobalConfig, config)
+
+        archive = config['target_profiles']['pikpak']['archive']
+        self.assertTrue(archive['enable'])
+        self.assertEqual('pikpak', archive['remote'])
+        self.assertEqual('Telegram', archive['root_directory'])
+        self.assertEqual(60, archive['poll_seconds'])
+        self.assertEqual(5, archive['poll_interval_seconds'])
+        self.assertEqual(3600, archive['match_window_seconds'])
 
     def test_transfer_task_persists_discussion_reply_inclusion(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -631,6 +680,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual('https://t.me/pikpak_bot', fallback['with_upload']['link'])
             self.assertTrue(fallback['with_upload']['with_delete'])
             self.assertFalse(fallback['with_upload']['send_as_media_group'])
+            self.assertEqual('source', fallback['with_upload']['source_folder'])
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
 
@@ -789,6 +839,70 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, task['failed_items'])
             self.assertEqual(0, task['assignment_completed'])
             self.assertEqual(TransferStatus.RUNNING, task['status'])
+
+    def test_direct_pikpak_forward_archives_source_folder_without_changing_success(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/ctuxas',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+            archive_calls = []
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+            downloader.gc = SimpleNamespace(
+                config={
+                    'target_profiles': {
+                        'pikpak': {
+                            'archive': {
+                                'enable': True,
+                                'remote': 'pikpak',
+                                'root_directory': 'Telegram'
+                            }
+                        }
+                    }
+                }
+            )
+
+            async def fake_forward(**kwargs):
+                return None
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
+
+            downloader.forward = fake_forward
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/ctuxas/1',
+                    chat=SimpleNamespace(id=-100123, username='ctuxas'),
+                    video=SimpleNamespace(file_size=5, file_name='video.mp4')
+                ),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/ctuxas/1'
+            ))
+
+            self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
+            self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+            item = store.list_items(task_id)[0]
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertEqual('not_found', item['archive_status'])
+            events = store.list_events(task_id)
+            self.assertTrue(any(event['level'] == 'warning' and 'PikPak archive' in event['message'] for event in events))
 
     def test_pikpak_transfer_over_target_limit_fails_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
