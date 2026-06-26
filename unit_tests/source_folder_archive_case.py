@@ -155,6 +155,50 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual('Telegram/ctuxas/photo_2026-06-26.jpg', result.archive_path)
         self.assertIn(['rclone', 'lsjson', 'pikpak:My Telegram', '--recursive', '--files-only'], calls)
 
+    def test_rclone_archive_treats_existing_target_file_as_already_archived(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson'] and args[2] == 'pikpak:My Telegram':
+                return SimpleNamespace(returncode=0, stdout=json.dumps([]), stderr='')
+            if args[:2] == ['rclone', 'lsjson'] and args[2] == 'pikpak:Telegram/ctuxas':
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-06-26T02:00:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner
+        )
+
+        result = client.archive_file('ctuxas', 'video.mp4', 5)
+
+        self.assertTrue(result.ok)
+        self.assertEqual('already_archived', result.status)
+        self.assertEqual('Telegram/ctuxas/video.mp4', result.archive_path)
+        self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
     def test_disabled_archive_is_noop(self):
         from module.pikpak_archive import build_pikpak_archive_client
 

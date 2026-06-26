@@ -1226,6 +1226,65 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, store.get_task(task_id)['completed_items'])
             self.assertEqual(set(), store.completed_source_message_ids(task_id))
 
+    def test_direct_pikpak_forward_timeout_recovers_when_archive_finds_ingested_file(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/chengdudiyi8',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=73962,
+                end_id=73962
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+            archive_calls = []
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+
+            async def fake_forward(**kwargs):
+                return SimpleNamespace(id=100)
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=True, status='success', archive_path='Telegram/chengdudiyi8/video.mp4')
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(
+                    id=73962,
+                    link='https://t.me/chengdudiyi8/73962',
+                    chat=SimpleNamespace(id='source-chat', username='chengdudiyi8'),
+                    video=SimpleNamespace(file_size=5, file_name='video.mp4')
+                ),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/chengdudiyi8/73962'
+            ))
+
+            self.assertFalse(used_fallback)
+            self.assertEqual(1, len(archive_calls))
+            self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
+            self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
+            self.assertEqual('success', items[0]['archive_status'])
+            self.assertEqual('', items[0]['error_message'])
+            self.assertEqual(1, store.get_task(task_id)['completed_items'])
+            self.assertEqual(0, store.get_task(task_id)['failed_items'])
+            self.assertEqual({73962}, store.completed_source_message_ids(task_id))
+            events = store.list_events(task_id)
+            self.assertTrue(any('recovered by archive' in event['message'] for event in events))
+
     def test_webui_pikpak_confirmation_failure_continues_range_assignment(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
