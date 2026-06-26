@@ -131,8 +131,12 @@ class WebUiAssetsCase(unittest.TestCase):
             self.assertIn(fragment, WEB_UI_HTML)
 
         self.assertEqual(WEB_UI_BODY.count('class="settings-form"'), 1)
+        self.assertNotIn('class="settings-columns"', WEB_UI_BODY)
+        self.assertNotIn('class="settings-stack"', WEB_UI_BODY)
         self.assertNotIn('form, .settings-form', WEB_UI_HTML)
         self.assertIn('.settings-form {', WEB_UI_HTML)
+        self.assertIn('position: sticky;', WEB_UI_HTML)
+        self.assertIn('width: min(100%, 1120px);', WEB_UI_HTML)
         self.assertIn('min-height: var(--control-height);', WEB_UI_HTML)
 
     def test_webui_exposes_pikpak_archive_settings(self):
@@ -141,6 +145,7 @@ class WebUiAssetsCase(unittest.TestCase):
                 'global.target_profiles.pikpak.archive.remote',
                 'global.target_profiles.pikpak.archive.source_directory',
                 'global.target_profiles.pikpak.archive.root_directory',
+                'settings.pikpakArchive',
                 'settings.pikpakArchiveEnable',
                 'settings.pikpakArchiveRemote',
                 'settings.pikpakArchiveSource',

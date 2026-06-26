@@ -541,20 +541,11 @@ WEB_UI_CSS = r'''
     display: block;
   }
   .settings-layout {
-    padding: 18px;
+    width: min(100%, 1120px);
+    margin: 0 auto;
+    padding: 18px 18px 96px;
     display: grid;
-    gap: 18px;
-  }
-  .settings-columns {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
-    align-items: start;
-  }
-  .settings-stack {
-    display: grid;
-    gap: 18px;
-    min-width: 0;
+    gap: 16px;
   }
   .settings-section {
     background: #fff;
@@ -611,7 +602,7 @@ WEB_UI_CSS = r'''
   }
   .settings-check-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
   }
   .settings-check-grid--single {
@@ -664,13 +655,21 @@ WEB_UI_CSS = r'''
     line-height: 1.35;
   }
   .settings-actions {
-    padding: 14px 18px 18px;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    width: min(100%, 1120px);
+    margin: 0 auto;
+    padding: 12px 18px;
     border-top: 1px solid var(--line);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    background: rgba(255, 255, 255, .94);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -10px 24px rgba(15, 23, 42, .06);
   }
   .settings-actions .notice {
     flex: 1 1 260px;
@@ -691,7 +690,7 @@ WEB_UI_CSS = r'''
       border-bottom: 1px solid var(--line);
     }
     main { padding: 18px; }
-    .workspace, .settings-columns, .operation-grid { grid-template-columns: 1fr; }
+    .workspace, .operation-grid { grid-template-columns: 1fr; }
     .topbar { flex-direction: column; }
     .top-actions { width: 100%; }
   }
@@ -699,7 +698,7 @@ WEB_UI_CSS = r'''
     main { padding: 14px; }
     .range, .settings-grid, .field-grid, .check-grid, .settings-check-grid { grid-template-columns: 1fr; }
     .file-row { grid-template-columns: 1fr; }
-    .settings-layout { padding: 14px; gap: 14px; }
+    .settings-layout { padding: 14px 14px 104px; gap: 14px; }
     .settings-section__head { min-height: auto; align-items: flex-start; flex-direction: column; }
     .settings-actions { align-items: stretch; }
     .settings-actions button { width: 100%; }
@@ -887,80 +886,69 @@ WEB_UI_BODY = f'''
 {panel_head(title_i18n='settings.title', title_text='设置', meta_i18n='settings.safeNote', meta_text='敏感字段只显示是否已配置', indent=10)}
           <form id="settings-form" class="settings-form">
             <div class="settings-layout">
-              <div class="settings-columns">
-                <div class="settings-stack">
-                  <div class="settings-section">
-                    <div class="settings-section__head">
-                      <h3 class="settings-section__title" data-i18n="settings.paths">路径与任务</h3>
-                    </div>
-                    <div class="settings-section__body">
-                      <div class="field-grid field-grid--single">
-                        <label class="field"><span data-i18n="settings.saveDirectory">保存目录</span><input name="user.save_directory"></label>
-                        <label class="field"><span data-i18n="settings.tempDirectory">临时目录</span><input name="user.temp_directory"></label>
-                        <label class="field"><span data-i18n="settings.sessionDirectory">会话目录</span><input name="user.session_directory"></label>
-                      </div>
-                      <div class="field-grid">
-                        <label class="field"><span data-i18n="settings.maxDownload">最大下载任务</span><input name="user.max_tasks.download" type="number" min="1"></label>
-                        <label class="field"><span data-i18n="settings.maxUpload">最大上传任务</span><input name="user.max_tasks.upload" type="number" min="1"></label>
-                        <label class="field"><span data-i18n="settings.retryDownload">下载重试</span><input name="user.max_retries.download" type="number" min="0"></label>
-                        <label class="field"><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
-                        <label class="field"><span data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</span><input name="global.target_profiles.pikpak.max_file_size" type="number" min="1"></label>
-                      </div>
-                      <div class="settings-check-grid settings-check-grid--single">
-                        <label class="check-card"><input name="global.target_profiles.pikpak.archive.enable" type="checkbox"><span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span></label>
-                      </div>
-                      <div class="field-grid">
-                        <label class="field"><span data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote"></label>
-                        <label class="field"><span data-i18n="settings.pikpakArchiveSource">PikPak入库目录</span><input name="global.target_profiles.pikpak.archive.source_directory"></label>
-                        <label class="field"><span data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</span><input name="global.target_profiles.pikpak.archive.root_directory"></label>
-                        <label class="field"><span data-i18n="settings.pikpakArchivePoll">入库轮询秒数</span><input name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0"></label>
-                        <label class="field"><span data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0"></label>
-                        <label class="field"><span data-i18n="settings.pikpakArchiveWindow">匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0"></label>
-                      </div>
-                    </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.paths">路径与任务</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="field-grid field-grid--single">
+                    <label class="field"><span data-i18n="settings.saveDirectory">保存目录</span><input name="user.save_directory"></label>
+                    <label class="field"><span data-i18n="settings.tempDirectory">临时目录</span><input name="user.temp_directory"></label>
+                    <label class="field"><span data-i18n="settings.sessionDirectory">会话目录</span><input name="user.session_directory"></label>
                   </div>
-                  <div class="settings-section">
-                    <div class="settings-section__head">
-                      <h3 class="settings-section__title" data-i18n="settings.sensitive">账号与代理</h3>
-                    </div>
-                    <div class="settings-section__body">
-                      <div class="field-grid field-grid--single">
-                        <label class="field"><span>API ID</span><input name="user.api_id"></label>
-                        <label class="field"><span>API Hash</span><input name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
-                        <label class="field"><span>Bot Token</span><input name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
-                        <label class="field"><span data-i18n="settings.proxyPassword">代理密码</span><input name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
-                      </div>
-                    </div>
+                  <div class="field-grid">
+                    <label class="field"><span data-i18n="settings.maxDownload">最大下载任务</span><input name="user.max_tasks.download" type="number" min="1"></label>
+                    <label class="field"><span data-i18n="settings.maxUpload">最大上传任务</span><input name="user.max_tasks.upload" type="number" min="1"></label>
+                    <label class="field"><span data-i18n="settings.retryDownload">下载重试</span><input name="user.max_retries.download" type="number" min="0"></label>
+                    <label class="field"><span data-i18n="settings.retryUpload">上传重试</span><input name="user.max_retries.upload" type="number" min="0"></label>
+                    <label class="field"><span data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</span><input name="global.target_profiles.pikpak.max_file_size" type="number" min="1"></label>
                   </div>
                 </div>
-                <div class="settings-stack">
-                  <div class="settings-section">
-                    <div class="settings-section__head">
-                      <h3 class="settings-section__title" data-i18n="settings.behavior">行为</h3>
-                    </div>
-                    <div class="settings-section__body">
-                      <div class="settings-check-grid settings-check-grid--single">
-                        <label class="check-card"><input name="global.notice" type="checkbox"><span data-i18n="settings.notice">机器人通知</span></label>
-                        <label class="check-card"><input name="user.is_shutdown" type="checkbox"><span data-i18n="settings.shutdown">退出后关机</span></label>
-                        <label class="check-card"><input name="global.upload.download_upload" type="checkbox"><span data-i18n="settings.downloadUpload">受限转发时下载后上传</span></label>
-                        <label class="check-card"><input name="global.upload.delete" type="checkbox"><span data-i18n="settings.uploadDelete">上传完成删除本地文件</span></label>
-                      </div>
-                      <div class="field-grid field-grid--single">
-                        <label class="field"><span data-i18n="settings.pendingLimit">下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5"></label>
-                      </div>
-                    </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.behavior">行为</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="settings-check-grid">
+                    <label class="check-card"><input name="global.notice" type="checkbox"><span data-i18n="settings.notice">机器人通知</span></label>
+                    <label class="check-card"><input name="user.is_shutdown" type="checkbox"><span data-i18n="settings.shutdown">退出后关机</span></label>
+                    <label class="check-card"><input name="global.upload.download_upload" type="checkbox"><span data-i18n="settings.downloadUpload">受限转发时下载后上传</span></label>
+                    <label class="check-card"><input name="global.upload.delete" type="checkbox"><span data-i18n="settings.uploadDelete">上传完成删除本地文件</span></label>
                   </div>
-                  <div class="settings-section">
-                    <div class="settings-section__head">
-                      <h3 class="settings-section__title" data-i18n="settings.exports">导出表格</h3>
-                    </div>
-                    <div class="settings-section__body">
-                      <div class="settings-check-grid">
-                        <label class="check-card"><input name="global.export_table.link" type="checkbox"><span data-i18n="settings.exportLink">链接统计表</span></label>
-                        <label class="check-card"><input name="global.export_table.count" type="checkbox"><span data-i18n="settings.exportCount">计数统计表</span></label>
-                        <label class="check-card"><input name="global.export_table.upload" type="checkbox"><span data-i18n="settings.exportUpload">上传统计表</span></label>
-                      </div>
-                    </div>
+                  <div class="field-grid field-grid--single">
+                    <label class="field"><span data-i18n="settings.pendingLimit">下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5"></label>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.pikpakArchive">PikPak 归档</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="settings-check-grid settings-check-grid--single">
+                    <label class="check-card"><input name="global.target_profiles.pikpak.archive.enable" type="checkbox"><span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span></label>
+                  </div>
+                  <div class="field-grid">
+                    <label class="field"><span data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote"></label>
+                    <label class="field"><span data-i18n="settings.pikpakArchiveSource">PikPak入库目录</span><input name="global.target_profiles.pikpak.archive.source_directory"></label>
+                    <label class="field"><span data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</span><input name="global.target_profiles.pikpak.archive.root_directory"></label>
+                    <label class="field"><span data-i18n="settings.pikpakArchivePoll">入库轮询秒数</span><input name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0"></label>
+                    <label class="field"><span data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0"></label>
+                    <label class="field"><span data-i18n="settings.pikpakArchiveWindow">匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0"></label>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.sensitive">账号与代理</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="field-grid field-grid--single">
+                    <label class="field"><span>API ID</span><input name="user.api_id"></label>
+                    <label class="field"><span>API Hash</span><input name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+                    <label class="field"><span>Bot Token</span><input name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
+                    <label class="field"><span data-i18n="settings.proxyPassword">代理密码</span><input name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured"></label>
                   </div>
                 </div>
               </div>
@@ -978,6 +966,18 @@ WEB_UI_BODY = f'''
                 </div>
                 <div class="settings-section__body">
                   <div class="settings-check-grid" id="forward-type-settings"></div>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section__head">
+                  <h3 class="settings-section__title" data-i18n="settings.exports">导出表格</h3>
+                </div>
+                <div class="settings-section__body">
+                  <div class="settings-check-grid">
+                    <label class="check-card"><input name="global.export_table.link" type="checkbox"><span data-i18n="settings.exportLink">链接统计表</span></label>
+                    <label class="check-card"><input name="global.export_table.count" type="checkbox"><span data-i18n="settings.exportCount">计数统计表</span></label>
+                    <label class="check-card"><input name="global.export_table.upload" type="checkbox"><span data-i18n="settings.exportUpload">上传统计表</span></label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1302,6 +1302,7 @@ WEB_UI_SCRIPT = r'''
       'settings.retryDownload': '下载重试',
       'settings.retryUpload': '上传重试',
       'settings.pikpakMaxFileSize': 'PikPak大小上限(字节)',
+      'settings.pikpakArchive': 'PikPak 归档',
       'settings.pikpakArchiveEnable': 'PikPak按来源频道归档',
       'settings.pikpakArchiveRemote': 'PikPak rclone remote',
       'settings.pikpakArchiveSource': 'PikPak入库目录',
@@ -1525,6 +1526,7 @@ WEB_UI_SCRIPT = r'''
       'settings.retryDownload': 'Download retries',
       'settings.retryUpload': 'Upload retries',
       'settings.pikpakMaxFileSize': 'PikPak size limit (bytes)',
+      'settings.pikpakArchive': 'PikPak archive',
       'settings.pikpakArchiveEnable': 'Archive PikPak by source channel',
       'settings.pikpakArchiveRemote': 'PikPak rclone remote',
       'settings.pikpakArchiveSource': 'PikPak source folder',
