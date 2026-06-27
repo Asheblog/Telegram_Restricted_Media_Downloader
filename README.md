@@ -197,7 +197,9 @@ docker compose restart
 | `/opt/trmd/form` | `/app/form` | 统计表导出目录 |
 | `/opt/trmd/rclone` | `/app/rclone` | rclone 配置，默认读取 `rclone.conf` |
 
-`transfer_tasks.sqlite3` 位于 `/app/temp` 对应的挂载目录中。保留 `/opt/trmd/temp` 可以保留 WebUI 任务历史、文件进度、事件、下载成功记录和实时监听规则。
+`transfer_tasks.sqlite3` 位于 `/app/temp` 对应的挂载目录中。保留 `/opt/trmd/temp` 可以保留 WebUI 任务历史、文件进度、事件、下载成功记录和实时监听规则。程序启动 WebUI 转存状态库时会自动执行 SQLite WAL checkpoint、查询优化和必要的 `VACUUM` 释放空闲页；这是直接替换式维护策略，无需手动迁移或额外数据库服务。
+
+文件日志按天轮转，轮转日志最多保留 3 天；程序启动时也会清理超过 3 天的旧轮转日志。容器标准输出日志仍由 Docker 或宿主机日志策略管理。
 
 ## 常用命令
 

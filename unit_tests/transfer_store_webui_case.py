@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from copy import deepcopy
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
 
+import module as trmd_module
 from module.transfer_store import TransferStatus, TransferStore
 from module.web_ui import WebUiServer
 
@@ -151,6 +153,136 @@ def import_downloader_class():
 
 
 class TransferStoreWebUiCase(unittest.TestCase):
+    def test_log_cleanup_removes_rotated_files_older_than_three_days(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = os.path.join(directory, 'TRMD_LOG.log')
+            old_log = f'{log_path}.2026-06-20'
+            fresh_log = f'{log_path}.2026-06-26'
+            active_log = log_path
+            for path in (old_log, fresh_log, active_log):
+                with open(path, 'w', encoding='UTF-8') as file:
+                    file.write('log')
+            now = time.time()
+            old_mtime = now - 5 * 24 * 60 * 60
+            fresh_mtime = now - 24 * 60 * 60
+            os.utime(old_log, (old_mtime, old_mtime))
+            os.utime(fresh_log, (fresh_mtime, fresh_mtime))
+            os.utime(active_log, (old_mtime, old_mtime))
+
+            removed = trmd_module.cleanup_old_log_files(log_path=log_path, retention_days=3, now=now)
+
+            self.assertEqual(1, removed)
+            self.assertFalse(os.path.exists(old_log))
+            self.assertTrue(os.path.exists(fresh_log))
+            self.assertTrue(os.path.exists(active_log))
+
+    def test_transfer_store_maintenance_vacuums_and_marks_last_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1')
+            for index in range(200):
+                store.add_event(task_id, f'large event {index} ' + ('x' * 4000))
+            store.delete_task(task_id)
+
+            with store.connect() as conn:
+                free_pages_before = int(conn.execute('PRAGMA freelist_count').fetchone()[0])
+
+            self.assertGreater(free_pages_before, 0)
+            self.assertTrue(store.maintain(force=True))
+
+            with store.connect() as conn:
+                free_pages_after = int(conn.execute('PRAGMA freelist_count').fetchone()[0])
+            self.assertEqual(0, free_pages_after)
+            self.assertTrue(os.path.exists(f'{store.path}.maintenance'))
+
+    def test_transfer_store_runs_maintenance_periodically_from_connections(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            marker_path = f'{store.path}.maintenance'
+            old_mtime = time.time() - 7 * 60 * 60
+            os.utime(marker_path, (old_mtime, old_mtime))
+            store._last_maintenance_check = old_mtime
+
+            with store.connect():
+                pass
+
+            self.assertGreater(os.path.getmtime(marker_path), old_mtime)
+
+    def test_transfer_store_read_paths_use_covering_indexes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1')
+            for message_id in range(1, 6):
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='123',
+                    source_message_id=message_id,
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    status=TransferStatus.SUCCESS if message_id % 2 else TransferStatus.FAILURE
+                )
+                store.add_event(task_id, f'event {message_id}')
+            store.upsert_download_success_record(
+                source_chat_id='123',
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                media_type='document',
+                local_path=__file__,
+                file_size=os.path.getsize(__file__),
+                file_name='transfer_store_webui_case.py'
+            )
+
+            with store.connect() as conn:
+                plans = {
+                    'items': conn.execute(
+                        '''
+                        EXPLAIN QUERY PLAN
+                        SELECT * FROM transfer_items
+                        WHERE task_id = ?
+                        ORDER BY id ASC
+                        ''',
+                        (task_id,)
+                    ).fetchall(),
+                    'events': conn.execute(
+                        '''
+                        EXPLAIN QUERY PLAN
+                        SELECT * FROM transfer_events
+                        WHERE task_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                        ''',
+                        (task_id, 100)
+                    ).fetchall(),
+                    'record_list': conn.execute(
+                        '''
+                        EXPLAIN QUERY PLAN
+                        SELECT * FROM download_success_records
+                        ORDER BY updated_at DESC, id DESC
+                        LIMIT ?
+                        ''',
+                        (100,)
+                    ).fetchall(),
+                    'count': conn.execute(
+                        '''
+                        EXPLAIN QUERY PLAN
+                        SELECT status, COUNT(*) AS count
+                        FROM transfer_items
+                        WHERE task_id = ?
+                        GROUP BY status
+                        ''',
+                        (task_id,)
+                    ).fetchall()
+                }
+
+            flattened = {
+                name: ' '.join(str(row['detail']).upper() for row in rows)
+                for name, rows in plans.items()
+            }
+            self.assertIn('IDX_TRANSFER_ITEMS_TASK_ORDER', flattened['items'])
+            self.assertIn('IDX_TRANSFER_EVENTS_TASK_ORDER', flattened['events'])
+            self.assertIn('IDX_DOWNLOAD_RECORDS_UPDATED_ORDER', flattened['record_list'])
+            self.assertIn('IDX_TRANSFER_ITEMS_TASK_STATUS', flattened['count'])
+
     def test_download_success_record_is_reused_only_when_file_is_valid(self):
         with tempfile.TemporaryDirectory() as directory:
             media_path = os.path.join(directory, 'media.bin')
