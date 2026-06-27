@@ -464,10 +464,6 @@ class Bot:
                     InlineKeyboardButton(
                         BotButton.VIDEO_TUTORIAL,
                         url='https://www.youtube.com/watch?v=ucwKJu-MrBw'
-                    ),
-                    InlineKeyboardButton(
-                        BotButton.PAY,
-                        callback_data=BotCallbackText.PAY
                     )
                 ],
                 [
