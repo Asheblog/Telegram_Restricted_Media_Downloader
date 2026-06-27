@@ -69,7 +69,8 @@ class Application(UserConfig, StatisticalTable):
     def get_temp_file_path(
             self,
             message: pyrogram.types.Message,
-            dtype: str
+            dtype: str,
+            title_override: str = None
     ) -> str:
         """获取下载文件时的临时保存路径。"""
 
@@ -88,7 +89,7 @@ class Application(UserConfig, StatisticalTable):
             return _file
 
         os.makedirs(self.temp_directory, exist_ok=True)
-        dt = DownloadFileName(message=message, download_type=dtype)
+        dt = DownloadFileName(message=message, download_type=dtype, title_override=title_override)
         if dtype in (DownloadType.VIDEO, DownloadType.VIDEO_NOTE):
             file_name: str = dt.get_video_filename()
         elif dtype == DownloadType.PHOTO:
@@ -220,18 +221,62 @@ class Application(UserConfig, StatisticalTable):
 
 
 class DownloadFileName:
+    TITLE_MAX_CHARS = 120
+
     def __init__(
             self,
             message: pyrogram.types.Message,
-            download_type: Union[str, "DownloadType"]
+            download_type: Union[str, "DownloadType"],
+            title_override: str = None
     ):
         self.message = message
         self.download_type = download_type
+        self.title_override = title_override
+
+    def get_message_title(self) -> Union[str, None]:
+        """从消息正文或网页预览中提取可读标题。"""
+        if isinstance(self.title_override, str):
+            title = self.title_override.strip()
+            if title:
+                return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
+        inherited_title = getattr(self.message, '_trmd_source_title', None)
+        if isinstance(inherited_title, str):
+            inherited_title = inherited_title.strip()
+            if inherited_title:
+                return validate_title(inherited_title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
+        for attr in ('caption', 'text'):
+            title = getattr(self.message, attr, None)
+            if isinstance(title, str):
+                title = next((line.strip() for line in title.splitlines() if line.strip()), '')
+                if title:
+                    return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
+        web_page = getattr(self.message, 'web_page', None)
+        title = getattr(web_page, 'title', None)
+        if isinstance(title, str):
+            title = title.strip()
+            if title:
+                return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
+        return None
+
+    def build_message_title_filename(self, extension: str) -> Union[str, None]:
+        title = self.get_message_title()
+        if not title:
+            return None
+        extension = (extension or 'unknown').lstrip('.') or 'unknown'
+        return '{} - {}.{}'.format(getattr(self.message, 'id', '0'), title, extension)
 
     def get_video_filename(self):
         """处理视频文件的文件名。"""
         default_mtype: str = 'video/mp4'  # v1.2.8 健全获取文件名逻辑。
         media_object = getattr(self.message, self.download_type)
+        extension = get_extension(
+            file_id=media_object.file_id,
+            mime_type=getattr(media_object, 'mime_type', default_mtype),
+            dot=False
+        )
+        title_filename = self.build_message_title_filename(extension)
+        if title_filename:
+            return title_filename
         title: Union[str, None] = getattr(media_object, 'file_name', None)  # v1.2.8 修复当文件名不存在时,下载报错问题。
         try:
             if isinstance(title, str):
@@ -247,11 +292,7 @@ class DownloadFileName:
         return '{} - {}.{}'.format(
             getattr(self.message, 'id', '0'),
             title,
-            get_extension(
-                file_id=media_object.file_id,
-                mime_type=getattr(media_object, 'mime_type', default_mtype),
-                dot=False
-            )
+            extension
         )
 
     def get_photo_filename(self):
@@ -271,6 +312,9 @@ class DownloadFileName:
                 mime_type=getattr(media_object, 'mime_type', default_mtype),
                 dot=False
             )
+        title_filename = self.build_message_title_filename(extension)
+        if title_filename:
+            return title_filename
         return '{} - {}.{}'.format(
             getattr(self.message, 'id', '0'),
             getattr(media_object, 'file_unique_id', 'None'),

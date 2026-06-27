@@ -3723,7 +3723,8 @@ class TelegramRestrictedMediaDownloader(Bot):
     def get_media_meta(self, message: pyrogram.types.Message, dtype) -> Dict[str, Union[int, str]]:
         """获取媒体元数据。"""
         file_id: int = getattr(message, 'id')
-        temp_file_path: str = self.app.get_temp_file_path(message, dtype)
+        title_override = self.get_download_message_title(message)
+        temp_file_path: str = self.app.get_temp_file_path(message, dtype, title_override=title_override)
         _sever_meta = getattr(message, dtype)
         sever_file_size: int = getattr(_sever_meta, 'file_size')
         file_name: str = split_path(temp_file_path).get('file_name')
@@ -3738,6 +3739,35 @@ class TelegramRestrictedMediaDownloader(Bot):
             'format_file_size': format_file_size
         }
 
+    @staticmethod
+    def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
+        for attr in ('caption', 'text'):
+            title = getattr(message, attr, None)
+            if isinstance(title, str):
+                title = next((line.strip() for line in title.splitlines() if line.strip()), '')
+                if title:
+                    return title
+        inherited_title = getattr(message, '_trmd_source_title', None)
+        return inherited_title if isinstance(inherited_title, str) and inherited_title.strip() else None
+
+    @staticmethod
+    def inherit_media_group_title(messages: Union[list, None]) -> None:
+        if not isinstance(messages, list):
+            return
+        title = None
+        for message in messages:
+            title = TelegramRestrictedMediaDownloader.get_download_message_title(message)
+            if title:
+                break
+        if not title:
+            return
+        for message in messages:
+            if not TelegramRestrictedMediaDownloader.get_download_message_title(message):
+                try:
+                    setattr(message, '_trmd_source_title', title)
+                except Exception:
+                    pass
+
     async def __add_task(
             self,
             chat_id: Union[str, int],
@@ -3751,6 +3781,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         retry_count = retry.get('count')
         retry_id = retry.get('id')
         if isinstance(message, list):
+            self.inherit_media_group_title(message)
             for _message in message:
                 if retry_count != 0:
                     if _message.id == retry_id:
