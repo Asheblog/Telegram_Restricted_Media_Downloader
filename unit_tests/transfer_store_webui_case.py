@@ -1714,7 +1714,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         signature = inspect.signature(TelegramRestrictedMediaDownloader.wait_for_pikpak_ingest_confirmation)
         self.assertEqual(15, signature.parameters['timeout_seconds'].default)
 
-    def test_direct_pikpak_forward_without_media_metadata_skips_archive(self):
+    def test_direct_pikpak_forward_without_media_metadata_prepares_source_folder(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
         with tempfile.TemporaryDirectory() as directory:
@@ -1732,11 +1732,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.transfer_store = store
             downloader.app = SimpleNamespace(client=object())
+            folder_calls = []
 
             async def fake_forward(**kwargs):
                 return SimpleNamespace(id=100)
 
             class FakeArchiveClient:
+                def ensure_source_folder(self, source_folder):
+                    folder_calls.append(source_folder)
+                    return SimpleNamespace(ok=True, status='folder_ready', archive_path=f'Telegram/{source_folder}')
+
                 def archive_file(self, **kwargs):
                     archive_calls.append(kwargs)
                     return SimpleNamespace(ok=False, status='missing_metadata', message='metadata missing')
@@ -1758,11 +1763,63 @@ class TransferStoreWebUiCase(unittest.TestCase):
             ))
 
             self.assertEqual([], archive_calls)
+            self.assertEqual(['ctuxas'], folder_calls)
             item = store.list_items(task_id)[0]
             self.assertEqual(TransferStatus.SUCCESS, item['status'])
             self.assertIsNone(item['archive_status'])
             events = store.list_events(task_id)
             self.assertFalse(any('PikPak archive missing_metadata' in event['message'] for event in events))
+
+    def test_pikpak_upload_status_archives_without_transfer_store(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        archive_calls = []
+
+        class FakeArchiveClient:
+            def archive_file(self, **kwargs):
+                archive_calls.append(kwargs)
+                return SimpleNamespace(ok=True, status='success', archive_path='Telegram/ctuxas/video.mp4')
+
+        downloader.transfer_store = None
+        downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+        upload_task = SimpleNamespace(
+            status='sent',
+            file_name='video.mp4',
+            file_size=5,
+            transfer_meta={
+                'target_profile': 'pikpak',
+                'source_link': 'https://t.me/ctuxas/1',
+                'source_folder': 'ctuxas'
+            }
+        )
+
+        downloader.on_transfer_upload_status(upload_task)
+
+        self.assertEqual(1, len(archive_calls))
+        self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
+        self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+        self.assertEqual(5, archive_calls[0]['file_size'])
+
+    def test_common_download_upload_meta_enables_pikpak_archive_callbacks_for_listen_forward(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        downloader.gc = SimpleNamespace(upload_delete=False)
+
+        meta = downloader.build_download_upload_meta(
+            target_link='https://t.me/pikpak_bot',
+            source_link='https://t.me/ctuxas/1',
+            source_folder='ctuxas'
+        )
+
+        self.assertEqual('pikpak', meta['target_profile'])
+        self.assertEqual('ctuxas', meta['source_folder'])
+        self.assertTrue(meta['with_delete'])
+        self.assertFalse(meta['send_as_media_group'])
+        self.assertIs(meta['status_callback'].__self__, downloader)
+        self.assertIs(meta['status_callback'].__func__, downloader.on_transfer_upload_status.__func__)
+        self.assertIs(meta['on_file_ready'].__self__, downloader)
+        self.assertIs(meta['on_file_ready'].__func__, downloader.on_transfer_file_ready.__func__)
 
     def test_pikpak_transfer_over_target_limit_fails_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()

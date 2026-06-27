@@ -29,6 +29,9 @@ class PikPakArchiveResult:
 
 
 class DisabledPikPakArchiveClient:
+    def ensure_source_folder(self, *args, **kwargs) -> PikPakArchiveResult:
+        return PikPakArchiveResult(False, 'disabled', 'PikPak archive is disabled.')
+
     def archive_file(self, *args, **kwargs) -> PikPakArchiveResult:
         return PikPakArchiveResult(False, 'disabled', 'PikPak archive is disabled.')
 
@@ -107,6 +110,20 @@ class RclonePikPakArchiveClient:
                 return PikPakArchiveResult(True, 'already_archived', archive_path=target_path)
             self.moveto(source_path, target_path)
             return PikPakArchiveResult(True, 'success', archive_path=target_path)
+        except Exception as e:
+            return PikPakArchiveResult(False, 'error', str(e))
+
+    def ensure_source_folder(self, source_folder: str) -> PikPakArchiveResult:
+        if not self.enabled:
+            return PikPakArchiveResult(False, 'disabled', 'PikPak archive is disabled or remote is missing.')
+        if not source_folder:
+            return PikPakArchiveResult(False, 'missing_metadata', 'Source folder is missing.')
+        try:
+            folder = clean_remote_segment(source_folder)
+            target_root = clean_remote_path(self.config.get('root_directory') or '')
+            target_dir = join_remote_path(target_root, folder)
+            self.ensure_directory(target_dir)
+            return PikPakArchiveResult(True, 'folder_ready', archive_path=target_dir)
         except Exception as e:
             return PikPakArchiveResult(False, 'error', str(e))
 
