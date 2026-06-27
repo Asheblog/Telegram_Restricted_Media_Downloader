@@ -17,23 +17,38 @@ class TransferStatus:
 
 class TransferStore:
     FILE_NAME = 'transfer_tasks.sqlite3'
+    DEFAULT_MAINTENANCE_MIN_INTERVAL_SECONDS = 6 * 60 * 60
+    VACUUM_FREE_PAGE_THRESHOLD = 512
 
     def __init__(self, directory: str):
         self.directory = directory
         os.makedirs(directory, exist_ok=True)
         self.path = os.path.join(directory, self.FILE_NAME)
+        self._last_maintenance_check = 0.0
+        self._schema_ready = False
         self._init_schema()
+        self._schema_ready = True
+        self.maintain()
 
     @staticmethod
     def utc_now() -> str:
         return datetime.datetime.now(datetime.UTC).isoformat(timespec='seconds')
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self, run_maintenance: bool = True) -> sqlite3.Connection:
+        if run_maintenance and self._schema_ready:
+            self.maintain()
         conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA foreign_keys=ON')
+        self._configure_connection(conn)
         return conn
+
+    @staticmethod
+    def _configure_connection(conn: sqlite3.Connection) -> None:
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('PRAGMA temp_store=MEMORY')
+        conn.execute('PRAGMA busy_timeout=30000')
 
     def _init_schema(self) -> None:
         with self.connect() as conn:
@@ -157,6 +172,73 @@ class TransferStore:
                     'error_message': 'TEXT'
                 }
             )
+            self._ensure_indexes(conn)
+
+    @staticmethod
+    def _ensure_indexes(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            '''
+            CREATE INDEX IF NOT EXISTS idx_transfer_tasks_id_desc
+                ON transfer_tasks(id DESC);
+            CREATE INDEX IF NOT EXISTS idx_transfer_items_task_order
+                ON transfer_items(task_id, id ASC);
+            CREATE INDEX IF NOT EXISTS idx_transfer_items_task_message
+                ON transfer_items(task_id, source_message_id, source_chat_id, id ASC);
+            CREATE INDEX IF NOT EXISTS idx_transfer_items_task_status
+                ON transfer_items(task_id, status);
+            CREATE INDEX IF NOT EXISTS idx_transfer_events_task_order
+                ON transfer_events(task_id, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_download_records_updated_order
+                ON download_success_records(updated_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_live_transfer_watches_created_order
+                ON live_transfer_watches(created_at ASC, id ASC);
+            '''
+        )
+
+    def maintain(
+            self,
+            min_interval_seconds: int = DEFAULT_MAINTENANCE_MIN_INTERVAL_SECONDS,
+            force: bool = False
+    ) -> bool:
+        marker_path = f'{self.path}.maintenance'
+        now = datetime.datetime.now(datetime.UTC).timestamp()
+        if not force and now - self._last_maintenance_check < min_interval_seconds:
+            return False
+        self._last_maintenance_check = now
+        if not force and os.path.exists(marker_path):
+            try:
+                if now - os.path.getmtime(marker_path) < min_interval_seconds:
+                    return False
+            except OSError:
+                pass
+
+        try:
+            with self.connect(run_maintenance=False) as conn:
+                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                conn.execute('PRAGMA optimize')
+                page_count = int(conn.execute('PRAGMA page_count').fetchone()[0])
+                free_pages = int(conn.execute('PRAGMA freelist_count').fetchone()[0])
+                should_vacuum = force or (
+                    free_pages >= self.VACUUM_FREE_PAGE_THRESHOLD
+                    and free_pages >= max(1, page_count // 10)
+                )
+            if should_vacuum:
+                vacuum_conn = sqlite3.connect(self.path, timeout=30)
+                try:
+                    self._configure_connection(vacuum_conn)
+                    vacuum_conn.execute('VACUUM')
+                    vacuum_conn.execute('PRAGMA optimize')
+                finally:
+                    vacuum_conn.close()
+        except sqlite3.Error:
+            return False
+
+        try:
+            with open(marker_path, 'w', encoding='UTF-8') as marker:
+                marker.write(self.utc_now())
+        except OSError:
+            pass
+        return True
 
     @staticmethod
     def _ensure_columns(conn: sqlite3.Connection, table: str, columns: Dict[str, str]) -> None:
@@ -497,13 +579,31 @@ class TransferStore:
             return [dict(row) for row in rows]
 
     def task_payload(self, task_id: int) -> Optional[Dict[str, Any]]:
-        task = self.get_task(task_id)
-        if not task:
-            return None
+        with self.connect() as conn:
+            task = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()
+            if not task:
+                return None
+            items = conn.execute(
+                '''
+                SELECT * FROM transfer_items
+                WHERE task_id = ?
+                ORDER BY id ASC
+                ''',
+                (task_id,)
+            ).fetchall()
+            events = conn.execute(
+                '''
+                SELECT * FROM transfer_events
+                WHERE task_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                ''',
+                (task_id, 100)
+            ).fetchall()
         return {
-            'task': task,
-            'items': self.list_items(task_id),
-            'events': self.list_events(task_id)
+            'task': dict(task),
+            'items': [dict(row) for row in items],
+            'events': [dict(row) for row in events]
         }
 
     def refresh_task_counts(
@@ -515,11 +615,22 @@ class TransferStore:
         task = self.get_task(task_id)
         if not task:
             return
-        items = self.list_items(task_id)
         expected = expected_total if expected_total is not None else task.get('total_items')
-        expected = int(expected or len(items))
-        completed = len([item for item in items if item.get('status') in (TransferStatus.SUCCESS, TransferStatus.SKIPPED)])
-        failed = len([item for item in items if item.get('status') == TransferStatus.FAILURE])
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT status, COUNT(*) AS count
+                FROM transfer_items
+                WHERE task_id = ?
+                GROUP BY status
+                ''',
+                (task_id,)
+            ).fetchall()
+        counts = {str(row['status']): int(row['count']) for row in rows}
+        item_count = sum(counts.values())
+        expected = int(expected or item_count)
+        completed = counts.get(TransferStatus.SUCCESS, 0) + counts.get(TransferStatus.SKIPPED, 0)
+        failed = counts.get(TransferStatus.FAILURE, 0)
         terminal = completed + failed
         assigned = bool(task.get('assignment_completed'))
         if assignment_completed is not None:
@@ -531,10 +642,10 @@ class TransferStore:
         finished = False
         if task.get('status') == TransferStatus.PAUSED:
             status = TransferStatus.PAUSED
-        if expected > 0 and assigned and len(items) >= expected and terminal >= expected:
+        if expected > 0 and assigned and item_count >= expected and terminal >= expected:
             status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
             finished = True
-        elif task.get('status') == TransferStatus.PENDING and not items:
+        elif task.get('status') == TransferStatus.PENDING and item_count == 0:
             status = TransferStatus.PENDING
 
         self.update_task(

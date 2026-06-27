@@ -7,7 +7,9 @@ import os
 import atexit
 import logging
 import platform
-from logging.handlers import RotatingFileHandler
+import time
+from glob import glob
+from logging.handlers import TimedRotatingFileHandler
 
 import yaml
 from pyrogram.types.messages_and_media import LinkPreviewOptions
@@ -50,9 +52,9 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.8'
+__version__ = '0.2.9'
 __license__ = 'MIT License'
-__update_date__ = '2026/06/27 01:00:24'
+__update_date__ = '2026/06/28 00:00:57'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
 SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
 SOFTWARE_SHORT_NAME = 'TRMD'
@@ -68,17 +70,39 @@ MAX_RECORD_LENGTH = 1000
 read_input_history(history_path=INPUT_HISTORY_PATH, max_record_len=MAX_RECORD_LENGTH, platform=PLATFORM)
 # 配置日志输出到文件
 LOG_PATH = os.path.join(APPDATA_PATH, f'{SOFTWARE_SHORT_NAME}_LOG.log')
-MAX_LOG_SIZE = 200 * 1024 * 1024  # 200MB
-BACKUP_COUNT = 0  # 不保留日志文件。
+LOG_RETENTION_DAYS = 3
 LINK_PREVIEW_OPTIONS = LinkPreviewOptions(is_disabled=True)
 LOG_FORMAT = '%(name)s:%(funcName)s:%(lineno)d - %(message)s'
 FILE_LOG_LEVEL: int = logging.INFO
 CONSOLE_LOG_LEVEL: int = logging.WARNING
+
+
+def cleanup_old_log_files(
+        log_path: str = LOG_PATH,
+        retention_days: int = LOG_RETENTION_DAYS,
+        now: float | None = None
+) -> int:
+    cutoff = (time.time() if now is None else now) - max(0, retention_days) * 24 * 60 * 60
+    removed = 0
+    for candidate in glob(f'{log_path}.*'):
+        if not os.path.isfile(candidate):
+            continue
+        try:
+            if os.path.getmtime(candidate) < cutoff:
+                os.remove(candidate)
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+cleanup_old_log_files()
 # 配置日志文件处理器(文件记录)
-file_handler = RotatingFileHandler(
+file_handler = TimedRotatingFileHandler(
     filename=LOG_PATH,
-    maxBytes=MAX_LOG_SIZE,
-    backupCount=BACKUP_COUNT,
+    when='midnight',
+    interval=1,
+    backupCount=LOG_RETENTION_DAYS,
     encoding='UTF-8'
 )
 file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s' + ' ' + LOG_FORMAT, datefmt=LOG_TIME_FORMAT))
