@@ -80,6 +80,27 @@ class SourceFolderArchiveCase(unittest.TestCase):
             calls
         )
 
+    def test_rclone_archive_can_prepare_source_folder_without_file_metadata(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {'enable': True, 'remote': 'pikpak', 'root_directory': 'Telegram'},
+            runner=fake_runner
+        )
+
+        result = client.ensure_source_folder('ctuxas')
+
+        self.assertTrue(result.ok)
+        self.assertEqual('folder_ready', result.status)
+        self.assertEqual('Telegram/ctuxas', result.archive_path)
+        self.assertEqual([['rclone', 'mkdir', 'pikpak:Telegram/ctuxas']], calls)
+
     def test_rclone_archive_does_not_move_ambiguous_candidates(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 

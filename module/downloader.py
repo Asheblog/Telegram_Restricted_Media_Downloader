@@ -1157,16 +1157,13 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.refresh_transfer_task_counts(task_id)
 
     def on_transfer_upload_status(self, upload_task: UploadTask) -> None:
-        if not self.transfer_store:
-            return
         meta = getattr(upload_task, 'transfer_meta', {}) or {}
         task_id = meta.get('task_id')
         item_id = meta.get('item_id')
-        if not task_id or not item_id:
-            return
         if upload_task.status == UploadStatus.SENT:
-            self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent')
-            self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
+            if self.transfer_store and task_id and item_id:
+                self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent')
+                self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
             self.archive_pikpak_item(
                 target_profile=meta.get('target_profile'),
                 item_id=item_id,
@@ -1179,26 +1176,48 @@ class TelegramRestrictedMediaDownloader(Bot):
                 transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
             )
         elif upload_task.status == UploadStatus.FAILURE:
-            self.transfer_store.update_item(
-                item_id,
-                status=TransferStatus.FAILURE,
-                phase='failure',
-                error_message=upload_task.error_msg
-            )
-            self.transfer_store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
-        self.refresh_transfer_task_counts(int(task_id))
+            if self.transfer_store and task_id and item_id:
+                self.transfer_store.update_item(
+                    item_id,
+                    status=TransferStatus.FAILURE,
+                    phase='failure',
+                    error_message=upload_task.error_msg
+                )
+                self.transfer_store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
+        if self.transfer_store and task_id:
+            self.refresh_transfer_task_counts(int(task_id))
 
     def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
         source_link = source_link or task.get('source_link')
+        return self.build_download_upload_meta(
+            target_link=task.get('target_link'),
+            target_profile=task.get('target_profile'),
+            source_link=source_link,
+            source_folder=source_folder_from_link(source_link),
+            task_id=task.get('id'),
+            media_type=media_type
+        )
+
+    def build_download_upload_meta(
+            self,
+            target_link: str,
+            target_profile: Optional[str] = None,
+            source_link: Optional[str] = None,
+            source_folder: Optional[str] = None,
+            task_id: Optional[int] = None,
+            media_type: Optional[str] = None,
+            send_as_media_group: Optional[bool] = None
+    ) -> dict:
+        profile = target_profile or ('pikpak' if self.is_pikpak_target(target_link, target_profile) else None)
         return {
-            'link': task.get('target_link'),
+            'link': target_link,
             'file_name': None,
-            'with_delete': True if task.get('target_profile') == 'pikpak' else self.gc.upload_delete,
-            'send_as_media_group': False if task.get('target_profile') == 'pikpak' else True,
-            'task_id': task.get('id'),
+            'with_delete': True if profile == 'pikpak' else self.gc.upload_delete,
+            'send_as_media_group': (False if profile == 'pikpak' else True) if send_as_media_group is None else send_as_media_group,
+            'task_id': task_id,
             'source_link': source_link,
-            'source_folder': source_folder_from_link(source_link),
-            'target_profile': task.get('target_profile'),
+            'source_folder': source_folder or source_folder_from_link(source_link),
+            'target_profile': profile,
             'media_type': media_type,
             'on_file_ready': self.on_transfer_file_ready,
             'status_callback': self.on_transfer_upload_status,
@@ -1237,7 +1256,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         file_name = file_name or (media_meta or {}).get('file_name')
         file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
         if not file_name and (file_size is None or transferred_at is None):
-            return None
+            ensure = getattr(self.get_pikpak_archive_client(), 'ensure_source_folder', None)
+            return ensure(folder) if callable(ensure) else None
         result = self.get_pikpak_archive_client().archive_file(
             source_folder=folder,
             file_name=file_name,
@@ -3030,19 +3050,15 @@ class TelegramRestrictedMediaDownloader(Bot):
                         callback_data=BotCallbackText.SETTING
                     )]]))
                 return None
-            upload_meta = {
-                'link': target_link,
-                'file_name': None,
-                'with_delete': self.gc.upload_delete,
-                'send_as_media_group': True,
-                'target_profile': 'pikpak' if 'pikpak' in str(target_link).lower() else None,
-                'source_link': link,
-                'source_folder': source_folder_from_message(
+            upload_meta = self.build_download_upload_meta(
+                target_link=target_link,
+                source_link=link,
+                source_folder=source_folder_from_message(
                     message,
                     fallback_chat_id=origin_chat_id,
                     fallback_link=link
                 )
-            }
+            )
             if link:
                 self.last_message.text = f'/download {link}?single'
                 await self.get_download_link_from_bot(
@@ -3181,15 +3197,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     await self.get_download_link_from_bot(
                         client=self.last_client,
                         message=self.last_message,
-                        with_upload={
-                            'link': target_link,
-                            'file_name': None,
-                            'with_delete': self.gc.upload_delete,
-                            'send_as_media_group': True,
-                            'target_profile': 'pikpak' if 'pikpak' in str(target_link).lower() else None,
-                            'source_link': origin_link,
-                            'source_folder': source_folder_from_link(origin_link)
-                        }
+                        with_upload=self.build_download_upload_meta(
+                            target_link=target_link,
+                            source_link=origin_link,
+                            source_folder=source_folder_from_link(origin_link)
+                        )
                     )
                     break
                 except Exception as e:
