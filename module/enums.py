@@ -1432,7 +1432,6 @@ class BotCommandText:
 
 class BotCallbackText:
     NULL: str = 'null'
-    PAY: str = 'pay'
     LINK_TABLE: str = 'link_table'
     COUNT_TABLE: str = 'count_table'
     UPLOAD_TABLE: str = 'upload_table'
@@ -1512,7 +1511,6 @@ class BotButton:
     GITHUB: str = '📦GitHub'
     SUBSCRIBE_CHANNEL: str = '📌订阅频道'
     VIDEO_TUTORIAL: str = '🎬视频教程'
-    PAY: str = '💰支持作者'
     OPEN_NOTICE: str = '📢启用通知'
     CLOSE_NOTICE: str = '🔕禁用通知'
     LINK_TABLE: str = '🔗链接统计表'

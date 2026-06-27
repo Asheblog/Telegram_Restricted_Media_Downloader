@@ -99,7 +99,7 @@ from module.pikpak_archive import build_pikpak_archive_client
 from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
-from module.stdio import ProgressBar, Base64Image, MetaData
+from module.stdio import ProgressBar, MetaData
 from module.uploader import TelegramUploader
 from module.web_ui import (
     WebUiServer,
@@ -2171,32 +2171,6 @@ class TelegramRestrictedMediaDownloader(Bot):
         if not self.web_task_queue.empty():
             self.loop.create_task(self.process_web_task_queue())
 
-    @staticmethod
-    async def __send_pay_qr(
-            client: pyrogram.Client,
-            chat_id: Union[int, str],
-            load_name: str
-    ) -> Union[list, str, None]:
-        try:
-            last_msg = await client.send_message(
-                chat_id=chat_id,
-                text=f'🚛请稍后{load_name}加载中. . .',
-                link_preview_options=LINK_PREVIEW_OPTIONS
-            )
-            tasks = [client.send_photo(
-                chat_id=chat_id,
-                photo=Base64Image.base64_to_binary_io(Base64Image.pay),
-                disable_notification=True
-            ),
-                client.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=last_msg.id,
-                    text=f'✅{load_name}加载成功!'
-                )]
-            await asyncio.gather(*tasks)
-        except Exception as e:
-            return str(e)
-
     async def start(
             self,
             client: pyrogram.Client,
@@ -2205,19 +2179,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.last_client: pyrogram.Client = client
         self.last_message: pyrogram.types.Message = message
         if self.gc.config.get(BotCallbackText.NOTICE):
-            chat_id = message.from_user.id
-            await asyncio.gather(
-                self.__send_pay_qr(
-                    client=client,
-                    chat_id=chat_id,
-                    load_name='机器人'
-                ),
-                super().start(client, message),
-                client.send_message(
-                    chat_id=chat_id,
-                    text='😊欢迎使用,您的支持是我持续更新的动力。',
-                    link_preview_options=LINK_PREVIEW_OPTIONS)
-            )
+            await super().start(client, message)
 
     async def callback_data(self, client: pyrogram.Client, callback_query: pyrogram.types.CallbackQuery):
         callback_data = await super().callback_data(client, callback_query)
@@ -2237,18 +2199,6 @@ class TelegramRestrictedMediaDownloader(Bot):
                 await callback_query.message.reply_text(
                     '启用或禁用机器人消息通知失败\n(具体原因请前往终端查看报错信息)')
                 log.error(f'启用或禁用机器人消息通知失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data == BotCallbackText.PAY:
-            res: Union[str, None] = await self.__send_pay_qr(
-                client=client,
-                chat_id=callback_query.from_user.id,  # v1.6.5 修复发送图片时chat_id错误问题。
-                load_name='收款码'
-            )
-            MetaData.pay()
-            if res:
-                msg = '🥰🥰🥰\n收款「二维码」已发送至您的「终端」十分感谢您的支持!'
-            else:
-                msg = '🥰🥰🥰\n收款「二维码」已发送至您的「终端」与「对话框」十分感谢您的支持!'
-            await callback_query.message.reply_text(msg)
         elif callback_data == BotCallbackText.BACK_HELP:
             meta: dict = await self.help()
             await callback_query.message.edit_text(meta.get('text'))
@@ -4673,6 +4623,5 @@ class TelegramRestrictedMediaDownloader(Bot):
                     upload_tasks=UploadTask.TASKS,
                     export=self.gc.get_config('export_table').get('upload')
                 )
-                MetaData.pay()
                 self.app.process_shutdown(60) if len(self.running_log) == 2 else None  # v1.2.8如果并未打开客户端执行任何下载,则不执行关机。
             self.app.ctrl_c()
