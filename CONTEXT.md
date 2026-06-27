@@ -52,6 +52,10 @@ _Avoid_: Auto dump, guessed range
 A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
 _Avoid_: Cache hit, finished file
 
+**Downloaded Media Filename**:
+A filesystem-safe filename for locally downloaded media. When the source Telegram message has a caption, text, or web preview title, that readable Source Message Title is preferred over Telegram media IDs or generated English filenames; the source message ID remains in the filename to avoid collisions.
+_Avoid_: Temp cache name, random media ID
+
 **Source Channel Folder**:
 A filesystem-safe folder name derived from the source Telegram conversation so transferred media from the same source can be grouped together.
 _Avoid_: Target folder, chat title cache
