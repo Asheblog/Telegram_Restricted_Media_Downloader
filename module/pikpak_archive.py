@@ -56,7 +56,8 @@ class RclonePikPakArchiveClient:
             source_folder: str,
             file_name: Optional[str],
             file_size: Optional[int] = None,
-            transferred_at: Optional[float] = None
+            transferred_at: Optional[float] = None,
+            match_original_name: bool = True
     ) -> PikPakArchiveResult:
         if not self.enabled:
             return PikPakArchiveResult(False, 'disabled', 'PikPak archive is disabled or remote is missing.')
@@ -67,26 +68,27 @@ class RclonePikPakArchiveClient:
 
         try:
             source_folder = clean_remote_segment(source_folder)
-            file_name = clean_remote_segment(file_name) if file_name else None
+            target_name = clean_remote_segment(file_name) if file_name else None
+            match_name = target_name if match_original_name else None
             source_root = clean_remote_path(self.config.get('source_directory') or '')
             target_root = clean_remote_path(self.config.get('root_directory') or '')
             target_dir = join_remote_path(target_root, source_folder)
             self.ensure_directory(target_dir)
             candidates = self.find_candidates(
                 root=source_root,
-                file_name=file_name,
+                file_name=match_name,
                 file_size=file_size,
                 transferred_at=transferred_at
             )
             if not candidates:
                 archived_candidates = self._list_matching_candidates(
                     root=target_dir,
-                    file_name=file_name,
+                    file_name=target_name,
                     file_size=file_size,
                     transferred_at=transferred_at
                 )
                 if len(archived_candidates) == 1:
-                    archived_name = clean_remote_segment(file_name or archived_candidates[0].get('Name'))
+                    archived_name = clean_remote_segment(target_name or archived_candidates[0].get('Name'))
                     if not archived_name:
                         return PikPakArchiveResult(False, 'not_found', 'No archived PikPak file name was available.')
                     archived_path = candidate_remote_path(
@@ -95,15 +97,15 @@ class RclonePikPakArchiveClient:
                     )
                     return PikPakArchiveResult(True, 'already_archived', archive_path=archived_path)
                 if len(archived_candidates) > 1:
-                    return PikPakArchiveResult(False, 'ambiguous', f'Multiple archived PikPak files matched {file_name}.')
-                return PikPakArchiveResult(False, 'not_found', f'No PikPak file matched {file_name}.')
+                    return PikPakArchiveResult(False, 'ambiguous', f'Multiple archived PikPak files matched {target_name}.')
+                return PikPakArchiveResult(False, 'not_found', f'No PikPak file matched {target_name}.')
             if len(candidates) > 1:
-                return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {file_name}.')
+                return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {target_name}.')
             source_path = candidate_remote_path(source_root, candidates[0].get('Path') or candidates[0].get('Name'))
-            target_name = clean_remote_segment(file_name or candidates[0].get('Name'))
+            target_name = target_name or clean_remote_segment(candidates[0].get('Name'))
             target_path = join_remote_path(target_dir, target_name)
             if not source_path:
-                return PikPakArchiveResult(False, 'not_found', f'No PikPak file path matched {file_name}.')
+                return PikPakArchiveResult(False, 'not_found', f'No PikPak file path matched {target_name}.')
             if not target_name:
                 return PikPakArchiveResult(False, 'not_found', 'No PikPak file name was available for archive.')
             if source_path == target_path:

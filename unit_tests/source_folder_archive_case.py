@@ -176,6 +176,122 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual('Telegram/ctuxas/photo_2026-06-26.jpg', result.archive_path)
         self.assertIn(['rclone', 'lsjson', 'pikpak:My Telegram', '--recursive', '--files-only'], calls)
 
+    def test_rclone_archive_can_rename_tmp_ingest_file_to_desired_name(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'tmpa0kqz48b.mp4',
+                            'Size': 177200000,
+                            'Path': 'tmpa0kqz48b.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-06-28T14:17:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner
+        )
+
+        result = client.archive_file(
+            source_folder='chengdudiyi8',
+            file_name='123 - 文章标题.mp4',
+            file_size=177200000,
+            transferred_at=1782656220.0,
+            match_original_name=False
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual('Telegram/chengdudiyi8/123 - 文章标题.mp4', result.archive_path)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/tmpa0kqz48b.mp4',
+                'pikpak:Telegram/chengdudiyi8/123 - 文章标题.mp4'
+            ],
+            calls
+        )
+
+    def test_rclone_archive_matches_original_name_by_default(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'tmpa0kqz48b.mp4',
+                            'Size': 177200000,
+                            'Path': 'tmpa0kqz48b.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-06-28T14:17:00Z'
+                        },
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 177200000,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-06-28T14:17:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner
+        )
+
+        result = client.archive_file(
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=177200000,
+            transferred_at=1782656220.0
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual('Telegram/ctuxas/video.mp4', result.archive_path)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/video.mp4',
+                'pikpak:Telegram/ctuxas/video.mp4'
+            ],
+            calls
+        )
+
     def test_rclone_archive_treats_existing_target_file_as_already_archived(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 

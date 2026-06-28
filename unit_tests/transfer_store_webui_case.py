@@ -1441,6 +1441,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
             self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+            self.assertTrue(archive_calls[0]['match_original_name'])
             item = store.list_items(task_id)[0]
             self.assertEqual(TransferStatus.FAILURE, item['status'])
             self.assertEqual('failure', item['phase'])
@@ -1449,6 +1450,69 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, store.get_task(task_id)['completed_items'])
             events = store.list_events(task_id)
             self.assertTrue(any(event['level'] == 'warning' and 'PikPak archive' in event['message'] for event in events))
+
+    def test_direct_pikpak_forward_archives_with_message_title_filename(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/chengdudiyi8/73962',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak'
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+            task = store.get_task(task_id)
+            archive_calls = []
+
+            downloader.transfer_store = store
+            downloader.app = SimpleNamespace(client=object())
+
+            async def fake_forward(**kwargs):
+                return SimpleNamespace(id=100)
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(
+                        ok=True,
+                        status='success',
+                        archive_path='Telegram/chengdudiyi8/73962 - 作者_ #海角社区 #示例标签.mp4'
+                    )
+
+            downloader.forward = fake_forward
+            downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            asyncio.run(downloader.transfer_message_to_web_target(
+                task=task,
+                message=SimpleNamespace(
+                    id=73962,
+                    link='https://t.me/chengdudiyi8/73962',
+                    caption='作者： #海角社区 #示例标签\n主题：【合集】 示例标题',
+                    chat=SimpleNamespace(id='source-chat', username='chengdudiyi8'),
+                    video=SimpleNamespace(
+                        file_size=177200000,
+                        file_name=None,
+                        file_id='video-file-id',
+                        mime_type='video/mp4'
+                    )
+                ),
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/chengdudiyi8/73962'
+            ))
+
+            self.assertEqual(1, len(archive_calls))
+            self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
+            self.assertEqual(
+                '73962 - 作者_ #海角社区 #示例标签.mp4',
+                archive_calls[0]['file_name']
+            )
+            self.assertFalse(archive_calls[0]['match_original_name'])
+            item = store.list_items(task_id)[0]
+            self.assertEqual('73962 - 作者_ #海角社区 #示例标签.mp4', item['file_name'])
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
 
     def test_direct_pikpak_forward_without_ingest_confirmation_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
