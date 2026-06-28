@@ -732,10 +732,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 source_link='https://t.me/chengdudiyi8/73962',
                 target_link='https://t.me/pikpak_bot',
                 media_type='forward',
-                file_name='video.mp4',
+                file_name='73962 - 作者_ #海角社区 #示例标签.mp4',
                 file_size=5,
                 source_folder='chengdudiyi8',
                 archive_status='pending',
+                archive_match_original_name=False,
                 phase='failure',
                 status=TransferStatus.FAILURE,
                 error_message='PikPak ingest confirmation timeout or failure: https://t.me/chengdudiyi8/73962'
@@ -747,7 +748,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
             class FakeArchiveClient:
                 def archive_file(self, **kwargs):
                     archive_calls.append(kwargs)
-                    return SimpleNamespace(ok=True, status='success', archive_path='Telegram/chengdudiyi8/video.mp4')
+                    return SimpleNamespace(
+                        ok=True,
+                        status='success',
+                        archive_path='Telegram/chengdudiyi8/73962 - 作者_ #海角社区 #示例标签.mp4'
+                    )
 
             downloader.transfer_store = store
             downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
@@ -759,12 +764,14 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual([], submitted)
             self.assertEqual(1, len(archive_calls))
             self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
-            self.assertEqual('video.mp4', archive_calls[0]['file_name'])
+            self.assertEqual('73962 - 作者_ #海角社区 #示例标签.mp4', archive_calls[0]['file_name'])
+            self.assertFalse(archive_calls[0]['match_original_name'])
             item = store.list_items(task_id)[0]
             self.assertEqual(failed_item_id, item['id'])
             self.assertEqual(TransferStatus.SUCCESS, item['status'])
             self.assertEqual('forwarded', item['phase'])
             self.assertEqual('success', item['archive_status'])
+            self.assertEqual(0, item['archive_match_original_name'])
             self.assertEqual('', item['error_message'])
             task = store.get_task(task_id)
             self.assertEqual(TransferStatus.SUCCESS, task['status'])
@@ -1996,6 +2003,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
         self.assertEqual('video.mp4', archive_calls[0]['file_name'])
         self.assertEqual(5, archive_calls[0]['file_size'])
+        self.assertTrue(archive_calls[0]['match_original_name'])
 
     def test_common_download_upload_meta_enables_pikpak_archive_callbacks_for_listen_forward(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
