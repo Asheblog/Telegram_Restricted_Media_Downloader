@@ -137,6 +137,47 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertEqual(UploadStatus.SUCCESS, upload_task.status)
             self.assertIn(UploadStatus.SUCCESS, status_updates)
 
+    def test_download_upload_keeps_file_name_in_transfer_meta(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'title-name.mp4')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            captured = []
+
+            class FakeClient:
+                def rnd_id(self):
+                    return 123
+
+            async def fake_create_upload_task(link, upload_task):
+                captured.append((link, upload_task))
+
+            def fake_create_task(coroutine):
+                asyncio.run(coroutine)
+                return SimpleNamespace()
+
+            uploader = object.__new__(TelegramUploader)
+            uploader.client = FakeClient()
+            uploader.create_upload_task = fake_create_upload_task
+
+            with patch('module.uploader.asyncio.create_task', side_effect=fake_create_task):
+                uploader.download_upload(
+                    with_upload={
+                        'link': 'https://t.me/pikpak_bot',
+                        'target_profile': 'pikpak',
+                        'source_link': 'https://t.me/source/1',
+                        'source_folder': 'source',
+                        'file_name': 'title-name.mp4'
+                    },
+                    file_path=file_path
+                )
+
+            self.assertEqual(1, len(captured))
+            upload_task = captured[0][1]
+            self.assertEqual('title-name.mp4', upload_task.file_name)
+            self.assertEqual('title-name.mp4', upload_task.transfer_meta['file_name'])
+            self.assertEqual('pikpak', upload_task.transfer_meta['target_profile'])
+
 
 if __name__ == '__main__':
     unittest.main()

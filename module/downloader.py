@@ -295,7 +295,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             ),
             file_name=item.get('file_name'),
             file_size=item.get('file_size'),
-            transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+            transferred_at=self.transfer_item_archive_timestamp(item),
+            match_original_name=self.transfer_item_archive_match_original_name(item)
         )
         if not bool(getattr(result, 'ok', False)):
             return False
@@ -1407,7 +1408,8 @@ class TelegramRestrictedMediaDownloader(Bot):
                 source_folder=meta.get('source_folder'),
                 file_name=upload_task.file_name,
                 file_size=getattr(upload_task, 'file_size', None),
-                transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
+                match_original_name=True
             )
         elif upload_task.status == UploadStatus.FAILURE:
             if self.transfer_store and task_id and item_id:
@@ -1477,7 +1479,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_folder: Optional[str] = None,
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
-            transferred_at: Optional[float] = None
+            transferred_at: Optional[float] = None,
+            match_original_name: Optional[bool] = None
     ):
         if target_profile != 'pikpak':
             return None
@@ -1498,7 +1501,11 @@ class TelegramRestrictedMediaDownloader(Bot):
             file_name=file_name,
             file_size=file_size,
             transferred_at=transferred_at,
-            match_original_name=not bool(title_file_name and file_name == title_file_name)
+            match_original_name=(
+                bool(match_original_name)
+                if match_original_name is not None
+                else not bool(title_file_name and file_name == title_file_name)
+            )
         )
         archive_status = getattr(result, 'status', 'error')
         archive_path = getattr(result, 'archive_path', None)
@@ -1522,6 +1529,25 @@ class TelegramRestrictedMediaDownloader(Bot):
                 item_id=int(item_id) if item_id else None
             )
         return result
+
+    @staticmethod
+    def transfer_item_archive_match_original_name(item: dict) -> Optional[bool]:
+        value = item.get('archive_match_original_name')
+        if value is None:
+            return None
+        return bool(int(value))
+
+    @staticmethod
+    def transfer_item_archive_timestamp(item: dict) -> float:
+        for key in ('updated_at', 'created_at'):
+            value = item.get(key)
+            if not value:
+                continue
+            try:
+                return datetime.datetime.fromisoformat(str(value)).timestamp()
+            except ValueError:
+                continue
+        return datetime.datetime.now(datetime.UTC).timestamp()
 
     @staticmethod
     def get_message_media_archive_filename(message) -> Optional[str]:
@@ -1869,6 +1895,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     archive_after_success=False
                 )
                 media_meta = self.get_message_media_target_limit_meta(message)
+                archive_file_name = self.get_message_media_archive_filename(message)
                 task_id = int(task.get('id'))
                 item_id = self.transfer_store.add_item(
                     task_id=task_id,
@@ -1885,6 +1912,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                         fallback_link=source_link
                     ),
                     archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,
+                    archive_match_original_name=(
+                        archive_file_name is None
+                        if task.get('target_profile') == 'pikpak' and media_meta
+                        else None
+                    ),
                     phase='forwarded',
                     status=TransferStatus.RUNNING
                 )

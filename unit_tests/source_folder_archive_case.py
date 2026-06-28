@@ -360,19 +360,22 @@ class SourceFolderArchiveCase(unittest.TestCase):
                 target_link='https://t.me/pikpak_bot',
                 source_folder='ctuxas',
                 archive_status='pending',
+                archive_match_original_name=False,
                 status=TransferStatus.RUNNING
             )
 
             store.update_item(
                 item_id,
                 archive_status='success',
-                archive_path='Telegram/ctuxas/video.mp4'
+                archive_path='Telegram/ctuxas/video.mp4',
+                archive_match_original_name=True
             )
 
             item = store.list_items(task_id)[0]
             self.assertEqual('ctuxas', item['source_folder'])
             self.assertEqual('success', item['archive_status'])
             self.assertEqual('Telegram/ctuxas/video.mp4', item['archive_path'])
+            self.assertEqual(1, item['archive_match_original_name'])
 
     def test_webui_settings_accept_pikpak_archive_config(self):
         from module.web_ui import merge_allowed_settings

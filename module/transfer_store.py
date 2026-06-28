@@ -94,6 +94,7 @@ class TransferStore:
                     archive_path TEXT,
                     archive_status TEXT,
                     archive_error TEXT,
+                    archive_match_original_name INTEGER,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     created_at TEXT NOT NULL,
@@ -159,7 +160,8 @@ class TransferStore:
                     'source_folder': 'TEXT',
                     'archive_path': 'TEXT',
                     'archive_status': 'TEXT',
-                    'archive_error': 'TEXT'
+                    'archive_error': 'TEXT',
+                    'archive_match_original_name': 'INTEGER'
                 }
             )
             self._ensure_columns(
@@ -369,6 +371,7 @@ class TransferStore:
             archive_path: Optional[str] = None,
             archive_status: Optional[str] = None,
             archive_error: Optional[str] = None,
+            archive_match_original_name: Optional[bool] = None,
             phase: str = 'pending',
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None
@@ -402,6 +405,7 @@ class TransferStore:
                         archive_path=archive_path,
                         archive_status=archive_status,
                         archive_error=archive_error,
+                        archive_match_original_name=archive_match_original_name,
                         phase=phase,
                         error_message=error_message,
                         now=now
@@ -412,14 +416,15 @@ class TransferStore:
                 INSERT INTO transfer_items (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
                     media_type, file_name, file_size, local_path, source_folder,
-                    archive_path, archive_status, archive_error, phase, status,
+                    archive_path, archive_status, archive_error, archive_match_original_name, phase, status,
                     error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
                     media_type, file_name, file_size, local_path, source_folder,
-                    archive_path, archive_status, archive_error, phase, status,
+                    archive_path, archive_status, archive_error,
+                    self._normalize_optional_bool(archive_match_original_name), phase, status,
                     error_message, now, now
                 )
             )
@@ -439,6 +444,7 @@ class TransferStore:
             archive_path: Optional[str] = None,
             archive_status: Optional[str] = None,
             archive_error: Optional[str] = None,
+            archive_match_original_name: Optional[bool] = None,
             error_message: Optional[str] = None
     ) -> None:
         now = self.utc_now()
@@ -456,6 +462,7 @@ class TransferStore:
                 archive_path=archive_path,
                 archive_status=archive_status,
                 archive_error=archive_error,
+                archive_match_original_name=archive_match_original_name,
                 phase=phase,
                 error_message=error_message,
                 now=now
@@ -476,6 +483,7 @@ class TransferStore:
             archive_path: Optional[str] = None,
             archive_status: Optional[str] = None,
             archive_error: Optional[str] = None,
+            archive_match_original_name: Optional[bool] = None,
             phase: Optional[str] = None,
             error_message: Optional[str] = None
     ) -> None:
@@ -491,6 +499,7 @@ class TransferStore:
             'archive_path': archive_path,
             'archive_status': archive_status,
             'archive_error': archive_error,
+            'archive_match_original_name': TransferStore._normalize_optional_bool(archive_match_original_name),
             'phase': phase,
             'error_message': error_message
         }
@@ -502,6 +511,12 @@ class TransferStore:
             f'UPDATE transfer_items SET {set_clause} WHERE id = :item_id',
             {**fields, 'item_id': item_id}
         )
+
+    @staticmethod
+    def _normalize_optional_bool(value: Optional[bool]) -> Optional[int]:
+        if value is None:
+            return None
+        return 1 if bool(value) else 0
 
     def update_item_progress(
             self,

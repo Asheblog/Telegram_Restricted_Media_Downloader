@@ -713,6 +713,7 @@ class TelegramUploader:
                             'target_profile': with_upload.get('target_profile'),
                             'source_link': with_upload.get('source_link'),
                             'source_folder': with_upload.get('source_folder'),
+                            'file_name': with_upload.get('file_name') or os.path.basename(file_path),
                             'bot_progress': with_upload.get('bot_progress')
                         },
                         status_callback=with_upload.get('status_callback'),
