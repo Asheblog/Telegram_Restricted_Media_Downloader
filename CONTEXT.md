@@ -36,6 +36,10 @@ _Avoid_: File task, message job
 The set of Transfer Items in a Transfer Task that have reached a final outcome and can be skipped when the same Transfer Task continues later.
 _Avoid_: Chapter cursor, runtime offset
 
+**Live Transfer Status**:
+A user-visible progress message for an active Restricted Content Transfer, especially when a Live Transfer Watch falls back to downloading and uploading media. It shows download, upload, target-send, and failure phases while the work is still running.
+_Avoid_: Container log, final notice, PikPak confirmation
+
 **Transfer Task Pause**:
 A user-requested stop point for a Transfer Task that prevents the next Transfer Item from starting while preserving already completed Transfer Progress.
 _Avoid_: Cancel task, delete task, kill transfer
