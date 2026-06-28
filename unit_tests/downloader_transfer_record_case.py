@@ -12,6 +12,7 @@ sys.argv = [sys.argv[0]]
 
 from module.downloader import TelegramRestrictedMediaDownloader
 from module.transfer_store import TransferStore
+from module.enums import UploadStatus
 
 
 class DownloaderTransferRecordCase(unittest.TestCase):
@@ -147,6 +148,80 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             item = downloader.transfer_store.list_items(task_id)[0]
             self.assertEqual('ctuxas', item['source_folder'])
             self.assertEqual(os.path.join(directory, 'ctuxas', 'video.mp4'), item['local_path'])
+
+    def test_bot_progress_is_updated_for_download_upload_lifecycle(self):
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.transfer_store = None
+        downloader._scheduled_bot_progress_updates = []
+        downloader.schedule_bot_transfer_progress_update = (
+            lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text)
+        )
+        bot_progress = {
+            'source_link': 'https://t.me/source/7',
+            'target_link': 'https://t.me/pikpak_bot',
+            'source_message_id': 7,
+            'file_name': 'media.bin',
+            'min_interval': 0
+        }
+        with_upload = {
+            'bot_progress': bot_progress,
+            'file_name': 'media.bin'
+        }
+        downloader.pb = SimpleNamespace(download=lambda *args, **kwargs: None)
+
+        downloader.transfer_download_progress(
+            current=5,
+            total=10,
+            progress=SimpleNamespace(update=lambda *args, **kwargs: None),
+            task_id=1,
+            with_upload=with_upload
+        )
+        upload_task = SimpleNamespace(
+            file_name='media.bin',
+            file_size=10,
+            status=UploadStatus.SENT,
+            error_msg=None,
+            transfer_meta={
+                'bot_progress': bot_progress,
+                'file_name': 'media.bin'
+            }
+        )
+        downloader.on_transfer_upload_progress(upload_task, current=7, total=10)
+        downloader.on_transfer_upload_status(upload_task)
+
+        joined = '\n'.join(downloader._scheduled_bot_progress_updates)
+        self.assertIn('📥 下载中 50.0%', joined)
+        self.assertIn('📤 上传中 70.0%', joined)
+        self.assertIn('✅ 已发送到目标', joined)
+
+    def test_bot_progress_reports_upload_failure_even_without_transfer_store(self):
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.transfer_store = None
+        downloader._scheduled_bot_progress_updates = []
+        downloader.schedule_bot_transfer_progress_update = (
+            lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text)
+        )
+        upload_task = SimpleNamespace(
+            file_name='media.bin',
+            file_size=10,
+            status=UploadStatus.FAILURE,
+            error_msg='target rejected file',
+            transfer_meta={
+                'bot_progress': {
+                    'source_link': 'https://t.me/source/7',
+                    'target_link': 'https://t.me/pikpak_bot',
+                    'source_message_id': 7,
+                    'file_name': 'media.bin',
+                    'min_interval': 0
+                },
+                'file_name': 'media.bin'
+            }
+        )
+
+        downloader.on_transfer_upload_status(upload_task)
+
+        self.assertIn('❌ 上传失败', downloader._scheduled_bot_progress_updates[-1])
+        self.assertIn('target rejected file', downloader._scheduled_bot_progress_updates[-1])
 
 
 if __name__ == '__main__':

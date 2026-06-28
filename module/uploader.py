@@ -675,6 +675,7 @@ class TelegramUploader:
         safe_delete(file_path) if upload_task.with_delete else None
         upload_task.release_window()
         upload_task.status = UploadStatus.SUCCESS
+        self.notify_transfer_status(upload_task)
         MetaData.print_current_task_num(
             prompt=_t(KeyWord.CURRENT_UPLOAD_TASK),
             num=self.current_task_num
@@ -711,7 +712,8 @@ class TelegramUploader:
                             'item_id': item_id,
                             'target_profile': with_upload.get('target_profile'),
                             'source_link': with_upload.get('source_link'),
-                            'source_folder': with_upload.get('source_folder')
+                            'source_folder': with_upload.get('source_folder'),
+                            'bot_progress': with_upload.get('bot_progress')
                         },
                         status_callback=with_upload.get('status_callback'),
                         progress_callback=with_upload.get('progress_callback')

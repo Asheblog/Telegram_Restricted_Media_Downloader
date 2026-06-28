@@ -106,6 +106,37 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertEqual(UploadStatus.SENT, upload_task.status)
             self.assertNotIn(UploadStatus.FAILURE, status_updates)
 
+    def test_upload_complete_callback_notifies_transfer_success_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'media.bin')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            status_updates = []
+            uploader = object.__new__(TelegramUploader)
+            uploader.current_task_num = 1
+            uploader.event = SimpleNamespace(set=lambda: None)
+            uploader.pb = SimpleNamespace(progress=SimpleNamespace(remove_task=lambda task_id: None))
+            upload_task = UploadTask(
+                chat_id='target-chat',
+                file_path=file_path,
+                file_id=1,
+                file_size=5,
+                file_part=[],
+                status=UploadStatus.UPLOADING,
+                with_delete=False,
+                status_callback=lambda task: status_updates.append(task.status)
+            )
+
+            uploader.upload_complete_callback(
+                upload_task=upload_task,
+                task_id=1,
+                _future=SimpleNamespace(result=lambda: None)
+            )
+
+            self.assertEqual(UploadStatus.SUCCESS, upload_task.status)
+            self.assertIn(UploadStatus.SUCCESS, status_updates)
+
 
 if __name__ == '__main__':
     unittest.main()
