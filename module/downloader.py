@@ -61,6 +61,7 @@ from module import (
 )
 from module.filter import Filter
 from module.app import Application
+from module.app import DownloadFileName
 from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.bot import (
@@ -89,7 +90,9 @@ from module.path_tool import (
     compare_file_size,
     move_to_save_directory,
     safe_replace,
-    validate_title
+    validate_title,
+    extract_full_extension,
+    is_compressed_file
 )
 from module.target_profiles import (
     target_profile_limit,
@@ -1484,7 +1487,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             fallback_link=source_link
         )
         media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
-        file_name = file_name or (media_meta or {}).get('file_name')
+        title_file_name = self.get_message_media_archive_filename(message)
+        file_name = file_name or title_file_name or (media_meta or {}).get('file_name')
         file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
         if not file_name and (file_size is None or transferred_at is None):
             ensure = getattr(self.get_pikpak_archive_client(), 'ensure_source_folder', None)
@@ -1493,7 +1497,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_folder=folder,
             file_name=file_name,
             file_size=file_size,
-            transferred_at=transferred_at
+            transferred_at=transferred_at,
+            match_original_name=not bool(title_file_name and file_name == title_file_name)
         )
         archive_status = getattr(result, 'status', 'error')
         archive_path = getattr(result, 'archive_path', None)
@@ -1517,6 +1522,48 @@ class TelegramRestrictedMediaDownloader(Bot):
                 item_id=int(item_id) if item_id else None
             )
         return result
+
+    @staticmethod
+    def get_message_media_archive_filename(message) -> Optional[str]:
+        if message is None:
+            return None
+        for dtype in DownloadType():
+            media = getattr(message, dtype, None)
+            if not media:
+                continue
+            try:
+                if dtype == DownloadType.DOCUMENT and is_compressed_file(getattr(media, 'file_name', None)):
+                    return None
+                title = DownloadFileName(message, dtype).get_message_title()
+                if not title:
+                    return None
+                extension = TelegramRestrictedMediaDownloader.get_message_media_archive_extension(dtype, media)
+                return '{} - {}.{}'.format(getattr(message, 'id', '0'), title, extension)
+            except Exception:
+                return None
+        return None
+
+    @staticmethod
+    def get_message_media_archive_extension(dtype: str, media) -> str:
+        origin_extension = extract_full_extension(getattr(media, 'file_name', None))
+        if origin_extension:
+            return origin_extension
+        mime_type = str(getattr(media, 'mime_type', '') or '').lower()
+        if dtype in (DownloadType.VIDEO, DownloadType.VIDEO_NOTE) or 'video' in mime_type:
+            return 'mp4'
+        if dtype == DownloadType.PHOTO or 'image' in mime_type:
+            if 'png' in mime_type:
+                return 'png'
+            if 'webp' in mime_type:
+                return 'webp'
+            return 'jpg'
+        if dtype == DownloadType.AUDIO or 'audio' in mime_type:
+            return 'mp3'
+        if dtype == DownloadType.VOICE:
+            return 'ogg'
+        if dtype == DownloadType.ANIMATION:
+            return 'mp4'
+        return 'unknown'
 
     def fail_transfer_item(
             self,
@@ -1616,10 +1663,11 @@ class TelegramRestrictedMediaDownloader(Bot):
             file_size = getattr(media, 'file_size', None)
             if file_size is None:
                 continue
+            archive_file_name = TelegramRestrictedMediaDownloader.get_message_media_archive_filename(message)
             return {
                 'media_type': dtype,
                 'file_size': int(file_size),
-                'file_name': getattr(media, 'file_name', None)
+                'file_name': archive_file_name or getattr(media, 'file_name', None)
             }
         return None
 

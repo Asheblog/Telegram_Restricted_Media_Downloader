@@ -57,7 +57,7 @@ def is_file_duplicate(save_directory: str, sever_file_size: int) -> bool:
 
 def validate_title(title: str) -> str:
     """验证并修改(如果不合法)标题的合法性。"""
-    r_str = r"[/\\:*?\"<>|\x00-\x1f]"  # '/ \ : * ? " < > |' 和控制字符。
+    r_str = r"[/\\:*?\"<>|：\x00-\x1f]"  # '/ \ : * ? " < > |'、中文冒号和控制字符。
     new_title = re.sub(r_str, "_", title)
     return new_title
 

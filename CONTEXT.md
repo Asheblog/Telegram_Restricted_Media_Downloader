@@ -57,7 +57,7 @@ A durable record that a source conversation message has already been downloaded 
 _Avoid_: Cache hit, finished file
 
 **Downloaded Media Filename**:
-A filesystem-safe filename for locally downloaded media. When the source Telegram message has a caption, text, or web preview title, that readable Source Message Title is preferred over Telegram media IDs or generated English filenames; the source message ID remains in the filename to avoid collisions.
+A filesystem-safe filename for downloaded media and PikPak Archive targets. When the source Telegram message has a caption, text, or web preview title, that readable Source Message Title is preferred over Telegram media IDs or generated English filenames; the source message ID remains in the filename to avoid collisions.
 _Avoid_: Temp cache name, random media ID
 
 **Source Channel Folder**:
