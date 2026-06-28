@@ -13,6 +13,7 @@ sys.argv = [sys.argv[0]]
 from module.downloader import TelegramRestrictedMediaDownloader
 from module.transfer_store import TransferStore
 from module.enums import UploadStatus
+from module.task import DownloadTask
 
 
 class DownloaderTransferRecordCase(unittest.TestCase):
@@ -24,7 +25,13 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
             downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = TransferStore(directory=directory)
-            downloader.uploader = None
+            uploaded = []
+
+            class FakeUploader:
+                def download_upload(self, with_upload, file_path):
+                    uploaded.append((with_upload, file_path))
+
+            downloader.uploader = FakeUploader()
             downloader.release_download_upload_window = lambda with_upload: None
             downloader.transfer_store.upsert_download_success_record(
                 source_chat_id='source',
@@ -58,6 +65,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
                 media_path,
                 downloader.try_reuse_transfer_download_record(with_upload, message, expected_size=5)
             )
+            self.assertEqual(media_path, uploaded[-1][1])
 
             os.remove(media_path)
             self.assertIsNone(
@@ -222,6 +230,104 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
         self.assertIn('❌ 上传失败', downloader._scheduled_bot_progress_updates[-1])
         self.assertIn('target rejected file', downloader._scheduled_bot_progress_updates[-1])
+
+    def test_download_complete_initializes_uploader_for_download_upload_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp_directory = os.path.join(directory, 'temp')
+            save_directory = os.path.join(directory, 'downloads')
+            os.makedirs(temp_directory, exist_ok=True)
+            os.makedirs(save_directory, exist_ok=True)
+            temp_file_path = os.path.join(temp_directory, 'media.bin.temp')
+            final_path = os.path.join(save_directory, 'media.bin')
+            with open(temp_file_path, 'wb') as file:
+                file.write(b'12345')
+
+            uploaded = []
+            link = 'https://t.me/source/7'
+            DownloadTask.LINK_INFO.clear()
+            DownloadTask.COMPLETE_LINK.clear()
+            DownloadTask(
+                link=link,
+                link_type='single',
+                member_num=2,
+                complete_num=0,
+                file_name=set(),
+                error_msg={}
+            )
+
+            class FakeUploader:
+                def __init__(self, download_object):
+                    self.download_object = download_object
+
+                def download_upload(self, with_upload, file_path):
+                    uploaded.append((with_upload, file_path))
+
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.transfer_store = None
+            downloader.uploader = None
+            downloader.app = SimpleNamespace(
+                current_task_num=1,
+                max_download_retries=1,
+                get_file_type=lambda *args, **kwargs: 'document'
+            )
+            downloader.event = SimpleNamespace(set=lambda: None)
+            downloader.queue = SimpleNamespace(task_done=lambda: None)
+            downloader.pb = SimpleNamespace(progress=SimpleNamespace(remove_task=lambda task_id: None))
+            downloader.get_final_save_directory = lambda message, with_upload=None: save_directory
+            downloader.get_final_file_path = lambda message, file_name, with_upload=None: os.path.join(save_directory, file_name)
+            downloader.record_transfer_download_success = lambda with_upload, message, file_path: None
+            downloader.release_download_upload_window = lambda with_upload: None
+            downloader.create_uploader = lambda: FakeUploader(downloader)
+            message = SimpleNamespace(id=7, get_media_group=lambda: (_ for _ in ()).throw(ValueError()))
+            with_upload = {
+                'link': 'https://t.me/pikpak_bot',
+                'with_delete': True,
+                'target_profile': 'pikpak'
+            }
+
+            downloader.download_complete_callback(
+                sever_file_size=5,
+                temp_file_path=temp_file_path,
+                link=link,
+                message=message,
+                file_name='media.bin',
+                retry_count=0,
+                file_id=7,
+                format_file_size='5.00B',
+                task_id=1,
+                with_upload=with_upload,
+                diy_download_type=None,
+                _future=final_path
+            )
+
+            self.assertEqual(1, len(uploaded))
+            self.assertEqual(final_path, uploaded[0][1])
+            self.assertEqual(7, uploaded[0][0]['message_id'])
+
+    def test_start_download_upload_creates_missing_uploader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'media.bin')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            uploaded = []
+
+            class FakeUploader:
+                def download_upload(self, with_upload, file_path):
+                    uploaded.append((with_upload, file_path))
+
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.uploader = None
+            downloader.create_uploader = lambda: FakeUploader()
+            downloader.release_download_upload_window = lambda with_upload: None
+            message = SimpleNamespace(id=9, get_media_group=lambda: (_ for _ in ()).throw(ValueError()))
+            with_upload = {'link': 'https://t.me/pikpak_bot'}
+
+            self.assertTrue(downloader.start_download_upload(with_upload, message, file_path))
+
+            self.assertIsNotNone(downloader.uploader)
+            self.assertEqual(file_path, uploaded[0][1])
+            self.assertEqual(9, uploaded[0][0]['message_id'])
 
 
 if __name__ == '__main__':

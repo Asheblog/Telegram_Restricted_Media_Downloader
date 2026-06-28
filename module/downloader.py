@@ -828,6 +828,44 @@ class TelegramRestrictedMediaDownloader(Bot):
             release()
             with_upload['_window_release'] = None
 
+    def create_uploader(self) -> TelegramUploader:
+        return TelegramUploader(download_object=self)
+
+    def ensure_uploader(self) -> TelegramUploader:
+        if not self.uploader:
+            self.uploader = self.create_uploader()
+        return self.uploader
+
+    def start_download_upload(
+            self,
+            with_upload: Optional[dict],
+            message: pyrogram.types.Message,
+            file_path: str
+    ) -> bool:
+        if not isinstance(with_upload, dict):
+            self.release_download_upload_window(with_upload)
+            return False
+        try:
+            try:
+                media_group = message.get_media_group()
+            except Exception:
+                media_group = None
+            with_upload['message_id'] = getattr(message, 'id', None)
+            with_upload['media_group'] = media_group
+            self.ensure_uploader().download_upload(
+                with_upload=with_upload,
+                file_path=file_path
+            )
+            return True
+        except Exception as e:
+            error = f'创建上传任务失败:{e}'
+            log.error(error, exc_info=True)
+            callback = with_upload.get('failure_callback')
+            if callable(callback):
+                callback(with_upload, error)
+            self.release_download_upload_window(with_upload)
+            return False
+
     async def get_download_link_from_bot(
             self,
             client: pyrogram.Client,
@@ -1265,17 +1303,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                 f'Reused download success record: {record.get("file_name") or os.path.basename(local_path)}',
                 item_id=int(item_id)
             )
-        if self.uploader:
-            try:
-                media_group = message.get_media_group()
-            except ValueError:
-                media_group = None
-            task_with_upload['media_group'] = media_group
-            self.uploader.download_upload(
+        if not self.start_download_upload(
                 with_upload=task_with_upload,
+                message=message,
                 file_path=local_path
-            )
-        else:
+        ):
             self.release_download_upload_window(task_with_upload)
         return local_path
 
@@ -4188,19 +4220,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     message=message,
                     file_path=self.get_final_file_path(message, file_name, with_upload)
                 )
-                if self.uploader:
-                    if with_upload and isinstance(with_upload, dict):
-                        try:
-                            media_group = message.get_media_group()
-                        except ValueError:
-                            media_group = None
-                        with_upload['message_id'] = message.id
-                        with_upload['media_group'] = media_group
-                        self.uploader.download_upload(
-                            with_upload=with_upload,
-                            file_path=self.get_final_file_path(message, file_name, with_upload)
-                        )
-                else:
+                if not self.start_download_upload(
+                        with_upload=with_upload,
+                        message=message,
+                        file_path=self.get_final_file_path(message, file_name, with_upload)
+                ):
                     self.release_download_upload_window(with_upload)
             else:
                 self.release_download_upload_window(with_upload)
@@ -4224,19 +4248,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
                     num=self.app.current_task_num
                 )
-                if self.uploader:
-                    if with_upload and isinstance(with_upload, dict):
-                        try:
-                            media_group = message.get_media_group()
-                        except ValueError:
-                            media_group = None
-                        with_upload['message_id'] = message.id
-                        with_upload['media_group'] = media_group
-                        self.uploader.download_upload(
-                            with_upload=with_upload,
-                            file_path=final_path
-                        )
-                else:
+                if not self.start_download_upload(
+                        with_upload=with_upload,
+                        message=message,
+                        file_path=final_path
+                ):
                     self.release_download_upload_window(with_upload)
                 self.queue.task_done()
             else:
