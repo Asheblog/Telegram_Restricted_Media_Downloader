@@ -2558,12 +2558,12 @@ class TelegramRestrictedMediaDownloader(Bot):
                 await self.get_download_link_from_bot(
                     client=self.last_client,
                     message=self.last_message,
-                    with_upload={
-                        'link': target_link,
-                        'file_name': None,
-                        'with_delete': self.gc.upload_delete,
-                        'send_as_media_group': True
-                    }
+                    with_upload=self.build_download_upload_meta(
+                        target_link=target_link,
+                        source_link=origin_link,
+                        source_folder=source_folder_from_link(origin_link),
+                        send_as_media_group=True
+                    )
                 )
             await kb.task_assign_button()
         elif callback_data == BotCallbackText.LOOKUP_LISTEN_INFO:
