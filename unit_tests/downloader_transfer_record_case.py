@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
@@ -345,6 +346,123 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertTrue(meta['send_as_media_group'])
         self.assertIs(meta['status_callback'].__self__, downloader)
         self.assertIs(meta['on_file_ready'].__self__, downloader)
+
+    def test_prepare_download_upload_meta_infers_pikpak_profile_from_target_link(self):
+        async def run_case():
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.gc = SimpleNamespace(upload_delete=False)
+            downloader.download_upload_window = SimpleNamespace(acquire=lambda: (lambda: None))
+
+            async def acquire():
+                return lambda: None
+
+            downloader.download_upload_window.acquire = acquire
+
+            return await downloader.prepare_download_upload_meta({
+                'link': 'https://t.me/pikpak_bot'
+            })
+
+        meta = __import__('asyncio').run(run_case())
+
+        self.assertEqual('pikpak', meta['target_profile'])
+        self.assertTrue(meta['with_delete'])
+        self.assertFalse(meta['send_as_media_group'])
+        self.assertIsNotNone(meta.get('failure_callback'))
+
+    def test_download_upload_precheck_blocks_pikpak_file_before_download_when_profile_is_inferred(self):
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.gc = SimpleNamespace(upload_delete=False)
+        downloader.app = SimpleNamespace(client=SimpleNamespace(me=SimpleNamespace(is_premium=True)))
+
+        meta = downloader.normalize_download_upload_meta({
+            'link': 'https://t.me/pikpak_bot'
+        })
+        error = downloader.get_download_upload_size_limit_error(
+            task_with_upload=meta,
+            file_size=4 * 1024 ** 3 + 1
+        )
+
+        self.assertIn('PikPak', error)
+
+    def test_download_upload_precheck_blocks_regular_target_over_telegram_limit(self):
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.gc = SimpleNamespace(upload_delete=False)
+        downloader.app = SimpleNamespace(client=SimpleNamespace(me=SimpleNamespace(is_premium=False)))
+
+        meta = downloader.normalize_download_upload_meta({
+            'link': 'https://t.me/target'
+        })
+        error = downloader.get_download_upload_size_limit_error(
+            task_with_upload=meta,
+            file_size=2 * 1024 ** 3 + 1
+        )
+
+        self.assertEqual('上传大小超过限制(普通用户2000MiB,会员用户4000MiB)', error)
+
+    def test_add_task_skips_pikpak_oversize_before_download_starts(self):
+        async def run_case():
+            calls = []
+            releases = []
+
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.transfer_store = None
+            downloader.gc = SimpleNamespace(upload_delete=False)
+            downloader.app = SimpleNamespace(
+                current_task_num=0,
+                max_download_task=1,
+                download_type=['video'],
+                client=SimpleNamespace(me=SimpleNamespace(is_premium=True)),
+                save_directory='/tmp'
+            )
+            downloader.event = SimpleNamespace(wait=lambda: None, clear=lambda: None)
+            downloader.pb = SimpleNamespace(progress=SimpleNamespace(add_task=lambda *args, **kwargs: calls.append('progress')))
+
+            async def prepare_download_upload_meta(with_upload):
+                return downloader.normalize_download_upload_meta(with_upload)
+
+            downloader.prepare_download_upload_meta = prepare_download_upload_meta
+            downloader.release_download_upload_window = lambda with_upload: releases.append(with_upload)
+            downloader.resume_download = lambda *args, **kwargs: calls.append('download')
+            downloader.get_media_meta = lambda message, dtype: {
+                'file_id': 1,
+                'temp_file_path': '/tmp/large.mp4.temp',
+                'sever_file_size': 4 * 1024 ** 3 + 1,
+                'file_name': 'large.mp4',
+                'save_directory': '/tmp/large.mp4',
+                'format_file_size': '4.00GB'
+            }
+            message = SimpleNamespace(
+                id=1,
+                link='https://t.me/source/1',
+                chat=SimpleNamespace(id='source-chat'),
+                video=SimpleNamespace(file_size=4 * 1024 ** 3 + 1, file_name='large.mp4')
+            )
+            failures = []
+            with_upload = {
+                'link': 'https://t.me/pikpak_bot',
+                'failure_callback': lambda meta, error: failures.append((meta, error))
+            }
+            DownloadTask.LINK_INFO.clear()
+            DownloadTask(link='https://t.me/source/1', link_type='single', member_num=1, complete_num=0, file_name=set(), error_msg={})
+
+            with patch('module.downloader.is_file_duplicate', return_value=False):
+                await downloader._TelegramRestrictedMediaDownloader__add_task(
+                    chat_id='source-chat',
+                    link_type='single',
+                    link='https://t.me/source/1',
+                    message=message,
+                    retry={'id': -1, 'count': 0},
+                    with_upload=with_upload,
+                    diy_download_type=['video']
+                )
+            return calls, releases, failures
+
+        calls, releases, failures = __import__('asyncio').run(run_case())
+
+        self.assertEqual([], calls)
+        self.assertEqual(1, len(releases))
+        self.assertEqual(1, len(failures))
+        self.assertIn('PikPak', failures[0][1])
 
 
 if __name__ == '__main__':

@@ -124,7 +124,8 @@ from module.util import (
     truncate_display_filename,
     Issues,
     make_forward_watch_rule,
-    parse_forward_watch_rule
+    parse_forward_watch_rule,
+    is_allow_upload
 )
 
 
@@ -816,10 +817,37 @@ class TelegramRestrictedMediaDownloader(Bot):
     def get_final_file_path(self, message, file_name: str, with_upload: Optional[dict] = None) -> str:
         return os.path.join(self.get_final_save_directory(message, with_upload), file_name)
 
+    def infer_target_profile(
+            self,
+            target_link: Optional[str],
+            target_profile: Optional[str] = None
+    ) -> Optional[str]:
+        return target_profile or ('pikpak' if self.is_pikpak_target(target_link, target_profile) else None)
+
+    def normalize_download_upload_meta(self, with_upload: dict) -> dict:
+        task_with_upload = with_upload.copy()
+        target_link = task_with_upload.get('link')
+        profile = self.infer_target_profile(target_link, task_with_upload.get('target_profile'))
+        task_with_upload['target_profile'] = profile
+        task_with_upload.setdefault('file_name', None)
+        task_with_upload['with_delete'] = (
+            True
+            if profile == 'pikpak'
+            else task_with_upload.get('with_delete', self.gc.upload_delete)
+        )
+        task_with_upload.setdefault('send_as_media_group', False if profile == 'pikpak' else True)
+        if profile == 'pikpak':
+            task_with_upload.setdefault('on_file_ready', self.on_transfer_file_ready)
+            task_with_upload.setdefault('status_callback', self.on_transfer_upload_status)
+            task_with_upload.setdefault('progress_callback', self.on_transfer_upload_progress)
+            task_with_upload.setdefault('skip_callback', self.on_transfer_item_skipped)
+            task_with_upload.setdefault('failure_callback', self.on_transfer_item_failed)
+        return task_with_upload
+
     async def prepare_download_upload_meta(self, with_upload: Optional[dict]) -> Optional[dict]:
         if not isinstance(with_upload, dict):
             return with_upload
-        task_with_upload = with_upload.copy()
+        task_with_upload = self.normalize_download_upload_meta(with_upload)
         if '_window_release' not in task_with_upload:
             task_with_upload['_window_release'] = await self.download_upload_window.acquire()
         return task_with_upload
@@ -1464,7 +1492,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             media_type: Optional[str] = None,
             send_as_media_group: Optional[bool] = None
     ) -> dict:
-        profile = target_profile or ('pikpak' if self.is_pikpak_target(target_link, target_profile) else None)
+        profile = self.infer_target_profile(target_link, target_profile)
         return {
             'link': target_link,
             'file_name': None,
@@ -1481,6 +1509,76 @@ class TelegramRestrictedMediaDownloader(Bot):
             'skip_callback': self.on_transfer_item_skipped,
             'failure_callback': self.on_transfer_item_failed
         }
+
+    def telegram_upload_size_limit_error(self, file_size: int) -> Optional[str]:
+        is_premium = bool(getattr(getattr(self.app.client, 'me', None), 'is_premium', False))
+        if is_allow_upload(file_size, is_premium):
+            return None
+        return '上传大小超过限制(普通用户2000MiB,会员用户4000MiB)'
+
+    def get_download_upload_size_limit_error(
+            self,
+            task_with_upload: Optional[dict],
+            file_size: int
+    ) -> Optional[str]:
+        if not isinstance(task_with_upload, dict):
+            return None
+        target_profile = task_with_upload.get('target_profile')
+        limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
+        if limit is not None and file_size > limit:
+            return target_profile_size_error(target_profile, file_size, limit)
+        return self.telegram_upload_size_limit_error(file_size)
+
+    def fail_download_before_transfer_upload(
+            self,
+            link: str,
+            file_name: str,
+            format_file_size: str,
+            valid_dtype: str,
+            task_with_upload: Optional[dict],
+            message,
+            file_size: int,
+            error_message: str
+    ) -> None:
+        console.log(
+            f'{_t(KeyWord.DOWNLOAD_TASK)}'
+            f'{_t(KeyWord.FILE)}:"{file_name}",'
+            f'{_t(KeyWord.SIZE)}:{format_file_size},'
+            f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}'
+            f'{error_message}'
+        )
+        DownloadTask.set_error(link=link, key=file_name, value=error_message)
+        callback = task_with_upload.get('failure_callback') if isinstance(task_with_upload, dict) else None
+        if callable(callback):
+            task_with_upload['message_id'] = getattr(message, 'id', None)
+            task_with_upload['media_type'] = valid_dtype
+            task_with_upload['file_name'] = file_name
+            task_with_upload['file_size'] = file_size
+            callback(task_with_upload, error_message)
+        self.notify_bot_transfer_upload_precheck_failed(task_with_upload, file_name, file_size, error_message)
+        self.release_download_upload_window(task_with_upload)
+
+    def notify_bot_transfer_upload_precheck_failed(
+            self,
+            task_with_upload: Optional[dict],
+            file_name: str,
+            file_size: int,
+            error_message: str
+    ) -> None:
+        if not isinstance(task_with_upload, dict):
+            return
+        progress = task_with_upload.get('bot_progress')
+        if not isinstance(progress, dict):
+            return
+        progress['file_name'] = file_name
+        text = self.build_bot_transfer_progress_text(
+            progress,
+            phase='failed',
+            current=file_size,
+            total=file_size,
+            error_message=error_message
+        )
+        self.schedule_bot_transfer_progress_update(progress, text, force=True)
 
     def get_pikpak_archive_client(self):
         if getattr(self, 'pikpak_archive_client', None) is not None:
@@ -4126,26 +4224,18 @@ class TelegramRestrictedMediaDownloader(Bot):
                 )
                 if isinstance(task_with_upload, dict) and task_with_upload.get('source_folder'):
                     save_directory = self.get_final_file_path(message, file_name, task_with_upload)
-                target_profile = task_with_upload.get('target_profile') if isinstance(task_with_upload, dict) else None
-                limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
-                if limit is not None and sever_file_size > limit:
-                    _error = target_profile_size_error(target_profile, sever_file_size, limit)
-                    console.log(
-                        f'{_t(KeyWord.DOWNLOAD_TASK)}'
-                        f'{_t(KeyWord.FILE)}:"{file_name}",'
-                        f'{_t(KeyWord.SIZE)}:{format_file_size},'
-                        f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}'
-                        f'{_error}'
+                limit_error = self.get_download_upload_size_limit_error(task_with_upload, sever_file_size)
+                if limit_error:
+                    self.fail_download_before_transfer_upload(
+                        link=link,
+                        file_name=file_name,
+                        format_file_size=format_file_size,
+                        valid_dtype=valid_dtype,
+                        task_with_upload=task_with_upload,
+                        message=message,
+                        file_size=sever_file_size,
+                        error_message=limit_error
                     )
-                    DownloadTask.set_error(link=link, key=file_name, value=_error)
-                    callback = task_with_upload.get('failure_callback') if isinstance(task_with_upload, dict) else None
-                    if callable(callback):
-                        task_with_upload['message_id'] = getattr(message, 'id', None)
-                        task_with_upload['media_type'] = valid_dtype
-                        task_with_upload['file_name'] = file_name
-                        task_with_upload['file_size'] = sever_file_size
-                        callback(task_with_upload, _error)
-                    self.release_download_upload_window(task_with_upload)
                     return None
                 retry['id'] = file_id
                 if is_file_duplicate(
