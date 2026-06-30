@@ -301,6 +301,27 @@ class UploadTask:
             self.file_part.append(file_part)
             self.save_json()
 
+    def reset_upload_cache(self, next_file_id: Optional[Callable[[], int]] = None) -> None:
+        old_manager_path = getattr(self, 'upload_manager_path', None)
+        if old_manager_path:
+            safe_delete(old_manager_path)
+        if callable(next_file_id):
+            self.file_id = next_file_id()
+        self.file_part = []
+        self.upload_manager_path = os.path.join(
+            UploadTask.DIRECTORY_NAME,
+            f'{self.sha256}.json'
+        )
+        os.makedirs(os.path.dirname(self.upload_manager_path), exist_ok=True)
+        self.save_json()
+
+    def rewind_after_missing_part(
+            self,
+            missing_part: int,
+            next_file_id: Optional[Callable[[], int]] = None
+    ) -> None:
+        self.reset_upload_cache(next_file_id=next_file_id)
+
     @staticmethod
     def has_pending_media_group_tasks() -> bool:
         """检查是否还有IDLE或UPLOADING状态且属于媒体组的任务。"""

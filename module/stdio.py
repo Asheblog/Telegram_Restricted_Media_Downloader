@@ -569,9 +569,10 @@ class ProgressBar:
 
     @staticmethod
     def upload(current, total, progress, task_id, upload_manager) -> None:
-        upload_manager.update_file_part(
-            file_part=current // (512 * 1024)
-        )
+        if current > 0:
+            upload_manager.update_file_part(
+                file_part=(current - 1) // (512 * 1024)
+            )
         progress.update(
             task_id,
             completed=current,

@@ -329,6 +329,23 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             self.assertEqual(file_path, uploaded[0][1])
             self.assertEqual(9, uploaded[0][0]['message_id'])
 
+    def test_pikpak_download_upload_meta_uses_profile_defaults_even_when_media_group_requested(self):
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.gc = SimpleNamespace(upload_delete=False)
+
+        meta = downloader.build_download_upload_meta(
+            target_link='https://t.me/pikpak_bot',
+            source_link='https://t.me/source/7',
+            source_folder='source',
+            send_as_media_group=True
+        )
+
+        self.assertEqual('pikpak', meta['target_profile'])
+        self.assertTrue(meta['with_delete'])
+        self.assertTrue(meta['send_as_media_group'])
+        self.assertIs(meta['status_callback'].__self__, downloader)
+        self.assertIs(meta['on_file_ready'].__self__, downloader)
+
 
 if __name__ == '__main__':
     unittest.main()

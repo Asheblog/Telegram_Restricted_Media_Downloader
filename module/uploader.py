@@ -576,15 +576,29 @@ class TelegramUploader:
                 )
                 return None
             except FilePartMissing as e:
-                missing_part = getattr(e, 'value')
+                retry += 1
+                try:
+                    missing_part = int(getattr(e, 'value'))
+                except (TypeError, ValueError):
+                    missing_part = 0
                 console.log(
                     f'{_t(KeyWord.UPLOAD_FILE_PART)}:{missing_part},'
+                    f'{_t(KeyWord.RETRY_TIMES)}:{retry}/{self.max_upload_retries},'
                     f'{_t(KeyWord.STATUS)}:{_t(UploadStatus.UPLOADING)}。'
                 )
-                fp = upload_task.file_part
-                if missing_part in fp:
-                    fp.remove(missing_part)
-                continue
+                log.warning(
+                    f'Telegram reported FILE_PART_X_MISSING for part {missing_part}; '
+                    f'resetting upload cache before retry {retry}/{self.max_upload_retries}.'
+                )
+                upload_task.rewind_after_missing_part(missing_part, next_file_id=self.client.rnd_id)
+                if retry == self.max_upload_retries:
+                    upload_task.error_msg = (
+                        f'FILE_PART_X_MISSING: Telegram missing uploaded part {missing_part} '
+                        f'after {self.max_upload_retries} attempts.'
+                    )
+                    safe_delete(getattr(upload_task, 'upload_manager_path', ''))
+                    upload_task.status = UploadStatus.FAILURE
+                    return None
             except (ChatAdminRequired, ChannelPrivate_400, ChannelPrivate_406) as e:
                 upload_task.error_msg = str(e)
                 upload_task.status = UploadStatus.FAILURE
@@ -658,6 +672,8 @@ class TelegramUploader:
             self.current_task_num -= 1
             self.pb.progress.remove_task(task_id=task_id)
             self.event.set()
+            if isinstance(e, FilePartMissing):
+                return
             log.info(e)
             upload_task.error_msg = str(e)
             upload_task.status = UploadStatus.FAILURE
@@ -666,11 +682,10 @@ class TelegramUploader:
         file_path: str = upload_task.file_path
         self.current_task_num -= 1
         self.pb.progress.remove_task(task_id=task_id)
-        if upload_task.file_size < 10 * 1024 * 1024:
-            if not safe_delete(os.path.join(UploadTask.DIRECTORY_NAME, f'{upload_task.sha256}.json')):
-                log.warning(f'无法删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
-            else:
-                log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
+        if not safe_delete(os.path.join(UploadTask.DIRECTORY_NAME, f'{upload_task.sha256}.json')):
+            log.warning(f'无法删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
+        else:
+            log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         self.event.set()
         safe_delete(file_path) if upload_task.with_delete else None
         upload_task.release_window()
