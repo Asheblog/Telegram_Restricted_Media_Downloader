@@ -69,8 +69,8 @@ A named set of target-specific transfer defaults, such as sending media to PikPa
 _Avoid_: Preset, mode
 
 **Target Size Limit**:
-A target-specific maximum media size for a Transfer Item. Transfer Items above this limit are rejected before expensive transfer work for that target begins.
-_Avoid_: Upload cap, file size check
+A target-specific maximum media size for a Transfer Item. Transfer Items above this limit are skipped before expensive transfer work for that target begins because the selected target cannot accept them; this is not a transfer failure.
+_Avoid_: Upload cap, file size check, upload failure
 
 **Live Transfer Watch**:
 A sustained rule that watches a source Telegram conversation for new messages and triggers a transfer or forwarding action when matching messages arrive.

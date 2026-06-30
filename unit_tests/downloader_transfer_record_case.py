@@ -404,65 +404,87 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             calls = []
             releases = []
 
-            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = None
-            downloader.gc = SimpleNamespace(upload_delete=False)
-            downloader.app = SimpleNamespace(
-                current_task_num=0,
-                max_download_task=1,
-                download_type=['video'],
-                client=SimpleNamespace(me=SimpleNamespace(is_premium=True)),
-                save_directory='/tmp'
-            )
-            downloader.event = SimpleNamespace(wait=lambda: None, clear=lambda: None)
-            downloader.pb = SimpleNamespace(progress=SimpleNamespace(add_task=lambda *args, **kwargs: calls.append('progress')))
-
-            async def prepare_download_upload_meta(with_upload):
-                return downloader.normalize_download_upload_meta(with_upload)
-
-            downloader.prepare_download_upload_meta = prepare_download_upload_meta
-            downloader.release_download_upload_window = lambda with_upload: releases.append(with_upload)
-            downloader.resume_download = lambda *args, **kwargs: calls.append('download')
-            downloader.get_media_meta = lambda message, dtype: {
-                'file_id': 1,
-                'temp_file_path': '/tmp/large.mp4.temp',
-                'sever_file_size': 4 * 1024 ** 3 + 1,
-                'file_name': 'large.mp4',
-                'save_directory': '/tmp/large.mp4',
-                'format_file_size': '4.00GB'
-            }
-            message = SimpleNamespace(
-                id=1,
-                link='https://t.me/source/1',
-                chat=SimpleNamespace(id='source-chat'),
-                video=SimpleNamespace(file_size=4 * 1024 ** 3 + 1, file_name='large.mp4')
-            )
-            failures = []
-            with_upload = {
-                'link': 'https://t.me/pikpak_bot',
-                'failure_callback': lambda meta, error: failures.append((meta, error))
-            }
-            DownloadTask.LINK_INFO.clear()
-            DownloadTask(link='https://t.me/source/1', link_type='single', member_num=1, complete_num=0, file_name=set(), error_msg={})
-
-            with patch('module.downloader.is_file_duplicate', return_value=False):
-                await downloader._TelegramRestrictedMediaDownloader__add_task(
-                    chat_id='source-chat',
-                    link_type='single',
-                    link='https://t.me/source/1',
-                    message=message,
-                    retry={'id': -1, 'count': 0},
-                    with_upload=with_upload,
-                    diy_download_type=['video']
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task(
+                    source_link='https://t.me/source/1',
+                    target_link='https://t.me/pikpak_bot',
+                    target_profile='pikpak'
                 )
-            return calls, releases, failures
 
-        calls, releases, failures = __import__('asyncio').run(run_case())
+                downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+                downloader.transfer_store = store
+                downloader.gc = SimpleNamespace(upload_delete=False)
+                downloader.app = SimpleNamespace(
+                    current_task_num=0,
+                    max_download_task=1,
+                    download_type=['video'],
+                    client=SimpleNamespace(me=SimpleNamespace(is_premium=True)),
+                    save_directory=directory
+                )
+                downloader.event = SimpleNamespace(wait=lambda: None, clear=lambda: None)
+                downloader.pb = SimpleNamespace(
+                    progress=SimpleNamespace(add_task=lambda *args, **kwargs: calls.append('progress'))
+                )
+
+                async def prepare_download_upload_meta(with_upload):
+                    return downloader.normalize_download_upload_meta(with_upload)
+
+                downloader.prepare_download_upload_meta = prepare_download_upload_meta
+                downloader.release_download_upload_window = lambda with_upload: releases.append(with_upload)
+                downloader.resume_download = lambda *args, **kwargs: calls.append('download')
+                downloader.get_media_meta = lambda message, dtype: {
+                    'file_id': 1,
+                    'temp_file_path': os.path.join(directory, 'large.mp4.temp'),
+                    'sever_file_size': 4 * 1024 ** 3 + 1,
+                    'file_name': 'large.mp4',
+                    'save_directory': os.path.join(directory, 'large.mp4'),
+                    'format_file_size': '4.00GB'
+                }
+                message = SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    chat=SimpleNamespace(id='source-chat'),
+                    video=SimpleNamespace(file_size=4 * 1024 ** 3 + 1, file_name='large.mp4')
+                )
+                with_upload = {
+                    'link': 'https://t.me/pikpak_bot',
+                    'task_id': task_id,
+                    'source_link': 'https://t.me/source/1'
+                }
+                DownloadTask.LINK_INFO.clear()
+                DownloadTask(
+                    link='https://t.me/source/1',
+                    link_type='single',
+                    member_num=1,
+                    complete_num=0,
+                    file_name=set(),
+                    error_msg={}
+                )
+
+                with patch('module.downloader.is_file_duplicate', return_value=False):
+                    await downloader._TelegramRestrictedMediaDownloader__add_task(
+                        chat_id='source-chat',
+                        link_type='single',
+                        link='https://t.me/source/1',
+                        message=message,
+                        retry={'id': -1, 'count': 0},
+                        with_upload=with_upload,
+                        diy_download_type=['video']
+                    )
+                return calls, releases, store.list_items(task_id), store.get_task(task_id), store.list_events(task_id)
+
+        calls, releases, items, task, events = __import__('asyncio').run(run_case())
 
         self.assertEqual([], calls)
         self.assertEqual(1, len(releases))
-        self.assertEqual(1, len(failures))
-        self.assertIn('PikPak', failures[0][1])
+        self.assertEqual(1, len(items))
+        self.assertEqual('skipped', items[0]['phase'])
+        self.assertEqual('skipped', items[0]['status'])
+        self.assertIn('PikPak', items[0]['error_message'])
+        self.assertEqual(1, task['completed_items'])
+        self.assertEqual(0, task['failed_items'])
+        self.assertTrue(any(event['level'] == 'warning' and 'PikPak' in event['message'] for event in events))
 
 
 if __name__ == '__main__':

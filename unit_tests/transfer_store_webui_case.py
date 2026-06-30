@@ -2149,7 +2149,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertIs(meta['on_file_ready'].__self__, downloader)
         self.assertIs(meta['on_file_ready'].__func__, downloader.on_transfer_file_ready.__func__)
 
-    def test_pikpak_transfer_over_target_limit_fails_before_forward_or_download(self):
+    def test_pikpak_transfer_over_target_limit_skips_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
         with tempfile.TemporaryDirectory() as directory:
@@ -2196,10 +2196,14 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual([], downloader.download_calls)
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
-            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            self.assertEqual(TransferStatus.SKIPPED, items[0]['status'])
+            self.assertEqual('skipped', items[0]['phase'])
             self.assertIn('PikPak', items[0]['error_message'])
             events = store.list_events(task_id)
-            self.assertTrue(any('PikPak' in event['message'] for event in events))
+            self.assertTrue(any(event['level'] == 'warning' and 'PikPak' in event['message'] for event in events))
+            task = store.get_task(task_id)
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
 
     def test_webui_transfer_resumes_running_range_without_repeating_completed_items(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
