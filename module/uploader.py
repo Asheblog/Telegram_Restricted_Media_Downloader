@@ -61,6 +61,8 @@ from module.util import (
 
 
 class TelegramUploader:
+    FILE_PART_MISSING_REPAIR_RETRIES = 5
+
     def __init__(
             self,
             download_object
@@ -80,6 +82,16 @@ class TelegramUploader:
         UploadTask.NOTIFY = download_object.done_notice
         UploadTask.DIRECTORY_NAME = os.path.join(UploadTask.DIRECTORY_NAME, str(download_object.my_id))
         asyncio.create_task(self.send_media_worker())
+
+    @staticmethod
+    def file_part_missing_value(error: FilePartMissing) -> int:
+        try:
+            return max(0, int(getattr(error, 'value')))
+        except (TypeError, ValueError):
+            return 0
+
+    def file_part_missing_repair_retries(self) -> int:
+        return max(1, int(getattr(self, 'FILE_PART_MISSING_REPAIR_RETRIES', 5) or 5))
 
     async def wait_for_telegram_flood(self, error, upload_task: UploadTask, action: str) -> None:
         task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
@@ -568,37 +580,49 @@ class TelegramUploader:
             safe_delete(file_path) if upload_task.with_delete else None
             return None
 
-        retry = 0
-        while retry < self.max_upload_retries:
+        file_id_attempt = 1
+        missing_part_repairs = 0
+        missing_part_repair_limit = self.file_part_missing_repair_retries()
+        while file_id_attempt <= self.max_upload_retries:
             try:
                 await self.__add_task(
                     upload_task=upload_task
                 )
                 return None
             except FilePartMissing as e:
-                retry += 1
-                try:
-                    missing_part = int(getattr(e, 'value'))
-                except (TypeError, ValueError):
-                    missing_part = 0
+                missing_part = self.file_part_missing_value(e)
+                missing_part_repairs += 1
+                repair_display = min(missing_part_repairs, missing_part_repair_limit)
                 console.log(
                     f'{_t(KeyWord.UPLOAD_FILE_PART)}:{missing_part},'
-                    f'{_t(KeyWord.RETRY_TIMES)}:{retry}/{self.max_upload_retries},'
+                    f'{_t(KeyWord.RETRY_TIMES)}:{repair_display}/{missing_part_repair_limit},'
                     f'{_t(KeyWord.STATUS)}:{_t(UploadStatus.UPLOADING)}。'
                 )
-                log.warning(
-                    f'Telegram reported FILE_PART_X_MISSING for part {missing_part}; '
-                    f'resetting upload cache before retry {retry}/{self.max_upload_retries}.'
-                )
-                upload_task.rewind_after_missing_part(missing_part, next_file_id=self.client.rnd_id)
-                if retry == self.max_upload_retries:
+                if missing_part_repairs <= missing_part_repair_limit:
+                    log.warning(
+                        f'Telegram reported FILE_PART_X_MISSING for part {missing_part}; '
+                        f're-uploading the missing part with current file_id '
+                        f'before full retry {file_id_attempt}/{self.max_upload_retries}.'
+                    )
+                    upload_task.rewind_after_missing_part(missing_part)
+                    continue
+                if file_id_attempt >= self.max_upload_retries:
                     upload_task.error_msg = (
-                        f'FILE_PART_X_MISSING: Telegram missing uploaded part {missing_part} '
-                        f'after {self.max_upload_retries} attempts.'
+                        f'FILE_PART_X_MISSING: Telegram still reported missing uploaded part {missing_part} '
+                        f'after {self.max_upload_retries} file-id attempts and '
+                        f'{missing_part_repair_limit} missing-part repairs per attempt.'
                     )
                     safe_delete(getattr(upload_task, 'upload_manager_path', ''))
                     upload_task.status = UploadStatus.FAILURE
                     return None
+                file_id_attempt += 1
+                missing_part_repairs = 0
+                log.warning(
+                    f'Telegram kept reporting FILE_PART_X_MISSING for part {missing_part}; '
+                    f'resetting upload cache before file-id retry '
+                    f'{file_id_attempt}/{self.max_upload_retries}.'
+                )
+                upload_task.rewind_after_missing_part(missing_part, next_file_id=self.client.rnd_id)
             except (ChatAdminRequired, ChannelPrivate_400, ChannelPrivate_406) as e:
                 upload_task.error_msg = str(e)
                 upload_task.status = UploadStatus.FAILURE
@@ -607,11 +631,11 @@ class TelegramUploader:
                 console.log(
                     f'{_t(KeyWord.UPLOAD_TASK)}'
                     f'{_t(KeyWord.RE_UPLOAD)}:"{file_path}",'
-                    f'{_t(KeyWord.RETRY_TIMES)}:{retry + 1}/{self.max_upload_retries},'
+                    f'{_t(KeyWord.RETRY_TIMES)}:{file_id_attempt}/{self.max_upload_retries},'
                     f'{_t(KeyWord.REASON)}:"{e}"'
                 )
-                retry += 1  # 只有非FilePartMissing异常才递增重试计数。
-                if retry == self.max_upload_retries:
+                file_id_attempt += 1
+                if file_id_attempt > self.max_upload_retries:
                     upload_task.error_msg = str(e)
                     upload_task.status = UploadStatus.FAILURE
 

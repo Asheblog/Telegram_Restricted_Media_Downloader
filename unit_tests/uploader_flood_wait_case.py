@@ -46,42 +46,90 @@ class UploaderFloodWaitCase(unittest.TestCase):
 
         self.assertEqual([0], manager.parts)
 
-    def test_file_part_missing_resets_stale_upload_cache_and_uses_new_file_id(self):
+    def test_file_part_missing_forgets_reported_part_without_resetting_file_id(self):
         with tempfile.TemporaryDirectory() as directory:
+            original_directory = UploadTask.DIRECTORY_NAME
+            UploadTask.DIRECTORY_NAME = os.path.join(directory, 'upload-cache')
             file_path = os.path.join(directory, 'media.bin')
-            with open(file_path, 'wb') as file:
-                file.write(b'a' * (3 * 512 * 1024))
+            try:
+                with open(file_path, 'wb') as file:
+                    file.write(b'a' * (4 * 512 * 1024))
 
-            class FakeClient:
-                def __init__(self):
-                    self.ids = iter([111, 222])
+                uploader = object.__new__(TelegramUploader)
 
-                def rnd_id(self):
-                    return next(self.ids)
+                upload_task = UploadTask(
+                    chat_id=None,
+                    file_path=file_path,
+                    file_id=111,
+                    file_size=os.path.getsize(file_path),
+                    file_part=[0, 1, 2, 3],
+                    status=UploadStatus.PENDING
+                )
+                upload_task.chat_id = 'target-chat'
 
-            uploader = object.__new__(TelegramUploader)
-            uploader.client = FakeClient()
+                cached_path = upload_task.upload_manager_path
+                upload_task.rewind_after_missing_part(2)
 
-            upload_task = UploadTask(
-                chat_id=None,
-                file_path=file_path,
-                file_id=uploader.client.rnd_id(),
-                file_size=os.path.getsize(file_path),
-                file_part=[0, 1, 2],
-                status=UploadStatus.PENDING
-            )
-            upload_task.chat_id = 'target-chat'
+                self.assertEqual(111, upload_task.file_id)
+                self.assertEqual([0, 1, 3], upload_task.file_part)
+                self.assertEqual(cached_path, upload_task.upload_manager_path)
+                with open(upload_task.upload_manager_path, encoding='UTF-8') as file:
+                    payload = __import__('json').load(file)
+                self.assertEqual(111, payload['file_id'])
+                self.assertEqual([0, 1, 3], payload['file_part'])
+            finally:
+                UploadTask.DIRECTORY_NAME = original_directory
 
-            cached_path = upload_task.upload_manager_path
-            upload_task.rewind_after_missing_part(1, next_file_id=uploader.client.rnd_id)
+    def test_create_upload_task_repairs_missing_part_before_resetting_file_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original_directory = UploadTask.DIRECTORY_NAME
+            UploadTask.DIRECTORY_NAME = os.path.join(directory, 'upload-cache')
+            file_path = os.path.join(directory, 'media.bin')
+            try:
+                with open(file_path, 'wb') as file:
+                    file.write(b'a' * (4 * 512 * 1024))
 
-            self.assertEqual(222, upload_task.file_id)
-            self.assertEqual([], upload_task.file_part)
-            self.assertEqual(cached_path, upload_task.upload_manager_path)
-            with open(upload_task.upload_manager_path, encoding='UTF-8') as file:
-                payload = __import__('json').load(file)
-            self.assertEqual(222, payload['file_id'])
-            self.assertEqual([], payload['file_part'])
+                class FakeClient:
+                    def __init__(self):
+                        self.ids = iter([201, 202])
+                        self.me = SimpleNamespace(is_premium=True)
+
+                    def rnd_id(self):
+                        return next(self.ids)
+
+                uploader = object.__new__(TelegramUploader)
+                uploader.client = FakeClient()
+                uploader.valid_link_cache = {}
+                uploader.is_premium = True
+                uploader.max_upload_retries = 3
+                uploader.current_task_num = 0
+                uploader.download_object = SimpleNamespace(gc={})
+                attempts = []
+
+                async def missing_once(upload_task):
+                    attempts.append((upload_task.file_id, list(upload_task.file_part)))
+                    if len(attempts) == 1:
+                        raise FilePartMissing(2)
+                    upload_task.status = UploadStatus.SUCCESS
+
+                uploader._TelegramUploader__add_task = missing_once
+
+                upload_task = UploadTask(
+                    chat_id=None,
+                    file_path=file_path,
+                    file_id=200,
+                    file_size=os.path.getsize(file_path),
+                    file_part=[0, 1, 2, 3],
+                    status=UploadStatus.PENDING
+                )
+
+                asyncio.run(uploader.create_upload_task(link='target-chat', upload_task=upload_task))
+
+                self.assertEqual(UploadStatus.SUCCESS, upload_task.status)
+                self.assertEqual([(200, [0, 1, 2, 3]), (200, [0, 1, 3])], attempts)
+                self.assertIsNone(upload_task.error_msg)
+            finally:
+                UploadTask.DIRECTORY_NAME = original_directory
 
     def test_create_upload_task_aborts_after_repeated_file_part_missing(self):
         with tempfile.TemporaryDirectory() as directory:

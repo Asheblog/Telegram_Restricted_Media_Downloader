@@ -320,7 +320,19 @@ class UploadTask:
             missing_part: int,
             next_file_id: Optional[Callable[[], int]] = None
     ) -> None:
-        self.reset_upload_cache(next_file_id=next_file_id)
+        if callable(next_file_id):
+            self.reset_upload_cache(next_file_id=next_file_id)
+            return
+        try:
+            missing_part = int(missing_part)
+        except (TypeError, ValueError):
+            missing_part = 0
+        self.file_part = [
+            part
+            for part in self.file_part
+            if not isinstance(part, int) or part != missing_part
+        ]
+        self.save_json()
 
     @staticmethod
     def has_pending_media_group_tasks() -> bool:
