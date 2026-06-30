@@ -780,6 +780,68 @@ class TransferStoreWebUiCase(unittest.TestCase):
             events = store.list_events(task_id)
             self.assertTrue(any('recovered before retry' in event['message'] for event in events))
 
+    def test_downloader_retry_failed_recovers_pikpak_archive_failure_before_resubmitting(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/ctuxas',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=1
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/ctuxas/1',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='1 - 标题.mp4',
+                file_size=5,
+                source_folder='ctuxas',
+                archive_status='not_found',
+                archive_match_original_name=True,
+                phase='failure',
+                status=TransferStatus.FAILURE,
+                error_message='PikPak archive not_found: No PikPak file matched 1 - 标题.mp4.'
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=True)
+            archive_calls = []
+            submitted = []
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(
+                        ok=True,
+                        status='success',
+                        archive_path='Telegram/ctuxas/1 - 标题.mp4'
+                    )
+
+            downloader.transfer_store = store
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
+
+            reset_items = downloader.retry_failed_web_task(task_id)
+
+            self.assertEqual(0, reset_items)
+            self.assertEqual([], submitted)
+            self.assertEqual(1, len(archive_calls))
+            self.assertEqual('1 - 标题.mp4', archive_calls[0]['file_name'])
+            self.assertTrue(archive_calls[0]['match_original_name'])
+            item = store.list_items(task_id)[0]
+            self.assertEqual(item_id, item['id'])
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertEqual('forwarded', item['phase'])
+            self.assertEqual('success', item['archive_status'])
+            self.assertEqual(1, item['archive_match_original_name'])
+            task = store.get_task(task_id)
+            self.assertEqual(TransferStatus.SUCCESS, task['status'])
+            self.assertEqual(1, task['completed_items'])
+            self.assertEqual(0, task['failed_items'])
+
     def test_downloader_retry_failed_resubmits_items_that_cannot_be_recovered(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -2005,6 +2067,68 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual(5, archive_calls[0]['file_size'])
         self.assertTrue(archive_calls[0]['match_original_name'])
 
+    def test_pikpak_upload_archive_failure_records_transfer_failure(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/ctuxas/1',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak'
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source-chat',
+                source_message_id=1,
+                source_link='https://t.me/ctuxas/1',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='video.mp4',
+                file_size=5,
+                source_folder='ctuxas',
+                archive_status='pending',
+                archive_match_original_name=True,
+                phase='uploading',
+                status=TransferStatus.RUNNING
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=True)
+            archive_calls = []
+
+            class FakeArchiveClient:
+                def archive_file(self, **kwargs):
+                    archive_calls.append(kwargs)
+                    return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
+
+            downloader.transfer_store = store
+            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+            upload_task = SimpleNamespace(
+                status='sent',
+                file_name='video.mp4',
+                file_size=5,
+                transfer_meta={
+                    'task_id': task_id,
+                    'item_id': item_id,
+                    'target_profile': 'pikpak',
+                    'source_link': 'https://t.me/ctuxas/1',
+                    'source_folder': 'ctuxas'
+                }
+            )
+
+            downloader.on_transfer_upload_status(upload_task)
+
+            self.assertEqual(1, len(archive_calls))
+            self.assertTrue(archive_calls[0]['match_original_name'])
+            item = store.list_items(task_id)[0]
+            self.assertEqual(TransferStatus.FAILURE, item['status'])
+            self.assertEqual('failure', item['phase'])
+            self.assertEqual('not_found', item['archive_status'])
+            self.assertIn('PikPak archive not_found', item['error_message'])
+            task = store.get_task(task_id)
+            self.assertEqual(0, task['completed_items'])
+            self.assertEqual(1, task['failed_items'])
+
     def test_common_download_upload_meta_enables_pikpak_archive_callbacks_for_listen_forward(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -2512,6 +2636,42 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual('target-chat', client.forward_calls[0]['chat_id'])
         self.assertEqual('source-chat', client.forward_calls[0]['from_chat_id'])
         self.assertEqual(1, client.forward_calls[0]['message_ids'])
+
+    def test_forward_logs_pikpak_archive_failure_without_transfer_store(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        class FakeClient:
+            async def copy_message(self, **_kwargs):
+                return SimpleNamespace(id=100)
+
+        class FakeArchiveClient:
+            def archive_file(self, **_kwargs):
+                return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader.transfer_store = None
+        downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+
+        with self.assertLogs('rich', level='WARNING') as logs:
+            result = asyncio.run(downloader.forward(
+                client=downloader.app.client,
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    chat=SimpleNamespace(id='source-chat'),
+                    video=SimpleNamespace(file_size=5, file_name='video.mp4')
+                ),
+                message_id=1,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                target_link='https://t.me/pikpak_bot',
+                done_notice=False,
+                ignore_type_filter=True
+            ))
+
+        self.assertEqual(100, result.id)
+        self.assertTrue(any('PikPak archive not_found' in message for message in logs.output))
 
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()

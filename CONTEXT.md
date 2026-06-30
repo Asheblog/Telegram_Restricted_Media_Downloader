@@ -13,7 +13,7 @@ The Telegram conversation with the official PikPak bot that receives transferred
 _Avoid_: PikPak API, cloud drive target
 
 **PikPak Archive**:
-A target-side organization step that ensures the Source Channel Folder exists and places media received by the PikPak Target into that durable PikPak folder after the transfer reaches PikPak.
+A target-side organization step that ensures the Source Channel Folder exists and places media received by the PikPak Target into that durable PikPak folder after the transfer reaches PikPak. When enabled for a PikPak Target, the archive must complete before the Transfer Item is treated as successful.
 _Avoid_: Local download folder, bot chat folder
 
 **PikPak Ingest Folder**:
