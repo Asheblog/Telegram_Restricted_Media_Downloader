@@ -277,7 +277,8 @@ class TelegramRestrictedMediaDownloader(Bot):
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
         if not self.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):
             return False
-        if 'PikPak ingest confirmation' not in str(item.get('error_message') or ''):
+        error_message = str(item.get('error_message') or '')
+        if 'PikPak ingest confirmation' not in error_message and 'PikPak archive' not in error_message:
             return False
         if not item.get('file_name') and item.get('file_size') is None:
             return False
@@ -1344,6 +1345,9 @@ class TelegramRestrictedMediaDownloader(Bot):
             file_name=with_upload.get('file_name') or os.path.basename(file_path),
             file_size=with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None),
             local_path=file_path,
+            source_folder=with_upload.get('source_folder'),
+            archive_status='pending' if with_upload.get('target_profile') == 'pikpak' else None,
+            archive_match_original_name=True if with_upload.get('target_profile') == 'pikpak' else None,
             phase='uploading',
             status=TransferStatus.RUNNING
         )
@@ -1396,10 +1400,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         task_id = meta.get('task_id')
         item_id = meta.get('item_id')
         if upload_task.status == UploadStatus.SENT:
-            if self.transfer_store and task_id and item_id:
-                self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent')
-                self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
-            self.archive_pikpak_item(
+            archive_result = self.archive_pikpak_item(
                 target_profile=meta.get('target_profile'),
                 item_id=item_id,
                 task_id=task_id,
@@ -1411,6 +1412,25 @@ class TelegramRestrictedMediaDownloader(Bot):
                 transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
                 match_original_name=True
             )
+            if (
+                    archive_result is not None
+                    and getattr(archive_result, 'status', None) != 'disabled'
+                    and not bool(getattr(archive_result, 'ok', False))
+            ):
+                archive_status = getattr(archive_result, 'status', 'error')
+                archive_message = getattr(archive_result, 'message', '')
+                error_message = (
+                    f'PikPak archive {archive_status}: '
+                    f'{archive_message or meta.get("source_link") or upload_task.file_name}'
+                )
+                if self.transfer_store and task_id and item_id:
+                    self.fail_transfer_item(int(task_id), int(item_id), error_message)
+                else:
+                    log.warning(error_message)
+                return
+            if self.transfer_store and task_id and item_id:
+                self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent', error_message='')
+                self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
         elif upload_task.status == UploadStatus.FAILURE:
             if self.transfer_store and task_id and item_id:
                 self.transfer_store.update_item(
@@ -3273,7 +3293,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     )
                 )
             if archive_after_success and target_link and 'pikpak' in str(target_link).lower():
-                self.archive_pikpak_item(
+                archive_result = self.archive_pikpak_item(
                     target_profile='pikpak',
                     item_id=None,
                     task_id=None,
@@ -3286,6 +3306,17 @@ class TelegramRestrictedMediaDownloader(Bot):
                     ),
                     transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
                 )
+                if (
+                        archive_result is not None
+                        and getattr(archive_result, 'status', None) != 'disabled'
+                        and not bool(getattr(archive_result, 'ok', False))
+                ):
+                    archive_status = getattr(archive_result, 'status', 'error')
+                    archive_message = getattr(archive_result, 'message', '')
+                    log.warning(
+                        f'PikPak archive {archive_status}: '
+                        f'{archive_message or getattr(message, "link", None) or message_id}'
+                    )
             return forwarded_message
         except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
             if not download_upload:
