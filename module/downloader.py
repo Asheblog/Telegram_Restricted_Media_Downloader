@@ -1387,18 +1387,32 @@ class TelegramRestrictedMediaDownloader(Bot):
         if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
             return
         task_id = int(with_upload.get('task_id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=with_upload.get('source_chat_id'),
-            source_message_id=with_upload.get('message_id'),
-            source_link=with_upload.get('source_link'),
-            target_link=with_upload.get('link'),
-            media_type=with_upload.get('media_type'),
-            file_name=with_upload.get('file_name'),
-            file_size=with_upload.get('file_size'),
-            phase='skipped',
-            status=TransferStatus.SKIPPED
-        )
+        item_id = with_upload.get('item_id')
+        if item_id:
+            item_id = int(item_id)
+            self.transfer_store.update_item(
+                item_id,
+                media_type=with_upload.get('media_type'),
+                file_name=with_upload.get('file_name'),
+                file_size=with_upload.get('file_size'),
+                phase='skipped',
+                status=TransferStatus.SKIPPED,
+                error_message=message
+            )
+        else:
+            item_id = self.transfer_store.add_item(
+                task_id=task_id,
+                source_chat_id=with_upload.get('source_chat_id'),
+                source_message_id=with_upload.get('message_id'),
+                source_link=with_upload.get('source_link'),
+                target_link=with_upload.get('link'),
+                media_type=with_upload.get('media_type'),
+                file_name=with_upload.get('file_name'),
+                file_size=with_upload.get('file_size'),
+                phase='skipped',
+                status=TransferStatus.SKIPPED,
+                error_message=message
+            )
         self.transfer_store.add_event(task_id, message, level='warning', item_id=item_id)
         self.refresh_transfer_task_counts(task_id)
 
@@ -1529,7 +1543,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             return target_profile_size_error(target_profile, file_size, limit)
         return self.telegram_upload_size_limit_error(file_size)
 
-    def fail_download_before_transfer_upload(
+    def skip_download_before_transfer_upload(
             self,
             link: str,
             file_name: str,
@@ -1544,21 +1558,22 @@ class TelegramRestrictedMediaDownloader(Bot):
             f'{_t(KeyWord.DOWNLOAD_TASK)}'
             f'{_t(KeyWord.FILE)}:"{file_name}",'
             f'{_t(KeyWord.SIZE)}:{format_file_size},'
-            f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}'
+            f'{_t(KeyWord.TYPE)}:{_t(valid_dtype)},'
+            f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。'
             f'{error_message}'
         )
         DownloadTask.set_error(link=link, key=file_name, value=error_message)
-        callback = task_with_upload.get('failure_callback') if isinstance(task_with_upload, dict) else None
+        callback = task_with_upload.get('skip_callback') if isinstance(task_with_upload, dict) else None
         if callable(callback):
             task_with_upload['message_id'] = getattr(message, 'id', None)
             task_with_upload['media_type'] = valid_dtype
             task_with_upload['file_name'] = file_name
             task_with_upload['file_size'] = file_size
             callback(task_with_upload, error_message)
-        self.notify_bot_transfer_upload_precheck_failed(task_with_upload, file_name, file_size, error_message)
+        self.notify_bot_transfer_upload_precheck_skipped(task_with_upload, file_name, file_size, error_message)
         self.release_download_upload_window(task_with_upload)
 
-    def notify_bot_transfer_upload_precheck_failed(
+    def notify_bot_transfer_upload_precheck_skipped(
             self,
             task_with_upload: Optional[dict],
             file_name: str,
@@ -1573,7 +1588,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         progress['file_name'] = file_name
         text = self.build_bot_transfer_progress_text(
             progress,
-            phase='failed',
+            phase='skipped',
             current=file_size,
             total=file_size,
             error_message=error_message
@@ -1923,7 +1938,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             await asyncio.sleep(poll_interval)
         return False
 
-    def fail_transfer_item_for_target_limit(
+    def skip_transfer_item_for_target_limit(
             self,
             task: dict,
             message,
@@ -1941,11 +1956,11 @@ class TelegramRestrictedMediaDownloader(Bot):
             media_type=limit_error.get('media_type'),
             file_name=limit_error.get('file_name'),
             file_size=limit_error.get('file_size'),
-            phase='failure',
-            status=TransferStatus.FAILURE,
+            phase='skipped',
+            status=TransferStatus.SKIPPED,
             error_message=limit_error.get('message')
         )
-        self.transfer_store.add_event(task_id, limit_error.get('message'), level='error', item_id=item_id)
+        self.transfer_store.add_event(task_id, limit_error.get('message'), level='warning', item_id=item_id)
         self.refresh_transfer_task_counts(task_id)
         return item_id
 
@@ -1990,7 +2005,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             return False
         limit_error = self.get_task_target_size_limit_error(task, message)
         if limit_error:
-            self.fail_transfer_item_for_target_limit(
+            self.skip_transfer_item_for_target_limit(
                 task=task,
                 message=message,
                 source_link=source_link,
@@ -4226,7 +4241,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     save_directory = self.get_final_file_path(message, file_name, task_with_upload)
                 limit_error = self.get_download_upload_size_limit_error(task_with_upload, sever_file_size)
                 if limit_error:
-                    self.fail_download_before_transfer_upload(
+                    self.skip_download_before_transfer_upload(
                         link=link,
                         file_name=file_name,
                         format_file_size=format_file_size,
