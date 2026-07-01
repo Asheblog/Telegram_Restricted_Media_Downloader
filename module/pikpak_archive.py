@@ -1,8 +1,10 @@
 # coding=UTF-8
 import json
 import posixpath
+import re
 import subprocess
 import time
+import unicodedata
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -173,7 +175,11 @@ class RclonePikPakArchiveClient:
     ) -> bool:
         if item.get('IsDir'):
             return False
-        if file_name and item.get('Name') != file_name:
+        if file_name and not candidate_name_matches(
+                item.get('Name'),
+                file_name,
+                has_disambiguator=file_size is not None or transferred_at is not None
+        ):
             return False
         if file_size is not None and item.get('Size') is not None and int(item.get('Size')) != int(file_size):
             return False
@@ -257,3 +263,22 @@ def candidate_remote_path(root: str, candidate_path: str) -> str:
     if not root or not candidate_path or candidate_path == root or candidate_path.startswith(f'{root}/'):
         return candidate_path
     return join_remote_path(root, candidate_path)
+
+
+def candidate_name_matches(candidate_name: Optional[str], target_name: str, has_disambiguator: bool = False) -> bool:
+    candidate_name = clean_remote_segment(candidate_name or '')
+    target_name = clean_remote_segment(target_name or '')
+    if not candidate_name or not target_name:
+        return False
+    if candidate_name == target_name:
+        return True
+    if not has_disambiguator:
+        return False
+    return normalized_archive_name_key(candidate_name) == normalized_archive_name_key(target_name)
+
+
+def normalized_archive_name_key(file_name: str) -> tuple[str, str]:
+    file_name = unicodedata.normalize('NFKC', clean_remote_segment(file_name))
+    stem, extension = posixpath.splitext(file_name)
+    stem = re.sub(r'[\s._-]+', '_', stem).strip('_').casefold()
+    return stem, extension.casefold()
