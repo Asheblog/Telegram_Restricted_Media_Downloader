@@ -64,6 +64,7 @@ from module.app import Application
 from module.app import DownloadFileName
 from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
+from module.local_storage_guard import LocalStorageGuard
 from module.bot import (
     Bot,
     KeyboardButton,
@@ -141,6 +142,9 @@ class TelegramRestrictedMediaDownloader(Bot):
             limit_provider=lambda: self.gc.upload_pending_limit,
             minimum=1,
             maximum=5
+        )
+        self.local_storage_guard = LocalStorageGuard(
+            reserve_bytes_provider=lambda: getattr(self.gc, 'local_storage_reserve_bytes', LocalStorageGuard.DEFAULT_RESERVE_BYTES)
         )
         self.is_running: bool = False
         self.running_log: Set[bool] = set()
@@ -758,6 +762,8 @@ class TelegramRestrictedMediaDownloader(Bot):
                 user_config.get('session_directory') or self.app.WORK_DIRECTORY)
         self.gc.save_config(global_config)
         self.download_upload_window.notify_limit_changed()
+        if getattr(self, 'local_storage_guard', None):
+            self.local_storage_guard.notify_limit_changed()
         return self.get_web_settings()
 
     def start_web_ui(self) -> None:
@@ -861,6 +867,50 @@ class TelegramRestrictedMediaDownloader(Bot):
             release()
             with_upload['_window_release'] = None
 
+    async def reserve_transfer_local_storage(
+            self,
+            with_upload: Optional[dict],
+            final_path: str,
+            file_size: Optional[int]
+    ) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        if with_upload.get('_local_storage_release') is not None:
+            return
+        guard = getattr(self, 'local_storage_guard', None)
+        if not guard:
+            return
+        token = (
+            with_upload.get('task_id'),
+            with_upload.get('item_id'),
+            with_upload.get('source_chat_id'),
+            with_upload.get('message_id'),
+            final_path
+        )
+        with_upload['_local_storage_token'] = token
+        with_upload['_local_storage_release'] = await guard.acquire(
+            token=token,
+            path=final_path,
+            size=file_size
+        )
+
+    def mark_transfer_local_storage_materialized(self, with_upload: Optional[dict]) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        guard = getattr(self, 'local_storage_guard', None)
+        if guard and with_upload.get('_local_storage_token') is not None:
+            guard.mark_materialized(with_upload.get('_local_storage_token'))
+
+    @staticmethod
+    def release_transfer_local_storage(with_upload: Optional[dict]) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        release = with_upload.get('_local_storage_release')
+        if callable(release):
+            release()
+            with_upload['_local_storage_release'] = None
+            with_upload['_local_storage_token'] = None
+
     def create_uploader(self) -> TelegramUploader:
         return TelegramUploader(download_object=self)
 
@@ -885,6 +935,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 media_group = None
             with_upload['message_id'] = getattr(message, 'id', None)
             with_upload['media_group'] = media_group
+            with_upload.setdefault('_local_storage_release', None)
             self.ensure_uploader().download_upload(
                 with_upload=with_upload,
                 file_path=file_path
@@ -896,6 +947,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             callback = with_upload.get('failure_callback')
             if callable(callback):
                 callback(with_upload, error)
+            self.release_transfer_local_storage(with_upload)
             self.release_download_upload_window(with_upload)
             return False
 
@@ -1341,6 +1393,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 message=message,
                 file_path=local_path
         ):
+            self.release_transfer_local_storage(task_with_upload)
             self.release_download_upload_window(task_with_upload)
         return local_path
 
@@ -1384,6 +1437,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         return item_id
 
     def on_transfer_item_skipped(self, with_upload: dict, message: str) -> None:
+        self.release_transfer_local_storage(with_upload)
         if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
             return
         task_id = int(with_upload.get('task_id'))
@@ -1417,6 +1471,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.refresh_transfer_task_counts(task_id)
 
     def on_transfer_item_failed(self, with_upload: dict, message: str) -> None:
+        self.release_transfer_local_storage(with_upload)
         if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
             return
         task_id = int(with_upload.get('task_id'))
@@ -4280,6 +4335,11 @@ class TelegramRestrictedMediaDownloader(Bot):
                     if isinstance(task_with_upload, dict) and task_with_upload.get('task_id'):
                         self.refresh_transfer_task_counts(int(task_with_upload.get('task_id')))
                 else:
+                    await self.reserve_transfer_local_storage(
+                        with_upload=task_with_upload,
+                        final_path=save_directory,
+                        file_size=sever_file_size
+                    )
                     console.log(
                         f'{_t(KeyWord.DOWNLOAD_TASK)}'
                         f'{_t(KeyWord.FILE)}:"{file_name}",'
@@ -4335,6 +4395,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     callback = with_upload.get('skip_callback')
                     if callable(callback):
                         callback(with_upload, _error)
+                    self.release_transfer_local_storage(with_upload)
                 try:
                     _, __, ___, file_name, ____, format_file_size = self.get_media_meta(
                         message=message,
@@ -4417,6 +4478,20 @@ class TelegramRestrictedMediaDownloader(Bot):
             diy_download_type,
             _future
     ):
+        if task_id is not None and callable(getattr(_future, 'cancelled', None)) and _future.cancelled():
+            self.app.current_task_num -= 1
+            self.event.set()
+            self.release_transfer_local_storage(with_upload)
+            self.release_download_upload_window(with_upload)
+            try:
+                self.queue.task_done()
+            except (AttributeError, ValueError):
+                pass
+            try:
+                self.pb.progress.remove_task(task_id=task_id)
+            except AttributeError:
+                pass
+            return None, None
         if task_id is None:
             if retry_count == 0:
                 console.log(
@@ -4454,6 +4529,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                     save_directory=self.get_final_save_directory(message, with_upload),
                     with_move=True
             ):
+                self.mark_transfer_local_storage_materialized(with_upload)
                 final_path = self.get_final_file_path(message, file_name, with_upload)
                 self.record_transfer_download_success(
                     with_upload=with_upload,

@@ -202,6 +202,43 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertEqual(UploadStatus.UPLOADING, upload_task.status)
             self.assertEqual([], status_updates)
 
+    def test_upload_complete_releases_local_storage_after_transfer_file_deleted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original_directory = UploadTask.DIRECTORY_NAME
+            UploadTask.DIRECTORY_NAME = os.path.join(directory, 'upload-cache')
+            file_path = os.path.join(directory, 'media.bin')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+            released = []
+            try:
+                uploader = object.__new__(TelegramUploader)
+                uploader.current_task_num = 1
+                uploader.event = SimpleNamespace(set=lambda: None)
+                uploader.pb = SimpleNamespace(progress=SimpleNamespace(remove_task=lambda task_id: None))
+                upload_task = UploadTask(
+                    chat_id=None,
+                    file_path=file_path,
+                    file_id=1,
+                    file_size=5,
+                    file_part=[],
+                    status=UploadStatus.UPLOADING,
+                    with_delete=True,
+                    transfer_meta={'local_storage_release': lambda: released.append(True)}
+                )
+
+                uploader.upload_complete_callback(
+                    upload_task=upload_task,
+                    task_id=1,
+                    _future=SimpleNamespace(result=lambda: None)
+                )
+
+                self.assertEqual([True], released)
+                self.assertIsNone(upload_task.transfer_meta['local_storage_release'])
+                self.assertFalse(os.path.exists(file_path))
+                self.assertEqual(UploadStatus.SUCCESS, upload_task.status)
+            finally:
+                UploadTask.DIRECTORY_NAME = original_directory
+
     def test_pikpak_upload_over_target_limit_fails_and_deletes_transfer_file(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'oversize.bin')
@@ -209,6 +246,8 @@ class UploaderFloodWaitCase(unittest.TestCase):
                 file.write(b'12345')
 
             status_updates = []
+            released = []
+            window_releases = []
             uploader = object.__new__(TelegramUploader)
             uploader.valid_link_cache = {}
             uploader.is_premium = True
@@ -223,7 +262,8 @@ class UploaderFloodWaitCase(unittest.TestCase):
                 file_part=[],
                 status=UploadStatus.PENDING,
                 with_delete=True,
-                transfer_meta={'target_profile': 'pikpak'},
+                release_callback=lambda: window_releases.append(True),
+                transfer_meta={'target_profile': 'pikpak', 'local_storage_release': lambda: released.append(True)},
                 status_callback=lambda task: status_updates.append(task.status)
             )
 
@@ -236,6 +276,8 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertEqual(UploadStatus.FAILURE, upload_task.status)
             self.assertIn('PikPak', upload_task.error_msg)
             self.assertFalse(os.path.exists(file_path))
+            self.assertEqual([True], released)
+            self.assertEqual([True], window_releases)
             self.assertIn(UploadStatus.FAILURE, status_updates)
 
     def test_send_media_waits_and_retries_flood_wait_without_marking_failure(self):
