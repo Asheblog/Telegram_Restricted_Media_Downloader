@@ -2,6 +2,7 @@
 import os
 import sqlite3
 import datetime
+import threading
 
 from typing import Optional, List, Dict, Any
 
@@ -26,6 +27,7 @@ class TransferStore:
         self.path = os.path.join(directory, self.FILE_NAME)
         self._last_maintenance_check = 0.0
         self._schema_ready = False
+        self._tls = threading.local()
         self._init_schema()
         self._schema_ready = True
         self.maintain()
@@ -34,13 +36,20 @@ class TransferStore:
     def utc_now() -> str:
         return datetime.datetime.now(datetime.UTC).isoformat(timespec='seconds')
 
+    def _get_conn(self) -> sqlite3.Connection:
+        """返回当前线程缓存的数据库连接，首次调用时创建并配置。"""
+        conn = getattr(self._tls, 'conn', None)
+        if conn is None:
+            conn = sqlite3.connect(self.path, timeout=30)
+            conn.row_factory = sqlite3.Row
+            self._configure_connection(conn)
+            self._tls.conn = conn
+        return conn
+
     def connect(self, run_maintenance: bool = True) -> sqlite3.Connection:
         if run_maintenance and self._schema_ready:
             self.maintain()
-        conn = sqlite3.connect(self.path, timeout=30)
-        conn.row_factory = sqlite3.Row
-        self._configure_connection(conn)
-        return conn
+        return self._get_conn()
 
     @staticmethod
     def _configure_connection(conn: sqlite3.Connection) -> None:
@@ -188,6 +197,8 @@ class TransferStore:
                 ON transfer_items(task_id, source_message_id, source_chat_id, id ASC);
             CREATE INDEX IF NOT EXISTS idx_transfer_items_task_status
                 ON transfer_items(task_id, status);
+            CREATE INDEX IF NOT EXISTS idx_transfer_items_task_status_msg
+                ON transfer_items(task_id, status, source_message_id);
             CREATE INDEX IF NOT EXISTS idx_transfer_events_task_order
                 ON transfer_events(task_id, id DESC);
             CREATE INDEX IF NOT EXISTS idx_download_records_updated_order
@@ -545,16 +556,27 @@ class TransferStore:
                 {**fields, 'item_id': item_id}
             )
 
-    def list_items(self, task_id: int) -> List[Dict[str, Any]]:
+    def list_items(self, task_id: int, limit: int = 0, offset: int = 0) -> List[Dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
-                '''
-                SELECT * FROM transfer_items
-                WHERE task_id = ?
-                ORDER BY id ASC
-                ''',
-                (task_id,)
-            ).fetchall()
+            if limit > 0:
+                rows = conn.execute(
+                    '''
+                    SELECT * FROM transfer_items
+                    WHERE task_id = ?
+                    ORDER BY id ASC
+                    LIMIT ? OFFSET ?
+                    ''',
+                    (task_id, limit, offset)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    '''
+                    SELECT * FROM transfer_items
+                    WHERE task_id = ?
+                    ORDER BY id ASC
+                    ''',
+                    (task_id,)
+                ).fetchall()
             return [dict(row) for row in rows]
 
     def completed_source_message_ids(self, task_id: int) -> set[int]:
@@ -580,46 +602,97 @@ class TransferStore:
                 (task_id, item_id, level, message, self.utc_now())
             )
 
-    def list_events(self, task_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_events(self, task_id: int, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
                 '''
                 SELECT * FROM transfer_events
                 WHERE task_id = ?
                 ORDER BY id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 ''',
-                (task_id, limit)
+                (task_id, limit, offset)
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def task_payload(self, task_id: int) -> Optional[Dict[str, Any]]:
+    def task_payload(
+            self,
+            task_id: int,
+            item_limit: int = 200,
+            item_offset: int = 0,
+            event_limit: int = 100,
+            event_offset: int = 0
+    ) -> Optional[Dict[str, Any]]:
         with self.connect() as conn:
             task = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()
             if not task:
                 return None
+            total_items = conn.execute(
+                'SELECT COUNT(*) FROM transfer_items WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
+            total_events = conn.execute(
+                'SELECT COUNT(*) FROM transfer_events WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
             items = conn.execute(
                 '''
                 SELECT * FROM transfer_items
                 WHERE task_id = ?
                 ORDER BY id ASC
+                LIMIT ? OFFSET ?
                 ''',
-                (task_id,)
+                (task_id, item_limit, item_offset)
             ).fetchall()
             events = conn.execute(
                 '''
                 SELECT * FROM transfer_events
                 WHERE task_id = ?
                 ORDER BY id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 ''',
-                (task_id, 100)
+                (task_id, event_limit, event_offset)
             ).fetchall()
         return {
             'task': dict(task),
             'items': [dict(row) for row in items],
-            'events': [dict(row) for row in events]
+            'events': [dict(row) for row in events],
+            'item_count': total_items,
+            'event_count': total_events,
+            'has_more_items': (item_offset + len(items)) < total_items,
+            'has_more_events': (event_offset + len(events)) < total_events,
+            'items_offset': item_offset,
+            'events_offset': event_offset,
         }
+
+    def task_summary(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """轻量级任务摘要查询——仅返回任务信息和计数，不加载 items/events 数组。
+        用于 WebUI 轮询更新时避免重复加载大量数据。"""
+        with self.connect() as conn:
+            task = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()
+            if not task:
+                return None
+            total_items = conn.execute(
+                'SELECT COUNT(*) FROM transfer_items WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
+            total_events = conn.execute(
+                'SELECT COUNT(*) FROM transfer_events WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
+        return {
+            'task': dict(task),
+            'item_count': total_items,
+            'event_count': total_events,
+        }
+
+    def count_items(self, task_id: int) -> int:
+        with self.connect() as conn:
+            return conn.execute(
+                'SELECT COUNT(*) FROM transfer_items WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
+
+    def count_events(self, task_id: int) -> int:
+        with self.connect() as conn:
+            return conn.execute(
+                'SELECT COUNT(*) FROM transfer_events WHERE task_id = ?', (task_id,)
+            ).fetchone()[0]
 
     def refresh_task_counts(
             self,
@@ -677,11 +750,16 @@ class TransferStore:
         task = self.get_task(task_id)
         if not task:
             return 0
-        failed_item_ids = [
-            int(item['id'])
-            for item in self.list_items(task_id)
-            if item.get('status') == TransferStatus.FAILURE
-        ]
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT id FROM transfer_items
+                WHERE task_id = ? AND status = ?
+                ORDER BY id ASC
+                ''',
+                (task_id, TransferStatus.FAILURE)
+            ).fetchall()
+            failed_item_ids = [int(row['id']) for row in rows]
         return self.retry_failed_item_ids(task_id, failed_item_ids)
 
     def retry_failed_item_ids(self, task_id: int, item_ids: List[int]) -> int:

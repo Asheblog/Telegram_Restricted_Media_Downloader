@@ -508,6 +508,15 @@ WEB_UI_CSS = r'''
     border-bottom: 1px solid var(--line);
   }
   .file-row:last-child { border-bottom: 0; }
+.load-more-row { padding: 12px 16px; text-align: center; border-top: 1px solid var(--line); }
+.load-more-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 20px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--accent); font-size: 13px; cursor: pointer;
+  font-family: inherit; transition: all .15s;
+}
+.load-more-btn:hover { border-color: var(--accent); background: #e6f7f2; }
+.load-more-btn:disabled { opacity: .5; cursor: not-allowed; }
   .item-pagination {
     display: flex;
     align-items: center;
@@ -1316,8 +1325,12 @@ WEB_UI_SCRIPT = r'''
       'items.page.range': '{start}-{end} / {total}',
       'items.download': '下载',
       'items.upload': '上传',
+      'items.loadMore': '加载更多文件',
+      'items.remaining': '条剩余',
       'events.title': '最近事件',
       'events.empty': '没有事件记录。',
+      'events.loadMore': '加载更多事件',
+      'events.remaining': '条剩余',
       'settings.title': '设置',
       'settings.safeNote': '敏感字段只显示是否已配置',
       'settings.paths': '路径与任务',
@@ -1546,8 +1559,12 @@ WEB_UI_SCRIPT = r'''
       'items.page.range': '{start}-{end} / {total}',
       'items.download': 'Download',
       'items.upload': 'Upload',
+      'items.loadMore': 'Load more files',
+      'items.remaining': 'remaining',
       'events.title': 'Latest events',
       'events.empty': 'No events recorded.',
+      'events.loadMore': 'Load more events',
+      'events.remaining': 'remaining',
       'settings.title': 'Settings',
       'settings.safeNote': 'Sensitive fields only show configured state',
       'settings.paths': 'Paths and tasks',
@@ -1675,7 +1692,15 @@ WEB_UI_SCRIPT = r'''
       success: 1,
       skipped: 1,
       failure: 1
-    }
+    },
+    itemsTotal: 0,
+    eventsTotal: 0,
+    itemsOffset: 0,
+    eventsOffset: 0,
+    hasMoreItems: false,
+    hasMoreEvents: false,
+    taskPollTimer: null,
+    loadingDetail: false
   };
 
   const $ = selector => document.querySelector(selector);
@@ -1897,38 +1922,123 @@ WEB_UI_SCRIPT = r'''
     state.lastSync = new Date().toLocaleTimeString();
     renderTasks();
     if (!state.selectedTaskId && state.tasks[0]) {
-      await loadTask(state.tasks[0].id);
+      await loadTaskDetail(state.tasks[0].id, true);
     } else if (state.selectedTaskId) {
-      await loadTask(state.selectedTaskId);
+      await loadTaskSummary(state.selectedTaskId);
     } else {
       state.items = [];
       state.events = [];
+      state.itemsTotal = 0;
+      state.eventsTotal = 0;
       $('#selected-task').textContent = t('items.selectTask');
-      renderItems(state.items);
-      renderEvents(state.events);
+      renderItems();
+      renderEvents();
     }
   }
 
-  async function loadTask(id) {
-    const nextTaskId = Number(id);
-    if (state.selectedTaskId !== nextTaskId) resetItemPages();
-    state.selectedTaskId = Number(id);
-    const res = await fetch(`/api/tasks/${state.selectedTaskId}`);
-    if (!res.ok) {
-      state.selectedTaskId = null;
+  async function loadTaskSummary(id) {
+    const taskId = Number(id);
+    const res = await fetch(`/api/tasks/${taskId}/summary`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.task) {
+      state.selectedTaskId = taskId;
+      state.itemsTotal = data.item_count || 0;
+      state.eventsTotal = data.event_count || 0;
+      // 更新侧边栏和标题中的任务状态
+      updateTaskSummaryDisplay(data.task);
+    }
+  }
+
+  function updateTaskSummaryDisplay(task) {
+    $('#selected-task').textContent = `#${task.id}`;
+    renderEventCount();
+  }
+
+  async function loadTaskDetail(id, keepExistingItems) {
+    const taskId = Number(id);
+    if (state.selectedTaskId !== taskId) {
+      resetItemPages();
       state.items = [];
       state.events = [];
-      $('#selected-task').textContent = t('items.selectTask');
-      renderItems(state.items);
-      renderEvents(state.events);
-      return;
+      state.itemsOffset = 0;
+      state.eventsOffset = 0;
+      state.hasMoreItems = false;
+      state.hasMoreEvents = false;
     }
-    const data = await res.json();
-    $('#selected-task').textContent = `#${state.selectedTaskId}`;
-    state.items = data.items || [];
-    state.events = data.events || [];
-    renderItems(state.items);
-    renderEvents(state.events);
+    state.selectedTaskId = taskId;
+    state.loadingDetail = true;
+    try {
+      const res = await fetch(`/api/tasks/${taskId}?items_limit=200&items_offset=0&events_limit=100&events_offset=0`);
+      if (!res.ok) {
+        state.selectedTaskId = null;
+        state.items = [];
+        state.events = [];
+        $('#selected-task').textContent = t('items.selectTask');
+        renderItems();
+        renderEvents();
+        return;
+      }
+      const data = await res.json();
+      $('#selected-task').textContent = `#${taskId}`;
+      state.items = data.items || [];
+      state.events = data.events || [];
+      state.itemsTotal = data.item_count || 0;
+      state.eventsTotal = data.event_count || 0;
+      state.itemsOffset = data.items_offset || 0;
+      state.eventsOffset = data.events_offset || 0;
+      state.hasMoreItems = data.has_more_items || false;
+      state.hasMoreEvents = data.has_more_events || false;
+      renderItems();
+      renderEvents();
+    } finally {
+      state.loadingDetail = false;
+    }
+  }
+
+  async function loadMoreItems() {
+    if (state.loadingDetail) return;
+    const taskId = state.selectedTaskId;
+    if (!taskId) return;
+    const offset = state.itemsOffset + 200;
+    state.loadingDetail = true;
+    try {
+      const res = await fetch(`/api/tasks/${taskId}?items_limit=200&items_offset=${offset}&events_limit=0&events_offset=0`);
+      if (!res.ok) return;
+      const data = await res.json();
+      state.items = state.items.concat(data.items || []);
+      state.itemsTotal = data.item_count || state.itemsTotal;
+      state.itemsOffset = offset;
+      state.hasMoreItems = data.has_more_items || false;
+      renderItems();
+    } finally {
+      state.loadingDetail = false;
+    }
+  }
+
+  async function loadMoreEvents() {
+    if (state.loadingDetail) return;
+    const taskId = state.selectedTaskId;
+    if (!taskId) return;
+    const offset = state.eventsOffset + 100;
+    state.loadingDetail = true;
+    try {
+      const res = await fetch(`/api/tasks/${taskId}?items_limit=0&items_offset=0&events_limit=100&events_offset=${offset}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      state.events = state.events.concat(data.events || []);
+      state.eventsTotal = data.event_count || state.eventsTotal;
+      state.eventsOffset = offset;
+      state.hasMoreEvents = data.has_more_events || false;
+      renderEvents();
+    } finally {
+      state.loadingDetail = false;
+    }
+  }
+
+  // 保留 loadTask 作为点击任务时的入口
+  async function loadTask(id) {
+    await loadTaskDetail(id, false);
   }
 
   function progressLine(label, current, total) {
@@ -1978,6 +2088,7 @@ WEB_UI_SCRIPT = r'''
   }
 
   function renderItems(items) {
+    items = items || state.items;
     const groups = categorizedItems(items);
     const activeItems = groups[state.activeItemStatus] || [];
     const page = itemPageState(activeItems.length);
@@ -1988,7 +2099,12 @@ WEB_UI_SCRIPT = r'''
       retryButton.disabled = !(state.selectedTaskId && groups.failure.length);
       retryButton.style.display = state.activeItemStatus === 'failure' ? 'inline-flex' : 'none';
     }
-    $('#items').innerHTML = visibleItems.length ? visibleItems.map(item => `
+    const loadMoreHtml = state.hasMoreItems
+      ? `<div class="load-more-row"><button type="button" class="load-more-btn" onclick="loadMoreItems()">
+          ${esc(t('items.loadMore'))} (${state.itemsTotal - items.length} ${esc(t('items.remaining'))})
+        </button></div>`
+      : '';
+    $('#items').innerHTML = (visibleItems.length ? visibleItems.map(item => `
       <div class="file-row">
         <div>
           <div>${esc(item.file_name || item.local_path || item.source_link || `#${item.source_message_id || item.id}`)}</div>
@@ -1998,7 +2114,7 @@ WEB_UI_SCRIPT = r'''
         ${progressLine(t('items.download'), item.download_current, item.download_total)}
         ${progressLine(t('items.upload'), item.upload_current, item.upload_total)}
       </div>
-    `).join('') : `<div class="empty">${esc(t(`items.empty.${state.activeItemStatus}`))}</div>`;
+    `).join('') : `<div class="empty">${esc(t(`items.empty.${state.activeItemStatus}`))}</div>`) + loadMoreHtml;
 
     const range = activeItems.length
       ? interpolate(t('items.page.range'), {
@@ -2028,15 +2144,33 @@ WEB_UI_SCRIPT = r'''
     renderItems(state.items);
   }
 
-  function renderEvents(events) {
-    $('#event-count').textContent = events.length;
-    $('#events').innerHTML = events.length ? events.map(event => `
+  function renderEvents() {
+    const events = state.events || [];
+    const countText = state.eventsTotal > events.length
+      ? `${events.length} / ${state.eventsTotal}`
+      : String(events.length);
+    $('#event-count').textContent = countText;
+    const loadMoreHtml = state.hasMoreEvents
+      ? `<div class="load-more-row"><button type="button" class="load-more-btn" onclick="loadMoreEvents()">
+          ${esc(t('events.loadMore'))} (${state.eventsTotal - events.length} ${esc(t('events.remaining'))})
+        </button></div>`
+      : '';
+    $('#events').innerHTML = (events.length ? events.map(event => `
       <div class="event">
         <time>${esc(event.created_at)}</time>
         <span>${esc(localizeEventLevel(event.level))}</span>
         <div>${esc(localizeEventMessage(event))}</div>
       </div>
-    `).join('') : `<div class="empty">${esc(t('events.empty'))}</div>`;
+    `).join('') : `<div class="empty">${esc(t('events.empty'))}</div>`) + loadMoreHtml;
+  }
+
+  function renderEventCount() {
+    if (state.events && state.events.length) {
+      const countText = state.eventsTotal > state.events.length
+        ? `${state.events.length} / ${state.eventsTotal}`
+        : String(state.events.length);
+      $('#event-count').textContent = countText;
+    }
   }
 
   async function loadWatches() {
@@ -2172,8 +2306,8 @@ WEB_UI_SCRIPT = r'''
       state.events = [];
       resetItemPages();
       $('#selected-task').textContent = t('items.selectTask');
-      renderItems(state.items);
-      renderEvents(state.events);
+      renderItems();
+      renderEvents();
     }
     await loadTasks();
   }
@@ -2387,11 +2521,11 @@ WEB_UI_SCRIPT = r'''
   $$('[data-item-tab]').forEach(button => button.addEventListener('click', () => switchItemTab(button.dataset.itemTab)));
   $('#items-page-prev').addEventListener('click', () => {
     state.itemPages[state.activeItemStatus] = Number(state.itemPages[state.activeItemStatus] || 1) - 1;
-    renderItems(state.items);
+    renderItems();
   });
   $('#items-page-next').addEventListener('click', () => {
     state.itemPages[state.activeItemStatus] = Number(state.itemPages[state.activeItemStatus] || 1) + 1;
-    renderItems(state.items);
+    renderItems();
   });
   $('#retry-selected-failed').addEventListener('click', event => {
     if (!state.selectedTaskId) return;
@@ -2446,7 +2580,68 @@ WEB_UI_SCRIPT = r'''
 
   applyLanguage();
   loadTasks();
-  setInterval(loadTasks, 3000);
+  startPolling();
+
+  function hasActiveTasks() {
+    return state.tasks.some(t => t.status === 'pending' || t.status === 'running');
+  }
+
+  function isSelectedTaskTerminal() {
+    const task = state.tasks.find(t => t.id === state.selectedTaskId);
+    return task && (task.status === 'success' || task.status === 'failure');
+  }
+
+  function startPolling() {
+    if (state.taskPollTimer) return;
+    const fastInterval = 3000;
+    const slowInterval = 15000;
+    let currentInterval = fastInterval;
+    let lastPollTime = 0;
+
+    async function poll() {
+      if (document.hidden) {
+        // 页面不可见时不做轮询
+        scheduleNext(currentInterval);
+        return;
+      }
+      const now = Date.now();
+      const minGap = currentInterval - 500;
+      if (now - lastPollTime < minGap) {
+        scheduleNext(currentInterval);
+        return;
+      }
+      lastPollTime = now;
+      try {
+        await loadTasks();
+      } catch (e) {
+        console.warn('Poll failed:', e);
+      }
+      // 根据是否有活跃任务动态调整轮询间隔
+      currentInterval = hasActiveTasks() ? fastInterval : slowInterval;
+      scheduleNext(currentInterval);
+    }
+
+    function scheduleNext(interval) {
+      state.taskPollTimer = setTimeout(poll, interval);
+    }
+
+    poll();
+  }
+
+  function stopPolling() {
+    if (state.taskPollTimer) {
+      clearTimeout(state.taskPollTimer);
+      state.taskPollTimer = null;
+    }
+  }
+
+  // 页面可见性变化时立即触发一次轮询
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.taskPollTimer) {
+      stopPolling();
+      startPolling();
+    }
+  });
 '''
 
 WEB_UI_HTML = f'''<!doctype html>
