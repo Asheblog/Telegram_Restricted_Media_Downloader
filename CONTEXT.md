@@ -56,6 +56,10 @@ _Avoid_: Auto dump, guessed range
 A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
 _Avoid_: Cache hit, finished file
 
+**Local Transfer Storage Budget**:
+The amount of local disk space that may be occupied or reserved by Restricted Content Transfer files while they are being downloaded and re-sent. A Transfer Item that needs a local fallback must fit within the budget before its download starts, and the budget is released only after the local file is no longer needed.
+_Avoid_: Upload concurrency, temp cache size
+
 **Downloaded Media Filename**:
 A filesystem-safe filename for downloaded media and PikPak Archive targets. When the source Telegram message has a caption, text, or web preview title, that readable Source Message Title is preferred over Telegram media IDs or generated English filenames; the source message ID remains in the filename to avoid collisions.
 _Avoid_: Temp cache name, random media ID

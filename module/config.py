@@ -609,7 +609,8 @@ class GlobalConfig(BaseConfig):
             {
                 'download_upload': True,
                 'delete': False,
-                'pending_limit': 3
+                'pending_limit': 3,
+                'local_storage_reserve_bytes': 1073741824
             },
         'target_profiles': deepcopy(DEFAULT_TARGET_PROFILES),
         'forward_type':
@@ -643,6 +644,7 @@ class GlobalConfig(BaseConfig):
             nesting_param='delete'
         )
         self.upload_pending_limit: int = self.get_upload_pending_limit()
+        self.local_storage_reserve_bytes: int = self.get_local_storage_reserve_bytes()
         self.target_profiles: dict = self.config.get('target_profiles', self.default_target_profiles_nesting)
         self.forward_type: dict = self.config.get('forward_type')
 
@@ -660,6 +662,18 @@ class GlobalConfig(BaseConfig):
             limit = self.default_upload_nesting.get('pending_limit', 3)
         return min(max(limit, 1), 5)
 
+    def get_local_storage_reserve_bytes(self) -> int:
+        default_value = self.default_upload_nesting.get('local_storage_reserve_bytes', 1073741824)
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_upload_nesting,
+                param='upload',
+                nesting_param='local_storage_reserve_bytes'
+            ))
+        except (TypeError, ValueError):
+            value = default_value
+        return max(0, value)
+
     def save_config(self, config: dict) -> None:
         super().save_config(config)
         self.download_upload = self.get_nesting_config(
@@ -673,6 +687,7 @@ class GlobalConfig(BaseConfig):
             nesting_param='delete'
         )
         self.upload_pending_limit = self.get_upload_pending_limit()
+        self.local_storage_reserve_bytes = self.get_local_storage_reserve_bytes()
         self.target_profiles = self.config.get('target_profiles', self.default_target_profiles_nesting)
         self.forward_type: dict = self.config.get('forward_type')
         p = '全局配置文件已重新加载。'

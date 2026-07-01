@@ -1,6 +1,7 @@
 # coding=UTF-8
 import os
 import sys
+import asyncio
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -13,11 +14,104 @@ sys.argv = [sys.argv[0]]
 
 from module.downloader import TelegramRestrictedMediaDownloader
 from module.transfer_store import TransferStore
+from module.local_storage_guard import LocalStorageGuard
 from module.enums import UploadStatus
 from module.task import DownloadTask
 
 
 class DownloaderTransferRecordCase(unittest.TestCase):
+    def test_download_upload_waits_for_local_storage_capacity_before_download(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                calls = []
+                releases = {}
+                free_space = {'value': 200}
+                downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+                downloader.transfer_store = None
+                downloader.gc = SimpleNamespace(upload_delete=False)
+                downloader.local_storage_guard = LocalStorageGuard(
+                    free_space_provider=lambda _path: free_space['value'],
+                    reserve_bytes_provider=lambda: 50
+                )
+                first_release = await downloader.local_storage_guard.acquire('existing', directory, 90)
+                downloader.local_storage_guard.mark_materialized('existing')
+                free_space['value'] = 10
+                downloader.download_upload_window = SimpleNamespace(acquire=lambda: None)
+                downloader.app = SimpleNamespace(
+                    current_task_num=0,
+                    max_download_task=1,
+                    download_type=['video'],
+                    client=SimpleNamespace(me=SimpleNamespace(is_premium=True)),
+                    save_directory=directory,
+                    get_file_type=lambda *args, **kwargs: 'video'
+                )
+                downloader.event = SimpleNamespace(wait=lambda: None, clear=lambda: None, set=lambda: None)
+                downloader.pb = SimpleNamespace(progress=SimpleNamespace(add_task=lambda *args, **kwargs: 1))
+                downloader.loop = asyncio.get_running_loop()
+                downloader.queue = SimpleNamespace(put_nowait=lambda task: None, task_done=lambda: None)
+                download_started = asyncio.Event()
+                finish_download = asyncio.Event()
+                downloader.get_media_meta = lambda message, dtype: {
+                    'file_id': 1,
+                    'temp_file_path': os.path.join(directory, 'media.mp4.temp'),
+                    'sever_file_size': 60,
+                    'file_name': 'media.mp4',
+                    'save_directory': os.path.join(directory, 'media.mp4'),
+                    'format_file_size': '60.00B'
+                }
+                async def resume_download(*args, **kwargs):
+                    calls.append('download')
+                    download_started.set()
+                    await finish_download.wait()
+
+                downloader.resume_download = resume_download
+                downloader.transfer_download_progress = lambda *args, **kwargs: None
+                async def acquire_window():
+                    releases['window'] = lambda: None
+                    return releases['window']
+                downloader.download_upload_window.acquire = acquire_window
+
+                message = SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    chat=SimpleNamespace(id='source-chat'),
+                    video=SimpleNamespace(file_size=60, file_name='media.mp4')
+                )
+                DownloadTask.LINK_INFO.clear()
+                DownloadTask(
+                    link='https://t.me/source/1',
+                    link_type='single',
+                    member_num=1,
+                    complete_num=0,
+                    file_name=set(),
+                    error_msg={}
+                )
+                task = asyncio.create_task(downloader._TelegramRestrictedMediaDownloader__add_task(
+                    chat_id='source-chat',
+                    link_type='single',
+                    link='https://t.me/source/1',
+                    message=message,
+                    retry={'id': -1, 'count': 0},
+                    with_upload={'link': 'https://t.me/pikpak_bot'},
+                    diy_download_type=['video']
+                ))
+                await asyncio.sleep(0)
+                self.assertEqual([], calls)
+                free_space['value'] = 200
+                first_release()
+                await asyncio.wait_for(task, timeout=1)
+                await asyncio.wait_for(download_started.wait(), timeout=1)
+                self.assertEqual(['download'], calls)
+                for pending in list(asyncio.all_tasks()):
+                    if pending is not asyncio.current_task() and pending.get_coro().__name__ == 'resume_download':
+                        pending.cancel()
+                        try:
+                            await pending
+                        except asyncio.CancelledError:
+                            pass
+
+        asyncio.run(run_case())
+
     def test_reuse_download_success_record_only_when_record_is_valid(self):
         with tempfile.TemporaryDirectory() as directory:
             media_path = os.path.join(directory, 'media.bin')

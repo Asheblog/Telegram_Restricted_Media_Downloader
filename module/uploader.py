@@ -107,6 +107,23 @@ class TelegramUploader:
         log.warning(message)
         await asyncio.sleep(amount + jitter)
 
+    @staticmethod
+    def release_transfer_local_storage(upload_task: UploadTask) -> None:
+        meta = getattr(upload_task, 'transfer_meta', {}) or {}
+        release = meta.get('local_storage_release')
+        if callable(release):
+            release()
+            meta['local_storage_release'] = None
+
+    def fail_upload_before_worker(self, upload_task: UploadTask, error_message: str, delete_file: bool = True) -> None:
+        upload_task.error_msg = error_message
+        upload_task.status = UploadStatus.FAILURE
+        self.release_transfer_local_storage(upload_task)
+        upload_task.release_window()
+        self.notify_transfer_status(upload_task)
+        if delete_file and upload_task.with_delete:
+            safe_delete(upload_task.file_path)
+
     async def resume_upload(
             self,
             upload_task: UploadTask,
@@ -565,19 +582,13 @@ class TelegramUploader:
         download_object = getattr(self, 'download_object', None)
         limit = target_profile_limit(getattr(download_object, 'gc', None), target_profile)
         if limit is not None and file_size > limit:
-            upload_task.error_msg = target_profile_size_error(target_profile, file_size, limit)
-            upload_task.status = UploadStatus.FAILURE
-            safe_delete(file_path) if upload_task.with_delete else None
+            self.fail_upload_before_worker(upload_task, target_profile_size_error(target_profile, file_size, limit))
             return None
         if not is_allow_upload(file_size, self.is_premium):
-            upload_task.error_msg = '上传大小超过限制(普通用户2000MiB,会员用户4000MiB)'
-            upload_task.status = UploadStatus.FAILURE
-            safe_delete(file_path) if upload_task.with_delete else None
+            self.fail_upload_before_worker(upload_task, '上传大小超过限制(普通用户2000MiB,会员用户4000MiB)')
             return None
         elif file_size == 0:
-            upload_task.error_msg = '上传文件大小为0'
-            upload_task.status = UploadStatus.FAILURE
-            safe_delete(file_path) if upload_task.with_delete else None
+            self.fail_upload_before_worker(upload_task, '上传文件大小为0')
             return None
 
         file_id_attempt = 1
@@ -607,13 +618,12 @@ class TelegramUploader:
                     upload_task.rewind_after_missing_part(missing_part)
                     continue
                 if file_id_attempt >= self.max_upload_retries:
-                    upload_task.error_msg = (
+                    self.fail_upload_before_worker(upload_task, (
                         f'FILE_PART_X_MISSING: Telegram still reported missing uploaded part {missing_part} '
                         f'after {self.max_upload_retries} file-id attempts and '
                         f'{missing_part_repair_limit} missing-part repairs per attempt.'
-                    )
+                    ))
                     safe_delete(getattr(upload_task, 'upload_manager_path', ''))
-                    upload_task.status = UploadStatus.FAILURE
                     return None
                 file_id_attempt += 1
                 missing_part_repairs = 0
@@ -624,8 +634,7 @@ class TelegramUploader:
                 )
                 upload_task.rewind_after_missing_part(missing_part, next_file_id=self.client.rnd_id)
             except (ChatAdminRequired, ChannelPrivate_400, ChannelPrivate_406) as e:
-                upload_task.error_msg = str(e)
-                upload_task.status = UploadStatus.FAILURE
+                self.fail_upload_before_worker(upload_task, str(e), delete_file=False)
                 return None
             except Exception as e:
                 console.log(
@@ -636,8 +645,7 @@ class TelegramUploader:
                 )
                 file_id_attempt += 1
                 if file_id_attempt > self.max_upload_retries:
-                    upload_task.error_msg = str(e)
-                    upload_task.status = UploadStatus.FAILURE
+                    self.fail_upload_before_worker(upload_task, str(e), delete_file=False)
 
     async def __add_task(
             self,
@@ -701,6 +709,7 @@ class TelegramUploader:
             log.info(e)
             upload_task.error_msg = str(e)
             upload_task.status = UploadStatus.FAILURE
+            self.release_transfer_local_storage(upload_task)
             self.notify_transfer_status(upload_task)
             return
         file_path: str = upload_task.file_path
@@ -711,7 +720,9 @@ class TelegramUploader:
         else:
             log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         self.event.set()
-        safe_delete(file_path) if upload_task.with_delete else None
+        deleted_transfer_file = safe_delete(file_path) if upload_task.with_delete else True
+        if deleted_transfer_file:
+            self.release_transfer_local_storage(upload_task)
         upload_task.release_window()
         upload_task.status = UploadStatus.SUCCESS
         self.notify_transfer_status(upload_task)
@@ -753,7 +764,8 @@ class TelegramUploader:
                             'source_link': with_upload.get('source_link'),
                             'source_folder': with_upload.get('source_folder'),
                             'file_name': with_upload.get('file_name') or os.path.basename(file_path),
-                            'bot_progress': with_upload.get('bot_progress')
+                            'bot_progress': with_upload.get('bot_progress'),
+                            'local_storage_release': with_upload.get('_local_storage_release')
                         },
                         status_callback=with_upload.get('status_callback'),
                         progress_callback=with_upload.get('progress_callback')
