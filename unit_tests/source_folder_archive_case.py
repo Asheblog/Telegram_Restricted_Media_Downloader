@@ -292,6 +292,61 @@ class SourceFolderArchiveCase(unittest.TestCase):
             calls
         )
 
+    def test_rclone_archive_matches_pikpak_separator_normalized_name(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '198_会所技女技师按摩放松.mp4',
+                            'Size': 1001700000,
+                            'Path': '198_会所技女技师按摩放松.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-01T10:44:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner
+        )
+
+        result = client.archive_file(
+            source_folder='ctuxas',
+            file_name='198 - 会所技女技师按摩放松.mp4',
+            file_size=1001700000,
+            transferred_at=1782902640.0,
+            match_original_name=True
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual('Telegram/ctuxas/198 - 会所技女技师按摩放松.mp4', result.archive_path)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/198_会所技女技师按摩放松.mp4',
+                'pikpak:Telegram/ctuxas/198 - 会所技女技师按摩放松.mp4'
+            ],
+            calls
+        )
+
     def test_rclone_archive_treats_existing_target_file_as_already_archived(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 
