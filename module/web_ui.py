@@ -12,7 +12,7 @@ from copy import deepcopy
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, parse_qs
 
 from module import log
 from module.enums import ENVIRON
@@ -201,8 +201,16 @@ class WebUiServer:
                     return {}
                 return json.loads(raw.decode('utf-8'))
 
+            @staticmethod
+            def _query_int(query: dict, key: str, default: int) -> int:
+                try:
+                    return int((query.get(key) or [str(default)])[0])
+                except (ValueError, TypeError):
+                    return default
+
             def _task_id_from_path(self):
-                task_id = self.path.rsplit('/', 1)[-1]
+                task_path = urlparse(self.path).path
+                task_id = task_path.rsplit('/', 1)[-1]
                 if not task_id.isdigit():
                     self._send_error('invalid_task_id', 'Invalid task id.', HTTPStatus.BAD_REQUEST)
                     return None
@@ -234,10 +242,24 @@ class WebUiServer:
                     self._send_json({'watches': server.list_watches()})
                     return
                 if parsed.path.startswith('/api/tasks/'):
-                    task_id = self._task_id_from_path()
-                    if task_id is None:
+                    # 提取路径段: /api/tasks/123 或 /api/tasks/123/summary
+                    subpath = parsed.path[len('/api/tasks/'):]
+                    parts = [p for p in subpath.split('/') if p]
+                    if not parts or not parts[0].isdigit():
+                        self._send_error('invalid_task_id', 'Invalid task id.', HTTPStatus.BAD_REQUEST)
                         return
-                    payload = server.store.task_payload(task_id)
+                    task_id = int(parts[0])
+                    query = parse_qs(parsed.query)
+                    if len(parts) > 1 and parts[1] == 'summary':
+                        payload = server.store.task_summary(task_id)
+                    else:
+                        payload = server.store.task_payload(
+                            task_id,
+                            item_limit=self._query_int(query, 'items_limit', 200),
+                            item_offset=self._query_int(query, 'items_offset', 0),
+                            event_limit=self._query_int(query, 'events_limit', 100),
+                            event_offset=self._query_int(query, 'events_offset', 0),
+                        )
                     if not payload:
                         self._send_error('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
                         return
