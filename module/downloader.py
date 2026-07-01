@@ -245,7 +245,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
-        self.discard_web_task_submission(task_id, cancel_running=False)
+        self.discard_web_task_submission(task_id, cancel_running=True)
         return True
 
     def resume_web_task(self, task_id: int) -> bool:

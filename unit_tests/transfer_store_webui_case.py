@@ -930,11 +930,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store.refresh_task_counts(task_id)
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
             self.assertFalse(downloader.is_web_transfer_task_schedulable(task_id))
-            self.assertEqual([f'discard:{task_id}:False'], submitted)
+            self.assertEqual([f'discard:{task_id}:True'], submitted)
 
             self.assertTrue(downloader.resume_web_task(task_id))
             self.assertEqual(TransferStatus.PENDING, store.get_task(task_id)['status'])
-            self.assertEqual([f'discard:{task_id}:False', task_id], submitted)
+            self.assertEqual([f'discard:{task_id}:True', task_id], submitted)
 
     def test_webui_task_pause_and_resume_api_use_operations(self):
         class TaskControlOperations:
