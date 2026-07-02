@@ -205,6 +205,13 @@ WEB_UI_CSS = r'''
     background: var(--surface-muted);
     border-color: var(--line);
   }
+  .nav-scroll {
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding-right: 4px;
+    margin-right: -4px;
+  }
   .nav-title {
     color: var(--muted);
     font-size: var(--font-xs);
@@ -795,7 +802,8 @@ WEB_UI_BODY = f'''
           <p data-i18n="app.subtitle">转存控制台</p>
         </div>
       </div>
-      <nav class="nav" aria-label="主导航" data-i18n-aria-label="nav.primary">
+      <div class="nav-scroll">
+        <nav class="nav" aria-label="主导航" data-i18n-aria-label="nav.primary">
         <button type="button" class="active" data-nav="transfers">
           <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           <span data-i18n="nav.transfers">转存任务</span>
@@ -825,17 +833,18 @@ WEB_UI_BODY = f'''
           <span data-i18n="nav.records">下载记录</span>
         </button>
       </nav>
-      <div class="nav-title" data-i18n="side.runtime">运行状态</div>
-      <div class="metric"><span data-i18n="side.defaultTarget">默认目标</span><strong>@pikpak_bot</strong></div>
-      <div class="metric"><span data-i18n="side.totalTasks">任务总数</span><strong id="metric-total">0</strong></div>
-      <div class="metric"><span data-i18n="side.running">运行中</span><strong id="metric-running">0</strong></div>
-      <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
+        <div class="nav-title" data-i18n="side.runtime">运行状态</div>
+        <div class="metric"><span data-i18n="side.defaultTarget">默认目标</span><strong>@pikpak_bot</strong></div>
+        <div class="metric"><span data-i18n="side.totalTasks">任务总数</span><strong id="metric-total">0</strong></div>
+        <div class="metric"><span data-i18n="side.running">运行中</span><strong id="metric-running">0</strong></div>
+        <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
+      </div>
       <div class="sidebar-footer">
         <a class="sidebar-footer__link" href="https://github.com/Asheblog/Telegram_Restricted_Media_Downloader" target="_blank" rel="noopener" title="GitHub">
           <svg class="sidebar-footer__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12Z"/></svg>
           <span>Asheblog/TRMD</span>
         </a>
-        <p class="sidebar-footer__author">by Gentlesprite</p>
+        <p class="sidebar-footer__author">by Asheblog</p>
         <span class="sidebar-footer__version">v0.2.24</span>
       </div>
     </aside>
