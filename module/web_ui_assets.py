@@ -161,6 +161,8 @@ WEB_UI_CSS = r'''
     position: sticky;
     top: 0;
     height: 100svh;
+    display: flex;
+    flex-direction: column;
   }
   main {
     min-width: 0;
@@ -225,6 +227,51 @@ WEB_UI_CSS = r'''
     font-size: var(--font-sm);
     line-height: 1.5;
     margin: 0;
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .sidebar-footer__link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: var(--font-xs);
+    transition: color .18s ease;
+  }
+  .sidebar-footer__link:hover {
+    color: var(--accent);
+  }
+  .sidebar-footer__link:hover .sidebar-footer__icon {
+    opacity: 1;
+  }
+  .sidebar-footer__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: .65;
+    transition: opacity .18s ease;
+  }
+  .sidebar-footer__author {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: var(--font-xs);
+    opacity: .62;
+  }
+  .sidebar-footer__version {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface-muted);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .03em;
+    border: 1px solid var(--line);
   }
   .topbar {
     display: flex;
@@ -783,8 +830,14 @@ WEB_UI_BODY = f'''
       <div class="metric"><span data-i18n="side.totalTasks">任务总数</span><strong id="metric-total">0</strong></div>
       <div class="metric"><span data-i18n="side.running">运行中</span><strong id="metric-running">0</strong></div>
       <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
-      <div class="nav-title" data-i18n="side.policy">策略</div>
-      <p class="hint" data-i18n="side.policyText">转存会先尝试直接发送到目标，遇到转发限制时再下载到本地后上传。</p>
+      <div class="sidebar-footer">
+        <a class="sidebar-footer__link" href="https://github.com/Asheblog/Telegram_Restricted_Media_Downloader" target="_blank" rel="noopener" title="GitHub">
+          <svg class="sidebar-footer__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12Z"/></svg>
+          <span>Asheblog/TRMD</span>
+        </a>
+        <p class="sidebar-footer__author">by Gentlesprite</p>
+        <span class="sidebar-footer__version">v0.2.24</span>
+      </div>
     </aside>
     <main>
       <div class="topbar">
@@ -1220,8 +1273,6 @@ WEB_UI_SCRIPT = r'''
       'side.totalTasks': '任务总数',
       'side.running': '运行中',
       'side.failed': '失败',
-      'side.policy': '策略',
-      'side.policyText': '转存会先尝试直接发送到目标，遇到转发限制时再下载到本地后上传。',
       'hero.title': 'PikPak 转存队列',
       'hero.body': '创建、监控和配置 Telegram 受限内容转存任务。状态、文件进度、失败事件和下载成功记录会持久化保存。',
       'action.refresh': '刷新',
@@ -1454,8 +1505,6 @@ WEB_UI_SCRIPT = r'''
       'side.totalTasks': 'Total tasks',
       'side.running': 'Running',
       'side.failed': 'Failed',
-      'side.policy': 'Policy',
-      'side.policyText': 'Transfers try direct delivery first, then download locally and upload when Telegram blocks forwarding.',
       'hero.title': 'PikPak transfer queue',
       'hero.body': 'Create, monitor, and configure Telegram restricted content transfer tasks. State, file progress, failure events, and download success records are persisted.',
       'action.refresh': 'Refresh',
