@@ -180,6 +180,7 @@ class TelegramRestrictedMediaDownloader:
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operation_counter: int = 0
         self.web_operations: dict = {}
+        self.diagnostic = RichDiagnosticAdapter(console, log)
         self.watch_manager = LiveWatchManager(
             transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
             operation_submitter=self.submit_web_operation,
@@ -192,7 +193,6 @@ class TelegramRestrictedMediaDownloader:
         self.web_pending_watches = self.watch_manager.web_pending_watches
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
-        self.diagnostic = RichDiagnosticAdapter(console, log)
         self.pikpak_manager = PikpakIntegrationManager(
             transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
             pikpak_archive_client_getter=lambda: build_pikpak_archive_client(
