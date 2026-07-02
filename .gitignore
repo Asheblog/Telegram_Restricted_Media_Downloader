@@ -20,8 +20,12 @@ DownloadRecordForm/
 *.lock
 *.session
 *.session-journal
+*.sqlite3
 test*.py
 Pipfile
+# opencode / superpowers
+.superpowers/
+AGENTS.md
 # include files
 !rar.exe
 !requirements.txt
