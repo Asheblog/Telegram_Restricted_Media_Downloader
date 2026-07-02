@@ -18,6 +18,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 
 import module as trmd_module
+from module.live_watch_manager import LiveWatchManager
 from module.transfer_store import TransferStatus, TransferStore
 from module.web_ui import WebUiServer
 
@@ -3072,6 +3073,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
             }
         }
         downloader.web_watch_handler_clients = {}
+        downloader.watch_manager = LiveWatchManager(
+            listen_download_chat=downloader.listen_download_chat,
+            listen_forward_chat=downloader.listen_forward_chat,
+            web_pending_watches=downloader.web_pending_watches,
+            web_watch_handler_clients=downloader.web_watch_handler_clients,
+            transfer_store_getter=lambda: getattr(downloader, 'transfer_store', None),
+            operation_submitter=downloader.submit_web_operation,
+            user_getter=lambda: getattr(downloader, 'user', None),
+            app_getter=lambda: getattr(downloader, 'app', None),
+        )
 
         async def exercise_watch_lifecycle():
             await downloader.apply_web_watch({
@@ -3106,6 +3117,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
             downloader.transfer_store = store
             downloader.user = FakeTelegramClient()
             downloader.app = SimpleNamespace(client=FakeTelegramClient())
+            downloader.watch_manager = LiveWatchManager(
+                listen_download_chat=downloader.listen_download_chat,
+                listen_forward_chat=downloader.listen_forward_chat,
+                web_pending_watches=downloader.web_pending_watches,
+                web_watch_handler_clients=downloader.web_watch_handler_clients,
+                transfer_store_getter=lambda: getattr(downloader, 'transfer_store', None),
+                operation_submitter=downloader.submit_web_operation,
+                user_getter=lambda: getattr(downloader, 'user', None),
+                app_getter=lambda: getattr(downloader, 'app', None),
+            )
             return downloader, loop
 
         with tempfile.TemporaryDirectory() as directory:
@@ -3150,6 +3171,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
         downloader.listen_forward_chat = {}
         downloader.web_pending_watches = {}
         downloader.web_watch_handler_clients = {}
+        downloader.watch_manager = LiveWatchManager(
+            listen_download_chat=downloader.listen_download_chat,
+            listen_forward_chat=downloader.listen_forward_chat,
+            web_pending_watches=downloader.web_pending_watches,
+            web_watch_handler_clients=downloader.web_watch_handler_clients,
+            transfer_store_getter=lambda: getattr(downloader, 'transfer_store', None),
+            operation_submitter=downloader.submit_web_operation,
+            user_getter=lambda: getattr(downloader, 'user', None),
+            app_getter=lambda: getattr(downloader, 'app', None),
+        )
 
         deleted = downloader.delete_watch('download:https://t.me/source')
 
@@ -3171,6 +3202,15 @@ class TransferStoreWebUiCase(unittest.TestCase):
             downloader.web_pending_watches = {}
             downloader.listen_download_chat = {}
             downloader.listen_forward_chat = {}
+            downloader.watch_manager = LiveWatchManager(
+                listen_download_chat=downloader.listen_download_chat,
+                listen_forward_chat=downloader.listen_forward_chat,
+                web_pending_watches=downloader.web_pending_watches,
+                transfer_store_getter=lambda: getattr(downloader, 'transfer_store', None),
+                operation_submitter=downloader.submit_web_operation,
+                user_getter=lambda: getattr(downloader, 'user', None),
+                app_getter=lambda: getattr(downloader, 'app', None),
+            )
 
             downloader.create_watch({
                 'type': 'download',

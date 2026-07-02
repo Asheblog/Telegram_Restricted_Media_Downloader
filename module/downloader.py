@@ -66,6 +66,7 @@ from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
 from module.local_storage_guard import LocalStorageGuard
+from module.live_watch_manager import LiveWatchManager
 from module.bot import (
     Bot,
     KeyboardButton,
@@ -163,8 +164,17 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operation_counter: int = 0
         self.web_operations: dict = {}
-        self.web_pending_watches: dict = {}
-        self.web_watch_handler_clients: dict = {}
+        self.watch_manager = LiveWatchManager(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            operation_submitter=self.submit_web_operation,
+            user_getter=lambda: getattr(self, 'user', None),
+            app_getter=lambda: self.app,
+            diagnostic=self.diagnostic
+        )
+        self.listen_download_chat = self.watch_manager.listen_download_chat
+        self.listen_forward_chat = self.watch_manager.listen_forward_chat
+        self.web_pending_watches = self.watch_manager.web_pending_watches
+        self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
         self.diagnostic = RichDiagnosticAdapter(console, log)
 
@@ -440,230 +450,48 @@ class TelegramRestrictedMediaDownloader(Bot):
 
     @staticmethod
     def download_watch_id(source_link: str) -> str:
-        return f'download:{source_link}'
+        return LiveWatchManager.download_watch_id(source_link)
 
     @staticmethod
     def forward_watch_id(rule: str) -> str:
-        return f'forward:{rule}'
+        return LiveWatchManager.forward_watch_id(rule)
 
     @staticmethod
     def watch_payload_from_record(watch: dict) -> dict:
-        payload = {
-            'watch_type': watch.get('type'),
-            'source_link': watch.get('source_link')
-        }
-        if watch.get('type') == 'forward':
-            payload['target_link'] = watch.get('target_link')
-            payload['include_comment'] = bool(watch.get('include_comment'))
-        return payload
+        return LiveWatchManager.watch_payload_from_record(watch)
 
     def persisted_watches(self) -> list:
-        transfer_store = getattr(self, 'transfer_store', None)
-        if not transfer_store:
-            return []
-        return transfer_store.list_live_transfer_watches()
+        return self.watch_manager.persisted_watches()
 
     def persist_watch(self, watch: dict) -> dict:
-        transfer_store = getattr(self, 'transfer_store', None)
-        if not transfer_store:
-            return watch
-        return transfer_store.upsert_live_transfer_watch(
-            watch_id=watch.get('id'),
-            watch_type=watch.get('type'),
-            source_link=watch.get('source_link'),
-            target_link=watch.get('target_link'),
-            include_comment=bool(watch.get('include_comment')),
-            status=watch.get('status') or TransferStatus.PENDING,
-            error_message=watch.get('error_message')
-        )
+        return self.watch_manager.persist_watch(watch)
 
     def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
-        if watch_id in self.web_pending_watches:
-            self.web_pending_watches[watch_id]['status'] = status
-            self.web_pending_watches[watch_id]['error_message'] = error_message
-        transfer_store = getattr(self, 'transfer_store', None)
-        if transfer_store:
-            transfer_store.update_live_transfer_watch_status(
-                watch_id=watch_id,
-                status=status,
-                error_message=error_message
-            )
+        self.watch_manager.set_live_watch_status(watch_id, status, error_message)
 
     def list_watches(self) -> list:
-        watches_by_id = {
-            watch.get('id'): watch
-            for watch in self.persisted_watches()
-            if watch.get('id')
-        }
-        for link in sorted(self.listen_download_chat):
-            watch_id = self.download_watch_id(link)
-            watches_by_id[watch_id] = {
-                **watches_by_id.get(watch_id, {}),
-                'id': watch_id,
-                'type': 'download',
-                'source_link': link,
-                'target_link': None,
-                'include_comment': False,
-                'status': TransferStatus.RUNNING
-            }
-        for rule in sorted(self.listen_forward_chat):
-            parsed = parse_forward_watch_rule(rule)
-            watch_id = self.forward_watch_id(rule)
-            watches_by_id[watch_id] = {
-                **watches_by_id.get(watch_id, {}),
-                'id': watch_id,
-                'type': 'forward',
-                'source_link': parsed.get('source_link'),
-                'target_link': parsed.get('target_link'),
-                'include_comment': bool(parsed.get('include_comment')),
-                'status': TransferStatus.RUNNING
-            }
-        running_ids = set(watches_by_id)
-        for watch_id, watch in sorted(self.web_pending_watches.items()):
-            if watch_id not in running_ids:
-                watches_by_id[watch_id] = watch
-        return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
+        return self.watch_manager.list_watches()
 
     def pending_watch_sources(self, watch_type: str) -> set:
-        return {
-            watch.get('source_link')
-            for watch in self.web_pending_watches.values()
-            if watch.get('type') == watch_type and watch.get('source_link')
-        }
+        return self.watch_manager.pending_watch_sources(watch_type)
 
     def persisted_watch_sources(self, watch_type: str) -> set:
-        return {
-            watch.get('source_link')
-            for watch in self.persisted_watches()
-            if watch.get('type') == watch_type and watch.get('source_link')
-        }
+        return self.watch_manager.persisted_watch_sources(watch_type)
 
     def has_download_watch_source(self, source_link: str) -> bool:
-        return (
-            source_link in self.listen_download_chat
-            or source_link in self.pending_watch_sources('download')
-            or source_link in self.persisted_watch_sources('download')
-        )
+        return self.watch_manager.has_download_watch_source(source_link)
 
     def has_forward_watch_source(self, source_link: str) -> bool:
-        running_sources = {
-            parse_forward_watch_rule(rule).get('source_link')
-            for rule in self.listen_forward_chat
-        }
-        return (
-            source_link in running_sources
-            or source_link in self.pending_watch_sources('forward')
-            or source_link in self.persisted_watch_sources('forward')
-        )
+        return self.watch_manager.has_forward_watch_source(source_link)
 
     def create_watch(self, payload: dict) -> dict:
-        watch_type = payload.get('type')
-        if watch_type == 'download':
-            created = []
-            for link in payload.get('source_links') or []:
-                if self.has_forward_watch_source(link):
-                    raise ValueError('watch_source_conflict')
-                if self.has_download_watch_source(link):
-                    raise ValueError('watch_already_exists')
-                watch = {
-                    'id': f'download:{link}',
-                    'type': 'download',
-                    'source_link': link,
-                    'target_link': None,
-                    'include_comment': False,
-                    'status': TransferStatus.PENDING
-                }
-                watch = self.persist_watch(watch)
-                self.web_pending_watches[watch['id']] = watch
-                self.create_live_watch_operation('download', {'source_link': link})
-                created.append(watch)
-            return {'watches': created}
-        if watch_type == 'forward':
-            source_link = payload.get('source_link')
-            target_link = payload.get('target_link')
-            include_comment = bool(payload.get('include_comment'))
-            if self.has_download_watch_source(source_link):
-                raise ValueError('watch_source_conflict')
-            rule = make_forward_watch_rule(source_link, target_link, include_comment)
-            same_target_exists = any(
-                parse_forward_watch_rule(existing).get('source_link') == source_link and
-                parse_forward_watch_rule(existing).get('target_link') == target_link
-                for existing in self.listen_forward_chat
-            )
-            same_persisted_exists = any(
-                watch.get('type') == 'forward' and
-                watch.get('source_link') == source_link and
-                watch.get('target_link') == target_link
-                for watch in self.persisted_watches()
-            )
-            same_pending_exists = any(
-                watch.get('type') == 'forward' and
-                watch.get('source_link') == source_link and
-                watch.get('target_link') == target_link
-                for watch in self.web_pending_watches.values()
-            )
-            if same_target_exists or same_persisted_exists or same_pending_exists:
-                raise ValueError('watch_already_exists')
-            watch = {
-                'id': f'forward:{rule}',
-                'type': 'forward',
-                'source_link': source_link,
-                'target_link': target_link,
-                'include_comment': include_comment,
-                'status': TransferStatus.PENDING
-            }
-            watch = self.persist_watch(watch)
-            self.web_pending_watches[watch['id']] = watch
-            self.create_live_watch_operation(
-                'forward',
-                {'source_link': source_link, 'target_link': target_link, 'include_comment': include_comment}
-            )
-            return {
-                'watches': [watch]
-            }
-        raise ValueError('Unsupported watch type.')
+        return self.watch_manager.create_watch(payload)
 
     def create_live_watch_operation(self, watch_type: str, payload: dict) -> str:
-        operation = self.submit_web_operation('watch', {'watch_type': watch_type, **payload})
-        return operation['id']
+        return self.watch_manager._create_live_watch_operation(watch_type, payload)
 
     def delete_watch(self, watch_id: str) -> bool:
-        watch_type, separator, value = watch_id.partition(':')
-        if not separator:
-            return False
-        if watch_type == 'download':
-            handler = self.listen_download_chat.get(value)
-            if not handler:
-                pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
-                transfer_store = getattr(self, 'transfer_store', None)
-                store_deleted = transfer_store.delete_live_transfer_watch(watch_id) if transfer_store else False
-                return pending_deleted or store_deleted
-            client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
-            client.remove_handler(handler)
-            self.listen_download_chat.pop(value, None)
-            self.web_pending_watches.pop(watch_id, None)
-            transfer_store = getattr(self, 'transfer_store', None)
-            if transfer_store:
-                transfer_store.delete_live_transfer_watch(watch_id)
-            log.info(f'已通过WebUI删除监听下载,频道链接:"{value}"。')
-            return True
-        if watch_type == 'forward':
-            handler = self.listen_forward_chat.get(value)
-            if not handler:
-                pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
-                transfer_store = getattr(self, 'transfer_store', None)
-                store_deleted = transfer_store.delete_live_transfer_watch(watch_id) if transfer_store else False
-                return pending_deleted or store_deleted
-            client = self.web_watch_handler_clients.pop(watch_id, None) or self.user or self.app.client
-            client.remove_handler(handler)
-            self.listen_forward_chat.pop(value, None)
-            self.web_pending_watches.pop(watch_id, None)
-            transfer_store = getattr(self, 'transfer_store', None)
-            if transfer_store:
-                transfer_store.delete_live_transfer_watch(watch_id)
-            log.info(f'已通过WebUI删除监听转发,转发规则:"{value}"。')
-            return True
-        return False
+        return self.watch_manager.delete_watch(watch_id)
 
     def statistics(self) -> dict:
         return {
@@ -2520,19 +2348,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         raise ValueError('Unsupported watch type.')
 
     def mark_pending_watch(self, payload: dict, status: str, error_message: str = None) -> None:
-        watch_type = payload.get('watch_type')
-        if watch_type == 'download':
-            watch_id = f'download:{payload.get("source_link")}'
-        elif watch_type == 'forward':
-            rule = make_forward_watch_rule(
-                payload.get('source_link'),
-                payload.get('target_link'),
-                bool(payload.get('include_comment'))
-            )
-            watch_id = f'forward:{rule}'
-        else:
-            return
-        self.set_live_watch_status(watch_id, status, error_message)
+        self.watch_manager.mark_pending_watch(payload, status, error_message)
 
     async def apply_web_upload(self, payload: dict) -> None:
         if not self.uploader:
