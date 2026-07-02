@@ -1264,7 +1264,7 @@ WEB_UI_BODY = f'''
   </div>
 '''
 
-WEB_UI_SCRIPT = r'''
+SHARED_WEB_UI_SCRIPT = r'''
   const i18n = {
     zh: {
       'app.subtitle': '转存控制台',
@@ -2569,7 +2569,9 @@ WEB_UI_SCRIPT = r'''
       </tr>
     `).join('');
   }
+'''
 
+WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   $('#language-select').addEventListener('change', event => {
     state.lang = event.target.value;
     localStorage.setItem('trmd-lang', state.lang);
