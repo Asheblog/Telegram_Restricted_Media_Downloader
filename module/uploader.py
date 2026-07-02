@@ -32,6 +32,7 @@ from pymediainfo import MediaInfo
 
 from module import console, log
 from module.language import _t
+from module.ports import IUploadContext
 
 from module.task import UploadTask
 from module.transfer_registry import transfer_registry
@@ -66,24 +67,24 @@ class TelegramUploader:
 
     def __init__(
             self,
-            download_object
+            upload_context: IUploadContext
     ):
-        self.app = download_object.app
+        self.app = upload_context.app
         self.client: pyrogram.Client = self.app.client
-        self.loop: asyncio.AbstractEventLoop = download_object.loop
+        self.loop: asyncio.AbstractEventLoop = upload_context.loop
         self.event: asyncio.Event = asyncio.Event()
-        self.pb: ProgressBar = download_object.pb
+        self.pb: ProgressBar = upload_context.pb
         self.is_premium: bool = self.client.me.is_premium
         self.current_task_num: int = 0
         self.max_upload_task: int = self.app.max_upload_task
         self.max_upload_retries: int = self.app.max_upload_retries
-        self.download_object = download_object
+        self.upload_context = upload_context
         self.upload_queue: asyncio.Queue = asyncio.Queue()
         self.valid_link_cache = {}
-        transfer_registry.notify = download_object.done_notice
+        transfer_registry.notify = upload_context.done_notice
         transfer_registry.directory_name = os.path.join(
             transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
-            str(download_object.my_id)
+            str(upload_context.my_id)
         )
         asyncio.create_task(self.send_media_worker())
 
@@ -99,8 +100,8 @@ class TelegramUploader:
 
     async def wait_for_telegram_flood(self, error, upload_task: UploadTask, action: str) -> None:
         task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
-        download_object = getattr(self, 'download_object', None)
-        waiter = getattr(download_object, 'wait_for_telegram_flood', None)
+        upload_context = getattr(self, 'upload_context', None)
+        waiter = getattr(upload_context, 'wait_for_telegram_flood', None)
         if callable(waiter):
             await waiter(error, task_id=task_id, action=action)
             return
@@ -279,7 +280,7 @@ class TelegramUploader:
         media_group_cache = {}  # media_group_id -> {message_id: media, ...}
         media_group_poll_tasks = {}  # media_group_id -> polling_task
 
-        while self.download_object.is_running or self.download_object.is_bot_running or getattr(self.download_object, 'web_ui', None):
+        while self.upload_context.is_running or self.upload_context.is_bot_running or getattr(self.upload_context, 'web_ui', None):
             try:
                 media, upload_task = await self.upload_queue.get()
 
@@ -367,7 +368,7 @@ class TelegramUploader:
             media_group_poll_tasks: dict
     ):
         try:
-            while self.download_object.is_running or self.download_object.is_bot_running or getattr(self.download_object, 'web_ui', None):
+            while self.upload_context.is_running or self.upload_context.is_bot_running or getattr(self.upload_context, 'web_ui', None):
                 await asyncio.sleep(1)  # 每1秒检查一次。
 
                 # 检查两个条件：
@@ -583,8 +584,8 @@ class TelegramUploader:
         file_size: int = os.path.getsize(file_path)
         upload_task.chat_id = chat_id
         target_profile = upload_task.transfer_meta.get('target_profile')
-        download_object = getattr(self, 'download_object', None)
-        limit = target_profile_limit(getattr(download_object, 'gc', None), target_profile)
+        upload_context = getattr(self, 'upload_context', None)
+        limit = target_profile_limit(getattr(upload_context, 'gc', None), target_profile)
         if limit is not None and file_size > limit:
             self.fail_upload_before_worker(upload_task, target_profile_size_error(target_profile, file_size, limit))
             return None

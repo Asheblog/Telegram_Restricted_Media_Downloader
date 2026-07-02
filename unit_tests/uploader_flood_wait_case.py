@@ -104,7 +104,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
                 uploader.is_premium = True
                 uploader.max_upload_retries = 3
                 uploader.current_task_num = 0
-                uploader.download_object = SimpleNamespace(gc={})
+                uploader.upload_context = SimpleNamespace(gc={})
                 attempts = []
 
                 async def missing_once(upload_task):
@@ -152,7 +152,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
             uploader.is_premium = True
             uploader.max_upload_retries = 3
             uploader.current_task_num = 0
-            uploader.download_object = SimpleNamespace(gc={})
+            uploader.upload_context = SimpleNamespace(gc={})
 
             async def always_missing(upload_task):
                 raise FilePartMissing(1)

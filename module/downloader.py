@@ -912,7 +912,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             with_upload['_local_storage_token'] = None
 
     def create_uploader(self) -> TelegramUploader:
-        return TelegramUploader(download_object=self)
+        return TelegramUploader(upload_context=self)
 
     def ensure_uploader(self) -> TelegramUploader:
         if not self.uploader:
@@ -2289,7 +2289,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.transfer_store.add_event(task_id, 'Transfer task started.')
         try:
             if not self.uploader:
-                self.uploader = TelegramUploader(download_object=self)
+                self.uploader = TelegramUploader(upload_context=self)
             source_link = task.get('source_link')
             start_id = task.get('start_id')
             end_id = task.get('end_id')
@@ -2533,7 +2533,7 @@ class TelegramRestrictedMediaDownloader(Bot):
 
     async def apply_web_upload(self, payload: dict) -> None:
         if not self.uploader:
-            self.uploader = TelegramUploader(download_object=self)
+            self.uploader = TelegramUploader(upload_context=self)
         upload_path = payload.get('path')
         target_link = payload.get('target_link')
         recursive = bool(payload.get('recursive'))
@@ -5045,7 +5045,7 @@ class TelegramRestrictedMediaDownloader(Bot):
             )
             console.log(result, style='#B1DB74' if self.is_bot_running else '#FF4689')
             if self.is_bot_running:
-                self.uploader = TelegramUploader(download_object=self)
+                self.uploader = TelegramUploader(upload_context=self)
                 self.cd = CallbackData()
                 if self.gc.upload_delete:
                     console.log(
@@ -5055,7 +5055,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                         style='#FF4689'
                     )
         if self.web_ui and not self.uploader:
-            self.uploader = TelegramUploader(download_object=self)
+            self.uploader = TelegramUploader(upload_context=self)
         links: Union[set, None] = self.__process_links(link=self.app.links)
         # 将初始任务添加到队列中。
         [await self.loop.create_task(self.create_download_task(message_ids=link, retry=None)) for link in

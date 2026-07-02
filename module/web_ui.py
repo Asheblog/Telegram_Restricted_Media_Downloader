@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse, parse_qs
 
 from module import log
 from module.enums import ENVIRON
+from module.ports import IWebUiOperations
 from module.transfer_store import TransferStore
 from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML
 
@@ -77,7 +78,7 @@ class WebUiServer:
             task_submitter: Optional[Callable[[int], None]] = None,
             settings_provider: Optional[Callable[[], dict]] = None,
             settings_updater: Optional[Callable[[dict], dict]] = None,
-            operations=None,
+            operations: Optional[IWebUiOperations] = None,
             host: str = '127.0.0.1',
             port: int = 0,
             username: Optional[str] = None,
@@ -503,7 +504,7 @@ class WebUiServer:
         return {'task_id': task_id}
 
     def detect_transfer_range(self, source_link: str) -> tuple[int, int]:
-        if not self.operations or not hasattr(self.operations, 'detect_transfer_range'):
+        if not isinstance(self.operations, IWebUiOperations):
             raise WebUiApiError(
                 'transfer_range_detection_unavailable',
                 'Transfer range detection is unavailable.',
@@ -537,7 +538,7 @@ class WebUiServer:
         return start_id, end_id
 
     def list_watches(self) -> list:
-        if self.operations and hasattr(self.operations, 'list_watches'):
+        if isinstance(self.operations, IWebUiOperations):
             return self.operations.list_watches()
         return []
 
@@ -576,7 +577,7 @@ class WebUiServer:
                 'target_link': target_link,
                 'include_comment': include_comment
             }
-        if self.operations and hasattr(self.operations, 'create_watch'):
+        if isinstance(self.operations, IWebUiOperations):
             try:
                 return self.operations.create_watch(payload)
             except ValueError as e:
@@ -596,12 +597,12 @@ class WebUiServer:
         raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def delete_watch(self, watch_id: str) -> bool:
-        if self.operations and hasattr(self.operations, 'delete_watch'):
+        if isinstance(self.operations, IWebUiOperations):
             return bool(self.operations.delete_watch(watch_id))
         return False
 
     def delete_task(self, task_id: int) -> bool:
-        if self.operations and hasattr(self.operations, 'delete_web_task'):
+        if isinstance(self.operations, IWebUiOperations):
             return bool(self.operations.delete_web_task(task_id))
         return self.store.delete_task(task_id)
 
@@ -622,7 +623,7 @@ class WebUiServer:
         if not self.store.get_task(task_id):
             raise WebUiApiError('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
         if action == 'retry-failed':
-            if self.operations and hasattr(self.operations, 'retry_failed_web_task'):
+            if isinstance(self.operations, IWebUiOperations):
                 reset_items = int(self.operations.retry_failed_web_task(task_id))
             else:
                 reset_items = self.store.retry_failed_items(task_id)
@@ -630,7 +631,7 @@ class WebUiServer:
                     self.task_submitter(task_id)
             return {'task_id': task_id, 'action': action, 'reset_items': reset_items}
         if action == 'pause':
-            if self.operations and hasattr(self.operations, 'pause_web_task'):
+            if isinstance(self.operations, IWebUiOperations):
                 ok = bool(self.operations.pause_web_task(task_id))
             else:
                 self.store.update_task(task_id, status='paused')
@@ -639,7 +640,7 @@ class WebUiServer:
                 raise WebUiApiError('task_action_failed', 'Task action failed.', HTTPStatus.BAD_REQUEST)
             return {'task_id': task_id, 'action': action}
         if action == 'resume':
-            if self.operations and hasattr(self.operations, 'resume_web_task'):
+            if isinstance(self.operations, IWebUiOperations):
                 ok = bool(self.operations.resume_web_task(task_id))
             else:
                 self.store.update_task(task_id, status='pending')
@@ -652,7 +653,7 @@ class WebUiServer:
         raise WebUiApiError('invalid_task_action', 'Invalid task action.', HTTPStatus.BAD_REQUEST)
 
     def statistics(self) -> dict:
-        if self.operations and hasattr(self.operations, 'statistics'):
+        if isinstance(self.operations, IWebUiOperations):
             return self.operations.statistics()
         return {
             'tables': {
@@ -665,7 +666,7 @@ class WebUiServer:
     def export_table(self, table_type: str) -> dict:
         if table_type not in ('link', 'count', 'upload'):
             raise WebUiApiError('invalid_table_type', 'Table type must be link, count, or upload.', HTTPStatus.BAD_REQUEST)
-        if self.operations and hasattr(self.operations, 'export_table'):
+        if isinstance(self.operations, IWebUiOperations):
             return self.operations.export_table(table_type)
         raise WebUiApiError('table_operations_unavailable', 'Table operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
@@ -687,7 +688,7 @@ class WebUiServer:
         if recursive and not os.path.isdir(normalized_path):
             raise WebUiApiError('upload_recursive_requires_directory', 'Recursive upload requires a directory.', HTTPStatus.BAD_REQUEST)
         payload = {**payload, 'path': normalized_path, 'target_link': target_link, 'recursive': recursive}
-        if self.operations and hasattr(self.operations, 'create_upload'):
+        if isinstance(self.operations, IWebUiOperations):
             return self.operations.create_upload(payload)
         raise WebUiApiError('upload_operations_unavailable', 'Upload operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
@@ -722,7 +723,7 @@ class WebUiServer:
             'include_comment': bool(payload.get('include_comment')),
             'date_range': normalize_date_range(payload.get('date_range'))
         }
-        if self.operations and hasattr(self.operations, 'create_channel_download'):
+        if isinstance(self.operations, IWebUiOperations):
             return self.operations.create_channel_download(normalized)
         raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 

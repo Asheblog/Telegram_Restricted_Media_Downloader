@@ -27,6 +27,10 @@ class IUploadContext(Protocol):
     done_notice: object
     my_id: int
     gc: object
+    is_running: bool
+    is_bot_running: bool
+    web_ui: object
+    wait_for_telegram_flood: object
 
 
 @runtime_checkable

@@ -118,6 +118,21 @@ class FakeWebUiOperations:
         self.exported_tables.append(table_type)
         return {'exported': True, 'table_type': table_type, 'directory': 'form'}
 
+    def delete_web_task(self, task_id: int) -> bool:
+        return True
+
+    def pause_web_task(self, task_id: int) -> bool:
+        return True
+
+    def resume_web_task(self, task_id: int) -> bool:
+        return True
+
+    def retry_failed_web_task(self, task_id: int) -> int:
+        return 0
+
+    def submit_web_task(self, task_id: int) -> None:
+        pass
+
 
 class TaskDeletingOperations:
     def __init__(self, store):
@@ -127,6 +142,42 @@ class TaskDeletingOperations:
     def delete_web_task(self, task_id):
         self.deleted_task_ids.append(task_id)
         return self.store.delete_task(task_id)
+
+    def list_watches(self) -> list:
+        return []
+
+    def create_watch(self, payload: dict) -> dict:
+        return {}
+
+    def delete_watch(self, watch_id: str) -> bool:
+        return True
+
+    def pause_web_task(self, task_id: int) -> bool:
+        return True
+
+    def resume_web_task(self, task_id: int) -> bool:
+        return True
+
+    def retry_failed_web_task(self, task_id: int) -> int:
+        return 0
+
+    def submit_web_task(self, task_id: int) -> None:
+        pass
+
+    def statistics(self) -> dict:
+        return {}
+
+    def export_table(self, table_type: str) -> dict:
+        return {}
+
+    def create_upload(self, payload: dict) -> dict:
+        return {}
+
+    def create_channel_download(self, payload: dict) -> dict:
+        return {}
+
+    def detect_transfer_range(self, source_link: str):
+        return None
 
 
 class FakeTelegramClient:
@@ -951,6 +1002,39 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.calls.append(('resume', task_id))
                 self.store.update_task(task_id, status=TransferStatus.PENDING)
                 return True
+
+            def list_watches(self) -> list:
+                return []
+
+            def create_watch(self, payload: dict) -> dict:
+                return {}
+
+            def delete_watch(self, watch_id: str) -> bool:
+                return True
+
+            def delete_web_task(self, task_id: int) -> bool:
+                return self.store.delete_task(task_id)
+
+            def retry_failed_web_task(self, task_id: int) -> int:
+                return 0
+
+            def submit_web_task(self, task_id: int) -> None:
+                pass
+
+            def statistics(self) -> dict:
+                return {}
+
+            def export_table(self, table_type: str) -> dict:
+                return {}
+
+            def create_upload(self, payload: dict) -> dict:
+                return {}
+
+            def create_channel_download(self, payload: dict) -> dict:
+                return {}
+
+            def detect_transfer_range(self, source_link: str):
+                return None
 
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
