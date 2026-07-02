@@ -3404,6 +3404,408 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   });
 '''
 
+WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
+  /* ====== 轮询（移动端复用） ====== */
+  function hasActiveTasks() {
+    return state.tasks.some(function(t) { return t.status === 'pending' || t.status === 'running'; });
+  }
+
+  function startPolling() {
+    if (state.taskPollTimer) return;
+    var fastInterval = 3000;
+    var slowInterval = 15000;
+    var currentInterval = fastInterval;
+    var lastPollTime = 0;
+
+    async function poll() {
+      if (document.hidden) { scheduleNext(currentInterval); return; }
+      var now = Date.now();
+      var minGap = currentInterval - 500;
+      if (now - lastPollTime < minGap) { scheduleNext(currentInterval); return; }
+      lastPollTime = now;
+      try { await loadTasks(); } catch (e) { console.warn('Poll failed:', e); }
+      currentInterval = hasActiveTasks() ? fastInterval : slowInterval;
+      scheduleNext(currentInterval);
+    }
+
+    function scheduleNext(interval) {
+      state.taskPollTimer = setTimeout(poll, interval);
+    }
+
+    poll();
+  }
+
+  function stopPolling() {
+    if (state.taskPollTimer) {
+      clearTimeout(state.taskPollTimer);
+      state.taskPollTimer = null;
+    }
+  }
+
+  /* ====== 移动端视图切换 ====== */
+  function mobSwitchView(view) {
+    $$('.mob-view').forEach(el => el.classList.toggle('active', el.id === `mob-view-${view}`));
+    $$('.mob-tab').forEach(el => el.classList.toggle('active', el.dataset.mobNav === view));
+    closeDrawer();
+    closeFabMenu();
+    if (view === 'settings') loadSettings();
+    if (view === 'records') loadRecords();
+    if (view === 'watches') loadWatches();
+    if (view === 'statistics') loadStatistics();
+  }
+
+  /* ====== 抽屉（更多菜单） ====== */
+  function openDrawer() {
+    $('#mob-drawer-overlay').classList.add('open');
+  }
+  function closeDrawer() {
+    $('#mob-drawer-overlay').classList.remove('open');
+  }
+
+  /* ====== FAB 菜单 ====== */
+  function toggleFabMenu() {
+    const menu = $('#mob-fab-menu');
+    const fab = $('#mob-fab');
+    const isOpen = menu.classList.contains('open');
+    if (isOpen) {
+      menu.classList.remove('open');
+      fab.textContent = '+';
+    } else {
+      menu.classList.add('open');
+      fab.textContent = '\u00d7';
+    }
+  }
+  function closeFabMenu() {
+    const menu = $('#mob-fab-menu');
+    const fab = $('#mob-fab');
+    menu.classList.remove('open');
+    fab.textContent = '+';
+  }
+
+  /* ====== 折叠面板 ====== */
+  function toggleCollapse(head) {
+    head.closest('.mob-collapse').classList.toggle('open');
+  }
+
+  /* ====== Toast ====== */
+  let mobToastTimer = null;
+  function showToast(message, duration) {
+    if (duration === void 0) duration = 2500;
+    const toast = $('#mob-toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(mobToastTimer);
+    mobToastTimer = setTimeout(function() { toast.classList.remove('show'); }, duration);
+  }
+
+  /* ====== 卡片状态徽章 ====== */
+  function mobBadge(status) {
+    var cls;
+    if (status === 'running') cls = 'running';
+    else if (status === 'completed') cls = 'completed';
+    else if (status === 'paused') cls = 'paused';
+    else if (status === 'failure') cls = 'failure';
+    else if (status === 'cancelled') cls = 'cancelled';
+    else cls = 'pending';
+    return '<span class="mob-card__badge ' + cls + '">' + esc(t('status.' + status)) + '</span>';
+  }
+
+  /* ====== 渲染转存任务卡片列表 ====== */
+  function renderMobTasks() {
+    var tasks = state.tasks || [];
+    var container = $('#mob-tasks-list');
+    if (!tasks.length) {
+      container.innerHTML = '<div class="mob-empty" data-i18n="tasks.empty">' + t('tasks.empty') + '</div>';
+      return;
+    }
+    container.innerHTML = tasks.map(function(task) {
+      var total = Number(task.total_items || 0);
+      var done = Number(task.completed_items || 0);
+      var failed = Number(task.failed_items || 0);
+      var percent = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+      var actions = '';
+      if (task.status === 'running') actions += '<button class="secondary small" data-pause="' + task.id + '">' + t('tasks.pause') + '</button>';
+      if (task.status === 'paused') actions += '<button class="secondary small" data-resume="' + task.id + '">' + t('tasks.resume') + '</button>';
+      if (task.failed_items > 0) actions += '<button class="secondary small" data-retry="' + task.id + '">' + t('tasks.retryFailed') + '</button>';
+      actions += '<button class="danger small" data-delete="' + task.id + '">' + t('tasks.delete') + '</button>';
+      return '<div class="mob-card">'
+        + '<div class="mob-card__head">'
+        + '<span class="mob-card__title">' + esc(task.source_link) + '</span>'
+        + mobBadge(task.status)
+        + '</div>'
+        + '<div class="mob-card__row"><span class="label">' + t('tasks.target') + '</span><span>' + esc(task.target_link) + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('tasks.progress') + '</span><span>' + done + '/' + total + (failed ? ' (' + failed + ' ' + t('side.failed') + ')' : '') + '</span></div>'
+        + '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + percent + '%"></div></div>'
+        + '<div class="mob-card__actions">' + actions + '</div>'
+        + '</div>';
+    }).join('');
+
+    container.querySelectorAll('[data-pause]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.pause), 'pause'); });
+    });
+    container.querySelectorAll('[data-resume]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.resume), 'resume'); });
+    });
+    container.querySelectorAll('[data-retry]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.retry), 'retry-failed'); });
+    });
+    container.querySelectorAll('[data-delete]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) { deleteTask(e, Number(btn.dataset.delete)); });
+    });
+  }
+
+  /* ====== 渲染监听卡片列表 ====== */
+  function renderMobWatches() {
+    var watches = state.watches || [];
+    var container = $('#mob-watches-list');
+    if (!watches.length) {
+      container.innerHTML = '<div class="mob-empty" data-i18n="watches.empty">' + t('watches.empty') + '</div>';
+      return;
+    }
+    container.innerHTML = watches.map(function(w) {
+      var typeLabel = w.type === 'download' ? t('watches.download') : t('watches.forward');
+      var sourceHtml = '';
+      if (w.source_links) {
+        sourceHtml = '<div class="mob-card__row"><span class="label">' + t('watches.sources') + '</span><span>' + esc((w.source_links || []).join(', ')) + '</span></div>';
+      } else if (w.source_link) {
+        sourceHtml = '<div class="mob-card__row"><span class="label">' + t('watches.source') + '</span><span>' + esc(w.source_link) + '</span></div>';
+      }
+      var targetHtml = '';
+      if (w.target_link) {
+        targetHtml = '<div class="mob-card__row"><span class="label">' + t('watches.target') + '</span><span>' + esc(w.target_link) + '</span></div>';
+      }
+      return '<div class="mob-card">'
+        + '<div class="mob-card__head">'
+        + '<span class="mob-card__title">' + typeLabel + '</span>'
+        + '<span class="mob-card__badge running">' + esc(w.type) + '</span>'
+        + '</div>'
+        + sourceHtml + targetHtml
+        + '<div class="mob-card__actions">'
+        + '<button class="danger small" data-delete-watch="' + (w.encoded_id || w.id) + '">' + t('watches.delete') + '</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+
+    container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
+      btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
+    });
+  }
+
+  /* ====== 渲染设置表单 ====== */
+  function renderMobSettingsForm() {
+    if (!state.settings || !state.schema) return;
+    var s = state.settings;
+    var commonPasswordPattern = state.schema.sensitive_keys || [];
+    var user = s.user || {};
+    var glob = s.global || {};
+    var targetProfiles = glob.target_profiles || {};
+    var pikpak = targetProfiles.pikpak || {};
+
+    $('#mob-settings-path-fields').innerHTML =
+      '<label><span>save_directory</span><input type="text" name="root.save_directory" value="' + esc(user.save_directory || '') + '"></label>'
+      + '<label><span>temp_directory</span><input type="text" name="root.temp_directory" value="' + esc(user.temp_directory || '') + '"></label>'
+      + '<label><span>session_directory</span><input type="text" name="root.session_directory" value="' + esc(user.session_directory || '') + '"></label>'
+      + '<label><span>max_tasks</span><input type="number" name="root.max_tasks" value="' + esc(user.max_tasks || '') + '" min="1"></label>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<label><span>max_retries</span><input type="number" name="root.max_retries" value="' + esc(user.max_retries || '') + '" min="0"></label>'
+      + '</div>';
+
+    $('#mob-settings-behavior-fields').innerHTML =
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;" ' + (glob.notice ? 'checked' : '') + '><span>notice</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="root.is_shutdown" style="width:auto;min-height:auto;" ' + (user.is_shutdown ? 'checked' : '') + '><span>is_shutdown</span></label>';
+
+    $('#mob-settings-sensitive-fields').innerHTML = commonPasswordPattern.map(function(k) {
+      var v = user[k];
+      return '<label><span>' + esc(k) + '</span><input type="password" name="root.' + esc(k) + '" placeholder="' + (v && v.configured ? t('settings.secretConfigured') : t('settings.secretNotConfigured')) + '" autocomplete="new-password"></label>';
+    }).join('');
+
+    $('#mob-settings-archive-fields').innerHTML =
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.pikpak_archive_enable" style="width:auto;min-height:auto;" ' + (glob.pikpak_archive_enable ? 'checked' : '') + '><span>pikpak_archive_enable</span></label>'
+      + '<label><span>pikpak_archive_remote</span><input type="text" name="global.pikpak_archive_remote" value="' + esc(glob.pikpak_archive_remote || '') + '"></label>'
+      + '<label><span>pikpak_archive_source</span><input type="text" name="global.pikpak_archive_source" value="' + esc(glob.pikpak_archive_source || '') + '"></label>'
+      + '<label><span>pikpak_archive_root</span><input type="text" name="global.pikpak_archive_root" value="' + esc(glob.pikpak_archive_root || '') + '"></label>'
+      + '<label><span>pikpak_archive_poll</span><input type="number" name="global.pikpak_archive_poll" value="' + esc(glob.pikpak_archive_poll || '60') + '" min="1"></label>';
+  }
+
+  /* ====== 覆盖：loadTasks / loadWatches / loadSettings ====== */
+  var _origLoadTasks = loadTasks;
+  loadTasks = async function() {
+    await _origLoadTasks();
+    if (state.tasks) renderMobTasks();
+  };
+
+  var _origLoadWatches = loadWatches;
+  loadWatches = async function() {
+    await _origLoadWatches();
+    if (state.watches) renderMobWatches();
+  };
+
+  var _origLoadSettings = loadSettings;
+  loadSettings = async function() {
+    await _origLoadSettings();
+    renderMobSettingsForm();
+  };
+
+  /* ====== 事件绑定 ====== */
+  $('#language-select').addEventListener('change', function(event) {
+    state.lang = event.target.value;
+    localStorage.setItem('trmd-lang', state.lang);
+    applyLanguageAndRefresh();
+    renderMobTasks();
+    renderMobWatches();
+  });
+
+  $('#refresh').addEventListener('click', function() {
+    loadTasks();
+    var activeView = document.querySelector('.mob-view.active');
+    if (activeView) {
+      var viewId = activeView.id.replace('mob-view-', '');
+      if (viewId === 'settings') loadSettings();
+      if (viewId === 'watches') loadWatches();
+    }
+    showToast(t('action.refresh') + ' OK');
+  });
+
+  /* Tab 栏点击 */
+  $$('.mob-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() { mobSwitchView(tab.dataset.mobNav); });
+  });
+
+  /* "更多"按钮 -> 打开 Drawer */
+  var moreTab = document.querySelector('.mob-tab[data-mob-nav="more"]');
+  if (moreTab) moreTab.addEventListener('click', openDrawer);
+
+  /* Drawer 内菜单项点击 */
+  $$('[data-mob-drawer-nav]').forEach(function(item) {
+    item.addEventListener('click', function() { mobSwitchView(item.dataset.mobDrawerNav); });
+  });
+
+  /* Drawer overlay 点击关闭 */
+  $('#mob-drawer-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeDrawer();
+  });
+
+  /* FAB 点击 */
+  $('#mob-fab').addEventListener('click', toggleFabMenu);
+
+  /* FAB 菜单项 */
+  $('#mob-fab-new-transfer').addEventListener('click', function() {
+    closeFabMenu();
+    var collapse = $('#collapse-transfer-form');
+    collapse.classList.add('open');
+    collapse.scrollIntoView({ behavior: 'smooth' });
+  });
+  $('#mob-fab-new-watch').addEventListener('click', function() {
+    closeFabMenu();
+    mobSwitchView('watches');
+    var collapse = $('#collapse-watch-form');
+    collapse.classList.add('open');
+    collapse.scrollIntoView({ behavior: 'smooth' });
+  });
+
+  /* 折叠面板切换 */
+  $$('.mob-collapse__head').forEach(function(head) {
+    head.addEventListener('click', function() { toggleCollapse(head); });
+  });
+
+  /* 点击外部关闭 FAB 菜单 */
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#mob-fab') && !e.target.closest('#mob-fab-menu')) {
+      closeFabMenu();
+    }
+  });
+
+  /* 监听类型切换 */
+  var watchTypeSelect = $('#mob-watch-type');
+  if (watchTypeSelect) {
+    watchTypeSelect.addEventListener('change', function() {
+      var isForward = this.value === 'forward';
+      $('#mob-watch-source-group').style.display = isForward ? 'none' : '';
+      $('#mob-watch-target-group').style.display = isForward ? '' : 'none';
+      $('#mob-watch-comment-group').style.display = isForward ? '' : 'none';
+    });
+  }
+
+  /* 新建转存表单提交 */
+  var transferForm = $('#mob-transfer-form');
+  if (transferForm) {
+    transferForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.start_id = payload.start_id ? Number(payload.start_id) : null;
+      payload.end_id = payload.end_id ? Number(payload.end_id) : null;
+      payload.include_comment = !!payload.include_comment;
+      try {
+        await postJson('/api/tasks', payload);
+        showToast(t('form.transferCreated'));
+        this.reset();
+        $('#collapse-transfer-form').classList.remove('open');
+        loadTasks();
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 新建监听表单提交 */
+  var watchForm = $('#mob-watch-form');
+  if (watchForm) {
+    watchForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.include_comment = !!payload.include_comment;
+      if (payload.watch_type !== 'forward') {
+        payload.source_links = String(payload.source_links || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+      }
+      try {
+        await postJson('/api/watches', payload);
+        showToast(t('watches.created'));
+        this.reset();
+        $('#collapse-watch-form').classList.remove('open');
+        loadWatches();
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 保存设置 */
+  var saveBtn = $('#mob-save-settings');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async function() {
+      var userPayload = {};
+      var globalPayload = {};
+
+      document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input').forEach(function(input) {
+        var name = input.name || '';
+        var value;
+        if (input.type === 'checkbox') value = input.checked;
+        else if (input.type === 'number') value = Number(input.value);
+        else value = input.value;
+        if (name.startsWith('root.')) {
+          userPayload[name.substring(5)] = value;
+        } else if (name.startsWith('global.')) {
+          globalPayload[name.substring(7)] = value;
+        }
+      });
+
+      try {
+        await postJson('/api/settings', { user: userPayload, global: globalPayload });
+        showToast(t('settings.saved'));
+        loadSettings();
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* ====== 初始加载 ====== */
+  loadTasks();
+  startPolling();
+'''
+
 WEB_UI_HTML = f'''<!doctype html>
 <html lang="zh-CN">
 <head>
