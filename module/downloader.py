@@ -64,6 +64,7 @@ from module.app import Application
 from module.app import DownloadFileName
 from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
+from module.diagnostics import RichDiagnosticAdapter
 from module.local_storage_guard import LocalStorageGuard
 from module.bot import (
     Bot,
@@ -165,6 +166,7 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_pending_watches: dict = {}
         self.web_watch_handler_clients: dict = {}
         self.pikpak_archive_client = None
+        self.diagnostic = RichDiagnosticAdapter(console, log)
 
     @staticmethod
     def transfer_send_interval() -> float:
@@ -779,7 +781,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             host=get_web_host_from_env(),
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
-            password=get_web_password_from_env()
+            password=get_web_password_from_env(),
+            diagnostic=getattr(self, 'diagnostic', None)
         )
         self.web_ui.start(open_browser=True)
         for task in self.transfer_store.list_tasks():

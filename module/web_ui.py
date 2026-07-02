@@ -15,9 +15,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
 from urllib.parse import unquote, urlparse, parse_qs
 
-from module import log
+from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
-from module.ports import IWebUiOperations
+from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
 from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML
 
@@ -82,7 +82,8 @@ class WebUiServer:
             host: str = '127.0.0.1',
             port: int = 0,
             username: Optional[str] = None,
-            password: Optional[str] = None
+            password: Optional[str] = None,
+            diagnostic: Optional[IDiagnosticPort] = None
     ):
         self.store = store
         self.task_submitter = task_submitter
@@ -93,6 +94,7 @@ class WebUiServer:
         self.port = self.resolve_port(port)
         self.username = (username or '').strip()
         self.password = password or ''
+        self.diagnostic = diagnostic or default_diagnostic
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self.validate_auth_config()
@@ -145,7 +147,7 @@ class WebUiServer:
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, fmt, *args):
-                log.info('[WebUI] ' + fmt, *args)
+                server.diagnostic.info('[WebUI] ' + fmt, *args)
 
             def _send_auth_required(self):
                 data = json.dumps(
@@ -284,7 +286,7 @@ class WebUiServer:
                     except WebUiApiError as e:
                         self._send_error(e.error_code, e.message, e.status)
                     except Exception as e:
-                        log.exception('[WebUI] 执行任务操作失败。')
+                        server.diagnostic.exception('[WebUI] 执行任务操作失败。')
                         self._send_json(
                             {
                                 'error_code': 'task_action_failed',
@@ -301,7 +303,7 @@ class WebUiServer:
                     except WebUiApiError as e:
                         self._send_error(e.error_code, e.message, e.status)
                     except Exception as e:
-                        log.exception('[WebUI] 创建实时监听失败。')
+                        server.diagnostic.exception('[WebUI] 创建实时监听失败。')
                         self._send_json(
                             {
                                 'error_code': 'create_watch_failed',
@@ -319,7 +321,7 @@ class WebUiServer:
                     except WebUiApiError as e:
                         self._send_error(e.error_code, e.message, e.status)
                     except Exception as e:
-                        log.exception('[WebUI] 导出统计表失败。')
+                        server.diagnostic.exception('[WebUI] 导出统计表失败。')
                         self._send_json(
                             {
                                 'error_code': 'export_table_failed',
@@ -336,7 +338,7 @@ class WebUiServer:
                     except WebUiApiError as e:
                         self._send_error(e.error_code, e.message, e.status)
                     except Exception as e:
-                        log.exception('[WebUI] 创建上传任务失败。')
+                        server.diagnostic.exception('[WebUI] 创建上传任务失败。')
                         self._send_json(
                             {
                                 'error_code': 'create_upload_failed',
@@ -353,7 +355,7 @@ class WebUiServer:
                     except WebUiApiError as e:
                         self._send_error(e.error_code, e.message, e.status)
                     except Exception as e:
-                        log.exception('[WebUI] 创建频道下载失败。')
+                        server.diagnostic.exception('[WebUI] 创建频道下载失败。')
                         self._send_json(
                             {
                                 'error_code': 'create_channel_download_failed',
@@ -371,7 +373,7 @@ class WebUiServer:
                 except WebUiApiError as e:
                     self._send_error(e.error_code, e.message, e.status)
                 except Exception as e:
-                    log.exception('[WebUI] 创建任务失败。')
+                    server.diagnostic.exception('[WebUI] 创建任务失败。')
                     self._send_json(
                         {
                             'error_code': 'create_task_failed',
@@ -395,7 +397,7 @@ class WebUiServer:
                         'schema': server.settings_schema()
                     })
                 except Exception as e:
-                    log.exception('[WebUI] 更新设置失败。')
+                    server.diagnostic.exception('[WebUI] 更新设置失败。')
                     self._send_json(
                         {
                             'error_code': 'update_settings_failed',
@@ -435,12 +437,12 @@ class WebUiServer:
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         auth_status = 'enabled' if self.auth_enabled else 'disabled'
-        log.info(f'WebUI started at {self.url}, auth={auth_status}')
+        self.diagnostic.info(f'WebUI started at {self.url}, auth={auth_status}')
         if open_browser:
             try:
                 webbrowser.open(self.url)
             except Exception as e:
-                log.warning(f'无法自动打开浏览器: {e}')
+                self.diagnostic.warning(f'无法自动打开浏览器: {e}')
 
     def stop(self) -> None:
         if self.httpd:

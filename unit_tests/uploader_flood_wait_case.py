@@ -13,6 +13,7 @@ install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
 from module.enums import UploadStatus
+from module.diagnostics import default_diagnostic
 from module.task import UploadTask
 from module.transfer_registry import transfer_registry
 from module.uploader import TelegramUploader
@@ -101,10 +102,10 @@ class UploaderFloodWaitCase(unittest.TestCase):
                 uploader = object.__new__(TelegramUploader)
                 uploader.client = FakeClient()
                 uploader.valid_link_cache = {}
+                uploader.upload_context = SimpleNamespace(diagnostic=default_diagnostic, gc={})
                 uploader.is_premium = True
                 uploader.max_upload_retries = 3
                 uploader.current_task_num = 0
-                uploader.upload_context = SimpleNamespace(gc={})
                 attempts = []
 
                 async def missing_once(upload_task):
@@ -216,6 +217,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
                 uploader.current_task_num = 1
                 uploader.event = SimpleNamespace(set=lambda: None)
                 uploader.pb = SimpleNamespace(progress=SimpleNamespace(remove_task=lambda task_id: None))
+                uploader.upload_context = SimpleNamespace(diagnostic=default_diagnostic)
                 upload_task = UploadTask(
                     chat_id=None,
                     file_path=file_path,
@@ -306,6 +308,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
             uploader = object.__new__(TelegramUploader)
             uploader.client = FakeClient()
             uploader.valid_link_cache = {}
+            uploader.upload_context = SimpleNamespace(diagnostic=default_diagnostic)
             upload_task = UploadTask(
                 chat_id='target-chat',
                 file_path=file_path,
@@ -343,6 +346,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
             uploader.current_task_num = 1
             uploader.event = SimpleNamespace(set=lambda: None)
             uploader.pb = SimpleNamespace(progress=SimpleNamespace(remove_task=lambda task_id: None))
+            uploader.upload_context = SimpleNamespace(diagnostic=default_diagnostic)
             upload_task = UploadTask(
                 chat_id='target-chat',
                 file_path=file_path,

@@ -30,7 +30,7 @@ from pyrogram.errors.exceptions.bad_request_400 import ChannelPrivate as Channel
 from pyrogram.errors.exceptions.not_acceptable_406 import ChannelPrivate as ChannelPrivate_406
 from pymediainfo import MediaInfo
 
-from module import console, log
+from module.diagnostics import default_diagnostic
 from module.language import _t
 from module.ports import IUploadContext
 
@@ -88,6 +88,10 @@ class TelegramUploader:
         )
         asyncio.create_task(self.send_media_worker())
 
+    @property
+    def diagnostic(self):
+        return getattr(self.upload_context, 'diagnostic', None) or default_diagnostic
+
     @staticmethod
     def file_part_missing_value(error: FilePartMissing) -> int:
         try:
@@ -108,8 +112,8 @@ class TelegramUploader:
         amount = max(0, int(getattr(error, 'value', 0) or 0))
         jitter = random.uniform(0.5, 2.0) if amount > 0 else 0
         message = f'Telegram flood wait during {action}: waiting {amount} seconds before retry.'
-        console.log(message, style='#FF4689')
-        log.warning(message)
+        self.diagnostic.console_log(message, style='#FF4689')
+        self.diagnostic.warning(message)
         await asyncio.sleep(amount + jitter)
 
     @staticmethod
@@ -143,9 +147,9 @@ class TelegramUploader:
         file_total_parts: int = upload_task.file_total_parts
         if not missing_parts:
             # 所有分片都已上传,准备发送消息。
-            log.info(f'所有分片已上传完成,正在发送消息...')
+            self.diagnostic.info(f'所有分片已上传完成,正在发送消息...')
         else:
-            log.info(f'需要上传的分片:{len(missing_parts)}/{file_total_parts}')
+            self.diagnostic.info(f'需要上传的分片:{len(missing_parts)}/{file_total_parts}')
         # 上传缺失的分片。
         for part_index in missing_parts:
             try:
@@ -175,7 +179,7 @@ class TelegramUploader:
                     self.notify_transfer_progress(upload_task, current_size, file_size)
 
             except Exception as e:
-                log.error(
+                self.diagnostic.error(
                     f'{_t(KeyWord.UPLOAD_FILE_PART)}:{part_index},'
                     f'{_t(KeyWord.STATUS)}:{_t(UploadStatus.FAILURE)},'
                     f'{_t(KeyWord.REASON)}:"{e}"'
@@ -242,8 +246,8 @@ class TelegramUploader:
                 elif isinstance(e, PhotoSaveFileInvalid):
                     obj: str = '大小'
                 p = f'[图片]:"{file_path}"因来自Telegram的{obj}限制,回退为文档格式进行上传,{_t(KeyWord.REASON)}:"{e}"'
-                log.info(p)
-                console.log(p, style='#FF4689')
+                self.diagnostic.info(p)
+                self.diagnostic.console_log(p, style='#FF4689')
                 attributes = [raw.types.DocumentAttributeFilename(file_name=file_name)]
                 media = await self.get_input_media_document(
                     chat_id=chat_id,
@@ -262,11 +266,11 @@ class TelegramUploader:
                         w=video_meta.get('width'),
                         h=video_meta.get('height')
                     ))
-                    log.info(f'视频"{file_path}"将以原本格式进行上传。')
+                    self.diagnostic.info(f'视频"{file_path}"将以原本格式进行上传。')
                 else:
                     p = f'[视频]:"{file_path}"获取视频元数据失败,回退为文档格式进行上传。'
-                    log.info(p)
-                    console.log(p, style='#FF4689')
+                    self.diagnostic.info(p)
+                    self.diagnostic.console_log(p, style='#FF4689')
             media = await self.get_input_media_document(
                 chat_id=chat_id,
                 file=file,
@@ -284,7 +288,7 @@ class TelegramUploader:
             try:
                 media, upload_task = await self.upload_queue.get()
 
-                log.info(
+                self.diagnostic.info(
                     f'[Upload Worker]获取到上传任务,'
                     f'chat_id={upload_task.chat_id}, '
                     f'is_media_group={upload_task.is_media_group}, '
@@ -295,12 +299,12 @@ class TelegramUploader:
                     try:
                         media_group = await upload_task.get_media_group()
                         if not media_group:
-                            log.info(f'[Upload Worker]警告:media_group为空。')
+                            self.diagnostic.info(f'[Upload Worker]警告:media_group为空。')
                             continue
 
                         media_group_id = media_group[0].media_group_id
                         if not media_group_id:
-                            log.info(f'[Upload Worker]警告:media_group_id为空。')
+                            self.diagnostic.info(f'[Upload Worker]警告:media_group_id为空。')
                             # 如果不是媒体组，则作为单条消息发送。
                             await self.send_media(media, upload_task)
                             continue
@@ -324,7 +328,7 @@ class TelegramUploader:
                             )
                         )
                         prompt = f'[媒体组]:"{media_group_id}"已收集{len(media_group_cache[media_group_id])}个媒体,等待所有媒体上传完成。'
-                        console.log(
+                        self.diagnostic.console_log(
                             f'{_t(KeyWord.UPLOAD_TASK)}{prompt}')
                         upload_task.prompt = prompt
 
@@ -342,11 +346,11 @@ class TelegramUploader:
                                     media_group_poll_tasks=media_group_poll_tasks)
                             )
                             media_group_poll_tasks[media_group_id] = poll_task
-                            log.info(
+                            self.diagnostic.info(
                                 f'[Upload Worker]启动媒体组"{media_group_id}"的轮询任务,预期{len(message_ids)}个文件。')
 
                     except Exception as e:
-                        log.info(f'[Upload Worker]处理媒体组时出错,回退到单条发送,{_t(KeyWord.REASON)}:"{e}"')
+                        self.diagnostic.info(f'[Upload Worker]处理媒体组时出错,回退到单条发送,{_t(KeyWord.REASON)}:"{e}"')
                         # 出错时回退到单条发送。
                         await self.send_media(media, upload_task)
 
@@ -354,7 +358,7 @@ class TelegramUploader:
                     await self.send_media(media, upload_task)
 
             except Exception as e:
-                log.error(f'[Upload Worker]错误,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
+                self.diagnostic.error(f'[Upload Worker]错误,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
             finally:
                 self.upload_queue.task_done()
 
@@ -378,7 +382,7 @@ class TelegramUploader:
                 no_pending = not UploadTask.has_pending_media_group_tasks()
                 collected_count = len(media_group_cache.get(media_group_id, {}))
 
-                log.debug(
+                self.diagnostic.debug(
                     f'[Upload Worker]发送媒体组"{media_group_id}"创建的任务数:{created_count},当前是否有任务:{not no_pending},媒体组收集的媒体数:{collected_count}。')
                 if created_count == collected_count and no_pending:
                     # 所有需要上传的文件都已创建且没有待处理任务，发送已收集的媒体。
@@ -392,7 +396,7 @@ class TelegramUploader:
                                 sorted_media_group.append(media_group_cache[media_group_id][msg_id])
 
                         if sorted_media_group:
-                            log.info(
+                            self.diagnostic.info(
                                 f'[Upload Worker]发送媒体组"{media_group_id}",包含{len(sorted_media_group)}个媒体（共预期{len(message_ids)}个）。')
                             try:
                                 while True:
@@ -422,7 +426,7 @@ class TelegramUploader:
                                         else:
                                             await asyncio.sleep(max(0, int(getattr(flood_error, 'value', 0) or 0)))
                                 prompt = f'[媒体组]:"{media_group_id}"上传完成,包含{len(sorted_media_group)}个媒体。'
-                                console.log(f'{_t(KeyWord.UPLOAD_TASK)}{prompt}')
+                                self.diagnostic.console_log(f'{_t(KeyWord.UPLOAD_TASK)}{prompt}')
                                 # 将已发送的媒体组任务状态更新为SENT。
                                 for task in UploadTask.TASKS:
                                     if task.message_id in message_ids and task.status == UploadStatus.SUCCESS:
@@ -430,10 +434,10 @@ class TelegramUploader:
                                         self.notify_transfer_status(task)
                                 self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
                             except Exception as send_error:
-                                log.error(f'[Upload Worker]发送媒体组失败,{_t(KeyWord.REASON)}:"{send_error}"',
+                                self.diagnostic.error(f'[Upload Worker]发送媒体组失败,{_t(KeyWord.REASON)}:"{send_error}"',
                                           exc_info=True)
                         else:
-                            log.warning(f'[Upload Worker]发送媒体组"{media_group_id}"没有可发送的媒体。')
+                            self.diagnostic.warning(f'[Upload Worker]发送媒体组"{media_group_id}"没有可发送的媒体。')
 
                     # 清理缓存和轮询任务。
                     if media_group_id in media_group_cache:
@@ -444,14 +448,14 @@ class TelegramUploader:
                 else:
                     # 还有文件在下载中或还在上传，继续等待。
                     if created_count < len(message_ids):
-                        log.debug(
+                        self.diagnostic.debug(
                             f'[Upload Worker]发送媒体组"{media_group_id}"已创建{created_count}/{len(message_ids)}个任务，等待下载...')
         except asyncio.CancelledError:
-            log.info(f'[Upload Worker]发送媒体组"{media_group_id}"轮询任务被取消。')
+            self.diagnostic.info(f'[Upload Worker]发送媒体组"{media_group_id}"轮询任务被取消。')
             if media_group_id in media_group_poll_tasks:
                 del media_group_poll_tasks[media_group_id]
         except Exception as e:
-            log.error(
+            self.diagnostic.error(
                 f'[Upload Worker]发送媒体组"{media_group_id}"轮询任务出错,{_t(KeyWord.REASON)}:"{e}"',
                 exc_info=True
             )
@@ -489,9 +493,9 @@ class TelegramUploader:
             upload_task.status = UploadStatus.SENT
             self.notify_transfer_status(upload_task)
             self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
-            log.info(f'[Upload Worker]单条消息发送完成,{_t(KeyWord.CHANNEL)}:"{chat_id}"')
+            self.diagnostic.info(f'[Upload Worker]单条消息发送完成,{_t(KeyWord.CHANNEL)}:"{chat_id}"')
         except Exception as e:
-            log.error(f'"[Upload Worker]发送单条消息失败,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
+            self.diagnostic.error(f'"[Upload Worker]发送单条消息失败,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
             upload_task.error_msg = str(e)
             upload_task.status = UploadStatus.FAILURE
             self.notify_transfer_status(upload_task)
@@ -509,7 +513,7 @@ class TelegramUploader:
             if all(meta.values()):
                 return meta
         except Exception as e:
-            log.error(f'获取视频元数据失败,{_t(KeyWord.REASON)}:"{e}"')
+            self.diagnostic.error(f'获取视频元数据失败,{_t(KeyWord.REASON)}:"{e}"')
 
     async def get_input_media_document(
             self,
@@ -609,13 +613,13 @@ class TelegramUploader:
                 missing_part = self.file_part_missing_value(e)
                 missing_part_repairs += 1
                 repair_display = min(missing_part_repairs, missing_part_repair_limit)
-                console.log(
+                self.diagnostic.console_log(
                     f'{_t(KeyWord.UPLOAD_FILE_PART)}:{missing_part},'
                     f'{_t(KeyWord.RETRY_TIMES)}:{repair_display}/{missing_part_repair_limit},'
                     f'{_t(KeyWord.STATUS)}:{_t(UploadStatus.UPLOADING)}。'
                 )
                 if missing_part_repairs <= missing_part_repair_limit:
-                    log.warning(
+                    self.diagnostic.warning(
                         f'Telegram reported FILE_PART_X_MISSING for part {missing_part}; '
                         f're-uploading the missing part with current file_id '
                         f'before full retry {file_id_attempt}/{self.max_upload_retries}.'
@@ -632,7 +636,7 @@ class TelegramUploader:
                     return None
                 file_id_attempt += 1
                 missing_part_repairs = 0
-                log.warning(
+                self.diagnostic.warning(
                     f'Telegram kept reporting FILE_PART_X_MISSING for part {missing_part}; '
                     f'resetting upload cache before file-id retry '
                     f'{file_id_attempt}/{self.max_upload_retries}.'
@@ -642,7 +646,7 @@ class TelegramUploader:
                 self.fail_upload_before_worker(upload_task, str(e), delete_file=False)
                 return None
             except Exception as e:
-                console.log(
+                self.diagnostic.console_log(
                     f'{_t(KeyWord.UPLOAD_TASK)}'
                     f'{_t(KeyWord.RE_UPLOAD)}:"{file_path}",'
                     f'{_t(KeyWord.RETRY_TIMES)}:{file_id_attempt}/{self.max_upload_retries},'
@@ -662,7 +666,7 @@ class TelegramUploader:
             await self.event.wait()
             self.event.clear()
         upload_task.status = UploadStatus.UPLOADING
-        console.log(f'{_t(KeyWord.UPLOAD_TASK)}{_t(KeyWord.RESUME)}:"{file_path}"。') if upload_task.file_part else None
+        self.diagnostic.console_log(f'{_t(KeyWord.UPLOAD_TASK)}{_t(KeyWord.RESUME)}:"{file_path}"。') if upload_task.file_part else None
         format_file_size: str = MetaData.suitable_units_display(file_size)
         task_id = self.pb.progress.add_task(
             description='📤',
@@ -711,7 +715,7 @@ class TelegramUploader:
             self.event.set()
             if isinstance(e, FilePartMissing):
                 return
-            log.info(e)
+            self.diagnostic.info(e)
             upload_task.error_msg = str(e)
             upload_task.status = UploadStatus.FAILURE
             self.release_transfer_local_storage(upload_task)
@@ -721,9 +725,9 @@ class TelegramUploader:
         self.current_task_num -= 1
         self.pb.progress.remove_task(task_id=task_id)
         if not safe_delete(os.path.join(transfer_registry.directory_name or UploadTask.DIRECTORY_NAME, f'{upload_task.sha256}.json')):
-            log.warning(f'无法删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
+            self.diagnostic.warning(f'无法删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         else:
-            log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
+            self.diagnostic.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         self.event.set()
         deleted_transfer_file = safe_delete(file_path) if upload_task.with_delete else True
         if deleted_transfer_file:
