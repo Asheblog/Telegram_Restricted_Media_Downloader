@@ -103,6 +103,7 @@ from module.target_profiles import (
 )
 from module.pikpak_archive import build_pikpak_archive_client
 from module.pikpak_integration import PikpakIntegrationManager
+from module.transfer_progress import TransferProgressTracker
 from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
@@ -187,6 +188,20 @@ class TelegramRestrictedMediaDownloader(Bot):
             gc_getter=lambda: self.gc,
             refresh_counts=self.refresh_transfer_task_counts,
         )
+        self.progress_tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            diagnostic=self.diagnostic,
+            app_getter=lambda: self.app,
+            gc_getter=lambda: self.gc,
+            loop_getter=lambda: getattr(self, 'loop', None),
+            pb_getter=lambda: self.pb,
+            release_storage=self.release_transfer_local_storage,
+            release_window=self.release_download_upload_window,
+            start_download_upload=self.start_download_upload,
+            archive_pikpak_item=self.archive_pikpak_item,
+            fail_transfer_item=self.fail_transfer_item,
+            refresh_counts=self.refresh_transfer_task_counts,
+        )
 
     def _ensure_pikpak_manager(self):
         if getattr(self, 'pikpak_manager', None) is not None:
@@ -205,6 +220,38 @@ class TelegramRestrictedMediaDownloader(Bot):
             pikpak_archive_client_getter=archive_getter,
             diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
             gc_getter=lambda: getattr(self, 'gc', None),
+            refresh_counts=lambda tid: (self.transfer_store.refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+        )
+
+    def _ensure_progress_tracker(self):
+        if getattr(self, 'progress_tracker', None) is not None:
+            return
+        import types
+        cls_schedule = TelegramRestrictedMediaDownloader.schedule_bot_transfer_progress_update
+        cls_notify_status = TelegramRestrictedMediaDownloader.notify_bot_transfer_upload_status
+        cls_notify_progress = TelegramRestrictedMediaDownloader.notify_bot_transfer_upload_progress
+
+        def _resolve(method_name, cls_method):
+            inst = getattr(self, method_name, None)
+            if isinstance(inst, types.MethodType) and inst.__func__ is cls_method:
+                return None
+            return inst
+
+        self.progress_tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            app_getter=lambda: getattr(self, 'app', None),
+            gc_getter=lambda: getattr(self, 'gc', None),
+            loop_getter=lambda: getattr(self, 'loop', None),
+            pb_getter=lambda: getattr(self, 'pb', None),
+            schedule_override=_resolve('schedule_bot_transfer_progress_update', cls_schedule),
+            notify_status_override=_resolve('notify_bot_transfer_upload_status', cls_notify_status),
+            notify_progress_override=_resolve('notify_bot_transfer_upload_progress', cls_notify_progress),
+            release_storage=getattr(self, 'release_transfer_local_storage', lambda wu: None),
+            release_window=getattr(self, 'release_download_upload_window', lambda wu: None),
+            start_download_upload=getattr(self, 'start_download_upload', lambda **kw: False),
+            archive_pikpak_item=getattr(self, 'archive_pikpak_item', lambda **kw: None),
+            fail_transfer_item=getattr(self, 'fail_transfer_item', lambda *a: None),
             refresh_counts=lambda tid: (self.transfer_store.refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
         )
 
@@ -960,28 +1007,16 @@ class TelegramRestrictedMediaDownloader(Bot):
             task_id: int,
             with_upload: Optional[dict] = None
     ) -> None:
-        self.pb.download(current, total, progress, task_id)
-        self.notify_bot_transfer_download_progress(with_upload, current, total)
-        if not self.transfer_store or not isinstance(with_upload, dict):
-            return
-        item_id = with_upload.get('item_id')
-        if item_id:
-            self.transfer_store.update_item_progress(
-                item_id=int(item_id),
-                phase='downloading',
-                download_current=current,
-                download_total=total
-            )
+        self._ensure_progress_tracker()
+        self.progress_tracker.transfer_download_progress(current, total, progress, task_id, with_upload)
 
     @staticmethod
     def transfer_percent(current: int, total: int) -> str:
-        if not total:
-            return '0.0%'
-        return f'{min(max(current / total, 0), 1) * 100:.1f}%'
+        return TransferProgressTracker.transfer_percent(current, total)
 
     @staticmethod
     def transfer_size_text(current: int, total: int) -> str:
-        return f'{MetaData.suitable_units_display(current)}/{MetaData.suitable_units_display(total)}'
+        return TransferProgressTracker.transfer_size_text(current, total)
 
     def build_bot_transfer_progress_text(
             self,
@@ -991,43 +1026,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             total: int = 0,
             error_message: Optional[str] = None
     ) -> str:
-        file_name = progress.get('file_name') or '等待识别文件名'
-        source = progress.get('source_link') or f'消息 {progress.get("source_message_id")}'
-        target = progress.get('target_link') or progress.get('target_chat_id') or '目标会话'
-        if phase == 'downloading':
-            status = f'📥 下载中 {self.transfer_percent(current, total)}'
-            detail = self.transfer_size_text(current, total)
-        elif phase == 'downloaded':
-            status = '📥 下载完成，等待上传'
-            detail = self.transfer_size_text(total or current, total or current) if (current or total) else ''
-        elif phase == 'uploading':
-            status = f'📤 上传中 {self.transfer_percent(current, total)}'
-            detail = self.transfer_size_text(current, total)
-        elif phase == 'uploaded':
-            status = '📤 上传完成，等待发送到目标'
-            detail = self.transfer_size_text(total or current, total or current) if (current or total) else ''
-        elif phase == 'sent':
-            status = '✅ 已发送到目标'
-            detail = ''
-        elif phase == 'failed':
-            status = '❌ 上传失败'
-            detail = error_message or '未知错误'
-        elif phase == 'skipped':
-            status = '⚠️ 已跳过'
-            detail = error_message or ''
-        else:
-            status = '⏳ 转存处理中'
-            detail = ''
-        lines = [
-            '📦 监听转存进度',
-            f'状态: {status}',
-            f'文件: {file_name}',
-            f'来源: {source}',
-            f'目标: {target}'
-        ]
-        if detail:
-            lines.append(f'进度: {detail}')
-        return '\n'.join(lines)
+        self._ensure_progress_tracker()
+        return self.progress_tracker.build_bot_transfer_progress_text(progress, phase, current, total, error_message)
 
     async def create_bot_transfer_progress(
             self,
@@ -1069,102 +1069,24 @@ class TelegramRestrictedMediaDownloader(Bot):
             return None
 
     def schedule_bot_transfer_progress_update(self, progress: Optional[dict], text: str, force: bool = False) -> None:
-        if not isinstance(progress, dict):
-            return
-        client = progress.get('client')
-        chat_id = progress.get('chat_id')
-        message_id = progress.get('message_id')
-        if not all([client, chat_id, message_id]):
-            return
-        now = datetime.datetime.now(datetime.UTC).timestamp()
-        min_interval = float(progress.get('min_interval', 8) or 0)
-        if not force and now - float(progress.get('last_update_at') or 0) < min_interval:
-            return
-        if text == progress.get('last_text'):
-            return
-        progress['last_update_at'] = now
-        progress['last_text'] = text
-
-        async def _edit_progress_message() -> None:
-            while True:
-                try:
-                    await client.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text=text,
-                        link_preview_options=LINK_PREVIEW_OPTIONS
-                    )
-                    break
-                except MessageNotModified:
-                    break
-                except (FloodWait, FloodPremiumWait) as e:
-                    await asyncio.sleep(max(0, int(getattr(e, 'value', 0) or 0)))
-                except Exception as e:
-                    log.warning(f'无法更新监听转存进度消息,{_t(KeyWord.REASON)}:"{e}"')
-                    break
-
-        try:
-            loop = getattr(self, 'loop', None) or asyncio.get_running_loop()
-            loop.create_task(_edit_progress_message())
-        except RuntimeError:
-            log.warning('无法更新监听转存进度消息,当前没有运行中的事件循环。')
+        self._ensure_progress_tracker()
+        self.progress_tracker.schedule_bot_transfer_progress_update(progress, text, force)
 
     def notify_bot_transfer_download_progress(self, with_upload: Optional[dict], current: int, total: int) -> None:
-        if not isinstance(with_upload, dict):
-            return
-        progress = with_upload.get('bot_progress')
-        if not isinstance(progress, dict):
-            return
-        if with_upload.get('file_name') and not progress.get('file_name'):
-            progress['file_name'] = with_upload.get('file_name')
-        text = self.build_bot_transfer_progress_text(progress, phase='downloading', current=current, total=total)
-        self.schedule_bot_transfer_progress_update(progress, text)
+        self._ensure_progress_tracker()
+        self.progress_tracker.notify_bot_transfer_download_progress(with_upload, current, total)
 
     def notify_bot_transfer_downloaded(self, with_upload: Optional[dict], file_size: Optional[int]) -> None:
-        if not isinstance(with_upload, dict):
-            return
-        progress = with_upload.get('bot_progress')
-        if not isinstance(progress, dict):
-            return
-        if with_upload.get('file_name') and not progress.get('file_name'):
-            progress['file_name'] = with_upload.get('file_name')
-        size = int(file_size or 0)
-        text = self.build_bot_transfer_progress_text(progress, phase='downloaded', current=size, total=size)
-        self.schedule_bot_transfer_progress_update(progress, text, force=True)
+        self._ensure_progress_tracker()
+        self.progress_tracker.notify_bot_transfer_downloaded(with_upload, file_size)
 
     def notify_bot_transfer_upload_progress(self, upload_task: UploadTask, current: int, total: int) -> None:
-        meta = getattr(upload_task, 'transfer_meta', {}) or {}
-        progress = meta.get('bot_progress')
-        if not isinstance(progress, dict):
-            return
-        if getattr(upload_task, 'file_name', None):
-            progress['file_name'] = getattr(upload_task, 'file_name')
-        text = self.build_bot_transfer_progress_text(progress, phase='uploading', current=current, total=total)
-        self.schedule_bot_transfer_progress_update(progress, text)
+        self._ensure_progress_tracker()
+        self.progress_tracker.notify_bot_transfer_upload_progress(upload_task, current, total)
 
     def notify_bot_transfer_upload_status(self, upload_task: UploadTask) -> None:
-        meta = getattr(upload_task, 'transfer_meta', {}) or {}
-        progress = meta.get('bot_progress')
-        if not isinstance(progress, dict):
-            return
-        if getattr(upload_task, 'file_name', None):
-            progress['file_name'] = getattr(upload_task, 'file_name')
-        size = int(getattr(upload_task, 'file_size', 0) or 0)
-        if upload_task.status == UploadStatus.SUCCESS:
-            text = self.build_bot_transfer_progress_text(progress, phase='uploaded', current=size, total=size)
-            self.schedule_bot_transfer_progress_update(progress, text, force=True)
-        elif upload_task.status == UploadStatus.SENT:
-            text = self.build_bot_transfer_progress_text(progress, phase='sent', current=size, total=size)
-            self.schedule_bot_transfer_progress_update(progress, text, force=True)
-        elif upload_task.status == UploadStatus.FAILURE:
-            text = self.build_bot_transfer_progress_text(
-                progress,
-                phase='failed',
-                current=size,
-                total=size,
-                error_message=getattr(upload_task, 'error_msg', None)
-            )
-            self.schedule_bot_transfer_progress_update(progress, text, force=True)
+        self._ensure_progress_tracker()
+        self.progress_tracker.notify_bot_transfer_upload_status(upload_task)
 
     def record_transfer_download_success(
             self,
@@ -1172,41 +1094,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             message: pyrogram.types.Message,
             file_path: str
     ) -> None:
-        if not isinstance(with_upload, dict):
-            return
-        file_size = with_upload.get('file_size')
-        if file_size is None and os.path.isfile(file_path):
-            file_size = os.path.getsize(file_path)
-        self.notify_bot_transfer_downloaded(with_upload, file_size)
-        if not self.transfer_store:
-            return
-        item_id = with_upload.get('item_id')
-        if item_id:
-            self.transfer_store.update_item(
-                int(item_id),
-                local_path=file_path,
-                file_name=with_upload.get('file_name') or os.path.basename(file_path),
-                file_size=file_size,
-                phase='downloaded'
-            )
-            self.transfer_store.update_item_progress(
-                int(item_id),
-                phase='downloaded',
-                download_current=file_size or 0,
-                download_total=file_size or 0
-            )
-        source_chat_id = with_upload.get('source_chat_id')
-        source_message_id = with_upload.get('message_id') or getattr(message, 'id', None)
-        if source_chat_id and source_message_id and os.path.isfile(file_path):
-            self.transfer_store.upsert_download_success_record(
-                source_chat_id=str(source_chat_id),
-                source_message_id=int(source_message_id),
-                source_link=with_upload.get('source_link') or getattr(message, 'link', None),
-                media_type=with_upload.get('media_type'),
-                local_path=file_path,
-                file_size=file_size,
-                file_name=with_upload.get('file_name') or os.path.basename(file_path)
-            )
+        self._ensure_progress_tracker()
+        self.progress_tracker.record_transfer_download_success(with_upload, message, file_path)
 
     def try_reuse_transfer_download_record(
             self,
@@ -1214,192 +1103,28 @@ class TelegramRestrictedMediaDownloader(Bot):
             message: pyrogram.types.Message,
             expected_size: int
     ) -> Optional[str]:
-        if (
-                not isinstance(task_with_upload, dict)
-                or not self.transfer_store
-                or not task_with_upload.get('source_chat_id')
-                or not task_with_upload.get('message_id')
-        ):
-            return None
-        record = self.transfer_store.get_download_success_record(
-            source_chat_id=str(task_with_upload.get('source_chat_id')),
-            source_message_id=int(task_with_upload.get('message_id')),
-            expected_size=expected_size
-        )
-        if not record:
-            return None
-        local_path = record.get('local_path')
-        item_id = task_with_upload.get('item_id')
-        if item_id:
-            self.transfer_store.update_item(
-                int(item_id),
-                local_path=local_path,
-                file_name=record.get('file_name'),
-                file_size=record.get('file_size'),
-                phase='downloaded'
-            )
-            self.transfer_store.update_item_progress(
-                int(item_id),
-                phase='downloaded',
-                download_current=expected_size,
-                download_total=expected_size
-            )
-            self.transfer_store.add_event(
-                int(task_with_upload.get('task_id')),
-                f'Reused download success record: {record.get("file_name") or os.path.basename(local_path)}',
-                item_id=int(item_id)
-            )
-        if not self.start_download_upload(
-                with_upload=task_with_upload,
-                message=message,
-                file_path=local_path
-        ):
-            self.release_transfer_local_storage(task_with_upload)
-            self.release_download_upload_window(task_with_upload)
-        return local_path
+        self._ensure_progress_tracker()
+        return self.progress_tracker.try_reuse_transfer_download_record(task_with_upload, message, expected_size)
 
     def on_transfer_upload_progress(self, upload_task: UploadTask, current: int, total: int) -> None:
-        self.notify_bot_transfer_upload_progress(upload_task, current, total)
-        if not self.transfer_store:
-            return
-        meta = getattr(upload_task, 'transfer_meta', {}) or {}
-        item_id = meta.get('item_id')
-        if not item_id:
-            return
-        self.transfer_store.update_item_progress(
-            item_id=int(item_id),
-            phase='uploading',
-            upload_current=current,
-            upload_total=total
-        )
+        self._ensure_progress_tracker()
+        self.progress_tracker.on_transfer_upload_progress(upload_task, current, total)
 
     def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
-        if not self.transfer_store:
-            return 0
-        task_id = int(with_upload.get('task_id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=with_upload.get('source_chat_id'),
-            source_message_id=with_upload.get('message_id'),
-            source_link=with_upload.get('source_link'),
-            target_link=with_upload.get('link'),
-            media_type=with_upload.get('media_type'),
-            file_name=with_upload.get('file_name') or os.path.basename(file_path),
-            file_size=with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None),
-            local_path=file_path,
-            source_folder=with_upload.get('source_folder'),
-            archive_status='pending' if with_upload.get('target_profile') == 'pikpak' else None,
-            archive_match_original_name=True if with_upload.get('target_profile') == 'pikpak' else None,
-            phase='uploading',
-            status=TransferStatus.RUNNING
-        )
-        self.transfer_store.add_event(task_id, f'File ready for target upload: {os.path.basename(file_path)}', item_id=item_id)
-        self.refresh_transfer_task_counts(task_id)
-        return item_id
+        self._ensure_progress_tracker()
+        return self.progress_tracker.on_transfer_file_ready(file_path, with_upload)
 
     def on_transfer_item_skipped(self, with_upload: dict, message: str) -> None:
-        self.release_transfer_local_storage(with_upload)
-        if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
-            return
-        task_id = int(with_upload.get('task_id'))
-        item_id = with_upload.get('item_id')
-        if item_id:
-            item_id = int(item_id)
-            self.transfer_store.update_item(
-                item_id,
-                media_type=with_upload.get('media_type'),
-                file_name=with_upload.get('file_name'),
-                file_size=with_upload.get('file_size'),
-                phase='skipped',
-                status=TransferStatus.SKIPPED,
-                error_message=message
-            )
-        else:
-            item_id = self.transfer_store.add_item(
-                task_id=task_id,
-                source_chat_id=with_upload.get('source_chat_id'),
-                source_message_id=with_upload.get('message_id'),
-                source_link=with_upload.get('source_link'),
-                target_link=with_upload.get('link'),
-                media_type=with_upload.get('media_type'),
-                file_name=with_upload.get('file_name'),
-                file_size=with_upload.get('file_size'),
-                phase='skipped',
-                status=TransferStatus.SKIPPED,
-                error_message=message
-            )
-        self.transfer_store.add_event(task_id, message, level='warning', item_id=item_id)
-        self.refresh_transfer_task_counts(task_id)
+        self._ensure_progress_tracker()
+        self.progress_tracker.on_transfer_item_skipped(with_upload, message)
 
     def on_transfer_item_failed(self, with_upload: dict, message: str) -> None:
-        self.release_transfer_local_storage(with_upload)
-        if not self.transfer_store or not isinstance(with_upload, dict) or not with_upload.get('task_id'):
-            return
-        task_id = int(with_upload.get('task_id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=with_upload.get('source_chat_id'),
-            source_message_id=with_upload.get('message_id'),
-            source_link=with_upload.get('source_link'),
-            target_link=with_upload.get('link'),
-            media_type=with_upload.get('media_type'),
-            file_name=with_upload.get('file_name'),
-            file_size=with_upload.get('file_size'),
-            phase='failure',
-            status=TransferStatus.FAILURE,
-            error_message=message
-        )
-        self.transfer_store.add_event(task_id, message, level='error', item_id=item_id)
-        self.refresh_transfer_task_counts(task_id)
+        self._ensure_progress_tracker()
+        self.progress_tracker.on_transfer_item_failed(with_upload, message)
 
     def on_transfer_upload_status(self, upload_task: UploadTask) -> None:
-        self.notify_bot_transfer_upload_status(upload_task)
-        meta = getattr(upload_task, 'transfer_meta', {}) or {}
-        task_id = meta.get('task_id')
-        item_id = meta.get('item_id')
-        if upload_task.status == UploadStatus.SENT:
-            archive_result = self.archive_pikpak_item(
-                target_profile=meta.get('target_profile'),
-                item_id=item_id,
-                task_id=task_id,
-                message=None,
-                source_link=meta.get('source_link'),
-                source_folder=meta.get('source_folder'),
-                file_name=upload_task.file_name,
-                file_size=getattr(upload_task, 'file_size', None),
-                transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
-                match_original_name=True
-            )
-            if (
-                    archive_result is not None
-                    and getattr(archive_result, 'status', None) != 'disabled'
-                    and not bool(getattr(archive_result, 'ok', False))
-            ):
-                archive_status = getattr(archive_result, 'status', 'error')
-                archive_message = getattr(archive_result, 'message', '')
-                error_message = (
-                    f'PikPak archive {archive_status}: '
-                    f'{archive_message or meta.get("source_link") or upload_task.file_name}'
-                )
-                if self.transfer_store and task_id and item_id:
-                    self.fail_transfer_item(int(task_id), int(item_id), error_message)
-                else:
-                    log.warning(error_message)
-                return
-            if self.transfer_store and task_id and item_id:
-                self.transfer_store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent', error_message='')
-                self.transfer_store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
-        elif upload_task.status == UploadStatus.FAILURE:
-            if self.transfer_store and task_id and item_id:
-                self.transfer_store.update_item(
-                    item_id,
-                    status=TransferStatus.FAILURE,
-                    phase='failure',
-                    error_message=upload_task.error_msg
-                )
-                self.transfer_store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
-        if self.transfer_store and task_id:
-            self.refresh_transfer_task_counts(int(task_id))
+        self._ensure_progress_tracker()
+        self.progress_tracker.on_transfer_upload_status(upload_task)
 
     def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
         source_link = source_link or task.get('source_link')
