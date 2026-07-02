@@ -1406,22 +1406,70 @@ WEB_UI_MOBILE_BODY = f'''
 
   <!-- 频道下载 -->
   <div class="mob-view" id="mob-view-channel-downloads">
-    <div class="mob-empty" data-i18n="channel.title">频道下载 — 即将推出</div>
+    <div class="mob-collapse" id="collapse-channel-form">
+      <div class="mob-collapse__head" data-i18n="channel.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-channel-form">
+          <label><span data-i18n="channel.link">频道链接</span>
+            <input type="text" name="chat_link" placeholder="https://t.me/..." required>
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label><span data-i18n="channel.startDate">起始时间</span>
+              <input type="datetime-local" name="start_date">
+            </label>
+            <label><span data-i18n="channel.endDate">结束时间</span>
+              <input type="datetime-local" name="end_date">
+            </label>
+          </div>
+          <label><span data-i18n="channel.keywords">关键词</span>
+            <input type="text" name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          </label>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+            <span data-i18n="channel.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="channel.create">创建频道下载</button>
+          <p class="mob-empty" id="mob-channel-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-channel-downloads-list"></div>
   </div>
 
   <!-- 本地上传 -->
   <div class="mob-view" id="mob-view-uploads">
-    <div class="mob-empty" data-i18n="uploads.title">本地上传 — 即将推出</div>
+    <div class="mob-collapse" id="collapse-upload-form">
+      <div class="mob-collapse__head" data-i18n="uploads.title">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-upload-form">
+          <label><span data-i18n="uploads.path">本地路径</span>
+            <input type="text" name="path" placeholder="/path/to/file" required>
+          </label>
+          <label><span data-i18n="uploads.target">目标频道</span>
+            <input type="text" name="target_link" placeholder="https://t.me/..." required>
+          </label>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="recursive" style="width:auto;min-height:auto;">
+            <span data-i18n="uploads.recursive">递归上传文件夹</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="uploads.create">创建上传</button>
+          <p class="mob-empty" id="mob-upload-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-uploads-list"></div>
   </div>
 
   <!-- 统计 -->
   <div class="mob-view" id="mob-view-statistics">
-    <div class="mob-empty" data-i18n="statistics.title">统计 — 即将推出</div>
+    <div class="mob-section-title" data-i18n="statistics.table">表格</div>
+    <div id="mob-statistics-list"></div>
   </div>
 
   <!-- 下载记录 -->
   <div class="mob-view" id="mob-view-records">
-    <div class="mob-empty" data-i18n="records.title">下载记录 — 即将推出</div>
+    <div class="mob-section-title" data-i18n="records.title">下载记录</div>
+    <div id="mob-records-list"></div>
   </div>
 </div>
 
@@ -3800,6 +3848,115 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       }
     });
   }
+
+  /* ====== Phase 2: 频道下载 ====== */
+  function renderMobRecords() {
+    var records = state.records || [];
+    var container = $('#mob-records-list');
+    if (!records.length) {
+      container.innerHTML = '<div class="mob-empty">' + t('records.title') + ' - ' + t('tasks.empty') + '</div>';
+      return;
+    }
+    container.innerHTML = records.map(function(r) {
+      return '<div class="mob-card">'
+        + '<div class="mob-card__head"><span class="mob-card__title">' + esc(r.file_name || r.source_link || '') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('tasks.source') + '</span><span>' + esc(r.source_link || '-') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('tasks.target') + '</span><span>' + esc(r.target_link || '-') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(r.updated_at || r.downloaded_at || '') + '</span></div>'
+        + '</div>';
+    }).join('');
+  }
+
+  /* ====== Phase 2: 统计表格 ====== */
+  function renderMobStatistics() {
+    var stats = state.statistics;
+    var container = $('#mob-statistics-list');
+    if (!stats || !stats.tables) {
+      container.innerHTML = '<div class="mob-empty">' + t('tasks.empty') + '</div>';
+      return;
+    }
+    var tables = stats.tables;
+    var html = '';
+    var tableNames = { link: t('statistics.link'), count: t('statistics.count'), upload: t('statistics.upload') };
+    for (var key in tables) {
+      var t = tables[key];
+      html += '<div class="mob-card" style="margin-bottom:10px;">'
+        + '<div class="mob-card__row"><span class="label">' + (tableNames[key] || key) + '</span><span>' + t('statistics.available') + ': ' + (t.available ? t('statistics.yes') : t('statistics.no')) + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('statistics.rows') + '</span><span>' + (t.rows || 0) + '</span></div>'
+        + '</div>';
+    }
+    container.innerHTML = html || '<div class="mob-empty">' + t('tasks.empty') + '</div>';
+  }
+
+  /* ====== 覆盖 loadRecords / loadStatistics ====== */
+  var _origLoadRecords = loadRecords;
+  loadRecords = async function() {
+    await _origLoadRecords();
+    renderMobRecords();
+  };
+  var _origLoadStatistics = loadStatistics;
+  loadStatistics = async function() {
+    await _origLoadStatistics();
+    renderMobStatistics();
+  };
+
+  /* ====== Phase 2 事件绑定 ====== */
+
+  /* 频道下载表单 */
+  var channelForm = $('#mob-channel-form');
+  if (channelForm) {
+    channelForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.include_comment = !!payload.include_comment;
+      if (payload.start_date) {
+        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
+        delete payload.start_date;
+      }
+      if (payload.end_date) {
+        payload.date_range = payload.date_range || {};
+        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
+        delete payload.end_date;
+      }
+      if (payload.keywords) {
+        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      } else {
+        payload.keywords = [];
+      }
+      payload.download_type = ['video', 'photo', 'audio', 'voice', 'animation', 'document', 'video_note'];
+      try {
+        await postJson('/api/channel-downloads', payload);
+        showToast(t('channel.accepted'));
+        this.reset();
+        $('#collapse-channel-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 本地上传表单 */
+  var uploadForm = $('#mob-upload-form');
+  if (uploadForm) {
+    uploadForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.recursive = !!payload.recursive;
+      try {
+        await postJson('/api/uploads', payload);
+        showToast(t('uploads.accepted'));
+        this.reset();
+        $('#collapse-upload-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 统计导出 */
+  /* 已通过 loadStatistics 覆盖自动渲染 */
 
   /* ====== 初始加载 ====== */
   loadTasks();
