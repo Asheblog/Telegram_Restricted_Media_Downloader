@@ -102,6 +102,7 @@ from module.target_profiles import (
     target_profile_size_error
 )
 from module.pikpak_archive import build_pikpak_archive_client
+from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
@@ -177,6 +178,35 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
         self.diagnostic = RichDiagnosticAdapter(console, log)
+        self.pikpak_manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            pikpak_archive_client_getter=lambda: build_pikpak_archive_client(
+                (getattr(self.gc, 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
+            ),
+            diagnostic=self.diagnostic,
+            gc_getter=lambda: self.gc,
+            refresh_counts=self.refresh_transfer_task_counts,
+        )
+
+    def _ensure_pikpak_manager(self):
+        if getattr(self, 'pikpak_manager', None) is not None:
+            return
+        import types
+        cls_getter = TelegramRestrictedMediaDownloader.get_pikpak_archive_client
+        inst_getter = self.get_pikpak_archive_client
+        if isinstance(inst_getter, types.MethodType) and inst_getter.__func__ is cls_getter:
+            archive_getter = lambda: build_pikpak_archive_client(
+                (getattr(getattr(self, 'gc', None), 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
+            )
+        else:
+            archive_getter = inst_getter
+        self.pikpak_manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            pikpak_archive_client_getter=archive_getter,
+            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            gc_getter=lambda: getattr(self, 'gc', None),
+            refresh_counts=lambda tid: (self.transfer_store.refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+        )
 
     @staticmethod
     def transfer_send_interval() -> float:
@@ -1482,11 +1512,8 @@ class TelegramRestrictedMediaDownloader(Bot):
         self.schedule_bot_transfer_progress_update(progress, text, force=True)
 
     def get_pikpak_archive_client(self):
-        if getattr(self, 'pikpak_archive_client', None) is not None:
-            return self.pikpak_archive_client
-        profile = (getattr(getattr(self, 'gc', None), 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {})
-        self.pikpak_archive_client = build_pikpak_archive_client(profile.get('archive'))
-        return self.pikpak_archive_client
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.get_pikpak_archive_client()
 
     def archive_pikpak_item(
             self,
@@ -1501,114 +1528,35 @@ class TelegramRestrictedMediaDownloader(Bot):
             transferred_at: Optional[float] = None,
             match_original_name: Optional[bool] = None
     ):
-        if target_profile != 'pikpak':
-            return None
-        folder = source_folder or source_folder_from_message(
-            message,
-            fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
-            fallback_link=source_link
-        )
-        media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
-        title_file_name = self.get_message_media_archive_filename(message)
-        file_name = file_name or title_file_name or (media_meta or {}).get('file_name')
-        file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
-        if not file_name and (file_size is None or transferred_at is None):
-            ensure = getattr(self.get_pikpak_archive_client(), 'ensure_source_folder', None)
-            return ensure(folder) if callable(ensure) else None
-        result = self.get_pikpak_archive_client().archive_file(
-            source_folder=folder,
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.archive_pikpak_item(
+            target_profile=target_profile,
+            item_id=item_id,
+            task_id=task_id,
+            message=message,
+            source_link=source_link,
+            source_folder=source_folder,
             file_name=file_name,
             file_size=file_size,
             transferred_at=transferred_at,
-            match_original_name=(
-                bool(match_original_name)
-                if match_original_name is not None
-                else not bool(title_file_name and file_name == title_file_name)
-            )
+            match_original_name=match_original_name,
         )
-        archive_status = getattr(result, 'status', 'error')
-        archive_path = getattr(result, 'archive_path', None)
-        archive_message = getattr(result, 'message', '')
-        archive_ok = bool(getattr(result, 'ok', False))
-        if self.transfer_store and item_id:
-            self.transfer_store.update_item(
-                int(item_id),
-                source_folder=folder,
-                archive_status=archive_status,
-                archive_path=archive_path,
-                archive_error=None if archive_ok else archive_message
-            )
-        if self.transfer_store and task_id and archive_status != 'disabled':
-            level = 'info' if archive_ok else 'warning'
-            detail = archive_path or archive_message or archive_status
-            self.transfer_store.add_event(
-                int(task_id),
-                f'PikPak archive {archive_status}: {detail}',
-                level=level,
-                item_id=int(item_id) if item_id else None
-            )
-        return result
 
     @staticmethod
     def transfer_item_archive_match_original_name(item: dict) -> Optional[bool]:
-        value = item.get('archive_match_original_name')
-        if value is None:
-            return None
-        return bool(int(value))
+        return PikpakIntegrationManager.transfer_item_archive_match_original_name(item)
 
     @staticmethod
     def transfer_item_archive_timestamp(item: dict) -> float:
-        for key in ('updated_at', 'created_at'):
-            value = item.get(key)
-            if not value:
-                continue
-            try:
-                return datetime.datetime.fromisoformat(str(value)).timestamp()
-            except ValueError:
-                continue
-        return datetime.datetime.now(datetime.UTC).timestamp()
+        return PikpakIntegrationManager.transfer_item_archive_timestamp(item)
 
     @staticmethod
     def get_message_media_archive_filename(message) -> Optional[str]:
-        if message is None:
-            return None
-        for dtype in DownloadType():
-            media = getattr(message, dtype, None)
-            if not media:
-                continue
-            try:
-                if dtype == DownloadType.DOCUMENT and is_compressed_file(getattr(media, 'file_name', None)):
-                    return None
-                title = DownloadFileName(message, dtype).get_message_title()
-                if not title:
-                    return None
-                extension = TelegramRestrictedMediaDownloader.get_message_media_archive_extension(dtype, media)
-                return '{} - {}.{}'.format(getattr(message, 'id', '0'), title, extension)
-            except Exception:
-                return None
-        return None
+        return PikpakIntegrationManager.get_message_media_archive_filename(message)
 
     @staticmethod
     def get_message_media_archive_extension(dtype: str, media) -> str:
-        origin_extension = extract_full_extension(getattr(media, 'file_name', None))
-        if origin_extension:
-            return origin_extension
-        mime_type = str(getattr(media, 'mime_type', '') or '').lower()
-        if dtype in (DownloadType.VIDEO, DownloadType.VIDEO_NOTE) or 'video' in mime_type:
-            return 'mp4'
-        if dtype == DownloadType.PHOTO or 'image' in mime_type:
-            if 'png' in mime_type:
-                return 'png'
-            if 'webp' in mime_type:
-                return 'webp'
-            return 'jpg'
-        if dtype == DownloadType.AUDIO or 'audio' in mime_type:
-            return 'mp3'
-        if dtype == DownloadType.VOICE:
-            return 'ogg'
-        if dtype == DownloadType.ANIMATION:
-            return 'mp4'
-        return 'unknown'
+        return PikpakIntegrationManager.get_message_media_archive_extension(dtype, media)
 
     def fail_transfer_item(
             self,
@@ -1616,19 +1564,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             item_id: int,
             message: str
     ) -> None:
-        self.transfer_store.update_item(
-            item_id,
-            phase='failure',
-            status=TransferStatus.FAILURE,
-            error_message=message
-        )
-        self.transfer_store.add_event(
-            task_id,
-            message,
-            level='error',
-            item_id=item_id
-        )
-        self.refresh_transfer_task_counts(task_id)
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.fail_transfer_item(task_id, item_id, message)
 
     def skip_empty_transfer_source_message(
             self,
@@ -1637,27 +1574,10 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link: str,
             message_id: Optional[int]
     ) -> int:
-        task_id = int(task.get('id'))
-        error_message = f'Telegram API returned an empty source message: {source_link}'
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=origin_chat_id,
-            source_message_id=message_id,
-            source_link=source_link,
-            target_link=task.get('target_link'),
-            media_type='empty',
-            phase='skipped',
-            status=TransferStatus.SKIPPED,
-            error_message=error_message
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.skip_empty_transfer_source_message(
+            task, origin_chat_id, source_link, message_id
         )
-        self.transfer_store.add_event(
-            task_id,
-            error_message,
-            level='warning',
-            item_id=item_id
-        )
-        self.refresh_transfer_task_counts(task_id)
-        return item_id
 
     def complete_forwarded_pikpak_item(
             self,
@@ -1668,77 +1588,26 @@ class TelegramRestrictedMediaDownloader(Bot):
             source_link: str,
             transferred_at: float
     ) -> bool:
-        archive_result = self.archive_pikpak_item(
-            target_profile=task.get('target_profile'),
-            item_id=item_id,
-            task_id=task_id,
-            message=message,
-            source_link=source_link,
-            transferred_at=transferred_at
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.complete_forwarded_pikpak_item(
+            task, item_id, task_id, message, source_link, transferred_at
         )
-        if (
-                archive_result is not None
-                and getattr(archive_result, 'status', None) != 'disabled'
-                and not bool(getattr(archive_result, 'ok', False))
-        ):
-            archive_status = getattr(archive_result, 'status', 'error')
-            archive_message = getattr(archive_result, 'message', '')
-            error_message = f'PikPak archive {archive_status}: {archive_message or source_link}'
-            self.fail_transfer_item(task_id, item_id, error_message)
-            return False
-        self.transfer_store.update_item(
-            item_id,
-            phase='forwarded',
-            status=TransferStatus.SUCCESS,
-            error_message=''
-        )
-        self.transfer_store.add_event(
-            task_id,
-            f'Direct forward succeeded: {source_link}',
-            item_id=item_id
-        )
-        self.refresh_transfer_task_counts(task_id)
-        return True
 
     def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
-        for dtype in DownloadType():
-            media = getattr(message, dtype, None)
-            if not media:
-                continue
-            file_size = getattr(media, 'file_size', None)
-            if file_size is None:
-                continue
-            archive_file_name = TelegramRestrictedMediaDownloader.get_message_media_archive_filename(message)
-            return {
-                'media_type': dtype,
-                'file_size': int(file_size),
-                'file_name': archive_file_name or getattr(media, 'file_name', None)
-            }
-        return None
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.get_message_media_target_limit_meta(message)
 
     def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]:
-        target_profile = task.get('target_profile')
-        limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
-        media_meta = self.get_message_media_target_limit_meta(message)
-        if not media_meta or limit is None or media_meta.get('file_size') <= limit:
-            return None
-        return {
-            **media_meta,
-            'message': target_profile_size_error(target_profile, media_meta.get('file_size'), limit)
-        }
+        self._ensure_pikpak_manager()
+        return self.pikpak_manager.get_task_target_size_limit_error(task, message)
 
     @staticmethod
     def is_pikpak_target(target_link: Optional[str], target_profile: Optional[str] = None) -> bool:
-        return (
-                str(target_profile or '').lower() == 'pikpak'
-                or 'pikpak' in str(target_link or '').lower()
-        )
+        return PikpakIntegrationManager.is_pikpak_target(target_link, target_profile)
 
     @staticmethod
     def forwarded_message_has_identity(forwarded_message) -> bool:
-        if isinstance(forwarded_message, list):
-            return any(getattr(message, 'id', None) is not None for message in forwarded_message)
-        return getattr(forwarded_message, 'id', None) is not None
+        return PikpakIntegrationManager.forwarded_message_has_identity(forwarded_message)
 
     async def forward_messages_with_flood_retry(
             self,
@@ -1759,31 +1628,11 @@ class TelegramRestrictedMediaDownloader(Bot):
 
     @staticmethod
     def is_pikpak_ingest_success_message(message) -> bool:
-        text = str(
-            getattr(message, 'text', None)
-            or getattr(message, 'caption', None)
-            or ''
-        ).lower()
-        return any(keyword in text for keyword in (
-            '保存成功',
-            'save success',
-            'saved successfully',
-            'successfully saved'
-        ))
+        return PikpakIntegrationManager.is_pikpak_ingest_success_message(message)
 
     @staticmethod
     def is_pikpak_ingest_failure_message(message) -> bool:
-        text = str(
-            getattr(message, 'text', None)
-            or getattr(message, 'caption', None)
-            or ''
-        ).lower()
-        return any(keyword in text for keyword in (
-            '保存失败',
-            '转存失败',
-            'failed',
-            'error'
-        ))
+        return PikpakIntegrationManager.is_pikpak_ingest_failure_message(message)
 
     async def wait_for_pikpak_ingest_confirmation(
             self,
