@@ -27,11 +27,12 @@ from module.enums import (
     UploadStatus,
     KeyWord
 )
+from module.transfer_registry import transfer_registry
 
 
 class DownloadTask:
-    LINK_INFO: dict = {}
-    COMPLETE_LINK: set = set()
+    LINK_INFO: dict = transfer_registry.link_info
+    COMPLETE_LINK: set = transfer_registry.complete_link
 
     def __init__(
             self,
@@ -130,7 +131,7 @@ class DownloadTask:
 class UploadTask:
     DIRECTORY_NAME: str = PARSE_ARGS.temp or os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'temp')
     PART_SIZE: int = 512 * 1024
-    TASKS: set = set()
+    TASKS: set = transfer_registry.tasks
     TASK_COUNTER: int = 0
     NOTIFY: Optional[Callable] = None
 
@@ -153,7 +154,7 @@ class UploadTask:
             progress_callback: Optional[Callable] = None
     ):
         UploadTask.TASKS.add(self)
-        UploadTask.TASK_COUNTER += 1
+        transfer_registry.task_counter += 1
         self.chat_id: Union[str, int, None] = chat_id
         self.file_path: str = file_path
         self.file_name: str = os.path.basename(file_path)
@@ -222,7 +223,7 @@ class UploadTask:
                     elif name == 'chat_id':
                         if value:
                             self.upload_manager_path: str = os.path.join(
-                                UploadTask.DIRECTORY_NAME,
+                                transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
                                 f'{self.sha256}.json'
                             )
                         os.makedirs(os.path.dirname(self.upload_manager_path), exist_ok=True)
@@ -244,9 +245,10 @@ class UploadTask:
             return await self.__media_group
 
     def notice(self, message: str):
-        if isinstance(self.NOTIFY, Callable):
+        notify = transfer_registry.notify or self.NOTIFY
+        if isinstance(notify, Callable):
             asyncio.create_task(
-                self.NOTIFY(
+                notify(
                     message
                 )
             )
@@ -309,7 +311,7 @@ class UploadTask:
             self.file_id = next_file_id()
         self.file_part = []
         self.upload_manager_path = os.path.join(
-            UploadTask.DIRECTORY_NAME,
+            transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
             f'{self.sha256}.json'
         )
         os.makedirs(os.path.dirname(self.upload_manager_path), exist_ok=True)

@@ -34,6 +34,7 @@ from module import console, log
 from module.language import _t
 
 from module.task import UploadTask
+from module.transfer_registry import transfer_registry
 from module.path_tool import get_mime_from_extension
 
 from module.stdio import (
@@ -79,8 +80,11 @@ class TelegramUploader:
         self.download_object = download_object
         self.upload_queue: asyncio.Queue = asyncio.Queue()
         self.valid_link_cache = {}
-        UploadTask.NOTIFY = download_object.done_notice
-        UploadTask.DIRECTORY_NAME = os.path.join(UploadTask.DIRECTORY_NAME, str(download_object.my_id))
+        transfer_registry.notify = download_object.done_notice
+        transfer_registry.directory_name = os.path.join(
+            transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
+            str(download_object.my_id)
+        )
         asyncio.create_task(self.send_media_worker())
 
     @staticmethod
@@ -715,7 +719,7 @@ class TelegramUploader:
         file_path: str = upload_task.file_path
         self.current_task_num -= 1
         self.pb.progress.remove_task(task_id=task_id)
-        if not safe_delete(os.path.join(UploadTask.DIRECTORY_NAME, f'{upload_task.sha256}.json')):
+        if not safe_delete(os.path.join(transfer_registry.directory_name or UploadTask.DIRECTORY_NAME, f'{upload_task.sha256}.json')):
             log.warning(f'无法删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
         else:
             log.info(f'成功删除"{os.path.basename(file_path)}"的上传缓存管理文件。')
