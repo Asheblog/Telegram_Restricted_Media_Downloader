@@ -1289,6 +1289,207 @@ WEB_UI_MOBILE_CSS = r'''
   }
 '''
 
+WEB_UI_MOBILE_BODY = f'''
+<div class="mob-topbar">
+  <div class="mob-brand">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <span>TRMD</span>
+  </div>
+  <div class="mob-topbar-actions">
+    <select id="language-select" aria-label="语言">
+      <option value="zh">中文</option>
+      <option value="en">EN</option>
+    </select>
+    <button class="secondary small" type="button" id="refresh" aria-label="刷新">
+      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="mob-content" id="mob-content">
+  <!-- 转存任务 -->
+  <div class="mob-view active" id="mob-view-transfers">
+    <div class="mob-collapse" id="collapse-transfer-form">
+      <div class="mob-collapse__head" data-i18n="new.title">新建转存 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-transfer-form">
+          <label><span data-i18n="new.source">来源链接</span>
+            <input type="text" name="source_link" placeholder="https://t.me/..." required>
+          </label>
+          <label><span data-i18n="new.target">目标</span>
+            <input type="text" name="target_link" value="https://t.me/pikpak_bot" required>
+          </label>
+          <label><span data-i18n="new.targetProfile">目标配置</span>
+            <select name="target_profile">
+              <option value="pikpak" data-i18n="profile.pikpak">PikPak 文档转存</option>
+              <option value="generic" data-i18n="profile.generic">通用 Telegram 目标</option>
+            </select>
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label><span data-i18n="new.startId">起始 ID</span>
+              <input type="number" name="start_id" placeholder="可选">
+            </label>
+            <label><span data-i18n="new.endId">结束 ID</span>
+              <input type="number" name="end_id" placeholder="可选">
+            </label>
+          </div>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+            <span data-i18n="new.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="new.create">创建任务</button>
+          <p class="mob-empty" id="mob-form-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-tasks-list"></div>
+  </div>
+
+  <!-- 实时监听 -->
+  <div class="mob-view" id="mob-view-watches">
+    <div class="mob-collapse" id="collapse-watch-form">
+      <div class="mob-collapse__head" data-i18n="watches.title">实时监听 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-watch-form">
+          <label><span data-i18n="watches.type">类型</span>
+            <select name="watch_type" id="mob-watch-type">
+              <option value="download" data-i18n="watches.download">监听下载</option>
+              <option value="forward" data-i18n="watches.forward">监听转发</option>
+            </select>
+          </label>
+          <div id="mob-watch-source-group">
+            <label><span data-i18n="watches.sources">来源频道</span>
+              <textarea name="source_links" rows="3" placeholder="每行一个 https://t.me/... 链接" required></textarea>
+            </label>
+          </div>
+          <div id="mob-watch-target-group" style="display:none;">
+            <label><span data-i18n="watches.target">目标频道</span>
+              <input type="text" name="target_link" placeholder="https://t.me/...">
+            </label>
+          </div>
+          <div id="mob-watch-comment-group" style="display:none;">
+            <label style="flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+              <span data-i18n="watches.includeComment">包含评论区</span>
+            </label>
+          </div>
+          <button type="submit" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
+          <p class="mob-empty" id="mob-watch-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-watches-list"></div>
+  </div>
+
+  <!-- 设置 -->
+  <div class="mob-view" id="mob-view-settings">
+    <div class="mob-collapse open" id="collapse-settings-paths">
+      <div class="mob-collapse__head" data-i18n="settings.paths">路径与任务 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-path-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-behavior">
+      <div class="mob-collapse__head" data-i18n="settings.behavior">行为 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-behavior-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-sensitive">
+      <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-archive">
+      <div class="mob-collapse__head" data-i18n="settings.pikpakArchive">PikPak 归档 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-archive-fields"></div>
+    </div>
+    <button id="mob-save-settings" style="width:100%;margin-top:4px;" data-i18n="settings.save">保存设置</button>
+  </div>
+
+  <!-- 频道下载 -->
+  <div class="mob-view" id="mob-view-channel-downloads">
+    <div class="mob-empty" data-i18n="channel.title">频道下载 — 即将推出</div>
+  </div>
+
+  <!-- 本地上传 -->
+  <div class="mob-view" id="mob-view-uploads">
+    <div class="mob-empty" data-i18n="uploads.title">本地上传 — 即将推出</div>
+  </div>
+
+  <!-- 统计 -->
+  <div class="mob-view" id="mob-view-statistics">
+    <div class="mob-empty" data-i18n="statistics.title">统计 — 即将推出</div>
+  </div>
+
+  <!-- 下载记录 -->
+  <div class="mob-view" id="mob-view-records">
+    <div class="mob-empty" data-i18n="records.title">下载记录 — 即将推出</div>
+  </div>
+</div>
+
+<!-- FAB + Menu -->
+<div class="mob-fab-menu" id="mob-fab-menu">
+  <button class="mob-fab-menu__item" id="mob-fab-new-transfer">
+    <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="new.title">新建转存</span>
+  </button>
+  <button class="mob-fab-menu__item" id="mob-fab-new-watch">
+    <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span data-i18n="watches.title">新建监听</span>
+  </button>
+</div>
+<button class="mob-fab" id="mob-fab" aria-label="新建">+</button>
+
+<!-- Bottom Tab Bar -->
+<div class="mob-tabbar" id="mob-tabbar">
+  <button class="mob-tab active" data-mob-nav="transfers">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="nav.transfers">转存</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="watches">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 9v3l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="nav.watches">监听</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="settings">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.82 2.82l-.04-.04A1.8 1.8 0 0 0 15 19.4M4.6 9a1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 0 1 2.82-2.82l.04.04A1.8 1.8 0 0 0 9 4.6" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span data-i18n="nav.settings">设置</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="more">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>
+    <span>更多</span>
+  </button>
+</div>
+
+<!-- 更多 Drawer -->
+<div class="mob-drawer-overlay" id="mob-drawer-overlay">
+  <div class="mob-drawer" id="mob-drawer">
+    <div class="mob-drawer__handle"></div>
+    <button class="mob-drawer__item" data-mob-drawer-nav="channel-downloads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.channelDownloads">频道下载</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="uploads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.uploads">本地上传</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="statistics">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.statistics">统计</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="records">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14v16H5z" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.records">下载记录</span>
+    </button>
+  </div>
+</div>
+
+<!-- Bottom Sheet Overlay (通用) -->
+<div class="mob-sheet-overlay" id="mob-sheet-overlay">
+  <div class="mob-sheet" id="mob-sheet"></div>
+</div>
+
+<!-- Toast -->
+<div class="mob-toast" id="mob-toast"></div>
+'''
+
 WEB_UI_BODY = f'''
   <div class="shell">
     <aside>
