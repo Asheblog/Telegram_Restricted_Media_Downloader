@@ -4,6 +4,7 @@ import datetime
 import hmac
 import json
 import os
+import re
 import socket
 import threading
 import webbrowser
@@ -17,7 +18,7 @@ from urllib.parse import unquote, urlparse, parse_qs
 from module import log
 from module.enums import ENVIRON
 from module.transfer_store import TransferStore
-from module.web_ui_assets import WEB_UI_HTML
+from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML
 
 
 SENSITIVE_SETTING_KEYS = {
@@ -186,7 +187,10 @@ class WebUiServer:
                 )
 
             def _send_html(self):
-                data = WEB_UI_HTML.encode('utf-8')
+                ua = self.headers.get('user-agent', '')
+                is_mobile = bool(re.search(r'Mobile|Android|iPhone|iPod', ua))
+                html = WEB_UI_MOBILE_HTML if is_mobile else WEB_UI_HTML
+                data = html.encode('utf-8')
                 self.send_response(HTTPStatus.OK)
                 self.send_header('content-type', 'text/html; charset=utf-8')
                 self.send_header('cache-control', 'no-store')

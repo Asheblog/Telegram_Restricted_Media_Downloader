@@ -2715,3 +2715,6 @@ WEB_UI_HTML = f'''<!doctype html>
   <script>{WEB_UI_SCRIPT}</script>
 </body>
 </html>'''
+
+# 移动版占位符 — 后续 Task 将替换为完整实现
+WEB_UI_MOBILE_HTML = WEB_UI_HTML
