@@ -134,10 +134,24 @@ from module.util import (
 )
 
 
-class TelegramRestrictedMediaDownloader(Bot):
+class TelegramRestrictedMediaDownloader:
+
+    def __getattr__(self, name):
+        if name == 'bot':
+            raise AttributeError(name)
+        try:
+            bot = object.__getattribute__(self, 'bot')
+        except AttributeError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        return getattr(bot, name)
 
     def __init__(self):
-        super().__init__()
+        self.bot = Bot(
+            handler_overrides={
+                'start': self.start,
+                'callback_data': self.callback_data,
+            }
+        )
         self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         self.event: asyncio.Event = asyncio.Event()
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -173,8 +187,8 @@ class TelegramRestrictedMediaDownloader(Bot):
             app_getter=lambda: self.app,
             diagnostic=self.diagnostic
         )
-        self.listen_download_chat = self.watch_manager.listen_download_chat
-        self.listen_forward_chat = self.watch_manager.listen_forward_chat
+        self.bot.listen_download_chat = self.watch_manager.listen_download_chat
+        self.bot.listen_forward_chat = self.watch_manager.listen_forward_chat
         self.web_pending_watches = self.watch_manager.web_pending_watches
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
@@ -2892,7 +2906,7 @@ class TelegramRestrictedMediaDownloader(Bot):
                 raise
             link = getattr(message, 'link', None)
             if not self.gc.download_upload:
-                await self.bot.send_message(
+                await self.bot.bot.send_message(
                     chat_id=client.me.id,
                     text=f'⚠️⚠️⚠️无法转发⚠️⚠️⚠️\n'
                          f'`{link}`\n'

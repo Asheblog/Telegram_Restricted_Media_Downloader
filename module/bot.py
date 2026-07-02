@@ -80,7 +80,9 @@ class Bot:
         BotCommand(BotCommandText.DOWNLOAD_CHAT[0], BotCommandText.DOWNLOAD_CHAT[1].replace('`', ''))
     ]
 
-    def __init__(self):
+    def __init__(self, downloader=None, handler_overrides: Optional[Dict[str, Callable]] = None):
+        self.downloader = downloader
+        self._handler_overrides = handler_overrides or {}
         self.application = None
         self.user: Union[pyrogram.Client, None] = None
         self.bot: Union[pyrogram.Client, None] = None
@@ -1003,9 +1005,13 @@ class Bot:
             bot = await self.bot.get_me()
             bot_username = getattr(bot, 'username', None)
 
+            start_handler = self._handler_overrides.get('start', self.start)
+            callback_handler = self._handler_overrides.get('callback_data', self.callback_data)
+            forwarded_handler = self._handler_overrides.get('handle_forwarded_media', self.handle_forwarded_media)
+
             self.bot.add_handler(
                 MessageHandler(
-                    self.start,
+                    start_handler,
                     filters=pyrogram.filters.command(['start']) & pyrogram.filters.user(self.root)
                 )
             )
@@ -1078,7 +1084,7 @@ class Bot:
             )
             self.user.add_handler(
                 MessageHandler(
-                    self.handle_forwarded_media,
+                    forwarded_handler,
                     filters=pyrogram.filters.user(self.root) & pyrogram.filters.forwarded & pyrogram.filters.chat(
                         bot_username) & (
                                     pyrogram.filters.video
@@ -1093,7 +1099,7 @@ class Bot:
             )
             self.bot.add_handler(
                 CallbackQueryHandler(
-                    self.callback_data,
+                    callback_handler,
                     filters=pyrogram.filters.user(self.root)
                 )
             )
