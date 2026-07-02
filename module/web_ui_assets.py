@@ -3821,4 +3821,16 @@ WEB_UI_HTML = f'''<!doctype html>
 </html>'''
 
 # 移动版占位符 — 后续 Task 将替换为完整实现
-WEB_UI_MOBILE_HTML = WEB_UI_HTML
+WEB_UI_MOBILE_HTML = f'''<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>TRMD 转存控制台</title>
+  <style>{WEB_UI_MOBILE_CSS}</style>
+</head>
+<body>
+{WEB_UI_MOBILE_BODY}
+  <script>{WEB_UI_MOBILE_SCRIPT}</script>
+</body>
+</html>'''
