@@ -66,12 +66,14 @@ from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
 from module.local_storage_guard import LocalStorageGuard
+from module.web_task_manager import WebUITaskManager
 from module.live_watch_manager import LiveWatchManager
 from module.bot import (
     Bot,
     KeyboardButton,
     CallbackData
 )
+from module.callback_handler import CallbackHandler
 from module.enums import (
     DownloadStatus,
     UploadStatus,
@@ -132,13 +134,38 @@ from module.util import (
     parse_forward_watch_rule,
     is_allow_upload
 )
+from module.transfer_engine import TransferEngine
+
+
 
 
 class TelegramRestrictedMediaDownloader:
 
     def __getattr__(self, name):
-        if name == 'bot':
+        if name in ('bot', 'web_task_manager', 'watch_manager', 'pikpak_manager', 'progress_tracker', 'transfer_engine', '_te'):
             raise AttributeError(name)
+        for mgr_name, init_fn in (
+            ('watch_manager', '_ensure_watch_manager'),
+            ('pikpak_manager', '_ensure_pikpak_manager'),
+            ('progress_tracker', '_ensure_progress_tracker'),
+        ):
+            try:
+                mgr = object.__getattribute__(self, mgr_name)
+            except AttributeError:
+                if init_fn is not None:
+                    getattr(type(self), init_fn)(self)
+                    try:
+                        mgr = object.__getattribute__(self, mgr_name)
+                    except AttributeError:
+                        continue
+                else:
+                    continue
+            if mgr_name == name and mgr is not None:
+                return mgr
+            try:
+                return getattr(mgr, name)
+            except AttributeError:
+                continue
         try:
             bot = object.__getattribute__(self, 'bot')
         except AttributeError:
@@ -178,11 +205,10 @@ class TelegramRestrictedMediaDownloader:
         self.web_running_task: Optional[asyncio.Task] = None
         self.web_running_task_id: Optional[int] = None
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
-        self.web_operation_counter: int = 0
         self.web_operations: dict = {}
         self.diagnostic = RichDiagnosticAdapter(console, log)
         self.watch_manager = LiveWatchManager(
-            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             operation_submitter=self.submit_web_operation,
             user_getter=lambda: getattr(self, 'user', None),
             app_getter=lambda: self.app,
@@ -194,7 +220,7 @@ class TelegramRestrictedMediaDownloader:
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
         self.pikpak_manager = PikpakIntegrationManager(
-            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             pikpak_archive_client_getter=lambda: build_pikpak_archive_client(
                 (getattr(self.gc, 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
             ),
@@ -203,7 +229,7 @@ class TelegramRestrictedMediaDownloader:
             refresh_counts=self.refresh_transfer_task_counts,
         )
         self.progress_tracker = TransferProgressTracker(
-            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             diagnostic=self.diagnostic,
             app_getter=lambda: self.app,
             gc_getter=lambda: self.gc,
@@ -216,57 +242,206 @@ class TelegramRestrictedMediaDownloader:
             fail_transfer_item=self.fail_transfer_item,
             refresh_counts=self.refresh_transfer_task_counts,
         )
+        self.callback_handler = CallbackHandler(
+            app_getter=lambda: self.app,
+            gc_getter=lambda: self.gc,
+            diagnostic=self.diagnostic,
+            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            loop_getter=lambda: self.loop,
+            user_getter=lambda: getattr(self, 'user', None),
+            my_id_getter=lambda: self.my_id,
+            downloader_ref=self,
+        )
+        self.web_task_manager = WebUITaskManager(
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            diagnostic=self.diagnostic,
+            loop_getter=lambda: self.loop,
+            web_task_queue=self.web_task_queue,
+            web_submitted_task_ids=self.web_submitted_task_ids,
+            web_running_task_getter=lambda: getattr(self, 'web_running_task', None),
+            web_running_task_setter=lambda v: setattr(self, 'web_running_task', v),
+            web_running_task_id_getter=lambda: getattr(self, 'web_running_task_id', None),
+            web_running_task_id_setter=lambda v: setattr(self, 'web_running_task_id', v),
+            web_operation_queue=self.web_operation_queue,
+            web_operations=self.web_operations,
+            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
+            pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
+            progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
+            listener_restart_callback=getattr(self, 'restart_listener', None),
+            list_watches_getter=lambda: getattr(self, 'list_watches', None),
+            persisted_watches_getter=lambda: getattr(self, 'persisted_watches', None),
+            set_live_watch_status_getter=lambda: getattr(self, 'set_live_watch_status', None),
+            watch_payload_from_record_getter=lambda: getattr(self, 'watch_payload_from_record', None),
+            archive_pikpak_item_getter=self.archive_pikpak_item,
+            refresh_transfer_task_counts_getter=self.refresh_transfer_task_counts,
+            process_web_transfer_task_getter=self.process_web_transfer_task,
+            process_web_task_queue_getter=self.process_web_task_queue,
+        )
+        self._te = TransferEngine(
+            app_getter=lambda: self.app,
+            gc_getter=lambda: self.gc,
+            diagnostic=self.diagnostic,
+            downloader_loop_getter=lambda: self.loop,
+            uploader_getter=lambda: getattr(self, 'uploader', None),
+            progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
+            pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
+            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
+            web_task_manager_getter=lambda: getattr(self, 'web_task_manager', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            local_storage_guard_getter=lambda: getattr(self, 'local_storage_guard', None),
+            download_upload_window_getter=lambda: getattr(self, 'download_upload_window', None),
+            my_id_getter=lambda: self.my_id,
+            env_save_directory_getter=lambda: self.env_save_directory,
+            get_final_save_directory_getter=lambda: self.get_final_save_directory,
+            get_final_file_path_getter=lambda: self.get_final_file_path,
+            infer_target_profile_getter=lambda: self.infer_target_profile,
+            normalize_download_upload_meta_getter=lambda: self.normalize_download_upload_meta,
+            is_pikpak_target_getter=lambda: getattr(self, 'is_pikpak_target'),
+            build_transfer_upload_meta_getter=lambda: self.build_transfer_upload_meta,
+            notify_bot_transfer_download_progress_getter=lambda: getattr(self, 'notify_bot_transfer_download_progress'),
+            notify_bot_transfer_downloaded_getter=lambda: getattr(self, 'notify_bot_transfer_downloaded'),
+            record_transfer_download_success_getter=lambda: getattr(self, 'record_transfer_download_success'),
+            try_reuse_transfer_download_record_getter=lambda: getattr(self, 'try_reuse_transfer_download_record'),
+            on_transfer_file_ready_getter=lambda: getattr(self, 'on_transfer_file_ready'),
+            on_transfer_item_skipped_getter=lambda: getattr(self, 'on_transfer_item_skipped'),
+            on_transfer_item_failed_getter=lambda: getattr(self, 'on_transfer_item_failed'),
+            on_transfer_upload_progress_getter=lambda: getattr(self, 'on_transfer_upload_progress'),
+            on_transfer_upload_status_getter=lambda: getattr(self, 'on_transfer_upload_status'),
+            notify_bot_transfer_upload_progress_getter=lambda: getattr(self, 'notify_bot_transfer_upload_progress'),
+            notify_bot_transfer_upload_status_getter=lambda: getattr(self, 'notify_bot_transfer_upload_status'),
+            release_download_upload_window_getter=lambda: self.release_download_upload_window,
+            release_transfer_local_storage_getter=lambda: self.release_transfer_local_storage,
+            mark_transfer_local_storage_materialized_getter=lambda: getattr(self, 'mark_transfer_local_storage_materialized'),
+            transfer_send_interval_getter=lambda: self.transfer_send_interval,
+            ensure_uploader_getter=lambda: self.ensure_uploader,
+            build_bot_transfer_progress_text_getter=lambda: getattr(self, 'build_bot_transfer_progress_text'),
+            schedule_bot_transfer_progress_update_getter=lambda: getattr(self, 'schedule_bot_transfer_progress_update'),
+            bot_task_link_getter=lambda: self.bot_task_link,
+            queue_getter=lambda: self.queue,
+            pb_progress_getter=lambda: self.pb.progress,
+            event_getter=lambda: self.event,
+            create_download_task_getter=lambda: self.create_download_task,
+            detect_transfer_range_async_getter=lambda: self.detect_transfer_range_async,
+        )
+
+    @property
+    def transfer_engine(self):
+        try:
+            return object.__getattribute__(self, '_te')
+        except AttributeError:
+            self._te = self._create_transfer_engine()
+            return self._te
+
+    def _create_transfer_engine(self):
+        return TransferEngine(
+            app_getter=lambda: self.app,
+            gc_getter=lambda: self.gc,
+            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            downloader_loop_getter=lambda: self.loop,
+            uploader_getter=lambda: getattr(self, 'uploader', None),
+            progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
+            pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
+            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
+            web_task_manager_getter=lambda: getattr(self, 'web_task_manager', None),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            local_storage_guard_getter=lambda: getattr(self, 'local_storage_guard', None),
+            download_upload_window_getter=lambda: getattr(self, 'download_upload_window', None),
+            my_id_getter=lambda: getattr(self, 'my_id', 0),
+            env_save_directory_getter=lambda: getattr(self, 'env_save_directory', lambda *a, **kw: ''),
+            get_final_save_directory_getter=lambda: getattr(self, 'get_final_save_directory', lambda *a, **kw: ''),
+            get_final_file_path_getter=lambda: getattr(self, 'get_final_file_path', lambda *a, **kw: ''),
+            infer_target_profile_getter=lambda: getattr(self, 'infer_target_profile', lambda *a, **kw: None),
+            normalize_download_upload_meta_getter=lambda: getattr(self, 'normalize_download_upload_meta', lambda wu: wu),
+            is_pikpak_target_getter=lambda: getattr(self, 'is_pikpak_target', lambda *a, **kw: False),
+            build_transfer_upload_meta_getter=lambda: getattr(self, 'build_transfer_upload_meta', lambda *a, **kw: {}),
+            notify_bot_transfer_download_progress_getter=lambda: getattr(self, 'notify_bot_transfer_download_progress', lambda *a, **kw: None),
+            notify_bot_transfer_downloaded_getter=lambda: getattr(self, 'notify_bot_transfer_downloaded', lambda *a, **kw: None),
+            record_transfer_download_success_getter=lambda: getattr(self, 'record_transfer_download_success', lambda **kw: None),
+            try_reuse_transfer_download_record_getter=lambda: getattr(self, 'try_reuse_transfer_download_record', lambda *a, **kw: False),
+            on_transfer_file_ready_getter=lambda: getattr(self, 'on_transfer_file_ready', lambda *a, **kw: None),
+            on_transfer_item_skipped_getter=lambda: getattr(self, 'on_transfer_item_skipped', lambda *a, **kw: None),
+            on_transfer_item_failed_getter=lambda: getattr(self, 'on_transfer_item_failed', lambda *a, **kw: None),
+            on_transfer_upload_progress_getter=lambda: getattr(self, 'on_transfer_upload_progress', lambda *a, **kw: None),
+            on_transfer_upload_status_getter=lambda: getattr(self, 'on_transfer_upload_status', lambda *a, **kw: None),
+            notify_bot_transfer_upload_progress_getter=lambda: getattr(self, 'notify_bot_transfer_upload_progress', lambda *a, **kw: None),
+            notify_bot_transfer_upload_status_getter=lambda: getattr(self, 'notify_bot_transfer_upload_status', lambda *a, **kw: None),
+            release_download_upload_window_getter=lambda: getattr(self, 'release_download_upload_window', lambda wu: None),
+            release_transfer_local_storage_getter=lambda: getattr(self, 'release_transfer_local_storage', lambda wu: None),
+            mark_transfer_local_storage_materialized_getter=lambda: getattr(self, 'mark_transfer_local_storage_materialized', lambda wu: None),
+            transfer_send_interval_getter=lambda: getattr(self, 'transfer_send_interval', lambda: 1.0),
+            ensure_uploader_getter=lambda: getattr(self, 'ensure_uploader', lambda: None),
+            build_bot_transfer_progress_text_getter=lambda: getattr(self, 'build_bot_transfer_progress_text', lambda *a, **kw: ''),
+            schedule_bot_transfer_progress_update_getter=lambda: getattr(self, 'schedule_bot_transfer_progress_update', lambda *a, **kw: None),
+            bot_task_link_getter=lambda: getattr(self, 'bot_task_link', set()),
+            queue_getter=lambda: getattr(self, 'queue', None),
+            pb_progress_getter=lambda: getattr(getattr(self, 'pb', None), 'progress', None),
+            event_getter=lambda: getattr(self, 'event', None),
+            create_download_task_getter=lambda: getattr(self, 'create_download_task', lambda **kw: {}),
+            detect_transfer_range_async_getter=lambda: getattr(self, 'detect_transfer_range_async', lambda *a, **kw: None),
+        )
+
+    def _ensure_watch_manager(self):
+        try:
+            object.__getattribute__(self, 'watch_manager')
+            return
+        except AttributeError:
+            pass
+        try:
+            diagnostic = object.__getattribute__(self, 'diagnostic')
+        except AttributeError:
+            diagnostic = RichDiagnosticAdapter(console, log)
+        self.watch_manager = LiveWatchManager(
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            operation_submitter=getattr(self, 'submit_web_operation', lambda ot, p: {'id': f'{ot}-0', 'status': TransferStatus.PENDING}),
+            user_getter=lambda: getattr(self, 'user', None),
+            app_getter=lambda: getattr(self, 'app', None),
+            diagnostic=diagnostic
+        )
 
     def _ensure_pikpak_manager(self):
-        if getattr(self, 'pikpak_manager', None) is not None:
+        try:
+            object.__getattribute__(self, 'pikpak_manager')
             return
-        import types
-        cls_getter = TelegramRestrictedMediaDownloader.get_pikpak_archive_client
-        inst_getter = self.get_pikpak_archive_client
-        if isinstance(inst_getter, types.MethodType) and inst_getter.__func__ is cls_getter:
-            archive_getter = lambda: build_pikpak_archive_client(
-                (getattr(getattr(self, 'gc', None), 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
-            )
-        else:
-            archive_getter = inst_getter
+        except AttributeError:
+            pass
+        try:
+            diagnostic = object.__getattribute__(self, 'diagnostic')
+        except AttributeError:
+            diagnostic = RichDiagnosticAdapter(console, log)
         self.pikpak_manager = PikpakIntegrationManager(
-            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
-            pikpak_archive_client_getter=archive_getter,
-            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            pikpak_archive_client_getter=lambda: build_pikpak_archive_client(
+                (getattr(getattr(self, 'gc', None), 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
+            ),
+            diagnostic=diagnostic,
             gc_getter=lambda: getattr(self, 'gc', None),
-            refresh_counts=lambda tid: (self.transfer_store.refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+            refresh_counts=lambda tid: (getattr(self, 'transfer_store', None).refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
         )
 
     def _ensure_progress_tracker(self):
-        if getattr(self, 'progress_tracker', None) is not None:
+        try:
+            object.__getattribute__(self, 'progress_tracker')
             return
-        import types
-        cls_schedule = TelegramRestrictedMediaDownloader.schedule_bot_transfer_progress_update
-        cls_notify_status = TelegramRestrictedMediaDownloader.notify_bot_transfer_upload_status
-        cls_notify_progress = TelegramRestrictedMediaDownloader.notify_bot_transfer_upload_progress
-
-        def _resolve(method_name, cls_method):
-            inst = getattr(self, method_name, None)
-            if isinstance(inst, types.MethodType) and inst.__func__ is cls_method:
-                return None
-            return inst
-
+        except AttributeError:
+            pass
+        try:
+            diagnostic = object.__getattribute__(self, 'diagnostic')
+        except AttributeError:
+            diagnostic = RichDiagnosticAdapter(console, log)
         self.progress_tracker = TransferProgressTracker(
-            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
-            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
+            diagnostic=diagnostic,
             app_getter=lambda: getattr(self, 'app', None),
             gc_getter=lambda: getattr(self, 'gc', None),
             loop_getter=lambda: getattr(self, 'loop', None),
             pb_getter=lambda: getattr(self, 'pb', None),
-            schedule_override=_resolve('schedule_bot_transfer_progress_update', cls_schedule),
-            notify_status_override=_resolve('notify_bot_transfer_upload_status', cls_notify_status),
-            notify_progress_override=_resolve('notify_bot_transfer_upload_progress', cls_notify_progress),
             release_storage=getattr(self, 'release_transfer_local_storage', lambda wu: None),
             release_window=getattr(self, 'release_download_upload_window', lambda wu: None),
             start_download_upload=getattr(self, 'start_download_upload', lambda **kw: False),
             archive_pikpak_item=getattr(self, 'archive_pikpak_item', lambda **kw: None),
             fail_transfer_item=getattr(self, 'fail_transfer_item', lambda *a: None),
-            refresh_counts=lambda tid: (self.transfer_store.refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+            refresh_counts=lambda tid: (getattr(self, 'transfer_store', None).refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
         )
 
     @staticmethod
@@ -288,6 +463,9 @@ class TelegramRestrictedMediaDownloader:
         await asyncio.sleep(wait_seconds)
 
     def submit_web_task(self, task_id: int) -> None:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.submit_web_task(task_id)
         if task_id in self.web_submitted_task_ids:
             return
         self.web_submitted_task_ids.add(task_id)
@@ -300,6 +478,10 @@ class TelegramRestrictedMediaDownloader:
         self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
 
     def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.discard_web_task_submission(task_id, cancel_running)
+
         def cleanup() -> None:
             self.web_submitted_task_ids.discard(task_id)
             self.drop_web_task_from_queue(task_id)
@@ -323,6 +505,9 @@ class TelegramRestrictedMediaDownloader:
             cleanup()
 
     def drop_web_task_from_queue(self, task_id: int) -> None:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.drop_web_task_from_queue(task_id)
         kept_task_ids = []
         while True:
             try:
@@ -336,6 +521,9 @@ class TelegramRestrictedMediaDownloader:
             self.web_task_queue.put_nowait(queued_task_id)
 
     def delete_web_task(self, task_id: int) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.delete_web_task(task_id)
         if not self.transfer_store:
             return False
         deleted = self.transfer_store.delete_task(task_id)
@@ -344,6 +532,9 @@ class TelegramRestrictedMediaDownloader:
         return deleted
 
     def pause_web_task(self, task_id: int) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.pause_web_task(task_id)
         if not self.transfer_store or not self.transfer_store.get_task(task_id):
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
@@ -352,6 +543,9 @@ class TelegramRestrictedMediaDownloader:
         return True
 
     def resume_web_task(self, task_id: int) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.resume_web_task(task_id)
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
@@ -363,6 +557,9 @@ class TelegramRestrictedMediaDownloader:
         return True
 
     def retry_failed_web_task(self, task_id: int) -> int:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.retry_failed_web_task(task_id)
         if not self.transfer_store:
             return 0
         task = self.transfer_store.get_task(task_id)
@@ -383,6 +580,9 @@ class TelegramRestrictedMediaDownloader:
         return reset_items
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.recover_pikpak_failed_item_before_retry(task, item)
         if not self.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):
             return False
         error_message = str(item.get('error_message') or '')
@@ -424,10 +624,16 @@ class TelegramRestrictedMediaDownloader:
         return True
 
     def next_web_operation_id(self, operation_type: str) -> str:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.next_web_operation_id(operation_type)
         self.web_operation_counter += 1
         return f'{operation_type}-{self.web_operation_counter}'
 
     def submit_web_operation(self, operation_type: str, payload: dict) -> dict:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.submit_web_operation(operation_type, payload)
         operation_id = self.next_web_operation_id(operation_type)
         operation = {
             'id': operation_id,
@@ -443,11 +649,7 @@ class TelegramRestrictedMediaDownloader:
         return operation
 
     def detect_transfer_range(self, source_link: str) -> Optional[dict]:
-        future = asyncio.run_coroutine_threadsafe(
-            self.detect_transfer_range_async(source_link),
-            self.loop
-        )
-        return future.result(timeout=60)
+        return self.transfer_engine.detect_transfer_range(source_link)
 
     async def detect_transfer_range_async(self, source_link: str) -> Optional[dict]:
         origin_meta = await parse_link(client=self.app.client, link=source_link)
@@ -538,51 +740,6 @@ class TelegramRestrictedMediaDownloader:
             if next_offset_id <= 0 or next_offset_id == offset_id:
                 return
             offset_id = next_offset_id
-
-    @staticmethod
-    def download_watch_id(source_link: str) -> str:
-        return LiveWatchManager.download_watch_id(source_link)
-
-    @staticmethod
-    def forward_watch_id(rule: str) -> str:
-        return LiveWatchManager.forward_watch_id(rule)
-
-    @staticmethod
-    def watch_payload_from_record(watch: dict) -> dict:
-        return LiveWatchManager.watch_payload_from_record(watch)
-
-    def persisted_watches(self) -> list:
-        return self.watch_manager.persisted_watches()
-
-    def persist_watch(self, watch: dict) -> dict:
-        return self.watch_manager.persist_watch(watch)
-
-    def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
-        self.watch_manager.set_live_watch_status(watch_id, status, error_message)
-
-    def list_watches(self) -> list:
-        return self.watch_manager.list_watches()
-
-    def pending_watch_sources(self, watch_type: str) -> set:
-        return self.watch_manager.pending_watch_sources(watch_type)
-
-    def persisted_watch_sources(self, watch_type: str) -> set:
-        return self.watch_manager.persisted_watch_sources(watch_type)
-
-    def has_download_watch_source(self, source_link: str) -> bool:
-        return self.watch_manager.has_download_watch_source(source_link)
-
-    def has_forward_watch_source(self, source_link: str) -> bool:
-        return self.watch_manager.has_forward_watch_source(source_link)
-
-    def create_watch(self, payload: dict) -> dict:
-        return self.watch_manager.create_watch(payload)
-
-    def create_live_watch_operation(self, watch_type: str, payload: dict) -> str:
-        return self.watch_manager._create_live_watch_operation(watch_type, payload)
-
-    def delete_watch(self, watch_id: str) -> bool:
-        return self.watch_manager.delete_watch(watch_id)
 
     def statistics(self) -> dict:
         return {
@@ -847,31 +1004,7 @@ class TelegramRestrictedMediaDownloader:
             message: pyrogram.types.Message,
             file_path: str
     ) -> bool:
-        if not isinstance(with_upload, dict):
-            self.release_download_upload_window(with_upload)
-            return False
-        try:
-            try:
-                media_group = message.get_media_group()
-            except Exception:
-                media_group = None
-            with_upload['message_id'] = getattr(message, 'id', None)
-            with_upload['media_group'] = media_group
-            with_upload.setdefault('_local_storage_release', None)
-            self.ensure_uploader().download_upload(
-                with_upload=with_upload,
-                file_path=file_path
-            )
-            return True
-        except Exception as e:
-            error = f'创建上传任务失败:{e}'
-            log.error(error, exc_info=True)
-            callback = with_upload.get('failure_callback')
-            if callable(callback):
-                callback(with_upload, error)
-            self.release_transfer_local_storage(with_upload)
-            self.release_download_upload_window(with_upload)
-            return False
+        return self.transfer_engine.start_download_upload(with_upload, message, file_path)
 
     async def get_download_link_from_bot(
             self,
@@ -954,9 +1087,7 @@ class TelegramRestrictedMediaDownloader:
         )
 
     def refresh_transfer_task_counts(self, task_id: int) -> None:
-        if not self.transfer_store:
-            return
-        self.transfer_store.refresh_task_counts(task_id)
+        return self.transfer_engine.refresh_transfer_task_counts(task_id)
 
     def create_transfer_item_for_download(
             self,
@@ -969,79 +1100,21 @@ class TelegramRestrictedMediaDownloader:
             final_path: str,
             file_size: int
     ) -> Optional[dict]:
-        if not isinstance(task_with_upload, dict):
-            return task_with_upload
-        source_chat_id = str(getattr(getattr(message, 'chat', None), 'id', chat_id))
-        source_folder = task_with_upload.get('source_folder') or source_folder_from_message(
-            message,
-            fallback_chat_id=chat_id,
-            fallback_link=link
+        return self.transfer_engine.create_transfer_item_for_download(
+            task_with_upload, chat_id, link, message,
+            media_type, file_name, final_path, file_size
         )
-        final_path = os.path.join(os.path.dirname(final_path), source_folder, os.path.basename(final_path))
-        task_with_upload['message_id'] = getattr(message, 'id', None)
-        task_with_upload['source_chat_id'] = source_chat_id
-        task_with_upload['source_link'] = getattr(message, 'link', None) or link
-        task_with_upload['source_folder'] = source_folder
-        task_with_upload['media_type'] = media_type
-        task_with_upload['file_name'] = file_name
-        task_with_upload['file_size'] = file_size
-        if not self.transfer_store or not task_with_upload.get('task_id'):
-            return task_with_upload
-        task_id = int(task_with_upload.get('task_id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=source_chat_id,
-            source_message_id=getattr(message, 'id', None),
-            source_link=getattr(message, 'link', None) or link,
-            target_link=task_with_upload.get('link'),
-            media_type=media_type,
-            file_name=file_name,
-            file_size=file_size,
-            local_path=final_path,
-            source_folder=source_folder,
-            archive_status='pending' if task_with_upload.get('target_profile') == 'pikpak' else None,
-            phase='downloading',
-            status=TransferStatus.RUNNING
+
+    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
+        source_link = source_link or task.get('source_link')
+        return self.build_download_upload_meta(
+            target_link=task.get('target_link'),
+            target_profile=task.get('target_profile'),
+            source_link=source_link,
+            source_folder=source_folder_from_link(source_link),
+            task_id=task.get('id'),
+            media_type=media_type
         )
-        self.transfer_store.update_item_progress(
-            item_id=item_id,
-            phase='downloading',
-            download_current=0,
-            download_total=file_size
-        )
-        task_with_upload['item_id'] = item_id
-        self.refresh_transfer_task_counts(task_id)
-        return task_with_upload
-
-    def transfer_download_progress(
-            self,
-            current: int,
-            total: int,
-            progress,
-            task_id: int,
-            with_upload: Optional[dict] = None
-    ) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.transfer_download_progress(current, total, progress, task_id, with_upload)
-
-    @staticmethod
-    def transfer_percent(current: int, total: int) -> str:
-        return TransferProgressTracker.transfer_percent(current, total)
-
-    @staticmethod
-    def transfer_size_text(current: int, total: int) -> str:
-        return TransferProgressTracker.transfer_size_text(current, total)
-
-    def build_bot_transfer_progress_text(
-            self,
-            progress: dict,
-            phase: str,
-            current: int = 0,
-            total: int = 0,
-            error_message: Optional[str] = None
-    ) -> str:
-        self._ensure_progress_tracker()
-        return self.progress_tracker.build_bot_transfer_progress_text(progress, phase, current, total, error_message)
 
     async def create_bot_transfer_progress(
             self,
@@ -1082,64 +1155,6 @@ class TelegramRestrictedMediaDownloader:
             log.warning(f'无法创建监听转存进度消息,{_t(KeyWord.REASON)}:"{e}"')
             return None
 
-    def schedule_bot_transfer_progress_update(self, progress: Optional[dict], text: str, force: bool = False) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.schedule_bot_transfer_progress_update(progress, text, force)
-
-    def notify_bot_transfer_download_progress(self, with_upload: Optional[dict], current: int, total: int) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.notify_bot_transfer_download_progress(with_upload, current, total)
-
-    def notify_bot_transfer_downloaded(self, with_upload: Optional[dict], file_size: Optional[int]) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.notify_bot_transfer_downloaded(with_upload, file_size)
-
-    def notify_bot_transfer_upload_progress(self, upload_task: UploadTask, current: int, total: int) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.notify_bot_transfer_upload_progress(upload_task, current, total)
-
-    def notify_bot_transfer_upload_status(self, upload_task: UploadTask) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.notify_bot_transfer_upload_status(upload_task)
-
-    def record_transfer_download_success(
-            self,
-            with_upload: Optional[dict],
-            message: pyrogram.types.Message,
-            file_path: str
-    ) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.record_transfer_download_success(with_upload, message, file_path)
-
-    def try_reuse_transfer_download_record(
-            self,
-            task_with_upload: Optional[dict],
-            message: pyrogram.types.Message,
-            expected_size: int
-    ) -> Optional[str]:
-        self._ensure_progress_tracker()
-        return self.progress_tracker.try_reuse_transfer_download_record(task_with_upload, message, expected_size)
-
-    def on_transfer_upload_progress(self, upload_task: UploadTask, current: int, total: int) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.on_transfer_upload_progress(upload_task, current, total)
-
-    def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
-        self._ensure_progress_tracker()
-        return self.progress_tracker.on_transfer_file_ready(file_path, with_upload)
-
-    def on_transfer_item_skipped(self, with_upload: dict, message: str) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.on_transfer_item_skipped(with_upload, message)
-
-    def on_transfer_item_failed(self, with_upload: dict, message: str) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.on_transfer_item_failed(with_upload, message)
-
-    def on_transfer_upload_status(self, upload_task: UploadTask) -> None:
-        self._ensure_progress_tracker()
-        self.progress_tracker.on_transfer_upload_status(upload_task)
-
     def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
         source_link = source_link or task.get('source_link')
         return self.build_download_upload_meta(
@@ -1161,42 +1176,20 @@ class TelegramRestrictedMediaDownloader:
             media_type: Optional[str] = None,
             send_as_media_group: Optional[bool] = None
     ) -> dict:
-        profile = self.infer_target_profile(target_link, target_profile)
-        return {
-            'link': target_link,
-            'file_name': None,
-            'with_delete': True if profile == 'pikpak' else self.gc.upload_delete,
-            'send_as_media_group': (False if profile == 'pikpak' else True) if send_as_media_group is None else send_as_media_group,
-            'task_id': task_id,
-            'source_link': source_link,
-            'source_folder': source_folder or source_folder_from_link(source_link),
-            'target_profile': profile,
-            'media_type': media_type,
-            'on_file_ready': self.on_transfer_file_ready,
-            'status_callback': self.on_transfer_upload_status,
-            'progress_callback': self.on_transfer_upload_progress,
-            'skip_callback': self.on_transfer_item_skipped,
-            'failure_callback': self.on_transfer_item_failed
-        }
+        return self.transfer_engine.build_download_upload_meta(
+            target_link, target_profile, source_link, source_folder,
+            task_id, media_type, send_as_media_group
+        )
 
     def telegram_upload_size_limit_error(self, file_size: int) -> Optional[str]:
-        is_premium = bool(getattr(getattr(self.app.client, 'me', None), 'is_premium', False))
-        if is_allow_upload(file_size, is_premium):
-            return None
-        return '上传大小超过限制(普通用户2000MiB,会员用户4000MiB)'
+        return self.transfer_engine.telegram_upload_size_limit_error(file_size)
 
     def get_download_upload_size_limit_error(
             self,
             task_with_upload: Optional[dict],
             file_size: int
     ) -> Optional[str]:
-        if not isinstance(task_with_upload, dict):
-            return None
-        target_profile = task_with_upload.get('target_profile')
-        limit = target_profile_limit(getattr(self, 'gc', None), target_profile)
-        if limit is not None and file_size > limit:
-            return target_profile_size_error(target_profile, file_size, limit)
-        return self.telegram_upload_size_limit_error(file_size)
+        return self.transfer_engine.get_download_upload_size_limit_error(task_with_upload, file_size)
 
     def skip_download_before_transfer_upload(
             self,
@@ -1209,24 +1202,10 @@ class TelegramRestrictedMediaDownloader:
             file_size: int,
             error_message: str
     ) -> None:
-        console.log(
-            f'{_t(KeyWord.DOWNLOAD_TASK)}'
-            f'{_t(KeyWord.FILE)}:"{file_name}",'
-            f'{_t(KeyWord.SIZE)}:{format_file_size},'
-            f'{_t(KeyWord.TYPE)}:{_t(valid_dtype)},'
-            f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。'
-            f'{error_message}'
+        self.transfer_engine.skip_download_before_transfer_upload(
+            link, file_name, format_file_size, valid_dtype,
+            task_with_upload, message, file_size, error_message
         )
-        DownloadTask.set_error(link=link, key=file_name, value=error_message)
-        callback = task_with_upload.get('skip_callback') if isinstance(task_with_upload, dict) else None
-        if callable(callback):
-            task_with_upload['message_id'] = getattr(message, 'id', None)
-            task_with_upload['media_type'] = valid_dtype
-            task_with_upload['file_name'] = file_name
-            task_with_upload['file_size'] = file_size
-            callback(task_with_upload, error_message)
-        self.notify_bot_transfer_upload_precheck_skipped(task_with_upload, file_name, file_size, error_message)
-        self.release_download_upload_window(task_with_upload)
 
     def notify_bot_transfer_upload_precheck_skipped(
             self,
@@ -1235,118 +1214,9 @@ class TelegramRestrictedMediaDownloader:
             file_size: int,
             error_message: str
     ) -> None:
-        if not isinstance(task_with_upload, dict):
-            return
-        progress = task_with_upload.get('bot_progress')
-        if not isinstance(progress, dict):
-            return
-        progress['file_name'] = file_name
-        text = self.build_bot_transfer_progress_text(
-            progress,
-            phase='skipped',
-            current=file_size,
-            total=file_size,
-            error_message=error_message
+        self.transfer_engine.notify_bot_transfer_upload_precheck_skipped(
+            task_with_upload, file_name, file_size, error_message
         )
-        self.schedule_bot_transfer_progress_update(progress, text, force=True)
-
-    def get_pikpak_archive_client(self):
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.get_pikpak_archive_client()
-
-    def archive_pikpak_item(
-            self,
-            target_profile: Optional[str],
-            item_id: Optional[int],
-            task_id: Optional[int],
-            message,
-            source_link: Optional[str],
-            source_folder: Optional[str] = None,
-            file_name: Optional[str] = None,
-            file_size: Optional[int] = None,
-            transferred_at: Optional[float] = None,
-            match_original_name: Optional[bool] = None
-    ):
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.archive_pikpak_item(
-            target_profile=target_profile,
-            item_id=item_id,
-            task_id=task_id,
-            message=message,
-            source_link=source_link,
-            source_folder=source_folder,
-            file_name=file_name,
-            file_size=file_size,
-            transferred_at=transferred_at,
-            match_original_name=match_original_name,
-        )
-
-    @staticmethod
-    def transfer_item_archive_match_original_name(item: dict) -> Optional[bool]:
-        return PikpakIntegrationManager.transfer_item_archive_match_original_name(item)
-
-    @staticmethod
-    def transfer_item_archive_timestamp(item: dict) -> float:
-        return PikpakIntegrationManager.transfer_item_archive_timestamp(item)
-
-    @staticmethod
-    def get_message_media_archive_filename(message) -> Optional[str]:
-        return PikpakIntegrationManager.get_message_media_archive_filename(message)
-
-    @staticmethod
-    def get_message_media_archive_extension(dtype: str, media) -> str:
-        return PikpakIntegrationManager.get_message_media_archive_extension(dtype, media)
-
-    def fail_transfer_item(
-            self,
-            task_id: int,
-            item_id: int,
-            message: str
-    ) -> None:
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.fail_transfer_item(task_id, item_id, message)
-
-    def skip_empty_transfer_source_message(
-            self,
-            task: dict,
-            origin_chat_id,
-            source_link: str,
-            message_id: Optional[int]
-    ) -> int:
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.skip_empty_transfer_source_message(
-            task, origin_chat_id, source_link, message_id
-        )
-
-    def complete_forwarded_pikpak_item(
-            self,
-            task: dict,
-            item_id: int,
-            task_id: int,
-            message,
-            source_link: str,
-            transferred_at: float
-    ) -> bool:
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.complete_forwarded_pikpak_item(
-            task, item_id, task_id, message, source_link, transferred_at
-        )
-
-    def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.get_message_media_target_limit_meta(message)
-
-    def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]:
-        self._ensure_pikpak_manager()
-        return self.pikpak_manager.get_task_target_size_limit_error(task, message)
-
-    @staticmethod
-    def is_pikpak_target(target_link: Optional[str], target_profile: Optional[str] = None) -> bool:
-        return PikpakIntegrationManager.is_pikpak_target(target_link, target_profile)
-
-    @staticmethod
-    def forwarded_message_has_identity(forwarded_message) -> bool:
-        return PikpakIntegrationManager.forwarded_message_has_identity(forwarded_message)
 
     async def forward_messages_with_flood_retry(
             self,
@@ -1364,14 +1234,6 @@ class TelegramRestrictedMediaDownloader:
                 )
             except (FloodWait, FloodPremiumWait) as e:
                 await self.wait_for_telegram_flood(e, action='forward message')
-
-    @staticmethod
-    def is_pikpak_ingest_success_message(message) -> bool:
-        return PikpakIntegrationManager.is_pikpak_ingest_success_message(message)
-
-    @staticmethod
-    def is_pikpak_ingest_failure_message(message) -> bool:
-        return PikpakIntegrationManager.is_pikpak_ingest_failure_message(message)
 
     async def wait_for_pikpak_ingest_confirmation(
             self,
@@ -1420,27 +1282,13 @@ class TelegramRestrictedMediaDownloader:
             origin_chat_id,
             limit_error: dict
     ) -> int:
-        task_id = int(task.get('id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=origin_chat_id,
-            source_message_id=getattr(message, 'id', None),
-            source_link=source_link,
-            target_link=task.get('target_link'),
-            media_type=limit_error.get('media_type'),
-            file_name=limit_error.get('file_name'),
-            file_size=limit_error.get('file_size'),
-            phase='skipped',
-            status=TransferStatus.SKIPPED,
-            error_message=limit_error.get('message')
+        return self.transfer_engine.skip_transfer_item_for_target_limit(
+            task, message, source_link, origin_chat_id, limit_error
         )
-        self.transfer_store.add_event(task_id, limit_error.get('message'), level='warning', item_id=item_id)
-        self.refresh_transfer_task_counts(task_id)
-        return item_id
 
     @staticmethod
     def transfer_single_link(source_link: str) -> str:
-        return source_link if '?single' in source_link else f'{source_link}?single'
+        return TransferEngine.transfer_single_link(source_link)
 
     async def create_web_transfer_fallback_download(
             self,
@@ -1676,25 +1524,14 @@ class TelegramRestrictedMediaDownloader:
             source_link: str,
             message_id: int
     ) -> None:
-        task_id = int(task.get('id'))
-        message_link = f'{source_link.rstrip("/")}/{message_id}'
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=origin_chat_id,
-            source_message_id=message_id,
-            source_link=message_link,
-            target_link=task.get('target_link'),
-            phase='skipped',
-            status=TransferStatus.SKIPPED,
-            error_message=f'Source message not found: {message_id}.'
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.skip_missing_web_transfer_range_message(
+                task, origin_chat_id, source_link, message_id
+            )
+        self.transfer_engine.skip_missing_web_transfer_range_message(
+            task, origin_chat_id, source_link, message_id
         )
-        self.transfer_store.add_event(
-            task_id,
-            f'Source message not found, skipped: {message_id}.',
-            level='warning',
-            item_id=item_id
-        )
-        self.refresh_transfer_task_counts(task_id)
 
     async def process_web_transfer_task(self, task_id: int) -> None:
         if not self.transfer_store:
@@ -1935,9 +1772,6 @@ class TelegramRestrictedMediaDownloader:
             return
         raise ValueError('Unsupported watch type.')
 
-    def mark_pending_watch(self, payload: dict, status: str, error_message: str = None) -> None:
-        self.watch_manager.mark_pending_watch(payload, status, error_message)
-
     async def apply_web_upload(self, payload: dict) -> None:
         if not self.uploader:
             self.uploader = TelegramUploader(upload_context=self)
@@ -2026,6 +1860,9 @@ class TelegramRestrictedMediaDownloader:
                 self.web_operation_queue.task_done()
 
     def start_next_web_transfer_task(self) -> None:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.start_next_web_transfer_task()
         if self.web_running_task and not self.web_running_task.done():
             return
         if self.web_running_task and self.web_running_task.done():
@@ -2053,6 +1890,9 @@ class TelegramRestrictedMediaDownloader:
                 self.web_task_queue.task_done()
 
     def is_web_transfer_task_schedulable(self, task_id: int) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.is_web_transfer_task_schedulable(task_id)
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
@@ -2062,6 +1902,9 @@ class TelegramRestrictedMediaDownloader:
         )
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.finish_web_transfer_task(task_id, completed_task)
         if task_id is not None:
             self.web_submitted_task_ids.discard(task_id)
         if self.web_running_task is completed_task:
@@ -2088,681 +1931,7 @@ class TelegramRestrictedMediaDownloader:
             await super().start(client, message)
 
     async def callback_data(self, client: pyrogram.Client, callback_query: pyrogram.types.CallbackQuery):
-        callback_data = await super().callback_data(client, callback_query)
-        kb = KeyboardButton(callback_query)
-        if callback_data is None:
-            return None
-        elif callback_data == BotCallbackText.NOTICE:
-            try:
-                self.gc.config[BotCallbackText.NOTICE] = not self.gc.config.get(BotCallbackText.NOTICE)
-                self.gc.save_config(self.gc.config)
-                n_s: str = '启用' if self.gc.config.get(BotCallbackText.NOTICE) else '禁用'
-                n_p: str = f'机器人消息通知已{n_s}。'
-                log.info(n_p)
-                console.log(n_p, style='#FF4689')
-                await kb.toggle_setting_button(global_config=self.gc.config, user_config=self.app.config)
-            except Exception as e:
-                await callback_query.message.reply_text(
-                    '启用或禁用机器人消息通知失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'启用或禁用机器人消息通知失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data == BotCallbackText.BACK_HELP:
-            meta: dict = await self.help()
-            await callback_query.message.edit_text(meta.get('text'))
-            await callback_query.message.edit_reply_markup(meta.get('keyboard'))
-        elif callback_data == BotCallbackText.BACK_TABLE:
-            meta: dict = await self.table()
-            await callback_query.message.edit_text(meta.get('text'))
-            await callback_query.message.edit_reply_markup(meta.get('keyboard'))
-        elif callback_data in (BotCallbackText.DOWNLOAD, BotCallbackText.DOWNLOAD_UPLOAD):
-            if not isinstance(self.cd.data, dict):
-                return None
-            meta: Union[dict, None] = self.cd.data.copy()
-            self.cd.data = None
-            origin_link: str = meta.get('origin_link')
-            target_link: str = meta.get('target_link')
-            start_id: Union[int, None] = meta.get('start_id')
-            end_id: Union[int, None] = meta.get('end_id')
-            if callback_data == BotCallbackText.DOWNLOAD:
-                self.last_message.text = f'/download {origin_link} {start_id} {end_id}'
-                await self.get_download_link_from_bot(
-                    client=self.last_client,
-                    message=self.last_message
-                )
-            elif callback_data == BotCallbackText.DOWNLOAD_UPLOAD:
-                self.last_message.text = f'/download {origin_link} {start_id} {end_id}'
-                await self.get_download_link_from_bot(
-                    client=self.last_client,
-                    message=self.last_message,
-                    with_upload=self.build_download_upload_meta(
-                        target_link=target_link,
-                        source_link=origin_link,
-                        source_folder=source_folder_from_link(origin_link),
-                        send_as_media_group=True
-                    )
-                )
-            await kb.task_assign_button()
-        elif callback_data == BotCallbackText.LOOKUP_LISTEN_INFO:
-            await self.app.client.send_message(
-                chat_id=callback_query.message.from_user.id,
-                text='/listen_info',
-                link_preview_options=LINK_PREVIEW_OPTIONS
-            )
-        elif callback_data == BotCallbackText.SHUTDOWN:
-            try:
-                self.app.config['is_shutdown'] = not self.app.config.get('is_shutdown')
-                self.app.save_config(self.app.config)
-                s_s: str = '启用' if self.app.config.get('is_shutdown') else '禁用'
-                s_p: str = f'退出后关机已{s_s}。'
-                log.info(s_p)
-                console.log(s_p, style='#FF4689')
-                await kb.toggle_setting_button(global_config=self.gc.config, user_config=self.app.config)
-            except Exception as e:
-                await callback_query.message.reply_text('启用或禁用自动关机失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'启用或禁用自动关机失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data == BotCallbackText.SETTING:
-            await kb.toggle_setting_button(global_config=self.gc.config, user_config=self.app.config)
-        elif callback_data == BotCallbackText.EXPORT_TABLE:
-            await kb.toggle_table_button(config=self.gc.config)
-        elif callback_data == BotCallbackText.DOWNLOAD_SETTING:
-            await kb.toggle_download_setting_button(user_config=self.app.config)
-        elif callback_data == BotCallbackText.UPLOAD_SETTING:
-            await kb.toggle_upload_setting_button(global_config=self.gc.config)
-        elif callback_data == BotCallbackText.FORWARD_SETTING:
-            await kb.toggle_forward_setting_button(global_config=self.gc.config)
-        elif callback_data in (
-                BotCallbackText.LINK_TABLE,
-                BotCallbackText.COUNT_TABLE,
-                BotCallbackText.UPLOAD_TABLE
-        ):
-            _prompt_string: str = ''
-            _false_text: str = ''
-            _choice: str = ''
-            res: Union[bool, None] = None
-            if callback_data == BotCallbackText.LINK_TABLE:
-                _prompt_string: str = '链接统计表'
-                _false_text: str = '😵😵😵没有链接需要统计。'
-                _choice: str = BotCallbackText.EXPORT_LINK_TABLE
-                res: Union[bool, None] = self.app.print_link_table(DownloadTask.LINK_INFO)
-            elif callback_data == BotCallbackText.COUNT_TABLE:
-                _prompt_string: str = '计数统计表'
-                _false_text: str = '😵😵😵当前没有任何下载。'
-                _choice: str = BotCallbackText.EXPORT_COUNT_TABLE
-                res: Union[bool, None] = self.app.print_count_table()
-            elif callback_data == BotCallbackText.UPLOAD_TABLE:
-                _prompt_string: str = '上传统计表'
-                _false_text: str = '😵😵😵当前没有任何上传。'
-                _choice: str = BotCallbackText.EXPORT_UPLOAD_TABLE
-                res: Union[bool, None] = self.app.print_upload_table(UploadTask.TASKS)
-            if res:
-                await callback_query.message.edit_text(f'👌👌👌`{_prompt_string}`已发送至您的「终端」请注意查收。')
-                await kb.choice_export_table_button(choice=_choice)
-                return None
-            elif res is False:
-                await callback_query.message.edit_text(_false_text)
-            else:
-                await callback_query.message.edit_text(
-                    f'😵‍💫😵‍💫😵‍💫`{_prompt_string}`打印失败。\n(具体原因请前往终端查看报错信息)')
-            await kb.back_table_button()
-        elif callback_data in (
-                BotCallbackText.TOGGLE_LINK_TABLE,
-                BotCallbackText.TOGGLE_COUNT_TABLE,
-                BotCallbackText.TOGGLE_UPLOAD_TABLE
-        ):
-            async def _toggle_button(_table_type):
-                export_config: dict = self.gc.config.get('export_table')
-                export_config[_table_type] = not export_config.get(_table_type)
-                if _table_type == 'link':
-                    t_t = '链接统计表'
-                elif _table_type == 'count':
-                    t_t = '计数统计表'
-                elif _table_type == 'upload':
-                    t_t = '上传统计表'
-                else:
-                    t_t = '统计表'
-                s_t: str = '启用' if export_config.get(_table_type) else '禁用'
-                t_p: str = f'退出后导出{t_t}已{s_t}。'
-                console.log(t_p, style='#FF4689')
-                log.info(t_p)
-                self.gc.save_config(self.gc.config)
-                await kb.toggle_table_button(
-                    config=self.gc.config,
-                    choice=_table_type
-                )
-
-            if callback_data == BotCallbackText.TOGGLE_LINK_TABLE:
-                await _toggle_button('link')
-            elif callback_data == BotCallbackText.TOGGLE_COUNT_TABLE:
-                await _toggle_button('count')
-            elif callback_data == BotCallbackText.TOGGLE_UPLOAD_TABLE:
-                await _toggle_button('upload')
-        elif callback_data in (
-                BotCallbackText.EXPORT_LINK_TABLE,
-                BotCallbackText.EXPORT_COUNT_TABLE,
-                BotCallbackText.EXPORT_UPLOAD_TABLE
-        ):
-            _prompt_string: str = ''
-            _folder: str = ''
-            res: Union[bool, None] = False
-            if callback_data == BotCallbackText.EXPORT_LINK_TABLE:
-                _prompt_string: str = '链接统计表'
-                _folder: str = 'DownloadRecordForm'
-                res: Union[bool, None] = self.app.print_link_table(
-                    link_info=DownloadTask.LINK_INFO,
-                    export=True,
-                    only_export=True
-                )
-            elif callback_data == BotCallbackText.EXPORT_COUNT_TABLE:
-                _prompt_string: str = '计数统计表'
-                _folder: str = 'DownloadRecordForm'
-                res: Union[bool, None] = self.app.print_count_table(
-                    export=True,
-                    only_export=True
-                )
-            elif callback_data == BotCallbackText.EXPORT_UPLOAD_TABLE:
-                _prompt_string: str = '上传统计表'
-                _folder: str = 'UploadRecordForm'
-                res: Union[bool, None] = self.app.print_upload_table(
-                    upload_tasks=UploadTask.TASKS,
-                    export=True,
-                    only_export=True
-                )
-            if res:
-                _folder: str = 'form' if is_docker() else _folder
-                await callback_query.message.edit_text(
-                    f'✅✅✅`{_prompt_string}`已发送至您的「终端」并已「导出」为表格请注意查收。\n(请查看软件目录下`{_folder}`文件夹)')
-            elif res is False:
-                await callback_query.message.edit_text('😵😵😵没有链接需要统计。')
-            else:
-                await callback_query.message.edit_text(
-                    f'😵‍💫😵‍💫😵‍💫`{_prompt_string}`导出失败。\n(具体原因请前往终端查看报错信息)')
-            await kb.back_table_button()
-        elif callback_data.startswith(f'{BotCallbackText.UPLOAD_PENDING_LIMIT}:'):
-            try:
-                limit = int(callback_data.split(':', 1)[1])
-                if limit < 1 or limit > 5:
-                    raise ValueError
-                self.gc.config.setdefault('upload', deepcopy(self.gc.default_upload_nesting))['pending_limit'] = limit
-                self.gc.save_config(self.gc.config)
-                self.download_upload_window.notify_limit_changed()
-                await kb.toggle_upload_setting_button(global_config=self.gc.config)
-            except ValueError:
-                await callback_query.message.reply_text('下载后上传队列数量必须在1到5之间。')
-            except Exception as e:
-                await callback_query.message.reply_text(
-                    '下载后上传队列设置失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'下载后上传队列设置失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data in (BotCallbackText.UPLOAD_DOWNLOAD, BotCallbackText.UPLOAD_DOWNLOAD_DELETE):
-            def _toggle_button(_param: str):
-                param: bool = self.gc.get_nesting_config(
-                    default_nesting=self.gc.default_upload_nesting,
-                    param='upload',
-                    nesting_param=_param
-                )
-                self.gc.config.get('upload', self.gc.default_upload_nesting)[_param] = not param
-                u_s: str = '禁用' if param else '开启'
-                u_p: str = ''
-                if _param == 'delete':
-                    u_p: str = f'遇到"受限转发"时,下载后上传并"删除上传完成的本地文件"的行为已{u_s}。'
-                elif _param == 'download_upload':
-                    u_p: str = f'遇到"受限转发"时,下载后上传已{u_s}。'
-                console.log(u_p, style='#FF4689')
-                log.info(u_p)
-
-            try:
-                if callback_data == BotCallbackText.UPLOAD_DOWNLOAD:
-                    _toggle_button('download_upload')
-                elif callback_data == BotCallbackText.UPLOAD_DOWNLOAD_DELETE:
-                    _toggle_button('delete')
-                self.gc.save_config(self.gc.config)
-                await kb.toggle_upload_setting_button(global_config=self.gc.config)
-            except Exception as e:
-                await callback_query.message.reply_text(
-                    '上传设置失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'上传设置失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data in (
-                BotCallbackText.TOGGLE_DOWNLOAD_VIDEO,
-                BotCallbackText.TOGGLE_DOWNLOAD_PHOTO,
-                BotCallbackText.TOGGLE_DOWNLOAD_AUDIO,
-                BotCallbackText.TOGGLE_DOWNLOAD_VOICE,
-                BotCallbackText.TOGGLE_DOWNLOAD_ANIMATION,
-                BotCallbackText.TOGGLE_DOWNLOAD_DOCUMENT,
-                BotCallbackText.TOGGLE_DOWNLOAD_VIDEO_NOTE
-        ):
-            def _toggle_download_type_button(_param: str):
-                if _param in self.app.download_type:
-                    if len(self.app.download_type) == 1:
-                        raise ValueError
-                    f_s = '禁用'
-                    self.app.download_type.remove(_param)
-                else:
-                    f_s = '启用'
-                    self.app.download_type.append(_param)
-
-                f_p = f'已{f_s}"{_param}"类型的下载。'
-                console.log(f_p, style='#FF4689')
-                log.info(f_p)
-
-            try:
-                if callback_data == BotCallbackText.TOGGLE_DOWNLOAD_VIDEO:
-                    _toggle_download_type_button('video')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_PHOTO:
-                    _toggle_download_type_button('photo')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_AUDIO:
-                    _toggle_download_type_button('audio')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_VOICE:
-                    _toggle_download_type_button('voice')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_ANIMATION:
-                    _toggle_download_type_button('animation')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_DOCUMENT:
-                    _toggle_download_type_button('document')
-                elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_VIDEO_NOTE:
-                    _toggle_download_type_button('video_note')
-                self.app.config['download_type'] = self.app.download_type
-                self.app.save_config(self.app.config)
-                await kb.toggle_download_setting_button(self.app.config)
-            except ValueError:
-                await callback_query.message.reply_text('⚠️⚠️⚠️至少需要选择一个下载类型⚠️⚠️⚠️')
-            except Exception as e:
-                await callback_query.message.reply_text(
-                    '下载类型设置失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'下载类型设置失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data in (
-                BotCallbackText.TOGGLE_FORWARD_VIDEO,
-                BotCallbackText.TOGGLE_FORWARD_PHOTO,
-                BotCallbackText.TOGGLE_FORWARD_AUDIO,
-                BotCallbackText.TOGGLE_FORWARD_VOICE,
-                BotCallbackText.TOGGLE_FORWARD_ANIMATION,
-                BotCallbackText.TOGGLE_FORWARD_DOCUMENT,
-                BotCallbackText.TOGGLE_FORWARD_TEXT,
-                BotCallbackText.TOGGLE_FORWARD_VIDEO_NOTE
-        ):
-            def _toggle_forward_type_button(_param: str):
-                _forward_type: dict = self.gc.config.get('forward_type', self.gc.default_forward_type_nesting)
-                _status: bool = self.gc.get_nesting_config(
-                    default_nesting=self.gc.default_forward_type_nesting,
-                    param='forward_type',
-                    nesting_param=_param
-                )
-                if list(_forward_type.values()).count(True) == 1 and _status:
-                    raise ValueError
-                _forward_type[_param] = not _status
-                f_s = '禁用' if _status else '启用'
-                f_p = f'已{f_s}"{_param}"类型的转发。'
-                console.log(f_p, style='#FF4689')
-                log.info(f_p)
-
-            try:
-                if callback_data == BotCallbackText.TOGGLE_FORWARD_VIDEO:
-                    _toggle_forward_type_button('video')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_PHOTO:
-                    _toggle_forward_type_button('photo')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_AUDIO:
-                    _toggle_forward_type_button('audio')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_VOICE:
-                    _toggle_forward_type_button('voice')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_ANIMATION:
-                    _toggle_forward_type_button('animation')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_DOCUMENT:
-                    _toggle_forward_type_button('document')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_TEXT:
-                    _toggle_forward_type_button('text')
-                elif callback_data == BotCallbackText.TOGGLE_FORWARD_VIDEO_NOTE:
-                    _toggle_forward_type_button('video_note')
-                self.gc.save_config(self.gc.config)
-                await kb.toggle_forward_setting_button(self.gc.config)
-            except ValueError:
-                await callback_query.message.reply_text('⚠️⚠️⚠️至少需要选择一个转发类型⚠️⚠️⚠️')
-            except Exception as e:
-                await callback_query.message.reply_text(
-                    '转发设置失败\n(具体原因请前往终端查看报错信息)')
-                log.error(f'转发设置失败,{_t(KeyWord.REASON)}:"{e}"')
-        elif callback_data == BotCallbackText.REMOVE_LISTEN_FORWARD or callback_data.startswith(
-                BotCallbackText.REMOVE_LISTEN_DOWNLOAD):
-            if callback_data.startswith(BotCallbackText.REMOVE_LISTEN_DOWNLOAD):
-                args: list = callback_data.split()
-                link: str = args[1]
-                self.app.client.remove_handler(self.listen_download_chat.get(link))
-                self.listen_download_chat.pop(link)
-                watch_id = self.download_watch_id(link)
-                self.web_watch_handler_clients.pop(watch_id, None)
-                self.web_pending_watches.pop(watch_id, None)
-                if self.transfer_store:
-                    self.transfer_store.delete_live_transfer_watch(watch_id)
-                await callback_query.message.edit_text(link)
-                await callback_query.message.edit_reply_markup(
-                    KeyboardButton.single_button(text=BotButton.ALREADY_REMOVE, callback_data=BotCallbackText.NULL)
-                )
-                p = f'已删除监听下载,频道链接:"{link}"。'
-                console.log(p, style='#FF4689')
-                log.info(f'{p}当前的监听下载信息:{self.listen_download_chat}')
-                return None
-            if not isinstance(self.cd.data, dict):
-                return None
-            meta: Union[dict, None] = self.cd.data.copy()
-            self.cd.data = None
-            link: str = meta.get('link')
-            self.app.client.remove_handler(self.listen_forward_chat.get(link))
-            self.listen_forward_chat.pop(link)
-            watch_id = self.forward_watch_id(link)
-            self.web_watch_handler_clients.pop(watch_id, None)
-            self.web_pending_watches.pop(watch_id, None)
-            if self.transfer_store:
-                self.transfer_store.delete_live_transfer_watch(watch_id)
-            rule = parse_forward_watch_rule(link)
-            m: list = [rule.get('source_link'), rule.get('target_link')]
-            display_rule = ' -> '.join(m)
-            include_text = ',包含评论区' if rule.get('include_comment') else ''
-            p = f'已删除监听转发,转发规则:"{display_rule}{include_text}"。'
-            await callback_query.message.edit_text(
-                f'{" ➡️ ".join(m)}{" 👥" if rule.get("include_comment") else ""}'
-            )
-            await callback_query.message.edit_reply_markup(
-                KeyboardButton.single_button(text=BotButton.ALREADY_REMOVE, callback_data=BotCallbackText.NULL)
-            )
-            console.log(p, style='#FF4689')
-            log.info(f'{p}当前的监听转发信息:{self.listen_forward_chat}')
-        elif callback_data in (
-                BotCallbackText.DOWNLOAD_CHAT_FILTER,  # 主页面。
-                BotCallbackText.DOWNLOAD_CHAT_DATE_FILTER,  # 下载日期范围设置页面。
-                BotCallbackText.DOWNLOAD_CHAT_DTYPE_FILTER,  # 下载类型设置页面。
-                BotCallbackText.DOWNLOAD_CHAT_KEYWORD_FILTER,  # 关键词过滤设置页面。
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_PHOTO,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_AUDIO,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VOICE,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_ANIMATION,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_DOCUMENT,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO_NOTE,
-                BotCallbackText.TOGGLE_DOWNLOAD_CHAT_COMMENT,
-                BotCallbackText.DOWNLOAD_CHAT_ID,  # 执行任务。
-                BotCallbackText.DOWNLOAD_CHAT_ID_CANCEL,  # 取消任务。
-                BotCallbackText.FILTER_START_DATE,  # 设置下载起始日期。
-                BotCallbackText.FILTER_END_DATE,  # 设置下载结束日期。
-                BotCallbackText.CONFIRM_KEYWORD,  # 确认设置关键词。
-                BotCallbackText.CANCEL_KEYWORD_INPUT  # 取消设置关键词。
-        ) or callback_data.startswith(
-            (
-                    'time_inc_',
-                    'time_dec_',
-                    'set_time_',
-                    'set_specific_time_',
-                    'adjust_step_',
-                    'drop_keyword_',  # 移除特定关键词。
-                    'ignore_keyword'  # 忽略特定关键词。
-            )  # 切换月份,选择日期。
-        ):
-            chat_id = BotCallbackText.DOWNLOAD_CHAT_ID
-
-            def _get_update_time():
-                _start_timestamp = self.download_chat_filter[chat_id]['date_range'][
-                    'start_date']
-                _end_timestamp = self.download_chat_filter[chat_id]['date_range']['end_date']
-                _start_time = datetime.datetime.fromtimestamp(_start_timestamp) if _start_timestamp else '未定义'
-                _end_time = datetime.datetime.fromtimestamp(_end_timestamp) if _end_timestamp else '未定义'
-                return _start_time, _end_time
-
-            def _get_format_dtype():
-                _download_type = []
-                for _dtype, _status in self.download_chat_filter[chat_id]['download_type'].items():
-                    if _status:
-                        _download_type.append(_t(_dtype))
-                return ','.join(_download_type)
-
-            def _get_format_keywords():
-                _keywords = self.download_chat_filter[chat_id]['keyword']
-                if not _keywords:
-                    return '未定义'
-                return ','.join(_keywords.keys())
-
-            def _get_format_comment_status():
-                _status = self.download_chat_filter[chat_id]['comment']
-                return '开' if _status else '关'
-
-            def _remove_chat_id(_chat_id):
-                if _chat_id in self.download_chat_filter:
-                    self.download_chat_filter.pop(_chat_id)
-                    log.info(f'"{_chat_id}"已从{self.download_chat_filter}中移除。')
-
-            def _filter_prompt():
-                return (
-                    f'💬下载频道:`{chat_id}`\n'
-                    f'⏮️当前选择的起始日期为:{_get_update_time()[0]}\n'
-                    f'⏭️当前选择的结束日期为:{_get_update_time()[1]}\n'
-                    f'📝当前选择的下载类型为:{_get_format_dtype()}\n'
-                    f'🔑当前匹配的关键词为:{_get_format_keywords()}\n'
-                    f'👥包含评论区:{_get_format_comment_status()}'
-                )
-
-            async def _verification_time(_start_time, _end_time) -> bool:
-                if isinstance(_start_time, datetime.datetime) and isinstance(_end_time, datetime.datetime):
-                    if _start_time > _end_time:
-                        await callback_query.message.reply_text(
-                            text=f'❌❌❌日期设置失败❌❌❌\n'
-                                 f'`起始日期({_start_time})`>`结束日期({_end_time})`\n'
-                        )
-                        return False
-                    elif _start_time == _end_time:
-                        await callback_query.message.reply_text(
-                            text=f'❌❌❌日期设置失败❌❌❌\n'
-                                 f'`起始日期({_start_time})`=`结束日期({_end_time})`\n'
-                        )
-                        return False
-                return True
-
-            if callback_data in (BotCallbackText.DOWNLOAD_CHAT_ID, BotCallbackText.DOWNLOAD_CHAT_ID_CANCEL):  # 执行或取消任务。
-                BotCallbackText.DOWNLOAD_CHAT_ID = 'download_chat_id'
-                self.adding_keywords.clear()
-                self.add_keyword_mode_handler(
-                    chat_id=chat_id,
-                    callback_query=callback_query,
-                    callback_prompt=_filter_prompt,
-                    enable=False
-                )  # 关闭关键词输入handler。
-                if callback_data == chat_id:
-                    await self.download_chat(chat_id=chat_id, callback_query=callback_query)
-                    _remove_chat_id(chat_id)
-                elif callback_data == BotCallbackText.DOWNLOAD_CHAT_ID_CANCEL:
-                    _remove_chat_id(chat_id)
-                    await callback_query.message.edit_text(
-                        text=callback_query.message.text,
-                        reply_markup=kb.single_button(
-                            text=BotButton.TASK_CANCEL,
-                            callback_data=BotCallbackText.NULL
-                        )
-                    )
-            elif callback_data in (
-                    BotCallbackText.DOWNLOAD_CHAT_FILTER,
-                    BotCallbackText.DOWNLOAD_CHAT_DATE_FILTER
-            ):
-                if callback_data == BotCallbackText.DOWNLOAD_CHAT_DATE_FILTER:
-                    start_time, end_time = _get_update_time()
-                    if not await _verification_time(start_time, end_time):
-                        return None
-                # 返回或点击。
-                await callback_query.message.edit_text(
-                    text=_filter_prompt(),
-                    reply_markup=kb.download_chat_filter_button(
-                        self.download_chat_filter[chat_id][
-                            'comment']) if callback_data == BotCallbackText.DOWNLOAD_CHAT_FILTER else kb.filter_date_range_button()
-                )
-            elif callback_data in (BotCallbackText.FILTER_START_DATE, BotCallbackText.FILTER_END_DATE):
-                dtype = None
-                p_s_d = ''
-                if callback_data == BotCallbackText.FILTER_START_DATE:
-                    dtype = CalenderKeyboard.START_TIME_BUTTON
-                    p_s_d = '起始'
-                elif callback_data == BotCallbackText.FILTER_END_DATE:
-                    dtype = CalenderKeyboard.END_TIME_BUTTON
-                    p_s_d = '结束'
-                await callback_query.message.edit_text(
-                    text=f'📅选择{p_s_d}日期:\n{_filter_prompt()}'
-                )
-                await kb.calendar_keyboard(dtype=dtype)
-            elif callback_data.startswith('adjust_step_'):
-                # 获取当前步进值
-                parts = callback_data.split('_')
-                dtype = parts[-2]
-                current_step = int(parts[-1])
-                step_sequence = [1, 2, 5, 10, 15, 20]
-                current_index = step_sequence.index(current_step)
-                next_index = (current_index + 1) % len(step_sequence)
-                new_step = step_sequence[next_index]
-                self.download_chat_filter[chat_id]['date_range']['adjust_step'] = new_step
-                current_date = datetime.datetime.fromtimestamp(
-                    self.download_chat_filter[chat_id]['date_range'][f'{dtype}_date']
-                ).strftime('%Y-%m-%d %H:%M:%S')
-                await callback_query.message.edit_reply_markup(
-                    reply_markup=kb.time_keyboard(
-                        dtype=dtype,
-                        date=current_date,
-                        adjust_step=new_step
-                    )
-                )
-            elif callback_data.startswith(('time_inc_', 'time_dec_')):
-                parts = callback_data.split('_')
-                dtype = None
-                if 'start' in callback_data:
-                    dtype = CalenderKeyboard.START_TIME_BUTTON
-                elif 'end' in callback_data:
-                    dtype = CalenderKeyboard.END_TIME_BUTTON
-
-                if 'month' in callback_data:
-                    year = int(parts[-2])
-                    month = int(parts[-1])
-                    await kb.calendar_keyboard(year=year, month=month, dtype=dtype)
-                    log.info(f'日期切换为{year}年,{month}月。')
-
-            elif callback_data.startswith(('set_time_', 'set_specific_time_')):
-                parts = callback_data.split('_')
-                date = parts[-1]
-                dtype = parts[-2]
-                date_type = ''
-                p_s_d = ''
-                timestamp = datetime.datetime.timestamp(datetime.datetime.strptime(date, '%Y-%m-%d %H:%M:%S'))
-                if 'start' in callback_data:
-                    date_type = 'start_date'
-                    p_s_d = '起始'
-                elif 'end' in callback_data:
-                    date_type = 'end_date'
-                    p_s_d = '结束'
-                self.download_chat_filter[chat_id]['date_range'][date_type] = timestamp
-                await callback_query.message.edit_text(
-                    text=f'📅选择{p_s_d}日期:\n{_filter_prompt()}',
-                    reply_markup=kb.time_keyboard(
-                        dtype=dtype,
-                        date=date,
-                        adjust_step=self.download_chat_filter[chat_id]['date_range']['adjust_step']
-                    )
-                )
-                log.info(f'日期设置,起始日期:{_get_update_time()[0]},结束日期:{_get_update_time()[1]}。')
-            elif callback_data.startswith(('drop_keyword_', 'ignore_keyword')):
-                if callback_data.startswith('drop_keyword_'):
-                    parts = callback_data.split('_')
-                    keyword = parts[-1]
-                    _keyword = self.download_chat_filter.get(chat_id, {}).get('keyword', {})
-                    _keyword.pop(keyword)
-                    self.adding_keywords.remove(keyword)
-                await callback_query.message.edit_text(
-                    text=_filter_prompt(),
-                    reply_markup=KeyboardButton.keyword_filter_button(self.adding_keywords)
-                )
-
-            elif callback_data in (
-                    BotCallbackText.DOWNLOAD_CHAT_DTYPE_FILTER,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_PHOTO,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_AUDIO,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VOICE,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_ANIMATION,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_DOCUMENT,
-                    BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO_NOTE
-            ):
-                def _toggle_dtype_filter_button(_param: str):
-                    _dtype: dict = self.download_chat_filter[chat_id]['download_type']
-                    _status: bool = _dtype[_param]
-                    if list(_dtype.values()).count(True) == 1 and _status:
-                        raise ValueError
-                    _dtype[_param] = not _status
-                    f_s = '禁用' if _status else '启用'
-                    f_p = f'已{f_s}"{_param}"类型用于/download_chat命令的下载。'
-                    log.info(
-                        f'{f_p}当前的/download_chat下载类型设置:{_dtype}')
-
-                try:
-                    if callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO:
-                        _toggle_dtype_filter_button('video')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_PHOTO:
-                        _toggle_dtype_filter_button('photo')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_AUDIO:
-                        _toggle_dtype_filter_button('audio')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VOICE:
-                        _toggle_dtype_filter_button('voice')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_ANIMATION:
-                        _toggle_dtype_filter_button('animation')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_DOCUMENT:
-                        _toggle_dtype_filter_button('document')
-                    elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_DTYPE_VIDEO_NOTE:
-                        _toggle_dtype_filter_button('video_note')
-                    await callback_query.message.edit_text(
-                        text=_filter_prompt(),
-                        reply_markup=kb.toggle_download_chat_type_filter_button(self.download_chat_filter)
-                    )
-                except ValueError:
-                    await callback_query.message.reply_text('⚠️⚠️⚠️至少需要选择一个下载类型⚠️⚠️⚠️')
-                except Exception as e:
-                    await callback_query.message.reply_text(
-                        '下载类型设置失败\n(具体原因请前往终端查看报错信息)')
-                    log.error(f'下载类型设置失败,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
-            elif callback_data in (
-                    BotCallbackText.DOWNLOAD_CHAT_KEYWORD_FILTER,
-                    BotCallbackText.CONFIRM_KEYWORD,
-                    BotCallbackText.CANCEL_KEYWORD_INPUT
-            ):
-                if callback_data == BotCallbackText.DOWNLOAD_CHAT_KEYWORD_FILTER:
-                    try:
-                        await callback_query.message.edit_text(
-                            text=_filter_prompt(),
-                            reply_markup=kb.keyword_filter_button(self.adding_keywords)
-                        )
-                    except MessageNotModified:
-                        pass
-                    self.add_keyword_mode_handler(
-                        enable=True,
-                        chat_id=chat_id,
-                        callback_query=callback_query,
-                        callback_prompt=_filter_prompt
-                    )  # 进入添加关键词模式。
-                elif callback_data == BotCallbackText.CONFIRM_KEYWORD:
-                    self.add_keyword_mode_handler(
-                        enable=False,
-                        chat_id=chat_id,
-                        callback_query=callback_query,
-                        callback_prompt=_filter_prompt
-                    )
-                    await callback_query.message.edit_text(
-                        text=_filter_prompt(),
-                        reply_markup=kb.download_chat_filter_button(self.download_chat_filter[chat_id]['comment'])
-                    )
-                elif callback_data == BotCallbackText.CANCEL_KEYWORD_INPUT:
-                    self.adding_keywords.clear()
-                    self.add_keyword_mode_handler(
-                        enable=False,
-                        chat_id=chat_id,
-                        callback_query=callback_query,
-                        callback_prompt=_filter_prompt
-                    )
-                    self.download_chat_filter[chat_id]['keyword'] = {}
-                    await callback_query.message.edit_text(
-                        text=_filter_prompt(),
-                        reply_markup=kb.download_chat_filter_button(self.download_chat_filter[chat_id]['comment'])
-                    )
-            elif callback_data == BotCallbackText.TOGGLE_DOWNLOAD_CHAT_COMMENT:
-                status: bool = self.download_chat_filter[chat_id]['comment']
-                self.download_chat_filter[chat_id]['comment'] = not status
-                await callback_query.message.edit_text(
-                    text=_filter_prompt(),
-                    reply_markup=kb.download_chat_filter_button(self.download_chat_filter[chat_id]['comment'])
-                )
+        return await self.callback_handler.handle(client, callback_query)
 
     async def forward(
             self,
@@ -3341,12 +2510,7 @@ class TelegramRestrictedMediaDownloader:
             log.exception(f'监听下载出现错误,{_t(KeyWord.REASON)}:"{e}"')
 
     def check_type(self, message: pyrogram.types.Message):
-        for dtype, is_forward in self.gc.forward_type.items():
-            if is_forward:
-                result = getattr(message, dtype, None)
-                if result:
-                    return True
-        return False
+        return self.transfer_engine.check_type(message)
 
     async def forward_discussion_replies(
             self,
@@ -3601,23 +2765,7 @@ class TelegramRestrictedMediaDownloader:
         return file_name
 
     def get_media_meta(self, message: pyrogram.types.Message, dtype) -> Dict[str, Union[int, str]]:
-        """获取媒体元数据。"""
-        file_id: int = getattr(message, 'id')
-        title_override = self.get_download_message_title(message)
-        temp_file_path: str = self.app.get_temp_file_path(message, dtype, title_override=title_override)
-        _sever_meta = getattr(message, dtype)
-        sever_file_size: int = getattr(_sever_meta, 'file_size')
-        file_name: str = split_path(temp_file_path).get('file_name')
-        save_directory: str = os.path.join(self.env_save_directory(message), file_name)
-        format_file_size: str = MetaData.suitable_units_display(sever_file_size)
-        return {
-            'file_id': file_id,
-            'temp_file_path': temp_file_path,
-            'sever_file_size': sever_file_size,
-            'file_name': file_name,
-            'save_directory': save_directory,
-            'format_file_size': format_file_size
-        }
+        return self.transfer_engine.get_media_meta(message, dtype)
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
@@ -3837,37 +2985,9 @@ class TelegramRestrictedMediaDownloader:
             save_directory: str,
             with_move: bool = True
     ) -> bool:
-        """检测文件是否下完。"""
-        temp_ext: str = '.temp'
-        local_file_size: int = get_file_size(file_path=temp_file_path, temp_ext=temp_ext)
-        format_local_size: str = MetaData.suitable_units_display(local_file_size)
-        format_sever_size: str = MetaData.suitable_units_display(sever_file_size)
-        _file_path: str = os.path.join(save_directory, split_path(temp_file_path).get('file_name'))
-        file_path: str = _file_path[:-len(temp_ext)] if _file_path.endswith(temp_ext) else _file_path
-        if compare_file_size(a_size=local_file_size, b_size=sever_file_size):
-            if with_move:
-                result: str = move_to_save_directory(
-                    temp_file_path=temp_file_path,
-                    save_directory=save_directory
-                ).get('e_code')
-                log.warning(result) if result is not None else None
-            console.log(
-                f'{_t(KeyWord.DOWNLOAD_TASK)}'
-                f'{_t(KeyWord.FILE)}:"{file_path}",'
-                f'{_t(KeyWord.SIZE)}:{format_local_size},'
-                f'{_t(KeyWord.TYPE)}:{_t(self.app.get_file_type(message, temp_file_path, DownloadStatus.SUCCESS))},'
-                f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SUCCESS)}。',
-            )
-            return True
-        console.log(
-            f'{_t(KeyWord.DOWNLOAD_TASK)}'
-            f'{_t(KeyWord.FILE)}:"{file_path}",'
-            f'{_t(KeyWord.ERROR_SIZE)}:{format_local_size},'
-            f'{_t(KeyWord.ACTUAL_SIZE)}:{format_sever_size},'
-            f'{_t(KeyWord.TYPE)}:{_t(self.app.get_file_type(message, temp_file_path, DownloadStatus.FAILURE))},'
-            f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}。'
+        return self.transfer_engine.__check_download_finish(
+            message, sever_file_size, temp_file_path, save_directory, with_move
         )
-        return False
 
     @DownloadTask.on_complete
     def download_complete_callback(
@@ -3885,114 +3005,11 @@ class TelegramRestrictedMediaDownloader:
             diy_download_type,
             _future
     ):
-        if task_id is not None and callable(getattr(_future, 'cancelled', None)) and _future.cancelled():
-            self.app.current_task_num -= 1
-            self.event.set()
-            self.release_transfer_local_storage(with_upload)
-            self.release_download_upload_window(with_upload)
-            try:
-                self.queue.task_done()
-            except (AttributeError, ValueError):
-                pass
-            try:
-                self.pb.progress.remove_task(task_id=task_id)
-            except AttributeError:
-                pass
-            return None, None
-        if task_id is None:
-            if retry_count == 0:
-                console.log(
-                    f'{_t(KeyWord.DOWNLOAD_TASK)}'
-                    f'{_t(KeyWord.ALREADY_EXIST)}:"{_future}"'
-                )
-                console.log(
-                    f'{_t(KeyWord.DOWNLOAD_TASK)}'
-                    f'{_t(KeyWord.FILE)}:"{file_name}",'
-                    f'{_t(KeyWord.SIZE)}:{format_file_size},'
-                    f'{_t(KeyWord.TYPE)}:{_t(self.app.get_file_type(message, file_name, DownloadStatus.SKIP))},'
-                    f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。', style='#e6db74'
-                )
-                DownloadTask.COMPLETE_LINK.add(link)
-                self.record_transfer_download_success(
-                    with_upload=with_upload,
-                    message=message,
-                    file_path=self.get_final_file_path(message, file_name, with_upload)
-                )
-                if not self.start_download_upload(
-                        with_upload=with_upload,
-                        message=message,
-                        file_path=self.get_final_file_path(message, file_name, with_upload)
-                ):
-                    self.release_download_upload_window(with_upload)
-            else:
-                self.release_download_upload_window(with_upload)
-        else:
-            self.app.current_task_num -= 1
-            self.event.set()  # v1.3.4 修复重试下载被阻塞的问题。
-            if self.__check_download_finish(
-                    message=message,
-                    sever_file_size=sever_file_size,
-                    temp_file_path=temp_file_path,
-                    save_directory=self.get_final_save_directory(message, with_upload),
-                    with_move=True
-            ):
-                self.mark_transfer_local_storage_materialized(with_upload)
-                final_path = self.get_final_file_path(message, file_name, with_upload)
-                self.record_transfer_download_success(
-                    with_upload=with_upload,
-                    message=message,
-                    file_path=final_path
-                )
-                MetaData.print_current_task_num(
-                    prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
-                    num=self.app.current_task_num
-                )
-                if not self.start_download_upload(
-                        with_upload=with_upload,
-                        message=message,
-                        file_path=final_path
-                ):
-                    self.release_download_upload_window(with_upload)
-                self.queue.task_done()
-            else:
-                if retry_count < self.app.max_download_retries:
-                    retry_count += 1
-                    task = self.loop.create_task(
-                        self.create_download_task(
-                            message_ids=link if isinstance(link, str) else message,
-                            retry={'id': file_id, 'count': retry_count},
-                            with_upload=with_upload,
-                            diy_download_type=diy_download_type
-                        )
-                    )
-                    task.add_done_callback(
-                        partial(
-                            self.__retry_call,
-                            f'{_t(KeyWord.RE_DOWNLOAD)}:"{file_name}",'
-                            f'{_t(KeyWord.RETRY_TIMES)}:{retry_count}/{self.app.max_download_retries}。'
-                        )
-                    )
-                else:
-                    _error = f'(达到最大重试次数:{self.app.max_download_retries}次)。'
-                    console.log(
-                        f'{_t(KeyWord.DOWNLOAD_TASK)}'
-                        f'{_t(KeyWord.FILE)}:"{file_name}",'
-                        f'{_t(KeyWord.SIZE)}:{format_file_size},'
-                        f'{_t(KeyWord.TYPE)}:{_t(self.app.get_file_type(message, file_name, DownloadStatus.FAILURE))},'
-                        f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.FAILURE)}'
-                        f'{_error}'
-                    )
-                    DownloadTask.set_error(link=link, key=file_name, value=_error.replace('。', ''))
-                    self.bot_task_link.discard(link)
-                    callback = with_upload.get('failure_callback') if isinstance(with_upload, dict) else None
-                    if callable(callback):
-                        with_upload['message_id'] = getattr(message, 'id', None)
-                        callback(with_upload, _error)
-                    self.release_download_upload_window(with_upload)
-                    self.queue.task_done()
-                link, file_name = None, None
-            self.pb.progress.remove_task(task_id=task_id)
-        return link, file_name
+        return self.transfer_engine.download_complete_callback(
+            sever_file_size, temp_file_path, link, message, file_name,
+            retry_count, file_id, format_file_size, task_id,
+            with_upload, diy_download_type, _future
+        )
 
     async def download_chat(
             self,
@@ -4390,43 +3407,10 @@ class TelegramRestrictedMediaDownloader:
             }
 
     def __process_links(self, link: Union[str, list]) -> Union[set, None]:
-        """将链接(文本格式或链接)处理成集合。"""
-        start_content: str = 'https://t.me/'
-        links: set = set()
-        if isinstance(link, str):
-            if link.endswith('.txt') and os.path.isfile(link):
-                with open(file=link, mode='r', encoding='UTF-8') as _:
-                    _links: list = [content.strip() for content in _.readlines()]
-                for i in _links:
-                    if i.startswith(start_content):
-                        links.add(i)
-                        self.bot_task_link.add(i)
-                    elif i == '' or '#':
-                        continue
-                    else:
-                        log.warning(f'"{i}"是一个非法链接,{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。')
-            elif link.startswith(start_content):
-                links.add(link)
-        elif isinstance(link, list):
-            for i in link:
-                _link: Union[set, None] = self.__process_links(link=i)
-                if _link is not None:
-                    links.update(_link)
-        if links:
-            return links
-        elif PARSE_ARGS.web is not None:
-            console.log('🔗 WebUI模式未配置初始链接,等待浏览器创建转存任务。', style='#B1DB74')
-            return None
-        elif not self.app.bot_token:
-            console.log('🔗 没有找到有效链接,程序已退出。', style='#FF4689')
-            sys.exit(1)
-        else:
-            console.log('🔗 没有找到有效链接。', style='#FF4689')
-            return None
+        return self.transfer_engine.__process_links(link)
 
     def __retry_call(self, notice, _future):
-        self.queue.task_done()
-        console.log(notice, style='#FF4689')
+        self.transfer_engine.__retry_call(notice, _future)
 
     async def __download_media_from_links(self) -> None:
         self.start_web_ui()

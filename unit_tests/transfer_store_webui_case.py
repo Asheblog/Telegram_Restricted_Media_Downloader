@@ -19,6 +19,7 @@ install_pyrogram_stub()
 
 import module as trmd_module
 from module.live_watch_manager import LiveWatchManager
+from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import TransferStatus, TransferStore
 from module.web_ui import WebUiServer
 
@@ -807,7 +808,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     )
 
             downloader.transfer_store = store
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
             downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
 
             reset_items = downloader.retry_failed_web_task(task_id)
@@ -873,7 +880,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     )
 
             downloader.transfer_store = store
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
             downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
 
             reset_items = downloader.retry_failed_web_task(task_id)
@@ -944,7 +957,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
 
             downloader.transfer_store = store
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
             downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
 
             reset_items = downloader.retry_failed_web_task(task_id)
@@ -1577,7 +1596,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
 
             downloader.forward = fake_forward
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             asyncio.run(downloader.transfer_message_to_web_target(
@@ -1636,7 +1661,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -1823,7 +1854,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
 
             used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -1957,7 +1994,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.forward = fake_forward
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
@@ -2097,7 +2140,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     return SimpleNamespace(ok=False, status='missing_metadata', message='metadata missing')
 
             downloader.forward = fake_forward
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
             asyncio.run(downloader.transfer_message_to_web_target(
@@ -2131,7 +2180,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return SimpleNamespace(ok=True, status='success', archive_path='Telegram/ctuxas/video.mp4')
 
         downloader.transfer_store = None
-        downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+        downloader.pikpak_manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+            diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+        )
 
         upload_task = SimpleNamespace(
             status='sent',
@@ -2186,7 +2241,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
 
             downloader.transfer_store = store
-            downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+            downloader.pikpak_manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: downloader.__dict__.get('transfer_store'),
+                pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                gc_getter=lambda: downloader.__dict__.get('gc'),
+                refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+            )
 
             upload_task = SimpleNamespace(
                 status='sent',
@@ -2229,10 +2290,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual('ctuxas', meta['source_folder'])
         self.assertTrue(meta['with_delete'])
         self.assertFalse(meta['send_as_media_group'])
-        self.assertIs(meta['status_callback'].__self__, downloader)
-        self.assertIs(meta['status_callback'].__func__, downloader.on_transfer_upload_status.__func__)
-        self.assertIs(meta['on_file_ready'].__self__, downloader)
-        self.assertIs(meta['on_file_ready'].__func__, downloader.on_transfer_file_ready.__func__)
+        self.assertEqual('on_transfer_upload_status', meta['status_callback'].__name__)
+        self.assertEqual('on_transfer_upload_status', meta['status_callback'].__func__.__name__)
+        self.assertEqual('on_transfer_file_ready', meta['on_file_ready'].__name__)
+        self.assertEqual('on_transfer_file_ready', meta['on_file_ready'].__func__.__name__)
 
     def test_pikpak_transfer_over_target_limit_skips_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
@@ -2740,7 +2801,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         downloader.app = SimpleNamespace(client=FakeClient())
         downloader.transfer_store = None
-        downloader.get_pikpak_archive_client = lambda: FakeArchiveClient()
+        downloader.pikpak_manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: FakeArchiveClient(),
+            diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+        )
 
         with self.assertLogs('rich', level='WARNING') as logs:
             result = asyncio.run(downloader.forward(

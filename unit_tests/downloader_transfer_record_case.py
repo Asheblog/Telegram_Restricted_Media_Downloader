@@ -253,12 +253,11 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             self.assertEqual(os.path.join(directory, 'ctuxas', 'video.mp4'), item['local_path'])
 
     def test_bot_progress_is_updated_for_download_upload_lifecycle(self):
+        from module.transfer_progress import TransferProgressTracker
+
         downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
         downloader.transfer_store = None
         downloader._scheduled_bot_progress_updates = []
-        downloader.schedule_bot_transfer_progress_update = (
-            lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text)
-        )
         bot_progress = {
             'source_link': 'https://t.me/source/7',
             'target_link': 'https://t.me/pikpak_bot',
@@ -271,6 +270,22 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             'file_name': 'media.bin'
         }
         downloader.pb = SimpleNamespace(download=lambda *args, **kwargs: None)
+
+        downloader.progress_tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+            app_getter=lambda: None,
+            gc_getter=lambda: None,
+            loop_getter=lambda: None,
+            pb_getter=lambda: downloader.pb,
+            release_storage=lambda wu: None,
+            release_window=lambda wu: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: None,
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda tid: None,
+            schedule_override=lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text),
+        )
 
         downloader.transfer_download_progress(
             current=5,
@@ -298,11 +313,25 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertIn('✅ 已发送到目标', joined)
 
     def test_bot_progress_reports_upload_failure_even_without_transfer_store(self):
+        from module.transfer_progress import TransferProgressTracker
+
         downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
         downloader.transfer_store = None
         downloader._scheduled_bot_progress_updates = []
-        downloader.schedule_bot_transfer_progress_update = (
-            lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text)
+        downloader.progress_tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+            app_getter=lambda: None,
+            gc_getter=lambda: None,
+            loop_getter=lambda: None,
+            pb_getter=lambda: None,
+            release_storage=lambda wu: None,
+            release_window=lambda wu: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: None,
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda tid: None,
+            schedule_override=lambda progress, text, force=False: downloader._scheduled_bot_progress_updates.append(text),
         )
         upload_task = SimpleNamespace(
             file_name='media.bin',
@@ -438,8 +467,8 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertEqual('pikpak', meta['target_profile'])
         self.assertTrue(meta['with_delete'])
         self.assertTrue(meta['send_as_media_group'])
-        self.assertIs(meta['status_callback'].__self__, downloader)
-        self.assertIs(meta['on_file_ready'].__self__, downloader)
+        self.assertEqual('on_transfer_upload_status', meta['status_callback'].__name__)
+        self.assertEqual('on_transfer_file_ready', meta['on_file_ready'].__name__)
 
     def test_prepare_download_upload_meta_infers_pikpak_profile_from_target_link(self):
         async def run_case():
