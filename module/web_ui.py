@@ -74,6 +74,7 @@ def normalize_detected_transfer_range(value) -> Optional[tuple[int, int]]:
 class AuthProvider:
     """Thread-safe auth provider for WebUI Telegram login flow."""
 
+    STEP_PENDING = 'pending'
     STEP_PHONE = 'phone'
     STEP_CODE = 'code'
     STEP_PASSWORD = 'password'
@@ -84,7 +85,7 @@ class AuthProvider:
     STEP_ERROR = 'error'
 
     def __init__(self):
-        self.step: str = self.STEP_PHONE
+        self.step: str = self.STEP_PENDING
         self.message: str = ''
         self.hint: str = ''
         self.code_type: str = ''

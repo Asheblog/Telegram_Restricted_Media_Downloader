@@ -1557,7 +1557,7 @@ WEB_UI_MOBILE_BODY = f'''
   </div>
 </div>
 
-<div class="login-container active" id="login-container">
+<div class="login-container" id="login-container">
   <div class="login-brand">
     <h1>TRMD</h1>
     <p>Telegram 账号登录</p>
@@ -1946,7 +1946,7 @@ WEB_UI_BODY = f'''
       </div>
     </aside>
     <main>
-      <div class="login-container active" id="login-container">
+      <div class="login-container" id="login-container">
         <div class="login-brand">
           <h1>TRMD</h1>
           <p>Telegram 账号登录</p>
@@ -3804,6 +3804,10 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       var state = await resp.json();
       if (!state || !state.step) return;
       switch (state.step) {
+        case 'pending':
+          var container = document.getElementById('login-container');
+          if (container) container.classList.remove('active');
+          return;
         case 'done': case 'none':
           hideLogin();
           loadTasks();
@@ -4136,6 +4140,10 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       var state = await resp.json();
       if (!state || !state.step) return;
       switch (state.step) {
+        case 'pending':
+          var container = document.getElementById('login-container');
+          if (container) container.classList.remove('active');
+          return;
         case 'done': case 'none':
           hideLogin();
           loadTasks();
