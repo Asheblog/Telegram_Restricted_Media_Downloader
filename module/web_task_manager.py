@@ -101,6 +101,11 @@ class WebUITaskManager:
             pass
         self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
 
+    def _enqueue_and_process_web_task(self, task_id: int) -> None:
+        self.web_submitted_task_ids.discard(task_id)
+        self.web_task_queue.put_nowait(task_id)
+        self.start_next_web_transfer_task()
+
     def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
         def cleanup() -> None:
             self.web_submitted_task_ids.discard(task_id)
@@ -161,8 +166,9 @@ class WebUITaskManager:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PENDING)
         self.transfer_store.add_event(task_id, 'Transfer task resumed.')
-        self.submit_web_task(task_id)
-        self.loop.call_soon_threadsafe(self.start_next_web_transfer_task)
+        self.loop.call_soon_threadsafe(
+            lambda tid=task_id: self._enqueue_and_process_web_task(tid)
+        )
         return True
 
     def retry_failed_web_task(self, task_id: int) -> int:
@@ -182,8 +188,9 @@ class WebUITaskManager:
         ]
         reset_items = self.transfer_store.retry_failed_item_ids(task_id, retry_item_ids)
         if reset_items:
-            self.submit_web_task(task_id)
-            self.loop.call_soon_threadsafe(self.start_next_web_transfer_task)
+            self.loop.call_soon_threadsafe(
+                lambda tid=task_id: self._enqueue_and_process_web_task(tid)
+            )
         return reset_items
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
