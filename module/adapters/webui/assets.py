@@ -3199,8 +3199,10 @@ SHARED_WEB_UI_SCRIPT = r'''
       state.selectedTaskId = taskId;
       state.itemsTotal = data.item_count || 0;
       state.eventsTotal = data.event_count || 0;
-      // 更新侧边栏和标题中的任务状态
       updateTaskSummaryDisplay(data.task);
+      if (data.recent_events && data.recent_events.length) {
+        mergeRecentEvents(data.recent_events);
+      }
     }
   }
 
@@ -3425,6 +3427,19 @@ SHARED_WEB_UI_SCRIPT = r'''
         : String(state.events.length);
       $('#event-count').textContent = countText;
     }
+  }
+
+  function mergeRecentEvents(recentEvents) {
+    const existingIds = new Set((state.events || []).map(function(e) { return e.id; }));
+    var newEvents = recentEvents.filter(function(e) { return !existingIds.has(e.id); });
+    if (!newEvents.length) return;
+    var merged = state.events || [];
+    newEvents.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+    merged = newEvents.concat(merged);
+    merged.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+    var maxKeep = Math.max(state.eventsTotal || 0, merged.length, 200);
+    state.events = merged.slice(0, maxKeep);
+    renderEvents();
   }
 
   async function loadWatches() {

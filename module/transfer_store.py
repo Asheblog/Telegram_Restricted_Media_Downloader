@@ -663,7 +663,7 @@ class TransferStore:
             'events_offset': event_offset,
         }
 
-    def task_summary(self, task_id: int) -> Optional[Dict[str, Any]]:
+    def task_summary(self, task_id: int, recent_event_limit: int = 30) -> Optional[Dict[str, Any]]:
         """轻量级任务摘要查询——仅返回任务信息和计数，不加载 items/events 数组。
         用于 WebUI 轮询更新时避免重复加载大量数据。"""
         with self.connect() as conn:
@@ -676,10 +676,20 @@ class TransferStore:
             total_events = conn.execute(
                 'SELECT COUNT(*) FROM transfer_events WHERE task_id = ?', (task_id,)
             ).fetchone()[0]
+            recent_events = conn.execute(
+                '''
+                SELECT * FROM transfer_events
+                WHERE task_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                ''',
+                (task_id, recent_event_limit)
+            ).fetchall()
         return {
             'task': dict(task),
             'item_count': total_items,
             'event_count': total_events,
+            'recent_events': [dict(row) for row in recent_events],
         }
 
     def count_items(self, task_id: int) -> int:

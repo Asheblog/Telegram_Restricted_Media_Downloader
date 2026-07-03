@@ -860,6 +860,7 @@ class TelegramRestrictedMediaDownloader:
         if PARSE_ARGS.web is None:
             return
         self.transfer_store = TransferStore(directory=self.app.temp_directory)
+        self.ctx.transfer_store = self.transfer_store
         self.web_ui = WebUiServer(
             store=self.transfer_store,
             task_submitter=self.submit_web_task,
