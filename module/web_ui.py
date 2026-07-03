@@ -5,8 +5,10 @@ import hmac
 import json
 import os
 import re
+import secrets
 import socket
 import threading
+import time
 import webbrowser
 
 from copy import deepcopy
@@ -188,11 +190,66 @@ class WebUiServer:
     def requires_auth(self) -> bool:
         return self.host not in ('127.0.0.1', 'localhost', '::1')
 
+    SESSION_COOKIE_NAME = 'trmd_session'
+    SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
+    SESSION_TOKEN_BYTES = 32
+
     def validate_auth_config(self) -> None:
         if bool(self.username) != bool(self.password):
             raise ValueError('TRMD_WEB_USERNAME 和 TRMD_WEB_PASSWORD 必须同时设置。')
         if self.requires_auth and not self.auth_enabled:
             raise ValueError('WebUI 对外监听时必须设置 TRMD_WEB_USERNAME 和 TRMD_WEB_PASSWORD。')
+
+    def _generate_session_token(self) -> str:
+        return secrets.token_hex(self.SESSION_TOKEN_BYTES)
+
+    def _create_session_cookie(self, token: str) -> str:
+        parts = [
+            f'{self.SESSION_COOKIE_NAME}={token}',
+            f'Max-Age={self.SESSION_MAX_AGE}',
+            'Path=/',
+            'HttpOnly',
+            'SameSite=Lax',
+        ]
+        return '; '.join(parts)
+
+    def _init_sessions(self) -> None:
+        if not hasattr(self, '_sessions'):
+            self._sessions: dict[str, float] = {}
+
+    def _store_session(self, token: str) -> None:
+        self._init_sessions()
+        self._sessions[token] = time.time() + self.SESSION_MAX_AGE
+        self._prune_expired_sessions()
+
+    def validate_session_token(self, token: str) -> bool:
+        self._init_sessions()
+        expiry = self._sessions.get(token)
+        if expiry is None:
+            return False
+        if time.time() > expiry:
+            del self._sessions[token]
+            return False
+        return True
+
+    def _prune_expired_sessions(self) -> None:
+        self._init_sessions()
+        now = time.time()
+        expired = [t for t, exp in self._sessions.items() if now > exp]
+        for t in expired:
+            del self._sessions[t]
+
+    @staticmethod
+    def _get_request_cookie(handler: BaseHTTPRequestHandler, name: str) -> Optional[str]:
+        cookie_header = handler.headers.get('cookie')
+        if not cookie_header:
+            return None
+        prefix = f'{name}='
+        for part in cookie_header.split(';'):
+            part = part.strip()
+            if part.startswith(prefix):
+                return part[len(prefix):]
+        return None
 
     def is_authorized(self, authorization: Optional[str]) -> bool:
         if not self.auth_enabled:
@@ -241,7 +298,16 @@ class WebUiServer:
                 path = urlparse(self.path).path
                 if path in ('/api/auth/status', '/api/auth/submit'):
                     return True
+                if not server.auth_enabled:
+                    return True
+                session_token = server._get_request_cookie(self, server.SESSION_COOKIE_NAME)
+                if session_token and server.validate_session_token(session_token):
+                    self.send_header('Set-Cookie', server._create_session_cookie(session_token))
+                    return True
                 if server.is_authorized(self.headers.get('authorization')):
+                    token = server._generate_session_token()
+                    server._store_session(token)
+                    self.send_header('Set-Cookie', server._create_session_cookie(token))
                     return True
                 self._send_auth_required()
                 return False
