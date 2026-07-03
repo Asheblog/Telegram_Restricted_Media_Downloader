@@ -591,6 +591,15 @@ class TelegramRestrictedMediaDownloader:
             )
         return reset_items
 
+    def list_watches(self) -> list:
+        return self.watch_manager.list_watches()
+
+    def create_watch(self, payload: dict) -> dict:
+        return self.watch_manager.create_watch(payload)
+
+    def delete_watch(self, watch_id: str) -> bool:
+        return self.watch_manager.delete_watch(watch_id)
+
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
         wm = getattr(self, 'web_task_manager', None)
         if wm is not None:
