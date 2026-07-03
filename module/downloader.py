@@ -1944,7 +1944,7 @@ class TelegramRestrictedMediaDownloader:
         self.last_client: pyrogram.Client = client
         self.last_message: pyrogram.types.Message = message
         if self.gc.config.get(BotCallbackText.NOTICE):
-            await super().start(client, message)
+            await self.bot.start(client, message)
 
     async def callback_data(self, client: pyrogram.Client, callback_query: pyrogram.types.CallbackQuery):
         return await self.callback_handler.handle(client, callback_query)
