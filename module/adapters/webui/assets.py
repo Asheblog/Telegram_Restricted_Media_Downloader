@@ -4938,29 +4938,29 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   /* ====== 覆盖：renderTasks / loadTasks / loadWatches / loadSettings ====== */
   var _origRenderTasks = renderTasks;
   renderTasks = function() {
-    _origRenderTasks();
+    try { _origRenderTasks(); } catch(e) {}
     if (state.tasks) renderMobTasks();
   };
   var _origLoadTasks = loadTasks;
   loadTasks = async function() {
-    await _origLoadTasks();
+    try { await _origLoadTasks(); } catch(e) {}
     if (state.tasks) renderMobTasks();
   };
 
   var _origLoadWatches = loadWatches;
   loadWatches = async function() {
-    await _origLoadWatches();
+    try { await _origLoadWatches(); } catch(e) {}
     if (state.watches) renderMobWatches();
   };
   var _origRenderWatches = renderWatches;
   renderWatches = function() {
-    _origRenderWatches();
+    try { _origRenderWatches(); } catch(e) {}
     if (state.watches) renderMobWatches();
   };
 
   var _origLoadSettings = loadSettings;
   loadSettings = async function() {
-    await _origLoadSettings();
+    try { await _origLoadSettings(); } catch(e) {}
     renderMobSettingsForm();
   };
 
@@ -5208,17 +5208,17 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   /* ====== 覆盖 loadRecords / renderRecords / loadStatistics ====== */
   var _origLoadRecords = loadRecords;
   loadRecords = async function() {
-    await _origLoadRecords();
+    try { await _origLoadRecords(); } catch(e) {}
     renderMobRecords();
   };
   var _origRenderRecords = renderRecords;
   renderRecords = function() {
-    _origRenderRecords();
+    try { _origRenderRecords(); } catch(e) {}
     renderMobRecords();
   };
   var _origLoadStatistics = loadStatistics;
   loadStatistics = async function() {
-    await _origLoadStatistics();
+    try { await _origLoadStatistics(); } catch(e) {}
     renderMobStatistics();
   };
 
