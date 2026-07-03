@@ -855,7 +855,7 @@ class TelegramRestrictedMediaDownloader:
             self.local_storage_guard.notify_limit_changed()
         return self.get_web_settings()
 
-    def start_web_ui(self) -> None:
+    def start_web_ui(self, with_auth_provider: bool = False) -> None:
         if PARSE_ARGS.web is None:
             return
         self.transfer_store = TransferStore(directory=self.app.temp_directory)
@@ -871,6 +871,10 @@ class TelegramRestrictedMediaDownloader:
             password=get_web_password_from_env(),
             diagnostic=getattr(self, 'diagnostic', None)
         )
+        if with_auth_provider:
+            from module.web_ui import AuthProvider
+            self.web_ui_auth = AuthProvider()
+            self.web_ui.set_auth_provider(self.web_ui_auth)
         self.web_ui.start(open_browser=True)
         for task in self.transfer_store.list_tasks():
             if task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
@@ -1046,7 +1050,7 @@ class TelegramRestrictedMediaDownloader:
             )
         else:
             log.warning('消息过长编辑频繁,暂时无法通过机器人显示通知。')
-        links: Union[set, None] = self.__process_links(link=list(right_link))
+        links: Union[set, None] = self._process_links(link=list(right_link))
 
         if links is None:
             return None
@@ -3417,15 +3421,25 @@ class TelegramRestrictedMediaDownloader:
                 }
             }
 
-    def __process_links(self, link: Union[str, list]) -> Union[set, None]:
-        return self.transfer_engine.__process_links(link)
+    def _process_links(self, link: Union[str, list]) -> Union[set, None]:
+        return self.transfer_engine._process_links(link)
 
-    def __retry_call(self, notice, _future):
-        self.transfer_engine.__retry_call(notice, _future)
+    def _retry_call(self, notice, _future):
+        self.transfer_engine._retry_call(notice, _future)
 
     async def __download_media_from_links(self) -> None:
-        self.start_web_ui()
-        await self.app.client.start(use_qr=False)
+        if PARSE_ARGS.web is not None:
+            self.start_web_ui(with_auth_provider=True)
+            is_authorized = await self.app.client.connect()
+            if not is_authorized:
+                user = await self.app.client.authorize_webui(self.web_ui_auth)
+                self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
+                console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
+            else:
+                self.web_ui_auth.set_done('')
+        else:
+            self.start_web_ui()
+            await self.app.client.start(use_qr=False)
         self.my_id = await get_my_id(self.app.client)
         await self.restore_live_transfer_watches()
         self.pb.progress.start()  # v1.1.8修复登录输入手机号不显示文本问题。
@@ -3458,7 +3472,7 @@ class TelegramRestrictedMediaDownloader:
                     )
         if self.web_ui and not self.uploader:
             self.uploader = TelegramUploader(upload_context=self)
-        links: Union[set, None] = self.__process_links(link=self.app.links)
+        links: Union[set, None] = self._process_links(link=self.app.links)
         # 将初始任务添加到队列中。
         [await self.loop.create_task(self.create_download_task(message_ids=link, retry=None)) for link in
          sorted(links)] if links else None

@@ -616,7 +616,7 @@ class TransferEngine:
                     )
                     task.add_done_callback(
                         partial(
-                            self.__retry_call,
+                            self._retry_call,
                             f'{_t(KeyWord.RE_DOWNLOAD)}:"{file_name}",'
                             f'{_t(KeyWord.RETRY_TIMES)}:{retry_count}/{self.app.max_download_retries}。'
                         )
@@ -643,7 +643,7 @@ class TransferEngine:
             self._pb_progress().remove_task(task_id=task_id)
         return link, file_name
 
-    def __process_links(self, link: Union[str, list]) -> Union[set, None]:
+    def _process_links(self, link: Union[str, list]) -> Union[set, None]:
         start_content: str = 'https://t.me/'
         links: set = set()
         if isinstance(link, str):
@@ -662,7 +662,7 @@ class TransferEngine:
                 links.add(link)
         elif isinstance(link, list):
             for i in link:
-                _link: Union[set, None] = self.__process_links(link=i)
+                _link: Union[set, None] = self._process_links(link=i)
                 if _link is not None:
                     links.update(_link)
         if links:
@@ -677,6 +677,6 @@ class TransferEngine:
             console.log('🔗 没有找到有效链接。', style='#FF4689')
             return None
 
-    def __retry_call(self, notice, _future):
+    def _retry_call(self, notice, _future):
         self._queue().task_done()
         console.log(notice, style='#FF4689')

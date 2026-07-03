@@ -71,6 +71,73 @@ def normalize_detected_transfer_range(value) -> Optional[tuple[int, int]]:
     return int(start_id), int(end_id)
 
 
+class AuthProvider:
+    """Thread-safe auth provider for WebUI Telegram login flow."""
+
+    STEP_PHONE = 'phone'
+    STEP_CODE = 'code'
+    STEP_PASSWORD = 'password'
+    STEP_RECOVERY_CODE = 'recovery_code'
+    STEP_EMAIL_CODE = 'email_code'
+    STEP_SIGNUP = 'signup'
+    STEP_DONE = 'done'
+    STEP_ERROR = 'error'
+
+    def __init__(self):
+        self.step: str = self.STEP_PHONE
+        self.message: str = ''
+        self.hint: str = ''
+        self.code_type: str = ''
+        self.error: Optional[str] = None
+        self.user_info: Optional[str] = None
+        self._lock = threading.Lock()
+        self._event = threading.Event()
+        self._input_value: Optional[dict] = None
+
+    def wait_for_input(self) -> dict:
+        self._event.clear()
+        self._event.wait()
+        with self._lock:
+            val = self._input_value or {}
+            self._input_value = None
+        return val
+
+    def submit(self, value: dict) -> None:
+        with self._lock:
+            self._input_value = value
+            self.error = None
+        self._event.set()
+
+    def set_step(self, step: str, message: str = '', hint: str = '', code_type: str = ''):
+        with self._lock:
+            self.step = step
+            self.message = message
+            self.hint = hint
+            self.code_type = code_type or step
+
+    def set_error(self, error: str):
+        with self._lock:
+            self.error = error
+            self.step = self.STEP_ERROR
+
+    def set_done(self, user_info: str):
+        with self._lock:
+            self.step = self.STEP_DONE
+            self.user_info = user_info
+            self.error = None
+
+    def get_state(self) -> dict:
+        with self._lock:
+            return {
+                'step': self.step,
+                'message': self.message,
+                'hint': self.hint,
+                'code_type': self.code_type,
+                'error': self.error,
+                'user': self.user_info
+            }
+
+
 class WebUiServer:
     def __init__(
             self,
@@ -97,6 +164,7 @@ class WebUiServer:
         self.diagnostic = diagnostic or default_diagnostic
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
+        self.auth_provider: Optional[AuthProvider] = None
         self.validate_auth_config()
 
     @staticmethod
@@ -142,6 +210,9 @@ class WebUiServer:
             and hmac.compare_digest(password, self.password)
         )
 
+    def set_auth_provider(self, provider: "AuthProvider") -> None:
+        self.auth_provider = provider
+
     def start(self, open_browser: bool = True) -> None:
         server = self
 
@@ -166,6 +237,9 @@ class WebUiServer:
                 self.wfile.write(data)
 
             def _check_auth(self):
+                path = urlparse(self.path).path
+                if path in ('/api/auth/status', '/api/auth/submit'):
+                    return True
                 if server.is_authorized(self.headers.get('authorization')):
                     return True
                 self._send_auth_required()
@@ -227,6 +301,12 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path == '/api/auth/status':
+                    if server.auth_provider:
+                        self._send_json(server.auth_provider.get_state())
+                    else:
+                        self._send_json({'step': 'none', 'error': None, 'user': None})
+                    return
                 if parsed.path in ('/', '/index.html'):
                     self._send_html()
                     return
@@ -278,6 +358,14 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path == '/api/auth/submit':
+                    payload = self._read_json()
+                    if server.auth_provider:
+                        server.auth_provider.submit(payload)
+                        self._send_json({'accepted': True})
+                    else:
+                        self._send_error('no_auth_provider', 'No auth provider configured.', HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
                 task_action = server.parse_task_action_path(parsed.path)
                 if task_action:
                     task_id, action = task_action

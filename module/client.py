@@ -303,8 +303,150 @@ class TelegramRestrictedMediaDownloaderClient(pyrogram.Client):
                     except pyrogram.errors.BadRequest as e:
                         console.print(e.MESSAGE)
                         self.password = None
+                else:
+                    break
+
+    async def authorize_webui(self, auth_provider) -> pyrogram.types.User:
+        import asyncio as _asyncio
+
+        def _wait():
+            return _asyncio.to_thread(auth_provider.wait_for_input)
+
+        sent_code = None
+        while True:
+            auth_provider.set_step(auth_provider.STEP_PHONE, '请输入电话号码（需以+地区号开头，如 +8615000000000）')
+            input_data = await _wait()
+            phone = str(input_data.get('phone', '')).strip()
+
+            if not phone.startswith('+'):
+                auth_provider.set_error('电话号码需以「+地区」开头！')
+                continue
+            if len(phone) < 8 or len(phone) > 16:
+                auth_provider.set_error('电话号码无效！')
+                continue
+
+            self.phone_number = phone
+            try:
+                sent_code = await self.send_code(self.phone_number)
+            except pyrogram.errors.BadRequest as e:
+                auth_provider.set_error(str(e.MESSAGE))
+                self.phone_number = None
+                continue
+            except (pyrogram.errors.PhoneNumberInvalid, AttributeError) as e:
+                auth_provider.set_error(f'电话号码错误: {getattr(e, "MESSAGE", str(e))}')
+                self.phone_number = None
+                continue
             else:
                 break
+
+        sent_code_descriptions = {
+            pyrogram.enums.SentCodeType.APP: 'Telegram App',
+            pyrogram.enums.SentCodeType.SMS: 'SMS',
+            pyrogram.enums.SentCodeType.CALL: '电话',
+            pyrogram.enums.SentCodeType.FLASH_CALL: 'Flash Call',
+            pyrogram.enums.SentCodeType.FRAGMENT_SMS: 'Fragment SMS',
+            pyrogram.enums.SentCodeType.EMAIL_CODE: '邮箱验证码'
+        }
+        code_type_desc = sent_code_descriptions.get(sent_code.type, str(sent_code.type))
+
+        while True:
+            if not self.phone_code:
+                auth_provider.set_step(
+                    auth_provider.STEP_CODE,
+                    f'验证码已通过「{code_type_desc}」发送',
+                    code_type=code_type_desc
+                )
+                input_data = await _wait()
+                self.phone_code = str(input_data.get('code', '')).strip()
+
+            try:
+                signed_in = await self.sign_in(
+                    self.phone_number,
+                    sent_code.phone_code_hash,
+                    self.phone_code
+                )
+            except pyrogram.errors.BadRequest as e:
+                auth_provider.set_error(str(e.MESSAGE))
+                self.phone_code = None
+                continue
+            except pyrogram.errors.SessionPasswordNeeded as _:
+                hint = ''
+                try:
+                    hint = await self.get_password_hint()
+                except Exception:
+                    pass
+
+                while True:
+                    auth_provider.set_step(
+                        auth_provider.STEP_PASSWORD,
+                        '当前账号已设置「两步验证」，请输入密码',
+                        hint=f'密码提示: {hint}' if hint else '未设置密码提示'
+                    )
+                    if not self.password:
+                        input_data = await _wait()
+                        self.password = str(input_data.get('password', '')).strip()
+
+                    if not self.password:
+                        auth_provider.set_step(
+                            auth_provider.STEP_RECOVERY_CODE,
+                            '请输入恢复代码'
+                        )
+                        try:
+                            email_pattern = await self.send_recovery_code()
+                            auth_provider.set_step(
+                                auth_provider.STEP_RECOVERY_CODE,
+                                f'恢复代码已发送到邮箱「{email_pattern}」',
+                                hint=f'邮箱: {email_pattern}'
+                            )
+                        except Exception:
+                            pass
+
+                        input_data = await _wait()
+                        recovery_code = str(input_data.get('recovery_code', '')).strip()
+                        try:
+                            return await self.recover_password(recovery_code)
+                        except pyrogram.errors.BadRequest as e:
+                            auth_provider.set_error(str(e.MESSAGE))
+                            continue
+                        except Exception as e:
+                            auth_provider.set_error(str(e))
+                            continue
+                    else:
+                        try:
+                            return await self.check_password(self.password)
+                        except pyrogram.errors.BadRequest as e:
+                            auth_provider.set_error(str(e.MESSAGE))
+                            self.password = None
+                            continue
+            else:
+                break
+
+        if isinstance(signed_in, pyrogram.types.User):
+            return signed_in
+
+        while True:
+            auth_provider.set_step(auth_provider.STEP_SIGNUP, '请输入名字和姓氏以完成注册')
+            input_data = await _wait()
+            first_name = str(input_data.get('first_name', '')).strip()
+            last_name = str(input_data.get('last_name', '')).strip()
+
+            try:
+                signed_up = await self.sign_up(
+                    self.phone_number,
+                    sent_code.phone_code_hash,
+                    first_name,
+                    last_name
+                )
+            except pyrogram.errors.BadRequest as e:
+                auth_provider.set_error(str(e.MESSAGE))
+                continue
+            else:
+                break
+
+        if isinstance(signed_in, pyrogram.types.TermsOfService):
+            await self.accept_terms_of_service(signed_in.id)
+
+        return signed_up
 
     async def get_chat_history(
             self: pyrogram.Client,

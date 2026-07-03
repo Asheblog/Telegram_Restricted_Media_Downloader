@@ -87,3 +87,7 @@ _Avoid_: Comment scraping, reply mirroring
 **WebUI Credentials**:
 Environment-supplied Basic Auth credentials for the visual WebUI. They are required when the server listens on a non-localhost address and are never generated or logged by the application.
 _Avoid_: Random ttyd password, public WebUI
+
+**WebUI Telegram Login**:
+A WebUI-based Telegram authentication flow that replaces the CLI console.input() interaction when the WebUI is active. It guides the user through phone-number entry, verification code, and optional two-factor authentication via a login form, with real-time status feedback.
+_Avoid_: CLI login, console auth, terminal login

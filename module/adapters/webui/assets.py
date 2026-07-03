@@ -789,6 +789,131 @@ WEB_UI_CSS = r'''
     .event { grid-template-columns: 1fr; gap: 4px; }
     th, td { padding: 11px 10px; }
   }
+
+  .login-container {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .login-container.active { display: flex; }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 420px;
+    width: calc(100% - 32px);
+    box-shadow: var(--shadow);
+  }
+  .login-card__title {
+    font-size: var(--font-xl);
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: var(--text);
+  }
+  .login-card__subtitle {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+  .login-card__step {
+    font-size: var(--font-xs);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 8px;
+  }
+  .login-field {
+    margin-bottom: 16px;
+  }
+  .login-field label {
+    display: block;
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .login-field input {
+    width: 100%;
+    height: var(--control-height);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: var(--font-md);
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .18s ease;
+  }
+  .login-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(15, 143, 114, .12);
+  }
+  .login-field__hint {
+    font-size: var(--font-xs);
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .login-error {
+    font-size: var(--font-sm);
+    color: var(--danger);
+    background: #fff4f2;
+    border: 1px solid #f3b5ad;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .login-error.visible { display: block; }
+  .login-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .login-actions button {
+    min-width: 100px;
+  }
+  .login-success {
+    text-align: center;
+    padding: 16px 0;
+  }
+  .login-success svg {
+    width: 48px;
+    height: 48px;
+    color: var(--ok);
+    margin-bottom: 12px;
+  }
+  .login-success__text {
+    font-size: var(--font-lg);
+    font-weight: 600;
+    color: var(--ok);
+    margin: 0;
+  }
+  .login-brand {
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .login-brand h1 {
+    font-size: 28px;
+    font-weight: 800;
+    margin: 0;
+    color: var(--text);
+    letter-spacing: -.02em;
+  }
+  .login-brand p {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    margin: 2px 0 0;
+  }
+  @media (max-width: 768px) {
+    .login-card { padding: 24px; }
+  }
 '''
 
 WEB_UI_MOBILE_CSS = r'''
@@ -1288,6 +1413,129 @@ WEB_UI_MOBILE_CSS = r'''
     position: sticky;
     top: 0;
   }
+
+  .login-container {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    padding: 16px;
+  }
+  .login-container.active { display: flex; }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: var(--shadow);
+  }
+  .login-card__title {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: var(--text);
+  }
+  .login-card__subtitle {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+  .login-card__step {
+    font-size: var(--font-xs);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 8px;
+  }
+  .login-field {
+    margin-bottom: 16px;
+  }
+  .login-field label {
+    display: block;
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .login-field input {
+    width: 100%;
+    height: 42px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: var(--font-md);
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color .18s ease;
+  }
+  .login-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(15, 143, 114, .12);
+  }
+  .login-field__hint {
+    font-size: var(--font-xs);
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .login-error {
+    font-size: var(--font-sm);
+    color: var(--danger);
+    background: #fff4f2;
+    border: 1px solid #f3b5ad;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .login-error.visible { display: block; }
+  .login-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .login-actions button {
+    min-width: 100px;
+  }
+  .login-success {
+    text-align: center;
+    padding: 16px 0;
+  }
+  .login-success svg {
+    width: 48px;
+    height: 48px;
+    color: var(--ok);
+    margin-bottom: 12px;
+  }
+  .login-success__text {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ok);
+    margin: 0;
+  }
+  .login-brand {
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .login-brand h1 {
+    font-size: 24px;
+    font-weight: 800;
+    margin: 0;
+    color: var(--text);
+    letter-spacing: -.02em;
+  }
+  .login-brand p {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    margin: 2px 0 0;
+  }
 '''
 
 WEB_UI_MOBILE_BODY = f'''
@@ -1306,6 +1554,106 @@ WEB_UI_MOBILE_BODY = f'''
     <button class="secondary small" type="button" id="refresh" aria-label="刷新">
       <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+  </div>
+</div>
+
+<div class="login-container active" id="login-container">
+  <div class="login-brand">
+    <h1>TRMD</h1>
+    <p>Telegram 账号登录</p>
+  </div>
+  <div class="login-card">
+    <div class="login-error" id="login-error"></div>
+    <div id="login-form-phone" class="login-step">
+      <div class="login-card__step">步骤 1 / 3</div>
+      <h2 class="login-card__title">输入电话号码</h2>
+      <p class="login-card__subtitle">请输入您的 Telegram 账号绑定的手机号</p>
+      <div class="login-field">
+        <label for="login-phone">电话号码</label>
+        <input id="login-phone" type="tel" placeholder="+8615000000000" autocomplete="tel">
+        <div class="login-field__hint">需以「+地区号」开头，如中国 +86</div>
+      </div>
+      <div class="login-actions">
+        <button type="button" id="login-btn-phone" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          发送验证码
+        </button>
+      </div>
+    </div>
+    <div id="login-form-code" class="login-step" style="display:none">
+      <div class="login-card__step">步骤 2 / 3</div>
+      <h2 class="login-card__title">输入验证码</h2>
+      <p class="login-card__subtitle" id="login-code-desc">验证码已发送到您的设备</p>
+      <div class="login-field">
+        <label for="login-code">验证码</label>
+        <input id="login-code" type="text" inputmode="numeric" maxlength="10" placeholder="输入验证码" autocomplete="one-time-code">
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back">返回</button>
+        <button type="button" id="login-btn-code" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          验证
+        </button>
+      </div>
+    </div>
+    <div id="login-form-password" class="login-step" style="display:none">
+      <div class="login-card__step">步骤 2.5 / 3</div>
+      <h2 class="login-card__title">两步验证密码</h2>
+      <p class="login-card__subtitle" id="login-password-hint">该账号已设置两步验证</p>
+      <div class="login-field">
+        <label for="login-password">密码</label>
+        <input id="login-password" type="password" placeholder="输入两步验证密码" autocomplete="current-password">
+        <div class="login-field__hint" id="login-password-hint-text"></div>
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back-pwd">取消</button>
+        <button type="button" id="login-btn-password" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          验证
+        </button>
+      </div>
+    </div>
+    <div id="login-form-recovery" class="login-step" style="display:none">
+      <div class="login-card__step">密码恢复</div>
+      <h2 class="login-card__title">输入恢复代码</h2>
+      <p class="login-card__subtitle" id="login-recovery-desc">恢复代码已发送</p>
+      <div class="login-field">
+        <label for="login-recovery">恢复代码</label>
+        <input id="login-recovery" type="text" placeholder="输入恢复代码">
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back-recovery">返回</button>
+        <button type="button" id="login-btn-recovery" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          提交
+        </button>
+      </div>
+    </div>
+    <div id="login-form-signup" class="login-step" style="display:none">
+      <div class="login-card__step">注册信息</div>
+      <h2 class="login-card__title">完善个人信息</h2>
+      <p class="login-card__subtitle">首次登录，请输入您的名字</p>
+      <div class="login-field">
+        <label for="login-first-name">名字</label>
+        <input id="login-first-name" type="text" placeholder="名字">
+      </div>
+      <div class="login-field">
+        <label for="login-last-name">姓氏</label>
+        <input id="login-last-name" type="text" placeholder="姓氏（可选）">
+      </div>
+      <div class="login-actions">
+        <button type="button" id="login-btn-signup" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          完成注册
+        </button>
+      </div>
+    </div>
+    <div id="login-form-done" class="login-step" style="display:none">
+      <div class="login-success">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <p class="login-success__text" id="login-user-name">登录成功</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1598,6 +1946,105 @@ WEB_UI_BODY = f'''
       </div>
     </aside>
     <main>
+      <div class="login-container active" id="login-container">
+        <div class="login-brand">
+          <h1>TRMD</h1>
+          <p>Telegram 账号登录</p>
+        </div>
+        <div class="login-card">
+          <div class="login-error" id="login-error"></div>
+          <div id="login-form-phone" class="login-step">
+            <div class="login-card__step">步骤 1 / 3</div>
+            <h2 class="login-card__title">输入电话号码</h2>
+            <p class="login-card__subtitle">请输入您的 Telegram 账号绑定的手机号</p>
+            <div class="login-field">
+              <label for="login-phone">电话号码</label>
+              <input id="login-phone" type="tel" placeholder="+8615000000000" autocomplete="tel">
+              <div class="login-field__hint">需以「+地区号」开头，如中国 +86</div>
+            </div>
+            <div class="login-actions">
+              <button type="button" id="login-btn-phone" class="login-submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                发送验证码
+              </button>
+            </div>
+          </div>
+          <div id="login-form-code" class="login-step" style="display:none">
+            <div class="login-card__step">步骤 2 / 3</div>
+            <h2 class="login-card__title">输入验证码</h2>
+            <p class="login-card__subtitle" id="login-code-desc">验证码已发送到您的设备</p>
+            <div class="login-field">
+              <label for="login-code">验证码</label>
+              <input id="login-code" type="text" inputmode="numeric" maxlength="10" placeholder="输入验证码" autocomplete="one-time-code">
+            </div>
+            <div class="login-actions">
+              <button type="button" class="secondary" id="login-btn-back">返回</button>
+              <button type="button" id="login-btn-code" class="login-submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                验证
+              </button>
+            </div>
+          </div>
+          <div id="login-form-password" class="login-step" style="display:none">
+            <div class="login-card__step">步骤 2.5 / 3</div>
+            <h2 class="login-card__title">两步验证密码</h2>
+            <p class="login-card__subtitle" id="login-password-hint">该账号已设置两步验证</p>
+            <div class="login-field">
+              <label for="login-password">密码</label>
+              <input id="login-password" type="password" placeholder="输入两步验证密码" autocomplete="current-password">
+              <div class="login-field__hint" id="login-password-hint-text"></div>
+            </div>
+            <div class="login-actions">
+              <button type="button" class="secondary" id="login-btn-back-pwd">取消</button>
+              <button type="button" id="login-btn-password" class="login-submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                验证
+              </button>
+            </div>
+          </div>
+          <div id="login-form-recovery" class="login-step" style="display:none">
+            <div class="login-card__step">密码恢复</div>
+            <h2 class="login-card__title">输入恢复代码</h2>
+            <p class="login-card__subtitle" id="login-recovery-desc">恢复代码已发送</p>
+            <div class="login-field">
+              <label for="login-recovery">恢复代码</label>
+              <input id="login-recovery" type="text" placeholder="输入恢复代码">
+            </div>
+            <div class="login-actions">
+              <button type="button" class="secondary" id="login-btn-back-recovery">返回</button>
+              <button type="button" id="login-btn-recovery" class="login-submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                提交
+              </button>
+            </div>
+          </div>
+          <div id="login-form-signup" class="login-step" style="display:none">
+            <div class="login-card__step">注册信息</div>
+            <h2 class="login-card__title">完善个人信息</h2>
+            <p class="login-card__subtitle">首次登录，请输入您的名字</p>
+            <div class="login-field">
+              <label for="login-first-name">名字</label>
+              <input id="login-first-name" type="text" placeholder="名字">
+            </div>
+            <div class="login-field">
+              <label for="login-last-name">姓氏</label>
+              <input id="login-last-name" type="text" placeholder="姓氏（可选）">
+            </div>
+            <div class="login-actions">
+              <button type="button" id="login-btn-signup" class="login-submit">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                完成注册
+              </button>
+            </div>
+          </div>
+          <div id="login-form-done" class="login-step" style="display:none">
+            <div class="login-success">
+              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <p class="login-success__text" id="login-user-name">登录成功</p>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="topbar">
         <div>
           <h2 data-i18n="hero.title">PikPak 转存队列</h2>
@@ -3321,6 +3768,207 @@ SHARED_WEB_UI_SCRIPT = r'''
 '''
 
 WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
+  /* ====== 登录流程 ====== */
+  var authPollTimer = null;
+  var authStep = '';
+
+  function showLoginStep(step) {
+    authStep = step;
+    var steps = ['login-form-phone', 'login-form-code', 'login-form-password', 'login-form-recovery', 'login-form-signup', 'login-form-done'];
+    steps.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    var el = document.getElementById('login-form-' + step);
+    if (el) el.style.display = '';
+    var container = document.getElementById('login-container');
+    if (container) container.classList.add('active');
+    var loginError = document.getElementById('login-error');
+    if (loginError) loginError.classList.remove('visible');
+  }
+
+  function hideLogin() {
+    var container = document.getElementById('login-container');
+    if (container) container.classList.remove('active');
+    if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
+  }
+
+  function showLoginError(msg) {
+    var el = document.getElementById('login-error');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  async function checkAuthStatus() {
+    try {
+      var resp = await fetch('/api/auth/status');
+      if (resp.status === 401) return; // auth_required on non-auth paths
+      var state = await resp.json();
+      if (!state || !state.step) return;
+      switch (state.step) {
+        case 'done': case 'none':
+          hideLogin();
+          loadTasks();
+          startPolling();
+          return;
+        case 'phone':
+          showLoginStep('phone');
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'code':
+          showLoginStep('code');
+          if (state.code_type) {
+            var desc = document.getElementById('login-code-desc');
+            if (desc) desc.textContent = '\u9a8c\u8bc1\u7801\u5df2\u901a\u8fc7\u300c' + state.code_type + '\u300d\u53d1\u9001';
+          }
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'password':
+          showLoginStep('password');
+          var hintEl = document.getElementById('login-password-hint-text');
+          if (hintEl && state.hint) hintEl.textContent = state.hint;
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'recovery_code':
+          showLoginStep('recovery');
+          var rDesc = document.getElementById('login-recovery-desc');
+          if (rDesc && state.message) rDesc.textContent = state.message;
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'signup':
+          showLoginStep('signup');
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'error':
+          if (state.error) showLoginError(state.error);
+          break;
+        default:
+          break;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function submitAuth(payload) {
+    var btn = document.querySelector('.login-submit');
+    if (btn) btn.disabled = true;
+    showLoginError('');
+    try {
+      await fetch('/api/auth/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await new Promise(function(r) { setTimeout(r, 500); });
+      await checkAuthStatus();
+    } catch (e) {
+      showLoginError('\u63d0\u4ea4\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  /* phone submit */
+  var phoneBtn = document.getElementById('login-btn-phone');
+  if (phoneBtn) {
+    phoneBtn.addEventListener('click', function() {
+      var phone = document.getElementById('login-phone').value.trim();
+      if (!phone) { showLoginError('\u8bf7\u8f93\u5165\u7535\u8bdd\u53f7\u7801'); return; }
+      if (!phone.startsWith('+')) { showLoginError('\u7535\u8bdd\u53f7\u7801\u9700\u4ee5 +\u5730\u533a\u53f7\u5f00\u5934'); return; }
+      submitAuth({ phone: phone });
+    });
+    document.getElementById('login-phone').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); phoneBtn.click(); }
+    });
+  }
+
+  /* code submit */
+  var codeBtn = document.getElementById('login-btn-code');
+  if (codeBtn) {
+    codeBtn.addEventListener('click', function() {
+      var code = document.getElementById('login-code').value.trim();
+      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u9a8c\u8bc1\u7801'); return; }
+      submitAuth({ code: code });
+    });
+    document.getElementById('login-code').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); codeBtn.click(); }
+    });
+  }
+
+  /* back to phone */
+  var backBtn = document.getElementById('login-btn-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', function() {
+      showLoginStep('phone');
+      document.getElementById('login-code').value = '';
+    });
+  }
+
+  /* password submit */
+  var pwdBtn = document.getElementById('login-btn-password');
+  if (pwdBtn) {
+    pwdBtn.addEventListener('click', function() {
+      var pwd = document.getElementById('login-password').value;
+      submitAuth({ password: pwd });
+    });
+    document.getElementById('login-password').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); pwdBtn.click(); }
+    });
+  }
+
+  var pwdBackBtn = document.getElementById('login-btn-back-pwd');
+  if (pwdBackBtn) {
+    pwdBackBtn.addEventListener('click', function() {
+      showLoginStep('code');
+      document.getElementById('login-password').value = '';
+    });
+  }
+
+  /* recovery submit */
+  var recBtn = document.getElementById('login-btn-recovery');
+  if (recBtn) {
+    recBtn.addEventListener('click', function() {
+      var code = document.getElementById('login-recovery').value.trim();
+      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u6062\u590d\u4ee3\u7801'); return; }
+      submitAuth({ recovery_code: code });
+    });
+    document.getElementById('login-recovery').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); recBtn.click(); }
+    });
+  }
+
+  var recBackBtn = document.getElementById('login-btn-back-recovery');
+  if (recBackBtn) {
+    recBackBtn.addEventListener('click', function() {
+      showLoginStep('password');
+      document.getElementById('login-recovery').value = '';
+    });
+  }
+
+  /* signup submit */
+  var signupBtn = document.getElementById('login-btn-signup');
+  if (signupBtn) {
+    signupBtn.addEventListener('click', function() {
+      var first = document.getElementById('login-first-name').value.trim();
+      if (!first) { showLoginError('\u8bf7\u8f93\u5165\u540d\u5b57'); return; }
+      submitAuth({ first_name: first, last_name: document.getElementById('login-last-name').value.trim() });
+    });
+    document.getElementById('login-first-name').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); signupBtn.click(); }
+    });
+  }
+
+  /* poll auth status on load */
+  (function() {
+    checkAuthStatus();
+    authPollTimer = setInterval(function() {
+      if (authStep === 'done' || authStep === 'none') {
+        clearInterval(authPollTimer);
+        authPollTimer = null;
+        return;
+      }
+      checkAuthStatus();
+    }, 2000);
+  })();
+
+  /* ====== 原有初始化 ====== */
   $('#language-select').addEventListener('change', event => {
     state.lang = event.target.value;
     localStorage.setItem('trmd-lang', state.lang);
@@ -3388,8 +4036,6 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   $('#upload-form').addEventListener('submit', createUpload);
 
   applyLanguage();
-  loadTasks();
-  startPolling();
 
   function hasActiveTasks() {
     return state.tasks.some(t => t.status === 'pending' || t.status === 'running');
@@ -3454,7 +4100,186 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
 '''
 
 WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
-  /* ====== 轮询（移动端复用） ====== */
+  /* ====== 登录流程（移动端） ====== */
+  var authPollTimer = null;
+  var authStep = '';
+
+  function showLoginStep(step) {
+    authStep = step;
+    var steps = ['login-form-phone', 'login-form-code', 'login-form-password', 'login-form-recovery', 'login-form-signup', 'login-form-done'];
+    steps.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    var el = document.getElementById('login-form-' + step);
+    if (el) el.style.display = '';
+    var container = document.getElementById('login-container');
+    if (container) container.classList.add('active');
+    var loginError = document.getElementById('login-error');
+    if (loginError) loginError.classList.remove('visible');
+  }
+
+  function hideLogin() {
+    var container = document.getElementById('login-container');
+    if (container) container.classList.remove('active');
+    if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
+  }
+
+  function showLoginError(msg) {
+    var el = document.getElementById('login-error');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  async function checkAuthStatus() {
+    try {
+      var resp = await fetch('/api/auth/status');
+      if (resp.status === 401) return;
+      var state = await resp.json();
+      if (!state || !state.step) return;
+      switch (state.step) {
+        case 'done': case 'none':
+          hideLogin();
+          loadTasks();
+          startPolling();
+          return;
+        case 'phone':
+          showLoginStep('phone');
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'code':
+          showLoginStep('code');
+          if (state.code_type) {
+            var desc = document.getElementById('login-code-desc');
+            if (desc) desc.textContent = '\u9a8c\u8bc1\u7801\u5df2\u901a\u8fc7\u300c' + state.code_type + '\u300d\u53d1\u9001';
+          }
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'password':
+          showLoginStep('password');
+          var hintEl = document.getElementById('login-password-hint-text');
+          if (hintEl && state.hint) hintEl.textContent = state.hint;
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'recovery_code':
+          showLoginStep('recovery');
+          var rDesc = document.getElementById('login-recovery-desc');
+          if (rDesc && state.message) rDesc.textContent = state.message;
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'signup':
+          showLoginStep('signup');
+          if (state.error) showLoginError(state.error);
+          break;
+        case 'error':
+          if (state.error) showLoginError(state.error);
+          break;
+        default:
+          break;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function submitAuth(payload) {
+    var btn = document.querySelector('.login-submit');
+    if (btn) btn.disabled = true;
+    showLoginError('');
+    try {
+      await fetch('/api/auth/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await new Promise(function(r) { setTimeout(r, 500); });
+      await checkAuthStatus();
+    } catch (e) {
+      showLoginError('\u63d0\u4ea4\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  /* phone submit */
+  var phoneBtn = document.getElementById('login-btn-phone');
+  if (phoneBtn) {
+    phoneBtn.addEventListener('click', function() {
+      var phone = document.getElementById('login-phone').value.trim();
+      if (!phone) { showLoginError('\u8bf7\u8f93\u5165\u7535\u8bdd\u53f7\u7801'); return; }
+      if (!phone.startsWith('+')) { showLoginError('\u7535\u8bdd\u53f7\u7801\u9700\u4ee5 +\u5730\u533a\u53f7\u5f00\u5934'); return; }
+      submitAuth({ phone: phone });
+    });
+  }
+
+  var codeBtn = document.getElementById('login-btn-code');
+  if (codeBtn) {
+    codeBtn.addEventListener('click', function() {
+      var code = document.getElementById('login-code').value.trim();
+      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u9a8c\u8bc1\u7801'); return; }
+      submitAuth({ code: code });
+    });
+  }
+
+  var backBtn = document.getElementById('login-btn-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', function() {
+      showLoginStep('phone');
+      document.getElementById('login-code').value = '';
+    });
+  }
+
+  var pwdBtn = document.getElementById('login-btn-password');
+  if (pwdBtn) {
+    pwdBtn.addEventListener('click', function() {
+      var pwd = document.getElementById('login-password').value;
+      submitAuth({ password: pwd });
+    });
+  }
+
+  var pwdBackBtn = document.getElementById('login-btn-back-pwd');
+  if (pwdBackBtn) {
+    pwdBackBtn.addEventListener('click', function() {
+      showLoginStep('code');
+      document.getElementById('login-password').value = '';
+    });
+  }
+
+  var recBtn = document.getElementById('login-btn-recovery');
+  if (recBtn) {
+    recBtn.addEventListener('click', function() {
+      var code = document.getElementById('login-recovery').value.trim();
+      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u6062\u590d\u4ee3\u7801'); return; }
+      submitAuth({ recovery_code: code });
+    });
+  }
+
+  var recBackBtn = document.getElementById('login-btn-back-recovery');
+  if (recBackBtn) {
+    recBackBtn.addEventListener('click', function() {
+      showLoginStep('password');
+      document.getElementById('login-recovery').value = '';
+    });
+  }
+
+  var signupBtn = document.getElementById('login-btn-signup');
+  if (signupBtn) {
+    signupBtn.addEventListener('click', function() {
+      var first = document.getElementById('login-first-name').value.trim();
+      if (!first) { showLoginError('\u8bf7\u8f93\u5165\u540d\u5b57'); return; }
+      submitAuth({ first_name: first, last_name: document.getElementById('login-last-name').value.trim() });
+    });
+  }
+
+  (function() {
+    checkAuthStatus();
+    authPollTimer = setInterval(function() {
+      if (authStep === 'done' || authStep === 'none') {
+        clearInterval(authPollTimer);
+        authPollTimer = null;
+        return;
+      }
+      checkAuthStatus();
+    }, 2000);
+  })();
+
+  /* ====== 移动端初始化 ====== */
   function hasActiveTasks() {
     return state.tasks.some(function(t) { return t.status === 'pending' || t.status === 'running'; });
   }
@@ -3959,9 +4784,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   /* 统计导出 */
   /* 已通过 loadStatistics 覆盖自动渲染 */
 
-  /* ====== 初始加载 ====== */
-  loadTasks();
-  startPolling();
+  /* ====== 初始加载（由 checkAuthStatus 驱动） ====== */
 '''
 
 WEB_UI_HTML = f'''<!doctype html>
