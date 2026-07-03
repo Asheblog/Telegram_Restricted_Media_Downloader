@@ -19,7 +19,7 @@ from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
 from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
-from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML
+from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML
 
 
 SENSITIVE_SETTING_KEYS = {
@@ -840,19 +840,21 @@ def save_runtime_settings(payload: dict) -> dict:
             'api_id', 'api_hash', 'bot_token', 'session_directory', 'save_directory',
             'temp_directory', 'max_tasks', 'max_retries', 'download_type', 'is_shutdown',
             'proxy'
-        }
+        },
+        gc=global_config
     )
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'}
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'},
+        gc=global_config
     )
     user.save_config(user_config)
     global_config.save_config(global_settings)
     return load_runtime_settings()
 
 
-def merge_allowed_settings(target: dict, patch: dict, allowed: set) -> dict:
+def merge_allowed_settings(target: dict, patch: dict, allowed: set, gc=None) -> dict:
     if not isinstance(patch, dict):
         return target
     for key, value in patch.items():
@@ -862,7 +864,8 @@ def merge_allowed_settings(target: dict, patch: dict, allowed: set) -> dict:
             target[key] = merge_allowed_settings(
                 target=deepcopy(target.get(key, {})),
                 patch=value,
-                allowed=set(target.get(key, {}).keys()) | set(value.keys())
+                allowed=set(target.get(key, {}).keys()) | set(value.keys()),
+                gc=gc
             )
         elif key in SENSITIVE_SETTING_KEYS and value in (None, ''):
             continue

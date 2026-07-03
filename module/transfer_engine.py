@@ -33,19 +33,8 @@ from module.local_storage_guard import LocalStorageGuard
 class TransferEngine:
     def __init__(
         self,
-        app_getter,
-        gc_getter,
-        diagnostic,
-        downloader_loop_getter,
-        uploader_getter=None,
-        progress_tracker_getter=None,
-        pikpak_manager_getter=None,
-        watch_manager_getter=None,
-        web_task_manager_getter=None,
-        transfer_store_getter=None,
-        local_storage_guard_getter=None,
-        download_upload_window_getter=None,
-        my_id_getter=None,
+        ctx,
+        diagnostic=None,
         env_save_directory_getter=None,
         get_final_save_directory_getter=None,
         get_final_file_path_getter=None,
@@ -78,19 +67,10 @@ class TransferEngine:
         create_download_task_getter=None,
         detect_transfer_range_async_getter=None,
     ):
-        self._app = app_getter
-        self._gc = gc_getter
-        self.diagnostic = diagnostic
-        self._loop = downloader_loop_getter
-        self._uploader = uploader_getter
-        self._progress_tracker = progress_tracker_getter
-        self._pikpak_manager = pikpak_manager_getter
-        self._watch_manager = watch_manager_getter
-        self._web_task_manager = web_task_manager_getter
-        self._transfer_store = transfer_store_getter
-        self._local_storage_guard = local_storage_guard_getter
-        self._download_upload_window = download_upload_window_getter
-        self._my_id = my_id_getter
+        from module.comp import TransferContext
+        self.ctx: TransferContext = ctx if isinstance(ctx, TransferContext) else TransferContext()
+        self.diagnostic = diagnostic or self.ctx.diagnostic
+
         self._env_save_directory = env_save_directory_getter
         self._get_final_save_directory = get_final_save_directory_getter
         self._get_final_file_path = get_final_file_path_getter
@@ -125,43 +105,51 @@ class TransferEngine:
 
     @property
     def app(self):
-        return self._app()
+        return self.ctx.app
 
     @property
     def gc(self):
-        return self._gc()
+        return self.ctx.gc
 
     @property
     def loop(self):
-        return self._loop()
+        return self.ctx.loop
 
     @property
     def transfer_store(self):
-        return self._transfer_store() if self._transfer_store else None
+        return self.ctx.transfer_store
 
     @property
     def my_id(self):
-        return self._my_id() if self._my_id else 0
+        return self.ctx.my_id
 
     @property
     def uploader(self):
-        return self._uploader() if self._uploader else None
+        return self.ctx.uploader
 
     @property
     def progress_tracker(self):
-        return self._progress_tracker() if self._progress_tracker else None
+        return self.ctx.progress_tracker
 
     @property
     def pikpak_manager(self):
-        return self._pikpak_manager() if self._pikpak_manager else None
+        return self.ctx.pikpak_manager
 
     @property
     def watch_manager(self):
-        return self._watch_manager() if self._watch_manager else None
+        return self.ctx.watch_manager
 
     @property
     def web_task_manager(self):
-        return self._web_task_manager() if self._web_task_manager else None
+        return self.ctx.web_task_manager
+
+    @property
+    def local_storage_guard(self):
+        return self.ctx.local_storage_guard
+
+    @property
+    def download_upload_window(self):
+        return self.ctx.download_upload_window
 
     def env_save_directory(self, *args, **kwargs):
         return self._env_save_directory()(*args, **kwargs)

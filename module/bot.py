@@ -80,7 +80,7 @@ class Bot:
         BotCommand(BotCommandText.DOWNLOAD_CHAT[0], BotCommandText.DOWNLOAD_CHAT[1].replace('`', ''))
     ]
 
-    def __init__(self, downloader=None, handler_overrides: Optional[Dict[str, Callable]] = None):
+    def __init__(self, downloader=None, handler_overrides: Optional[Dict[str, Callable]] = None, gc=None):
         self.downloader = downloader
         self._handler_overrides = handler_overrides or {}
         self.application = None
@@ -88,7 +88,7 @@ class Bot:
         self.bot: Union[pyrogram.Client, None] = None
         self.is_bot_running: bool = False
         self.bot_task_link: set = set()
-        self.gc = GlobalConfig()
+        self.gc = gc if gc is not None else GlobalConfig()
         self.root: list = []
         self.last_client: Union[pyrogram.Client, None] = None
         self.last_message: Union[pyrogram.types.Message, None] = None

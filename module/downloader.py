@@ -62,6 +62,7 @@ from module import (
 from module.filter import Filter
 from module.app import Application
 from module.app import DownloadFileName
+from module.config import GlobalConfig
 from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
@@ -135,6 +136,7 @@ from module.util import (
     is_allow_upload
 )
 from module.transfer_engine import TransferEngine
+from module.comp import TransferContext
 
 
 
@@ -173,11 +175,14 @@ class TelegramRestrictedMediaDownloader:
         return getattr(bot, name)
 
     def __init__(self):
+        self.gc = GlobalConfig()
+        self.diagnostic = RichDiagnosticAdapter(console, log)
         self.bot = Bot(
             handler_overrides={
                 'start': self.start,
                 'callback_data': self.callback_data,
-            }
+            },
+            gc=self.gc
         )
         self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         self.event: asyncio.Event = asyncio.Event()
@@ -206,7 +211,6 @@ class TelegramRestrictedMediaDownloader:
         self.web_running_task_id: Optional[int] = None
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operations: dict = {}
-        self.diagnostic = RichDiagnosticAdapter(console, log)
         self.watch_manager = LiveWatchManager(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             operation_submitter=self.submit_web_operation,
@@ -278,20 +282,18 @@ class TelegramRestrictedMediaDownloader:
             process_web_transfer_task_getter=self.process_web_transfer_task,
             process_web_task_queue_getter=self.process_web_task_queue,
         )
-        self._te = TransferEngine(
-            app_getter=lambda: self.app,
-            gc_getter=lambda: self.gc,
+        self.ctx = TransferContext(
+            app=self.app,
+            gc=self.gc,
             diagnostic=self.diagnostic,
-            downloader_loop_getter=lambda: self.loop,
-            uploader_getter=lambda: getattr(self, 'uploader', None),
-            progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
-            pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
-            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
-            web_task_manager_getter=lambda: getattr(self, 'web_task_manager', None),
-            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
-            local_storage_guard_getter=lambda: getattr(self, 'local_storage_guard', None),
-            download_upload_window_getter=lambda: getattr(self, 'download_upload_window', None),
-            my_id_getter=lambda: self.my_id,
+            loop=self.loop,
+            my_id=self.my_id,
+            download_upload_window=self.download_upload_window,
+            local_storage_guard=self.local_storage_guard,
+        )
+        self._te = TransferEngine(
+            ctx=self.ctx,
+            diagnostic=self.diagnostic,
             env_save_directory_getter=lambda: self.env_save_directory,
             get_final_save_directory_getter=lambda: self.get_final_save_directory,
             get_final_file_path_getter=lambda: self.get_final_file_path,
@@ -334,20 +336,20 @@ class TelegramRestrictedMediaDownloader:
             return self._te
 
     def _create_transfer_engine(self):
+        ctx = getattr(self, 'ctx', None)
+        if ctx is None:
+            ctx = TransferContext(
+                app=self.app,
+                gc=self.gc,
+                diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+                loop=self.loop,
+                my_id=getattr(self, 'my_id', 0),
+                download_upload_window=getattr(self, 'download_upload_window', None),
+                local_storage_guard=getattr(self, 'local_storage_guard', None),
+            )
         return TransferEngine(
-            app_getter=lambda: self.app,
-            gc_getter=lambda: self.gc,
+            ctx=ctx,
             diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
-            downloader_loop_getter=lambda: self.loop,
-            uploader_getter=lambda: getattr(self, 'uploader', None),
-            progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
-            pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
-            watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
-            web_task_manager_getter=lambda: getattr(self, 'web_task_manager', None),
-            transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
-            local_storage_guard_getter=lambda: getattr(self, 'local_storage_guard', None),
-            download_upload_window_getter=lambda: getattr(self, 'download_upload_window', None),
-            my_id_getter=lambda: getattr(self, 'my_id', 0),
             env_save_directory_getter=lambda: getattr(self, 'env_save_directory', lambda *a, **kw: ''),
             get_final_save_directory_getter=lambda: getattr(self, 'get_final_save_directory', lambda *a, **kw: ''),
             get_final_file_path_getter=lambda: getattr(self, 'get_final_file_path', lambda *a, **kw: ''),

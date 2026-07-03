@@ -1,6 +1,8 @@
 # coding=UTF-8
 from typing import Optional, Protocol, runtime_checkable
 
+import asyncio
+
 
 @runtime_checkable
 class IWebUiOperations(Protocol):
@@ -21,15 +23,15 @@ class IWebUiOperations(Protocol):
 
 @runtime_checkable
 class IUploadContext(Protocol):
+    """Focused upload dependencies: config, loop, progress, diagnostics, lifetime."""
     app: object
-    loop: object
+    loop: asyncio.AbstractEventLoop
     pb: object
     done_notice: object
     my_id: int
-    gc: object
     is_running: bool
     is_bot_running: bool
-    web_ui: object
+    web_ui: Optional[object]
     wait_for_telegram_flood: object
     diagnostic: object
 
