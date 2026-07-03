@@ -205,6 +205,7 @@ class TelegramRestrictedMediaDownloader:
         self.my_id: int = 0
         self.transfer_store: Union[TransferStore, None] = None
         self.web_ui: Union[WebUiServer, None] = None
+        self.web_ui_auth = None
         self.web_task_queue: asyncio.Queue = asyncio.Queue()
         self.web_submitted_task_ids: Set[int] = set()
         self.web_running_task: Optional[asyncio.Task] = None
@@ -3427,19 +3428,35 @@ class TelegramRestrictedMediaDownloader:
     def _retry_call(self, notice, _future):
         self.transfer_engine._retry_call(notice, _future)
 
-    async def __download_media_from_links(self) -> None:
-        if PARSE_ARGS.web is not None:
-            self.start_web_ui(with_auth_provider=True)
+    async def __ensure_client_authorized(self) -> None:
+        """确保 Telegram Client 已登录；已登录则验证会话有效性（防过期），否则引导 WebUI/CLI 登录。"""
+        if self.web_ui_auth:
+            # WebUI 模式：connect → 验证会话 → 必要时通过 WebUI 登录
             is_authorized = await self.app.client.connect()
             if not is_authorized:
                 user = await self.app.client.authorize_webui(self.web_ui_auth)
                 self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
                 console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
-            else:
+                return
+            try:
+                await self.app.client.get_me()
                 self.web_ui_auth.set_done('')
+                return
+            except (SessionRevoked, AuthKeyUnregistered, SessionExpired, Unauthorized):
+                log.warning('会话已过期，请在 WebUI 中重新登录。')
+            except Exception as e:
+                log.error(f'验证会话时出错: {e}')
+            user = await self.app.client.authorize_webui(self.web_ui_auth)
+            self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
+            console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
         else:
             self.start_web_ui()
             await self.app.client.start(use_qr=False)
+
+    async def __download_media_from_links(self) -> None:
+        if PARSE_ARGS.web is not None:
+            self.start_web_ui(with_auth_provider=True)
+        await self.__ensure_client_authorized()
         self.my_id = await get_my_id(self.app.client)
         await self.restore_live_transfer_watches()
         self.pb.progress.start()  # v1.1.8修复登录输入手机号不显示文本问题。
