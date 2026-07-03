@@ -422,7 +422,7 @@ WEB_UI_CSS = r'''
     padding: 12px 14px;
     border-bottom: 1px solid var(--line);
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
   }
   th {
     color: var(--muted);
