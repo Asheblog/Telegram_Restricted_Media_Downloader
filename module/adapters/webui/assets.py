@@ -158,7 +158,7 @@ WEB_UI_CSS = r'''
   aside {
     border-right: 1px solid var(--line);
     background: rgba(255, 255, 255, .86);
-    padding: 24px 20px;
+    padding: 24px 20px 12px 20px;
     position: sticky;
     top: 0;
     height: 100svh;
@@ -207,7 +207,7 @@ WEB_UI_CSS = r'''
     border-color: var(--line);
   }
   .nav-scroll {
-    overflow: auto;
+    overflow: hidden;
     flex: 1;
     min-height: 0;
     padding-right: 4px;
