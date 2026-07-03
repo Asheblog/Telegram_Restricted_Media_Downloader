@@ -1114,8 +1114,19 @@ WEB_UI_MOBILE_CSS = r'''
     border-radius: 10px;
     padding: 14px;
     border: 1px solid var(--line);
-    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+    box-shadow: 0 1px 3px rgba(0,0,0,.03);
+    border-left: 3px solid var(--line);
+    transition: border-color .2s, transform .15s;
+    cursor: pointer;
   }
+  .mob-card:active { transform: scale(.985); }
+  .mob-card.status-pending { border-left-color: #94a3b8; }
+  .mob-card.status-running { border-left-color: var(--accent); }
+  .mob-card.status-paused { border-left-color: #eab308; }
+  .mob-card.status-success { border-left-color: var(--blue); }
+  .mob-card.status-failure { border-left-color: var(--danger); }
+  .mob-card.status-cancelled { border-left-color: #94a3b8; }
+  .mob-card.status-skipped { border-left-color: #8b5cf6; }
   .mob-card__head {
     display: flex;
     justify-content: space-between;
@@ -1126,6 +1137,7 @@ WEB_UI_MOBILE_CSS = r'''
     font-weight: 650;
     font-size: var(--font-md);
     word-break: break-all;
+    line-height: 1.3;
   }
   .mob-card__badge {
     display: inline-block;
@@ -1371,6 +1383,83 @@ WEB_UI_MOBILE_CSS = r'''
     pointer-events: auto;
   }
 
+  /* ---- Task Detail Sheet ---- */
+  .mob-sheet__task-header {
+    background: var(--surface-muted);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .mob-sheet__task-header .task-title {
+    font-weight: 650;
+    font-size: var(--font-md);
+    word-break: break-all;
+    margin-bottom: 4px;
+  }
+  .mob-sheet__task-header .task-meta {
+    font-size: var(--font-xs);
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .mob-sheet-tabs {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .mob-sheet-tab {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: auto;
+    min-width: auto;
+    transition: .15s;
+  }
+  .mob-sheet-tab.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .mob-sheet-tab .count { margin-left: 3px; opacity: .8; }
+  .mob-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--font-sm);
+    gap: 6px;
+  }
+  .mob-item-row:last-child { border-bottom: 0; }
+  .mob-item-row__name {
+    flex: 1;
+    word-break: break-all;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mob-event-row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--font-xs);
+  }
+  .mob-event-row:last-child { border-bottom: 0; }
+  .mob-event-row time { color: var(--muted); margin-right: 6px; }
+  .mob-sheet-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 6px;
+    font-size: var(--font-xs);
+    color: var(--muted);
+  }
+
   /* ---- Empty State ---- */
   .mob-empty {
     text-align: center;
@@ -1386,6 +1475,19 @@ WEB_UI_MOBILE_CSS = r'''
     letter-spacing: .06em;
     color: var(--muted);
     padding: 4px 0;
+  }
+
+  /* ---- Check Group (fieldset) ---- */
+  .mob-check-group {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 0;
+  }
+  .mob-check-group legend {
+    font-size: var(--font-sm);
+    color: var(--muted);
+    padding: 0 4px;
   }
 
   /* ---- Scrollable Table ---- */
@@ -1703,14 +1805,15 @@ WEB_UI_MOBILE_BODY = f'''
       <div class="mob-collapse__body">
         <form id="mob-watch-form">
           <label><span data-i18n="watches.type">类型</span>
-            <select name="watch_type" id="mob-watch-type">
+            <select name="type" id="mob-watch-type">
               <option value="download" data-i18n="watches.download">监听下载</option>
               <option value="forward" data-i18n="watches.forward">监听转发</option>
             </select>
           </label>
           <div id="mob-watch-source-group">
-            <label><span data-i18n="watches.sources">来源频道</span>
+            <label id="mob-watch-source-label"><span data-i18n="watches.sources">来源频道</span>
               <textarea name="source_links" rows="3" placeholder="每行一个 https://t.me/... 链接" required></textarea>
+              <input type="text" name="source_link" placeholder="https://t.me/source" style="display:none;">
             </label>
           </div>
           <div id="mob-watch-target-group" style="display:none;">
@@ -1742,15 +1845,28 @@ WEB_UI_MOBILE_BODY = f'''
       <div class="mob-collapse__head" data-i18n="settings.behavior">行为 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body" id="mob-settings-behavior-fields"></div>
     </div>
-    <div class="mob-collapse" id="collapse-settings-sensitive">
-      <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
-      <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
-    </div>
     <div class="mob-collapse" id="collapse-settings-archive">
       <div class="mob-collapse__head" data-i18n="settings.pikpakArchive">PikPak 归档 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body" id="mob-settings-archive-fields"></div>
     </div>
+    <div class="mob-collapse" id="collapse-settings-sensitive">
+      <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-download-types">
+      <div class="mob-collapse__head" data-i18n="settings.downloadTypes">下载类型 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-download-types-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-forward-types">
+      <div class="mob-collapse__head" data-i18n="settings.forwardTypes">转发类型 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-forward-types-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-exports">
+      <div class="mob-collapse__head" data-i18n="settings.exports">导出表格 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>
+    </div>
     <button id="mob-save-settings" style="width:100%;margin-top:4px;" data-i18n="settings.save">保存设置</button>
+    <p class="mob-empty" id="mob-settings-notice" style="display:none;"></p>
   </div>
 
   <!-- 频道下载 -->
@@ -1773,6 +1889,18 @@ WEB_UI_MOBILE_BODY = f'''
           <label><span data-i18n="channel.keywords">关键词</span>
             <input type="text" name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
           </label>
+          <fieldset class="mob-check-group">
+            <legend data-i18n="channel.types">下载类型</legend>
+            <div id="mob-channel-download-types" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="video" checked style="width:auto;min-height:auto;">video</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="photo" checked style="width:auto;min-height:auto;">photo</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="audio" checked style="width:auto;min-height:auto;">audio</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="voice" checked style="width:auto;min-height:auto;">voice</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="animation" checked style="width:auto;min-height:auto;">animation</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="document" checked style="width:auto;min-height:auto;">document</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="video_note" checked style="width:auto;min-height:auto;">video_note</label>
+            </div>
+          </fieldset>
           <label style="flex-direction:row;align-items:center;gap:8px;">
             <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
             <span data-i18n="channel.includeComment">包含评论区</span>
@@ -4401,7 +4529,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   function mobBadge(status) {
     var cls;
     if (status === 'running') cls = 'running';
-    else if (status === 'completed') cls = 'completed';
+    else if (status === 'success') cls = 'completed';
     else if (status === 'paused') cls = 'paused';
     else if (status === 'failure') cls = 'failure';
     else if (status === 'cancelled') cls = 'cancelled';
@@ -4427,7 +4555,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       if (task.status === 'paused') actions += '<button class="secondary small" data-resume="' + task.id + '">' + t('tasks.resume') + '</button>';
       if (task.failed_items > 0) actions += '<button class="secondary small" data-retry="' + task.id + '">' + t('tasks.retryFailed') + '</button>';
       actions += '<button class="danger small" data-delete="' + task.id + '">' + t('tasks.delete') + '</button>';
-      return '<div class="mob-card">'
+      return '<div class="mob-card status-' + task.status + '">'
         + '<div class="mob-card__head">'
         + '<span class="mob-card__title">' + esc(task.source_link) + '</span>'
         + mobBadge(task.status)
@@ -4451,6 +4579,14 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     container.querySelectorAll('[data-delete]').forEach(function(btn) {
       btn.addEventListener('click', function(e) { deleteTask(e, Number(btn.dataset.delete)); });
     });
+
+    // 点击卡片打开详情
+    container.querySelectorAll('.mob-card').forEach(function(card, idx) {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('button')) return;
+        openTaskDetail(tasks[idx].id);
+      });
+    });
   }
 
   /* ====== 渲染监听卡片列表 ====== */
@@ -4473,7 +4609,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       if (w.target_link) {
         targetHtml = '<div class="mob-card__row"><span class="label">' + t('watches.target') + '</span><span>' + esc(w.target_link) + '</span></div>';
       }
-      return '<div class="mob-card">'
+      return '<div class="mob-card status-' + (w.status || 'running') + '">'
         + '<div class="mob-card__head">'
         + '<span class="mob-card__title">' + typeLabel + '</span>'
         + '<span class="mob-card__badge running">' + esc(w.type) + '</span>'
@@ -4490,43 +4626,321 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     });
   }
 
+  /* ====== 任务详情 Sheet ====== */
+  var sheetTaskId = null;
+  var sheetItems = [];
+  var sheetEvents = [];
+  var sheetItemTotal = 0;
+  var sheetEventTotal = 0;
+  var sheetItemOffset = 0;
+  var sheetEventOffset = 0;
+  var sheetHasMoreItems = false;
+  var sheetHasMoreEvents = false;
+  var sheetActiveTab = 'running';
+  var sheetItemPage = 1;
+  var sheetItemPageSize = 10;
+
+  async function openTaskDetail(taskId) {
+    sheetTaskId = taskId;
+    state.selectedTaskId = taskId;
+    sheetItems = [];
+    sheetEvents = [];
+    sheetActiveTab = 'running';
+    sheetItemPage = 1;
+    sheetItemOffset = 0;
+    sheetEventOffset = 0;
+    try {
+      var res = await fetch('/api/tasks/' + taskId + '?items_limit=200&items_offset=0&events_limit=100&events_offset=0');
+      if (!res.ok) { showToast(translateApiError(await res.json())); return; }
+      var data = await res.json();
+      sheetItems = data.items || [];
+      sheetEvents = data.events || [];
+      sheetItemTotal = data.item_count || 0;
+      sheetEventTotal = data.event_count || 0;
+      sheetItemOffset = data.items_offset || 0;
+      sheetEventOffset = data.events_offset || 0;
+      sheetHasMoreItems = data.has_more_items || false;
+      sheetHasMoreEvents = data.has_more_events || false;
+    } catch (e) { showToast(t('form.requestFailed')); return; }
+
+    var task = state.tasks.find(function(t) { return t.id === taskId; });
+    var total = Number((task && task.total_items) || 0);
+    var done = Number((task && task.completed_items) || 0);
+    var failed = Number((task && task.failed_items) || 0);
+    var percent = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+
+    var groups = categorizeSheetItems();
+    var html = '<h3 class="mob-sheet__title">#' + taskId + ' ' + esc((task && task.source_link) || '') + '</h3>'
+      + '<div class="mob-sheet__task-header">'
+      + '<div class="task-title">' + esc((task && task.source_link) || '') + '</div>'
+      + '<div class="task-meta">' + (task ? (mobBadge(task.status) + ' ' + esc(task.target_link || '')) : '') + '</div>'
+      + '<div class="mob-card__row"><span class="label">' + t('tasks.progress') + '</span><span>' + done + '/' + total + (failed ? ' (' + failed + ' ' + t('side.failed') + ')' : '') + '</span></div>'
+      + '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + percent + '%"></div></div>'
+      + '</div>'
+      + '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">'
+      + renderSheetTab('running', groups.running.length)
+      + renderSheetTab('success', groups.success.length)
+      + renderSheetTab('skipped', groups.skipped.length)
+      + renderSheetTab('failure', groups.failure.length)
+      + '</div>'
+      + '<div id="mob-sheet-items"></div>'
+      + '<div id="mob-sheet-items-pagination"></div>'
+      + '<div class="mob-section-title" style="margin-top:6px;">' + t('events.title') + ' (' + String(sheetEvents.length) + (sheetEventTotal > sheetEvents.length ? ' / ' + sheetEventTotal : '') + ')</div>'
+      + '<div id="mob-sheet-events"></div>';
+
+    var sheet = $('#mob-sheet');
+    sheet.innerHTML = html;
+    $('#mob-sheet-overlay').classList.add('open');
+
+    bindSheetTabClicks();
+    renderSheetItemPage();
+    renderSheetEvents();
+
+    // Sheet overlay 点击关闭
+    $('#mob-sheet-overlay').onclick = function(e) {
+      if (e.target === this) closeSheet();
+    };
+  }
+
+  function closeSheet() {
+    $('#mob-sheet-overlay').classList.remove('open');
+    sheetTaskId = null;
+  }
+
+  function renderSheetTab(status, count) {
+    var labelKey = 'items.tab.' + status;
+    var active = sheetActiveTab === status ? ' active' : '';
+    return '<button class="mob-sheet-tab' + active + '" data-sheet-tab="' + status + '">' + t(labelKey) + '<span class="count">' + count + '</span></button>';
+  }
+
+  function bindSheetTabClicks() {
+    var tabs = document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab');
+    tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        sheetActiveTab = this.dataset.sheetTab;
+        sheetItemPage = 1;
+        var allTabs = document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab');
+        allTabs.forEach(function(t) { t.classList.remove('active'); });
+        this.classList.add('active');
+        renderSheetItemPage();
+      });
+    });
+  }
+
+  function categorizeSheetItems() {
+    var groups = { running: [], success: [], skipped: [], failure: [] };
+    (sheetItems || []).forEach(function(item) {
+      var status = String((item && item.status) || 'pending');
+      if (status === 'success' || status === 'skipped' || status === 'failure') {
+        groups[status].push(item);
+      } else {
+        groups.running.push(item);
+      }
+    });
+    return groups;
+  }
+
+  function renderSheetItemPage() {
+    var groups = categorizeSheetItems();
+    var activeItems = groups[sheetActiveTab] || [];
+    var total = activeItems.length;
+    var pages = Math.max(1, Math.ceil(total / sheetItemPageSize));
+    if (sheetItemPage > pages) sheetItemPage = pages;
+    var start = (sheetItemPage - 1) * sheetItemPageSize;
+    var end = Math.min(start + sheetItemPageSize, total);
+    var pageItems = activeItems.slice(start, end);
+
+    var container = $('#mob-sheet-items');
+    if (!pageItems.length) {
+      container.innerHTML = '<div class="mob-empty">' + t('items.empty.' + sheetActiveTab) + '</div>';
+    } else {
+      container.innerHTML = pageItems.map(function(item) {
+        var dlPct = pct(item.download_current, item.download_total);
+        var ulPct = pct(item.upload_current, item.upload_total);
+        return '<div class="mob-item-row">'
+          + '<div class="mob-item-row__name">' + esc(item.file_name || item.local_path || '#' + (item.source_message_id || item.id)) + '</div>'
+          + '<div style="text-align:right;font-size:var(--font-xs);color:var(--muted);flex-shrink:0;">'
+          + '<div>' + t('items.download') + ' ' + dlPct + '%</div>'
+          + '<div>' + t('items.upload') + ' ' + ulPct + '%</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    var pagEl = $('#mob-sheet-items-pagination');
+    var pagHtml = '';
+    if (pages > 1) {
+      pagHtml += '<div class="mob-sheet-pagination">'
+        + '<button class="secondary small" ' + (sheetItemPage <= 1 ? 'disabled' : '') + ' onclick="sheetPrevPage()">' + t('items.page.previous') + '</button>'
+        + '<span>' + interpolate(t('items.page.range'), { start: start + 1, end: end, total: total }) + '</span>'
+        + '<button class="secondary small" ' + (sheetItemPage >= pages ? 'disabled' : '') + ' onclick="sheetNextPage()">' + t('items.page.next') + '</button>'
+        + '</div>';
+    }
+    if (sheetHasMoreItems && sheetItems.length < sheetItemTotal) {
+      pagHtml += '<div class="mob-load-more"><button class="secondary small" onclick="loadMoreSheetItems()">' + t('items.loadMore') + ' (' + (sheetItemTotal - sheetItems.length) + ' ' + t('items.remaining') + ')</button></div>';
+    }
+    pagEl.innerHTML = pagHtml;
+  }
+
+  function renderSheetEvents() {
+    var container = $('#mob-sheet-events');
+    if (!sheetEvents.length) {
+      container.innerHTML = '<div class="mob-empty">' + t('events.empty') + '</div>';
+      return;
+    }
+    var html = sheetEvents.map(function(event) {
+      return '<div class="mob-event-row">'
+        + '<time>' + esc(event.created_at) + '</time>'
+        + '<span style="color:var(--accent);">[' + esc(localizeEventLevel(event.level)) + ']</span> '
+        + esc(localizeEventMessage(event))
+        + '</div>';
+    }).join('');
+    if (sheetHasMoreEvents && sheetEvents.length < sheetEventTotal) {
+      html += '<div class="mob-load-more"><button class="secondary small" onclick="loadMoreSheetEvents()">' + t('events.loadMore') + ' (' + (sheetEventTotal - sheetEvents.length) + ' ' + t('events.remaining') + ')</button></div>';
+    }
+    container.innerHTML = html;
+  }
+
+  function sheetPrevPage() {
+    if (sheetItemPage > 1) { sheetItemPage--; renderSheetItemPage(); }
+  }
+  function sheetNextPage() {
+    sheetItemPage++;
+    renderSheetItemPage();
+  }
+  window.sheetPrevPage = sheetPrevPage;
+  window.sheetNextPage = sheetNextPage;
+
+  async function loadMoreSheetItems() {
+    if (!sheetTaskId) return;
+    var offset = sheetItemOffset + 200;
+    try {
+      var res = await fetch('/api/tasks/' + sheetTaskId + '?items_limit=200&items_offset=' + offset + '&events_limit=0&events_offset=0');
+      if (!res.ok) return;
+      var data = await res.json();
+      sheetItems = sheetItems.concat(data.items || []);
+      sheetItemTotal = data.item_count || sheetItemTotal;
+      sheetItemOffset = offset;
+      sheetHasMoreItems = data.has_more_items || false;
+      renderSheetItemPage();
+    } catch (e) { /* ignore */ }
+  }
+  window.loadMoreSheetItems = loadMoreSheetItems;
+
+  async function loadMoreSheetEvents() {
+    if (!sheetTaskId) return;
+    var offset = sheetEventOffset + 100;
+    try {
+      var res = await fetch('/api/tasks/' + sheetTaskId + '?items_limit=0&items_offset=0&events_limit=100&events_offset=' + offset);
+      if (!res.ok) return;
+      var data = await res.json();
+      sheetEvents = sheetEvents.concat(data.events || []);
+      sheetEventTotal = data.event_count || sheetEventTotal;
+      sheetEventOffset = offset;
+      sheetHasMoreEvents = data.has_more_events || false;
+      renderSheetEvents();
+    } catch (e) { /* ignore */ }
+  }
+  window.loadMoreSheetEvents = loadMoreSheetEvents;
+
   /* ====== 渲染设置表单 ====== */
   function renderMobSettingsForm() {
     if (!state.settings || !state.schema) return;
     var s = state.settings;
-    var commonPasswordPattern = state.schema.sensitive_keys || [];
+    var schema = state.schema;
     var user = s.user || {};
     var glob = s.global || {};
-    var targetProfiles = glob.target_profiles || {};
-    var pikpak = targetProfiles.pikpak || {};
+    var tp = (glob.target_profiles || {});
+    var pikpak = tp.pikpak || {};
+    var archive = pikpak.archive || {};
+    var upload = glob.upload || {};
+    var sensitiveKeys = schema.sensitive_keys || [];
+    var downloadTypes = schema.download_type || [];
+    var forwardTypes = schema.forward_type || [];
+    var selectedDownload = user.download_type || [];
+    var exportTable = glob.export_table || {};
 
+    // Path & Task
+    var maxTasks = user.max_tasks || {};
+    var maxRetries = user.max_retries || {};
     $('#mob-settings-path-fields').innerHTML =
-      '<label><span>save_directory</span><input type="text" name="root.save_directory" value="' + esc(user.save_directory || '') + '"></label>'
-      + '<label><span>temp_directory</span><input type="text" name="root.temp_directory" value="' + esc(user.temp_directory || '') + '"></label>'
-      + '<label><span>session_directory</span><input type="text" name="root.session_directory" value="' + esc(user.session_directory || '') + '"></label>'
-      + '<label><span>max_tasks</span><input type="number" name="root.max_tasks" value="' + esc(user.max_tasks || '') + '" min="1"></label>'
+      '<label><span>' + t('settings.saveDirectory') + '</span><input type="text" name="user.save_directory" value="' + esc(user.save_directory || '') + '"></label>'
+      + '<label><span>' + t('settings.tempDirectory') + '</span><input type="text" name="user.temp_directory" value="' + esc(user.temp_directory || '') + '"></label>'
+      + '<label><span>' + t('settings.sessionDirectory') + '</span><input type="text" name="user.session_directory" value="' + esc(user.session_directory || '') + '"></label>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
-      + '<label><span>max_retries</span><input type="number" name="root.max_retries" value="' + esc(user.max_retries || '') + '" min="0"></label>'
-      + '</div>';
+      + '<label><span>' + t('settings.maxDownload') + '</span><input type="number" name="user.max_tasks.download" value="' + esc(maxTasks.download || '') + '" min="1"></label>'
+      + '<label><span>' + t('settings.maxUpload') + '</span><input type="number" name="user.max_tasks.upload" value="' + esc(maxTasks.upload || '') + '" min="1"></label>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<label><span>' + t('settings.retryDownload') + '</span><input type="number" name="user.max_retries.download" value="' + esc(maxRetries.download || '') + '" min="0"></label>'
+      + '<label><span>' + t('settings.retryUpload') + '</span><input type="number" name="user.max_retries.upload" value="' + esc(maxRetries.upload || '') + '" min="0"></label>'
+      + '</div>'
+      + '<label><span>' + t('settings.pikpakMaxFileSize') + '</span><input type="number" name="global.target_profiles.pikpak.max_file_size" value="' + esc(pikpak.max_file_size || '') + '" min="1"></label>';
 
+    // Behavior
     $('#mob-settings-behavior-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;" ' + (glob.notice ? 'checked' : '') + '><span>notice</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="root.is_shutdown" style="width:auto;min-height:auto;" ' + (user.is_shutdown ? 'checked' : '') + '><span>is_shutdown</span></label>';
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;"' + (glob.notice ? ' checked' : '') + '><span>' + t('settings.notice') + '</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="user.is_shutdown" style="width:auto;min-height:auto;"' + (user.is_shutdown ? ' checked' : '') + '><span>' + t('settings.shutdown') + '</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload" style="width:auto;min-height:auto;"' + (upload.download_upload ? ' checked' : '') + '><span>' + t('settings.downloadUpload') + '</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete" style="width:auto;min-height:auto;"' + (upload.delete ? ' checked' : '') + '><span>' + t('settings.uploadDelete') + '</span></label>'
+      + '<label><span>' + t('settings.pendingLimit') + '</span><input type="number" name="global.upload.pending_limit" value="' + esc(upload.pending_limit || '') + '" min="1" max="5"></label>';
 
-    $('#mob-settings-sensitive-fields').innerHTML = commonPasswordPattern.map(function(k) {
-      var v = user[k];
-      return '<label><span>' + esc(k) + '</span><input type="password" name="root.' + esc(k) + '" placeholder="' + (v && v.configured ? t('settings.secretConfigured') : t('settings.secretNotConfigured')) + '" autocomplete="new-password"></label>';
-    }).join('');
-
+    // PikPak Archive
     $('#mob-settings-archive-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.pikpak_archive_enable" style="width:auto;min-height:auto;" ' + (glob.pikpak_archive_enable ? 'checked' : '') + '><span>pikpak_archive_enable</span></label>'
-      + '<label><span>pikpak_archive_remote</span><input type="text" name="global.pikpak_archive_remote" value="' + esc(glob.pikpak_archive_remote || '') + '"></label>'
-      + '<label><span>pikpak_archive_source</span><input type="text" name="global.pikpak_archive_source" value="' + esc(glob.pikpak_archive_source || '') + '"></label>'
-      + '<label><span>pikpak_archive_root</span><input type="text" name="global.pikpak_archive_root" value="' + esc(glob.pikpak_archive_root || '') + '"></label>'
-      + '<label><span>pikpak_archive_poll</span><input type="number" name="global.pikpak_archive_poll" value="' + esc(glob.pikpak_archive_poll || '60') + '" min="1"></label>';
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" style="width:auto;min-height:auto;"' + (archive.enable ? ' checked' : '') + '><span>' + t('settings.pikpakArchiveEnable') + '</span></label>'
+      + '<label><span>' + t('settings.pikpakArchiveRemote') + '</span><input type="text" name="global.target_profiles.pikpak.archive.remote" value="' + esc(archive.remote || '') + '"></label>'
+      + '<label><span>' + t('settings.pikpakArchiveSource') + '</span><input type="text" name="global.target_profiles.pikpak.archive.source_directory" value="' + esc(archive.source_directory || '') + '"></label>'
+      + '<label><span>' + t('settings.pikpakArchiveRoot') + '</span><input type="text" name="global.target_profiles.pikpak.archive.root_directory" value="' + esc(archive.root_directory || '') + '"></label>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<label><span>' + t('settings.pikpakArchivePoll') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_seconds" value="' + esc(archive.poll_seconds || '') + '" min="0"></label>'
+      + '<label><span>' + t('settings.pikpakArchiveInterval') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_interval_seconds" value="' + esc(archive.poll_interval_seconds || '') + '" min="0"></label>'
+      + '</div>'
+      + '<label><span>' + t('settings.pikpakArchiveWindow') + '</span><input type="number" name="global.target_profiles.pikpak.archive.match_window_seconds" value="' + esc(archive.match_window_seconds || '') + '" min="0"></label>';
+
+    // Account & Proxy
+    $('#mob-settings-sensitive-fields').innerHTML =
+      '<label><span>API ID</span><input type="text" name="user.api_id" value="' + esc(user.api_id || '') + '"></label>'
+      + sensitiveKeys.map(function(k) {
+        var v = getPath(user, getSettingLeafKey(k));
+        return '<label><span>' + esc(k) + '</span><input type="password" name="user.' + esc(k) + '" placeholder="' + (v && v.configured ? t('settings.secretConfigured') : t('settings.secretNotConfigured')) + '" autocomplete="new-password"></label>';
+      }).join('');
+
+    // Download Types
+    $('#mob-settings-download-types-fields').innerHTML = renderCheckCards('user.download_type', downloadTypes, selectedDownload);
+
+    // Forward Types
+    $('#mob-settings-forward-types-fields').innerHTML = renderCheckCards('global.forward_type', forwardTypes, selectedForward(glob));
+
+    // Export Tables
+    $('#mob-settings-exports-fields').innerHTML =
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link" style="width:auto;min-height:auto;"' + (exportTable.link ? ' checked' : '') + '><span>' + t('settings.exportLink') + '</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.count" style="width:auto;min-height:auto;"' + (exportTable.count ? ' checked' : '') + '><span>' + t('settings.exportCount') + '</span></label>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.upload" style="width:auto;min-height:auto;"' + (exportTable.upload ? ' checked' : '') + '><span>' + t('settings.exportUpload') + '</span></label>';
   }
 
-  /* ====== 覆盖：loadTasks / loadWatches / loadSettings ====== */
+  function getSettingLeafKey(key) {
+    return key;
+  }
+
+  function selectedForward(glob) {
+    var ft = glob.forward_type || {};
+    var result = [];
+    for (var k in ft) { if (ft[k]) result.push(k); }
+    return result;
+  }
+
+  function renderCheckCards(baseName, types, selected) {
+    return types.map(function(type) {
+      return '<label style="flex-direction:row;align-items:center;gap:8px;padding:6px 0;"><input type="checkbox" name="' + baseName + '" value="' + esc(type) + '" style="width:auto;min-height:auto;"' + (selected.indexOf(type) >= 0 ? ' checked' : '') + '><span>' + esc(type) + '</span></label>';
+    }).join('');
+  }
+
+  /* ====== 覆盖：renderTasks / loadTasks / loadWatches / loadSettings ====== */
+  var _origRenderTasks = renderTasks;
+  renderTasks = function() {
+    _origRenderTasks();
+    if (state.tasks) renderMobTasks();
+  };
   var _origLoadTasks = loadTasks;
   loadTasks = async function() {
     await _origLoadTasks();
@@ -4536,6 +4950,11 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   var _origLoadWatches = loadWatches;
   loadWatches = async function() {
     await _origLoadWatches();
+    if (state.watches) renderMobWatches();
+  };
+  var _origRenderWatches = renderWatches;
+  renderWatches = function() {
+    _origRenderWatches();
     if (state.watches) renderMobWatches();
   };
 
@@ -4552,6 +4971,9 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     applyLanguageAndRefresh();
     renderMobTasks();
     renderMobWatches();
+    renderMobRecords();
+    renderMobStatistics();
+    renderMobSettingsForm();
   });
 
   $('#refresh').addEventListener('click', function() {
@@ -4619,7 +5041,18 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
   if (watchTypeSelect) {
     watchTypeSelect.addEventListener('change', function() {
       var isForward = this.value === 'forward';
-      $('#mob-watch-source-group').style.display = isForward ? 'none' : '';
+      var textarea = document.querySelector('#mob-watch-source-group textarea[name="source_links"]');
+      var input = document.querySelector('#mob-watch-source-group input[name="source_link"]');
+      var sourceLabel = $('#mob-watch-source-label').querySelector('span');
+      if (isForward) {
+        if (textarea) { textarea.style.display = 'none'; textarea.required = false; }
+        if (input) { input.style.display = ''; input.required = true; }
+        if (sourceLabel) sourceLabel.textContent = t('watches.source');
+      } else {
+        if (textarea) { textarea.style.display = ''; textarea.required = true; }
+        if (input) { input.style.display = 'none'; input.required = false; }
+        if (sourceLabel) sourceLabel.textContent = t('watches.sources');
+      }
       $('#mob-watch-target-group').style.display = isForward ? '' : 'none';
       $('#mob-watch-comment-group').style.display = isForward ? '' : 'none';
     });
@@ -4654,8 +5087,14 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       event.preventDefault();
       var form = new FormData(this);
       var payload = Object.fromEntries(form.entries());
-      payload.include_comment = !!payload.include_comment;
-      if (payload.watch_type !== 'forward') {
+      var isForward = payload.type === 'forward';
+      if (isForward) {
+        delete payload.source_links;
+        payload.include_comment = !!payload.include_comment;
+      } else {
+        delete payload.source_link;
+        delete payload.target_link;
+        delete payload.include_comment;
         payload.source_links = String(payload.source_links || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
       }
       try {
@@ -4676,19 +5115,44 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     saveBtn.addEventListener('click', async function() {
       var userPayload = {};
       var globalPayload = {};
+      var downloadTypes = [];
 
-      document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input').forEach(function(input) {
+      // 收集所有设置区域的 input
+      var allInputs = document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input, #mob-settings-download-types-fields input, #mob-settings-forward-types-fields input, #mob-settings-exports-fields input');
+
+      allInputs.forEach(function(input) {
         var name = input.name || '';
+        if (!name) return;
         var value;
-        if (input.type === 'checkbox') value = input.checked;
-        else if (input.type === 'number') value = Number(input.value);
-        else value = input.value;
-        if (name.startsWith('root.')) {
-          userPayload[name.substring(5)] = value;
+        if (input.type === 'checkbox') {
+          value = input.checked;
+        } else if (input.type === 'number') {
+          value = input.value === '' ? null : Number(input.value);
+        } else if (input.type === 'password' && input.value === '') {
+          return;
+        } else {
+          value = input.value;
+        }
+
+        // 收集 download_type 多选
+        if (name === 'user.download_type' && input.type === 'checkbox' && input.checked) {
+          downloadTypes.push(input.value);
+          return;
+        }
+        // 收集 forward_type 多选
+        if (name === 'global.forward_type' && input.type === 'checkbox') {
+          setPath(globalPayload, 'forward_type.' + input.value, input.checked);
+          return;
+        }
+
+        if (name.startsWith('user.')) {
+          setPath(userPayload, name.substring(5), value);
         } else if (name.startsWith('global.')) {
-          globalPayload[name.substring(7)] = value;
+          setPath(globalPayload, name.substring(7), value);
         }
       });
+
+      setPath(userPayload, 'download_type', downloadTypes);
 
       try {
         await postJson('/api/settings', { user: userPayload, global: globalPayload });
@@ -4705,15 +5169,16 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     var records = state.records || [];
     var container = $('#mob-records-list');
     if (!records.length) {
-      container.innerHTML = '<div class="mob-empty">' + t('records.title') + ' - ' + t('tasks.empty') + '</div>';
+      container.innerHTML = '<div class="mob-empty" data-i18n="records.empty">' + t('records.empty') + '</div>';
       return;
     }
     container.innerHTML = records.map(function(r) {
       return '<div class="mob-card">'
-        + '<div class="mob-card__head"><span class="mob-card__title">' + esc(r.file_name || r.source_link || '') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('tasks.source') + '</span><span>' + esc(r.source_link || '-') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('tasks.target') + '</span><span>' + esc(r.target_link || '-') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(r.updated_at || r.downloaded_at || '') + '</span></div>'
+        + '<div class="mob-card__head"><span class="mob-card__title">' + esc(r.file_name || r.local_path || '') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('records.chat') + '</span><span>' + esc(r.source_chat_id || '-') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('records.message') + '</span><span>' + esc(r.source_message_id || '-') + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('records.size') + '</span><span>' + formatBytes(r.file_size) + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('records.updated') + '</span><span>' + esc(r.updated_at || r.downloaded_at || '') + '</span></div>'
         + '</div>';
     }).join('');
   }
@@ -4730,19 +5195,25 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     var html = '';
     var tableNames = { link: t('statistics.link'), count: t('statistics.count'), upload: t('statistics.upload') };
     for (var key in tables) {
-      var t = tables[key];
+      if (!tables.hasOwnProperty(key)) continue;
+      var tbl = tables[key];
       html += '<div class="mob-card" style="margin-bottom:10px;">'
-        + '<div class="mob-card__row"><span class="label">' + (tableNames[key] || key) + '</span><span>' + t('statistics.available') + ': ' + (t.available ? t('statistics.yes') : t('statistics.no')) + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('statistics.rows') + '</span><span>' + (t.rows || 0) + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + (tableNames[key] || key) + '</span><span>' + t('statistics.available') + ': ' + (tbl.available ? t('statistics.yes') : t('statistics.no')) + '</span></div>'
+        + '<div class="mob-card__row"><span class="label">' + t('statistics.rows') + '</span><span>' + (tbl.rows || 0) + '</span></div>'
         + '</div>';
     }
     container.innerHTML = html || '<div class="mob-empty">' + t('tasks.empty') + '</div>';
   }
 
-  /* ====== 覆盖 loadRecords / loadStatistics ====== */
+  /* ====== 覆盖 loadRecords / renderRecords / loadStatistics ====== */
   var _origLoadRecords = loadRecords;
   loadRecords = async function() {
     await _origLoadRecords();
+    renderMobRecords();
+  };
+  var _origRenderRecords = renderRecords;
+  renderRecords = function() {
+    _origRenderRecords();
     renderMobRecords();
   };
   var _origLoadStatistics = loadStatistics;
@@ -4775,7 +5246,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       } else {
         payload.keywords = [];
       }
-      payload.download_type = ['video', 'photo', 'audio', 'voice', 'animation', 'document', 'video_note'];
+      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
       try {
         await postJson('/api/channel-downloads', payload);
         showToast(t('channel.accepted'));
