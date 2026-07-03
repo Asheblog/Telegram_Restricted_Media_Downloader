@@ -151,7 +151,12 @@ class WebUITaskManager:
         return deleted
 
     def pause_web_task(self, task_id: int) -> bool:
-        if not self.transfer_store or not self.transfer_store.get_task(task_id):
+        if not self.transfer_store:
+            return False
+        task = self.transfer_store.get_task(task_id)
+        if not task:
+            return False
+        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')

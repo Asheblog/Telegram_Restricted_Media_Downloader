@@ -741,7 +741,10 @@ class TransferStore:
         if task.get('status') == TransferStatus.PAUSED:
             status = TransferStatus.PAUSED
         if expected > 0 and assigned and item_count >= expected and terminal >= expected:
-            status = TransferStatus.FAILURE if failed else TransferStatus.SUCCESS
+            if terminal > 0 and completed > 0:
+                status = TransferStatus.SUCCESS
+            else:
+                status = TransferStatus.FAILURE
             finished = True
         elif task.get('status') == TransferStatus.PENDING and item_count == 0:
             status = TransferStatus.PENDING

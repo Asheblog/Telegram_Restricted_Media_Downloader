@@ -3145,13 +3145,15 @@ SHARED_WEB_UI_SCRIPT = r'''
         <td class="mono">${esc(task.target_link)}</td>
         <td>${taskProgress(task)}</td>
         <td>
-          <div class="task-actions">
-            <button class="secondary icon-only" type="button" title="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" aria-label="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" onclick="${task.status === 'paused' ? `resumeTask(event, ${task.id})` : `pauseTask(event, ${task.id})`}">
+           <div class="task-actions">
+            ${task.status === 'running' || task.status === 'paused'
+            ? `<button class="secondary icon-only" type="button" title="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" aria-label="${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}" onclick="${task.status === 'paused' ? `resumeTask(event, ${task.id})` : `pauseTask(event, ${task.id})`}">
               ${task.status === 'paused'
                 ? '<svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7L8 5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
                 : '<svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'}
               <span class="sr-only">${esc(t(task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'))}</span>
-            </button>
+            </button>`
+            : ''}
             <button class="secondary icon-only" type="button" title="${esc(t('tasks.retryFailed'))}" aria-label="${esc(t('tasks.retryFailed'))}" onclick="retryFailedTask(event, ${task.id})" ${Number(task.failed_items || 0) ? '' : 'disabled'}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
               <span class="sr-only">${esc(t('tasks.retryFailed'))}</span>
