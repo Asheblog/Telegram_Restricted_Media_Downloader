@@ -3429,27 +3429,34 @@ class TelegramRestrictedMediaDownloader:
         self.transfer_engine._retry_call(notice, _future)
 
     async def __ensure_client_authorized(self) -> None:
-        """确保 Telegram Client 已登录；已登录则验证会话有效性（防过期），否则引导 WebUI/CLI 登录。"""
+        """确保 Telegram Client 已登录；模仿 pyrogram.Client.start() 的完整流程。"""
         if self.web_ui_auth:
-            # WebUI 模式：connect → 验证会话 → 必要时通过 WebUI 登录
+            # WebUI 模式
             is_authorized = await self.app.client.connect()
             if not is_authorized:
                 user = await self.app.client.authorize_webui(self.web_ui_auth)
                 self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
                 console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
-                return
-            try:
-                await self.app.client.get_me()
-                self.web_ui_auth.set_done('')
-                return
-            except (SessionRevoked, AuthKeyUnregistered, SessionExpired, Unauthorized):
-                log.warning('会话已过期，请在 WebUI 中重新登录。')
-            except Exception as e:
-                log.error(f'验证会话时出错: {e}')
-            user = await self.app.client.authorize_webui(self.web_ui_auth)
-            self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
-            console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
+            else:
+                try:
+                    self.app.client.me = await self.app.client.get_me()
+                    await self.app.client.initialize()
+                    self.web_ui_auth.set_done('')
+                    return
+                except (SessionRevoked, AuthKeyUnregistered, SessionExpired, Unauthorized):
+                    log.warning('会话已过期，请在 WebUI 中重新登录。')
+                except Exception as e:
+                    log.error(f'验证会话时出错: {e}')
+                await self.app.client.disconnect()
+                await self.app.client.connect()
+                user = await self.app.client.authorize_webui(self.web_ui_auth)
+                self.web_ui_auth.set_done(f'{user.first_name} {user.last_name or ""}'.strip())
+                console.log(f'[#B1DB74]登录成功: {user.first_name}[/#B1DB74]')
+            # 登录后初始化（等价于 pyrogram.Client.start() 中的 self.me + initialize）
+            self.app.client.me = await self.app.client.get_me()
+            await self.app.client.initialize()
         else:
+            # CLI 模式
             self.start_web_ui()
             await self.app.client.start(use_qr=False)
 
