@@ -295,3 +295,27 @@ class LiveWatchManager:
             self.diagnostic.info(f'已通过WebUI删除监听转发,转发规则:"{value}"。')
             return True
         return False
+
+    def update_watch(self, watch_id: str, payload: dict) -> dict:
+        watch_type, separator, value = watch_id.partition(':')
+        if not separator:
+            raise ValueError('Invalid watch id.')
+        if watch_type != 'forward':
+            raise ValueError('Only forward watch can be updated.')
+        parsed = parse_forward_watch_rule(value)
+        old_source = parsed.get('source_link', '')
+        new_target = str(payload.get('target_link') or '').strip()
+        new_include_comment = bool(payload.get('include_comment'))
+        if not new_target:
+            raise ValueError('Target link is required.')
+        if not new_target.startswith('https://t.me/'):
+            raise ValueError('Watch target must start with https://t.me/.')
+        if old_source == new_target:
+            raise ValueError('Source and target cannot be the same.')
+        self.delete_watch(watch_id)
+        return self.create_watch({
+            'type': 'forward',
+            'source_link': old_source,
+            'target_link': new_target,
+            'include_comment': new_include_comment
+        })

@@ -495,6 +495,35 @@ class WebUiServer:
                         HTTPStatus.BAD_REQUEST
                     )
 
+            def do_PUT(self):
+                if not self._check_auth():
+                    return
+                parsed = urlparse(self.path)
+                if parsed.path.startswith('/api/watches/'):
+                    watch_id = unquote(parsed.path[len('/api/watches/'):])
+                    if not watch_id:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    try:
+                        payload = self._read_json()
+                        result = server.update_watch(watch_id, payload)
+                        self._send_json(result)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except ValueError as e:
+                        self._send_json(
+                            {'error_code': 'update_watch_failed', 'error': str(e)},
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 更新实时监听失败。')
+                        self._send_json(
+                            {'error_code': 'update_watch_failed', 'error': str(e)},
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
+
             def do_DELETE(self):
                 if not self._check_auth():
                     return
@@ -685,6 +714,18 @@ class WebUiServer:
                         HTTPStatus.CONFLICT
                     )
                 raise
+        raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def update_watch(self, watch_id: str, payload: dict) -> dict:
+        if isinstance(self.operations, IWebUiOperations):
+            try:
+                return self.operations.update_watch(watch_id, payload)
+            except ValueError as e:
+                raise WebUiApiError(
+                    'update_watch_failed',
+                    str(e),
+                    HTTPStatus.BAD_REQUEST
+                )
         raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def delete_watch(self, watch_id: str) -> bool:
