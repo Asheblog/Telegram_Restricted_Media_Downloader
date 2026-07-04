@@ -294,6 +294,12 @@ class WebUiServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _write_pending_cookie(self):
+                cookie = getattr(self, '_pending_cookie', None)
+                if cookie:
+                    self.send_header('Set-Cookie', cookie)
+                    self._pending_cookie = None
+
             def _check_auth(self):
                 path = urlparse(self.path).path
                 if path in ('/api/auth/status', '/api/auth/submit'):
@@ -302,12 +308,12 @@ class WebUiServer:
                     return True
                 session_token = server._get_request_cookie(self, server.SESSION_COOKIE_NAME)
                 if session_token and server.validate_session_token(session_token):
-                    self.send_header('Set-Cookie', server._create_session_cookie(session_token))
+                    self._pending_cookie = server._create_session_cookie(session_token)
                     return True
                 if server.is_authorized(self.headers.get('authorization')):
                     token = server._generate_session_token()
                     server._store_session(token)
-                    self.send_header('Set-Cookie', server._create_session_cookie(token))
+                    self._pending_cookie = server._create_session_cookie(token)
                     return True
                 self._send_auth_required()
                 return False
@@ -315,6 +321,7 @@ class WebUiServer:
             def _send_json(self, payload, status=HTTPStatus.OK):
                 data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
                 self.send_response(status)
+                self._write_pending_cookie()
                 self.send_header('content-type', 'application/json; charset=utf-8')
                 self.send_header('cache-control', 'no-store')
                 self.send_header('content-length', str(len(data)))
@@ -336,6 +343,7 @@ class WebUiServer:
                 html = WEB_UI_MOBILE_HTML if is_mobile else WEB_UI_HTML
                 data = html.encode('utf-8')
                 self.send_response(HTTPStatus.OK)
+                self._write_pending_cookie()
                 self.send_header('content-type', 'text/html; charset=utf-8')
                 self.send_header('cache-control', 'no-store')
                 self.send_header('content-length', str(len(data)))
