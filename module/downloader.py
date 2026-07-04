@@ -1586,6 +1586,9 @@ class TelegramRestrictedMediaDownloader:
             if start_id is not None and end_id is not None:
                 source_prefix = source_link.rstrip('/')
                 expected_total = int(end_id) - int(start_id) + 1
+                existing_total = int(task.get('total_items') or 0)
+                if existing_total > expected_total:
+                    expected_total = existing_total
                 completed_message_ids = self.transfer_store.completed_source_message_ids(task_id)
                 self.transfer_store.refresh_task_counts(
                     task_id,
@@ -1638,9 +1641,13 @@ class TelegramRestrictedMediaDownloader:
                     assignment_completed=True
                 )
             else:
+                single_expected = 1
+                existing_total = int(task.get('total_items') or 0)
+                if existing_total > single_expected:
+                    single_expected = existing_total
                 self.transfer_store.refresh_task_counts(
                     task_id,
-                    expected_total=1,
+                    expected_total=single_expected,
                     assignment_completed=False
                 )
                 message = await self.get_web_transfer_single_message(source_link)
@@ -1649,7 +1656,7 @@ class TelegramRestrictedMediaDownloader:
                 completed_message_ids = self.transfer_store.completed_source_message_ids(task_id)
                 message_id = getattr(message, 'id', None)
                 fallback_count = 0
-                expected_total = 1
+                expected_total = single_expected
                 if message_id not in completed_message_ids:
                     fallback_count = 1 if await self.transfer_message_to_web_target(
                         task=task,
