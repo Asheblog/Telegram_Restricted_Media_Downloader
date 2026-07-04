@@ -422,7 +422,7 @@ WEB_UI_CSS = r'''
     padding: 12px 14px;
     border-bottom: 1px solid var(--line);
     text-align: left;
-    vertical-align: middle;
+    vertical-align: top;
   }
   th {
     color: var(--muted);
@@ -2061,45 +2061,6 @@ WEB_UI_MOBILE_BODY = f'''
 
 <!-- Toast -->
 <div class="mob-toast" id="mob-toast"></div>
-
-<!-- 编辑监听 Overlay -->
-<div class="watch-edit-overlay" id="watch-edit-overlay">
-  <div class="watch-edit-dialog" id="watch-edit-dialog" role="dialog" aria-modal="true" aria-label="Edit watch">
-    <h3>
-      <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span data-i18n="watches.edit">编辑监听</span>
-    </h3>
-    <form id="watch-edit-form">
-      <label>
-        <span data-i18n="watches.type">类型</span>
-        <input type="text" id="watch-edit-type" readonly disabled>
-      </label>
-      <label>
-        <span data-i18n="watches.source">来源频道</span>
-        <input type="text" id="watch-edit-source" readonly disabled>
-      </label>
-      <div id="watch-edit-target-group">
-        <label>
-          <span data-i18n="watches.target">目标频道</span>
-          <input type="url" id="watch-edit-target" placeholder="https://t.me/target" required>
-        </label>
-      </div>
-      <div id="watch-edit-comment-group">
-        <label class="check"><input id="watch-edit-include-comment" type="checkbox"><span data-i18n="watches.includeComment">包含评论区</span></label>
-      </div>
-      <div class="notice" id="watch-edit-notice" role="alert" aria-live="polite"></div>
-      <div class="actions">
-        <button type="button" class="secondary" onclick="closeEditWatchModal()">
-          <span data-i18n="action.cancel">取消</span>
-        </button>
-        <button type="submit">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="action.save">保存</span>
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
 '''
 
 WEB_UI_BODY = f'''
@@ -4812,7 +4773,6 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
         + '</div>'
         + sourceHtml + targetHtml
         + '<div class="mob-card__actions">'
-        + (w.type === 'forward' ? '<button class="secondary small" data-edit-watch="' + (w.encoded_id || w.id) + '" data-edit-source="' + esc(w.source_link || '') + '" data-edit-target="' + esc(w.target_link || '') + '" data-edit-comment="' + (w.include_comment ? '1' : '0') + '">' + t('watches.edit') + '</button>' : '')
         + '<button class="danger small" data-delete-watch="' + (w.encoded_id || w.id) + '">' + t('watches.delete') + '</button>'
         + '</div>'
         + '</div>';
@@ -4820,14 +4780,6 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
 
     container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
       btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
-    });
-    container.querySelectorAll('[data-edit-watch]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        openEditWatchModal(encodeURIComponent(btn.dataset.editWatch),
-          encodeURIComponent(btn.dataset.editSource || ''),
-          encodeURIComponent(btn.dataset.editTarget || ''),
-          btn.dataset.editComment || '0');
-      });
     });
   }
 
@@ -5311,18 +5263,6 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       } catch (err) {
         showToast(translateApiError(err, 'form.requestFailed'));
       }
-    });
-  }
-
-  /* 编辑监听弹窗绑定 */
-  var editForm = $('#watch-edit-form');
-  if (editForm) {
-    editForm.addEventListener('submit', submitEditWatch);
-  }
-  var editOverlay = $('#watch-edit-overlay');
-  if (editOverlay) {
-    editOverlay.addEventListener('click', function(e) {
-      if (e.target === this) closeEditWatchModal();
     });
   }
 
