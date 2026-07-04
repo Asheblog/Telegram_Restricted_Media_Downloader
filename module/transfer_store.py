@@ -170,8 +170,22 @@ class TransferStore:
                     'archive_path': 'TEXT',
                     'archive_status': 'TEXT',
                     'archive_error': 'TEXT',
-                    'archive_match_original_name': 'INTEGER'
+                    'archive_match_original_name': 'INTEGER',
+                    'local_file_deleted': 'INTEGER NOT NULL DEFAULT 0'
                 }
+            )
+            conn.executescript(
+                '''
+                CREATE TABLE IF NOT EXISTS cleanup_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    file_size INTEGER,
+                    source_task_id INTEGER,
+                    source_item_id INTEGER,
+                    reason TEXT,
+                    created_at TEXT NOT NULL
+                );
+                '''
             )
             self._ensure_columns(
                 conn,
@@ -579,6 +593,16 @@ class TransferStore:
                 ).fetchall()
             return [dict(row) for row in rows]
 
+    def get_item(self, item_id: int) -> Optional[Dict[str, Any]]:
+        with self.connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM transfer_items WHERE id = ?',
+                (item_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+
     def completed_source_message_ids(self, task_id: int) -> set[int]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -884,6 +908,82 @@ class TransferStore:
                 ''',
                 (limit,)
             ).fetchall()
+            return [dict(row) for row in rows]
+
+    # --- cleanup_log ---
+
+    def insert_cleanup_log(
+            self,
+            file_path: str,
+            file_size: Optional[int] = None,
+            source_task_id: Optional[int] = None,
+            source_item_id: Optional[int] = None,
+            reason: Optional[str] = None
+    ) -> int:
+        now = self.utc_now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                INSERT INTO cleanup_log (file_path, file_size, source_task_id, source_item_id, reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                (file_path, file_size, source_task_id, source_item_id, reason, now)
+            )
+            return cursor.lastrowid
+
+    def list_cleanup_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT * FROM cleanup_log
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                ''',
+                (limit,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def mark_item_local_file_deleted(self, item_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                'UPDATE transfer_items SET local_file_deleted = 1 WHERE id = ?',
+                (item_id,)
+            )
+
+    def list_cleanable_items(self, task_id: int = None) -> List[Dict[str, Any]]:
+        """返回 local_path 非空、status 已终结（success/failure/skipped）且尚未标记删除的 item。
+
+        可选 task_id 用于按任务筛选。"""
+        with self.connect() as conn:
+            if task_id:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.task_id = ?
+                      AND ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 0
+                      AND ti.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (int(task_id), TransferStatus.SUCCESS, TransferStatus.FAILURE, TransferStatus.SKIPPED)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 0
+                      AND ti.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (TransferStatus.SUCCESS, TransferStatus.FAILURE, TransferStatus.SKIPPED)
+                ).fetchall()
             return [dict(row) for row in rows]
 
     @staticmethod

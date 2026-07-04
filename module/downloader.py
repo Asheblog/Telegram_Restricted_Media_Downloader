@@ -67,6 +67,7 @@ from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
 from module.local_storage_guard import LocalStorageGuard
+from module.media_manager import MediaManager
 from module.web_task_manager import WebUITaskManager
 from module.live_watch_manager import LiveWatchManager
 from module.bot import (
@@ -196,6 +197,7 @@ class TelegramRestrictedMediaDownloader:
         self.local_storage_guard = LocalStorageGuard(
             reserve_bytes_provider=lambda: getattr(self.gc, 'local_storage_reserve_bytes', LocalStorageGuard.DEFAULT_RESERVE_BYTES)
         )
+        self.media_manager: Union[MediaManager, None] = None
         self.is_running: bool = False
         self.running_log: Set[bool] = set()
         self.running_log.add(self.is_running)
@@ -246,6 +248,9 @@ class TelegramRestrictedMediaDownloader:
             archive_pikpak_item=self.archive_pikpak_item,
             fail_transfer_item=self.fail_transfer_item,
             refresh_counts=self.refresh_transfer_task_counts,
+            cleanup_local_file=lambda item_id: (
+                self._ensure_media_manager().try_cleanup_item_file(item_id)
+            ),
         )
         self.callback_handler = CallbackHandler(
             app_getter=lambda: self.app,
@@ -445,6 +450,9 @@ class TelegramRestrictedMediaDownloader:
             archive_pikpak_item=getattr(self, 'archive_pikpak_item', lambda **kw: None),
             fail_transfer_item=getattr(self, 'fail_transfer_item', lambda *a: None),
             refresh_counts=lambda tid: (getattr(self, 'transfer_store', None).refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+            cleanup_local_file=lambda item_id: (
+                getattr(getattr(self, 'media_manager', None), 'try_cleanup_item_file', lambda i: False)(item_id)
+            ),
         )
 
     @staticmethod
@@ -815,6 +823,58 @@ class TelegramRestrictedMediaDownloader:
     def create_channel_download(self, payload: dict) -> dict:
         operation = self.submit_web_operation('channel_download', payload)
         return {'accepted': True, 'operation_id': operation['id']}
+
+    # --- 媒体管理 (Media Manager) ---
+
+    def _ensure_media_manager(self) -> MediaManager:
+        if self.media_manager is None:
+            self.media_manager = MediaManager(
+                transfer_store=self.transfer_store,
+                save_directory=self.app.save_directory or '',
+                temp_directory=self.app.temp_directory or '',
+                diagnostic=getattr(self, 'diagnostic', None)
+            )
+        return self.media_manager
+
+    def scan_media_for_cleanup(self, task_id: int = None) -> dict:
+        """扫描可清理的媒体文件。"""
+        mm = self._ensure_media_manager()
+        return mm.scan_all(task_id=task_id)
+
+    def cleanup_media_files(self, payload: dict) -> dict:
+        """执行媒体文件清理。
+
+        payload: {'item_ids': [...], 'file_paths': [...]}
+        """
+        mm = self._ensure_media_manager()
+        item_ids = payload.get('item_ids') or []
+        file_paths = payload.get('file_paths') or []
+
+        result = {
+            'item_result': None,
+            'orphan_result': None,
+            'total_deleted_count': 0,
+            'total_deleted_size': 0,
+        }
+
+        if item_ids:
+            item_result = mm.cleanup_by_item_ids([int(i) for i in item_ids])
+            result['item_result'] = item_result
+            result['total_deleted_count'] += item_result['total_deleted_count']
+            result['total_deleted_size'] += item_result['total_deleted_size']
+
+        if file_paths:
+            orphan_result = mm.cleanup_orphan_files(file_paths)
+            result['orphan_result'] = orphan_result
+            result['total_deleted_count'] += orphan_result['total_deleted_count']
+            result['total_deleted_size'] += orphan_result['total_deleted_size']
+
+        return result
+
+    def list_cleanup_logs(self) -> list:
+        if not self.transfer_store:
+            return []
+        return self.transfer_store.list_cleanup_logs()
 
     def get_web_settings(self) -> dict:
         return {

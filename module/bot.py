@@ -508,6 +508,61 @@ class Bot:
             reply_markup=keyboard
         )
 
+    async def cleanup(
+            self,
+            client: pyrogram.Client,
+            message: pyrogram.types.Message
+    ):
+        """处理 /cleanup 命令 — 扫描并清理磁盘残留媒体文件。"""
+        dl = getattr(self, 'downloader', None)
+        if not dl or not hasattr(dl, 'scan_media_for_cleanup'):
+            await client.send_message(
+                chat_id=message.from_user.id,
+                reply_parameters=ReplyParameters(message_id=message.id),
+                text='⚠️ 媒体管理功能暂不可用。',
+                link_preview_options=LINK_PREVIEW_OPTIONS
+            )
+            return
+        # 扫描
+        status_msg = await client.send_message(
+            chat_id=message.from_user.id,
+            reply_parameters=ReplyParameters(message_id=message.id),
+            text='🔍 正在扫描可清理的媒体文件...',
+            link_preview_options=LINK_PREVIEW_OPTIONS
+        )
+        try:
+            result = dl.scan_media_for_cleanup()
+        except Exception as e:
+            await status_msg.edit_text(f'❌ 扫描失败：{e}')
+            return
+        total_count = result.get('total_count', 0)
+        total_size = result.get('total_size', 0)
+        def _fmt_size(b):
+            if b < 1024: return f'{b} B'
+            if b < 1048576: return f'{b/1024:.1f} KB'
+            if b < 1073741824: return f'{b/1048576:.1f} MB'
+            return f'{b/1073741824:.2f} GB'
+        if total_count == 0:
+            await status_msg.edit_text('✅ 没有发现需要清理的文件。')
+            return
+        ti = result.get('transfer_items', {})
+        orph = result.get('orphan_files', {})
+        lines = [
+            f'📊 扫描结果：共 {total_count} 个可清理文件，总计 {_fmt_size(total_size)}',
+            f'  • 转存任务文件：{ti.get("total_count", 0)} 个 ({_fmt_size(ti.get("total_size", 0))})',
+            f'  • 遗留文件：{orph.get("total_count", 0)} 个 ({_fmt_size(orph.get("total_size", 0))})',
+        ]
+        await status_msg.edit_text(
+            '\n'.join(lines),
+            link_preview_options=LINK_PREVIEW_OPTIONS
+        )
+        # 提示用户通过 WebUI 清理（bot 端不做批量删除以保安全）
+        await client.send_message(
+            chat_id=message.from_user.id,
+            reply_parameters=ReplyParameters(message_id=status_msg.id),
+            text='💡 请在 WebUI「媒体管理」面板中查看详情并选择文件清理。'
+        )
+
     async def start(
             self,
             client: pyrogram.Client,
@@ -1019,6 +1074,12 @@ class Bot:
                 MessageHandler(
                     self.help,
                     filters=pyrogram.filters.command(['help']) & pyrogram.filters.user(self.root)
+                )
+            )
+            self.bot.add_handler(
+                MessageHandler(
+                    self.cleanup,
+                    filters=pyrogram.filters.command(['cleanup']) & pyrogram.filters.user(self.root)
                 )
             )
             self.bot.add_handler(

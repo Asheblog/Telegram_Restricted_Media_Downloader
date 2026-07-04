@@ -427,6 +427,14 @@ class WebUiServer:
                         return
                     self._send_json(payload)
                     return
+                if parsed.path == '/api/media/scan':
+                    query = parse_qs(parsed.query)
+                    task_id = self._query_int(query, 'task_id', 0) or None
+                    self._send_json(server.scan_media_for_cleanup(task_id=task_id))
+                    return
+                if parsed.path == '/api/media/cleanup-logs':
+                    self._send_json({'logs': server.list_cleanup_logs()})
+                    return
                 self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
             def do_POST(self):
@@ -522,6 +530,22 @@ class WebUiServer:
                         self._send_json(
                             {
                                 'error_code': 'create_channel_download_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/media/cleanup':
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.cleanup_media_files(payload))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 媒体清理失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'media_cleanup_failed',
                                 'error': str(e)
                             },
                             HTTPStatus.BAD_REQUEST
@@ -932,6 +956,21 @@ class WebUiServer:
         if isinstance(self.operations, IWebUiOperations):
             return self.operations.create_channel_download(normalized)
         raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def scan_media_for_cleanup(self, task_id: int = None) -> dict:
+        if isinstance(self.operations, IWebUiOperations):
+            return self.operations.scan_media_for_cleanup(task_id=task_id)
+        raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def cleanup_media_files(self, payload: dict) -> dict:
+        if isinstance(self.operations, IWebUiOperations):
+            return self.operations.cleanup_media_files(payload)
+        raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def list_cleanup_logs(self) -> list:
+        if isinstance(self.operations, IWebUiOperations):
+            return self.operations.list_cleanup_logs()
+        return []
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())

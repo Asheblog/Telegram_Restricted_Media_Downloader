@@ -36,6 +36,7 @@ class TransferProgressTracker:
             schedule_override: Callable = None,
             notify_status_override: Callable = None,
             notify_progress_override: Callable = None,
+            cleanup_local_file: Callable = None,
     ):
         self._transfer_store_getter = transfer_store_getter
         self.diagnostic = diagnostic
@@ -52,6 +53,7 @@ class TransferProgressTracker:
         self._schedule_override = schedule_override
         self._notify_status_override = notify_status_override
         self._notify_progress_override = notify_progress_override
+        self._cleanup_local_file = cleanup_local_file
 
     @property
     def transfer_store(self):
@@ -419,6 +421,7 @@ class TransferProgressTracker:
             )
         store.add_event(task_id, message, level='warning', item_id=item_id)
         self._refresh_counts(task_id)
+        self._try_cleanup(item_id)
 
     def on_transfer_item_failed(self, with_upload: dict, message: str) -> None:
         self._release_storage(with_upload)
@@ -441,6 +444,7 @@ class TransferProgressTracker:
         )
         store.add_event(task_id, message, level='error', item_id=item_id)
         self._refresh_counts(task_id)
+        self._try_cleanup(item_id)
 
     def on_transfer_upload_status(self, upload_task) -> None:
         self.notify_bot_transfer_upload_status(upload_task)
@@ -481,6 +485,7 @@ class TransferProgressTracker:
             if store and task_id and item_id:
                 store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent', error_message='')
                 store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
+                self._try_cleanup(int(item_id))
         elif upload_task.status == UploadStatus.FAILURE:
             store = self.transfer_store
             if store and task_id and item_id:
@@ -491,6 +496,20 @@ class TransferProgressTracker:
                     error_message=upload_task.error_msg
                 )
                 store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
+                self._try_cleanup(int(item_id))
         store = self.transfer_store
         if store and task_id:
             self._refresh_counts(int(task_id))
+
+    def _try_cleanup(self, item_id) -> None:
+        """尝试清理 transfer item 对应的本地文件（预防性清理）。"""
+        if not callable(self._cleanup_local_file):
+            return
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError):
+            return
+        try:
+            self._cleanup_local_file(item_id)
+        except Exception:
+            pass  # 清理失败不应阻断主流程

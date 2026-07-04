@@ -762,6 +762,48 @@ WEB_UI_CSS = r'''
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  .media-actions-bar {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0 4px;
+    flex-wrap: wrap;
+  }
+  .media-actions-bar--bottom { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 8px; }
+  .media-scan-btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
+    font-size: var(--font-md); font-weight: 600;
+  }
+  .media-scan-info { font-size: var(--font-sm); color: var(--muted); }
+  .media-result { margin-top: 12px; animation: rise .25s ease; }
+  .media-summary {
+    display: flex; gap: 18px; flex-wrap: wrap; padding: 14px 16px;
+    background: var(--surface-muted); border-radius: 8px; margin-bottom: 16px;
+  }
+  .media-summary__stat { display: flex; flex-direction: column; gap: 2px; }
+  .media-summary__stat strong { font-size: var(--font-xl); font-weight: 700; color: var(--accent); }
+  .media-summary__stat span { font-size: var(--font-xs); color: var(--muted); }
+  .media-section { margin-bottom: 18px; }
+  .media-section__title {
+    font-size: var(--font-md); font-weight: 600; margin: 0 0 8px;
+    color: var(--text); padding-left: 4px;
+  }
+  .media-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--line); }
+  .media-table { width: 100%; border-collapse: collapse; font-size: var(--font-sm); }
+  .media-table th, .media-table td {
+    text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .media-table th { background: var(--surface-muted); font-weight: 600; color: var(--muted); font-size: var(--font-xs); }
+  .media-table td { background: var(--surface); }
+  .media-table tr:last-child td { border-bottom: 0; }
+  .media-table .col-file { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  .media-table .col-source { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .media-table .col-size { text-align: right; font-variant-numeric: tabular-nums; }
+  .media-table .col-status { text-align: center; }
+  .media-selected-info { font-size: var(--font-sm); color: var(--muted); flex: 1; }
+  .btn-danger {
+    background: var(--danger);
+  }
+  .btn-danger:hover { background: #991b1b; }
+
   @media (max-width: 1040px) {
     .shell { grid-template-columns: 1fr; }
     aside {
@@ -1524,6 +1566,10 @@ WEB_UI_MOBILE_CSS = r'''
     color: var(--muted);
     padding: 4px 0;
   }
+  .mob-media-scan-btn {
+    margin: 8px 0; width: 100%;
+  }
+  .mob-media-result { margin-top: 12px; font-size: var(--font-sm); }
 
   /* ---- Check Group (fieldset) ---- */
   .mob-check-group {
@@ -1996,6 +2042,11 @@ WEB_UI_MOBILE_BODY = f'''
     <div class="mob-section-title" data-i18n="records.title">下载记录</div>
     <div id="mob-records-list"></div>
   </div>
+  <div class="mob-view" id="mob-view-media">
+    <div class="mob-section-title" data-i18n="media.title">媒体管理</div>
+    <button id="mob-media-scan-btn" class="mob-media-scan-btn" data-i18n="media.scan">扫描可清理文件</button>
+    <div id="mob-media-result"></div>
+  </div>
 </div>
 
 <!-- FAB + Menu -->
@@ -2104,6 +2155,10 @@ WEB_UI_BODY = f'''
         <button type="button" data-nav="records">
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14v16H5z" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           <span data-i18n="nav.records">下载记录</span>
+        </button>
+        <button type="button" data-nav="media">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 6h18M5 6v13a2 2 0 002 2h10a2 2 0 002-2V6M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.media">媒体管理</span>
         </button>
       </nav>
         <div class="nav-title" data-i18n="side.runtime">运行状态</div>
@@ -2669,6 +2724,83 @@ WEB_UI_BODY = f'''
           </div>
         </section>
       </div>
+
+      <div class="view" id="view-media">
+        <section>
+{panel_head(title_i18n='media.title', title_text='媒体管理', meta_i18n='media.meta', meta_text='扫描并清理磁盘上的残留媒体文件', indent=10)}
+          <div class="media-actions-bar">
+            <label class="media-task-filter" id="media-task-filter-label" style="display:none">
+              <span data-i18n="media.filterByTask">按任务筛选：</span>
+              <select id="media-task-select"><option value="">全部任务</option></select>
+            </label>
+            <button type="button" id="media-scan-btn" class="media-scan-btn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span data-i18n="media.scan">扫描可清理文件</span>
+            </button>
+            <span class="media-scan-info" id="media-scan-info"></span>
+          </div>
+          <div id="media-result" class="media-result" style="display:none">
+            <div class="media-summary" id="media-summary"></div>
+            <div class="media-section" id="media-items-section" style="display:none">
+              <h4 class="media-section__title" data-i18n="media.transferItems">转存任务文件</h4>
+              <div class="media-table-wrap">
+                <table class="media-table">
+                  <thead>
+                    <tr>
+                      <th><input type="checkbox" id="media-select-all-items" title="全选"></th>
+                      <th data-i18n="media.file">文件</th>
+                      <th data-i18n="media.size">大小</th>
+                      <th data-i18n="media.status">任务状态</th>
+                      <th data-i18n="media.source">来源</th>
+                    </tr>
+                  </thead>
+                  <tbody id="media-items-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="media-section" id="media-orphans-section" style="display:none">
+              <h4 class="media-section__title" data-i18n="media.orphanFiles">遗留文件 (超过保留天数)</h4>
+              <div class="media-table-wrap">
+                <table class="media-table">
+                  <thead>
+                    <tr>
+                      <th><input type="checkbox" id="media-select-all-orphans" title="全选"></th>
+                      <th data-i18n="media.path">路径</th>
+                      <th data-i18n="media.size">大小</th>
+                      <th data-i18n="media.mtime">最后修改</th>
+                    </tr>
+                  </thead>
+                  <tbody id="media-orphans-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="media-actions-bar media-actions-bar--bottom" id="media-cleanup-bar" style="display:none">
+              <span class="media-selected-info" id="media-selected-info"></span>
+              <button type="button" id="media-cleanup-btn" class="btn-danger">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M3 6h18M5 6v13a2 2 0 002 2h10a2 2 0 002-2V6M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="media.cleanup">清理选中文件</span>
+              </button>
+            </div>
+            <div class="notice" id="media-notice" role="alert" aria-live="polite"></div>
+          </div>
+          <div class="media-section" id="media-logs-section" style="display:none">
+            <h4 class="media-section__title" data-i18n="media.cleanupHistory">清理历史</h4>
+            <div class="media-table-wrap">
+              <table class="media-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="media.file">文件</th>
+                    <th data-i18n="media.size">大小</th>
+                    <th data-i18n="media.reason">原因</th>
+                    <th data-i18n="media.time">时间</th>
+                  </tr>
+                </thead>
+                <tbody id="media-logs-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
   </div>
 '''
@@ -2910,7 +3042,35 @@ SHARED_WEB_UI_SCRIPT = r'''
       'status.paused': '已暂停',
       'status.success': '成功',
       'status.failure': '失败',
-      'status.skipped': '跳过'
+      'status.skipped': '跳过',
+      'nav.media': '媒体管理',
+      'media.title': '媒体管理',
+      'media.meta': '扫描并清理磁盘上的残留媒体文件',
+      'media.scan': '扫描可清理文件',
+      'media.scanning': '正在扫描...',
+      'media.totalFiles': '可清理文件',
+      'media.totalSize': '总大小',
+      'media.retentionDays': '保留天数',
+      'media.transferItems': '转存任务文件',
+      'media.orphanFiles': '遗留文件 (超过保留天数)',
+      'media.file': '文件',
+      'media.size': '大小',
+      'media.status': '任务状态',
+      'media.source': '来源',
+      'media.path': '路径',
+      'media.mtime': '最后修改',
+      'media.cleanup': '清理选中文件',
+      'media.cleaning': '清理中...',
+      'media.selected': '已选',
+      'media.files': '个文件',
+      'media.noSelection': '请先选择要清理的文件。',
+      'media.confirmCleanup': '确定要删除选中的文件吗？此操作不可撤销。',
+      'media.cleanupDone': '清理完成：已删除 {count} 个文件 ({size})。',
+      'media.cleanupHistory': '清理历史',
+      'media.reason': '原因',
+      'media.time': '时间',
+      'media.filterByTask': '按任务筛选：',
+      'media.allTasks': '全部任务'
     },
     en: {
       'app.subtitle': 'Transfer Console',
@@ -3147,7 +3307,35 @@ SHARED_WEB_UI_SCRIPT = r'''
       'status.paused': 'paused',
       'status.success': 'success',
       'status.failure': 'failure',
-      'status.skipped': 'skipped'
+      'status.skipped': 'skipped',
+      'nav.media': 'Media',
+      'media.title': 'Media Management',
+      'media.meta': 'Scan and clean residual media files on disk',
+      'media.scan': 'Scan for cleanable files',
+      'media.scanning': 'Scanning...',
+      'media.totalFiles': 'Cleanable files',
+      'media.totalSize': 'Total size',
+      'media.retentionDays': 'Retention days',
+      'media.transferItems': 'Transfer task files',
+      'media.orphanFiles': 'Orphan files (exceeding retention)',
+      'media.file': 'File',
+      'media.size': 'Size',
+      'media.status': 'Task status',
+      'media.source': 'Source',
+      'media.path': 'Path',
+      'media.mtime': 'Last modified',
+      'media.cleanup': 'Clean selected',
+      'media.cleaning': 'Cleaning...',
+      'media.selected': 'Selected',
+      'media.files': 'files',
+      'media.noSelection': 'Select files to clean first.',
+      'media.confirmCleanup': 'Are you sure you want to delete selected files? This cannot be undone.',
+      'media.cleanupDone': 'Cleanup done: {count} files deleted ({size}).',
+      'media.cleanupHistory': 'Cleanup history',
+      'media.reason': 'Reason',
+      'media.time': 'Time',
+      'media.filterByTask': 'Filter by task:',
+      'media.allTasks': 'All tasks'
     }
   };
 
@@ -4403,6 +4591,234 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       startPolling();
     }
   });
+
+  /* ====== 媒体管理 ====== */
+  var mediaScanResult = null;
+
+  function fmtSize(bytes) {
+    if (!bytes && bytes !== 0) return '-';
+    bytes = Number(bytes);
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '-';
+    try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
+  }
+
+  function fmtTimestamp(sec) {
+    if (!sec) return '-';
+    try { return new Date(sec * 1000).toLocaleString(); } catch(e) { return String(sec); }
+  }
+
+  function populateMediaTaskFilter() {
+    var tasks = (state.tasks || []).filter(function(t) {
+      return t.status === 'success' || t.status === 'failure' || t.status === 'paused';
+    });
+    var label = $('#media-task-filter-label');
+    var select = $('#media-task-select');
+    if (tasks.length <= 1) { label.style.display = 'none'; return; }
+    label.style.display = '';
+    var currentVal = select.value;
+    select.innerHTML = '<option value="">' + t('media.allTasks') + '</option>' +
+      tasks.map(function(t) {
+        var selected = currentVal && String(t.id) === currentVal ? ' selected' : '';
+        return '<option value="' + t.id + '"' + selected + '>' + esc('#' + t.id + ' ' + (t.source_link || '')) + '</option>';
+      }).join('');
+  }
+
+  async function loadMedia() {
+    var info = $('#media-scan-info');
+    info.textContent = t('media.scanning');
+    populateMediaTaskFilter();
+    var taskId = $('#media-task-select').value;
+    var url = '/api/media/scan' + (taskId ? '?task_id=' + encodeURIComponent(taskId) : '');
+    try {
+      mediaScanResult = await fetchJson(url);
+      renderMediaResult(mediaScanResult);
+      info.textContent = '';
+      loadCleanupLogs();
+    } catch (err) {
+      info.textContent = translateApiError(err, 'form.requestFailed');
+      mediaScanResult = null;
+    }
+  }
+
+  function renderMediaResult(data) {
+    var resultEl = $('#media-result');
+    if (!data) { resultEl.style.display = 'none'; return; }
+    resultEl.style.display = '';
+
+    var ti = data.transfer_items || {};
+    var orph = data.orphan_files || {};
+    var totalCount = data.total_count || 0;
+    var totalSize = data.total_size || 0;
+
+    $('#media-summary').innerHTML =
+      '<div class="media-summary__stat"><strong>' + totalCount + '</strong><span>' + t('media.totalFiles') + '</span></div>' +
+      '<div class="media-summary__stat"><strong>' + fmtSize(totalSize) + '</strong><span>' + t('media.totalSize') + '</span></div>' +
+      '<div class="media-summary__stat"><strong>' + (data.retention_days || 7) + '</strong><span>' + t('media.retentionDays') + '</span></div>';
+
+    // transfer items
+    var items = ti.items || [];
+    var itemsSection = $('#media-items-section');
+    var itemsTbody = $('#media-items-tbody');
+    if (items.length) {
+      itemsSection.style.display = '';
+      itemsTbody.innerHTML = items.map(function(item) {
+        return '<tr>' +
+          '<td><input type="checkbox" class="media-item-cb" data-item-id="' + escAttr(String(item.item_id)) + '" data-type="item"></td>' +
+          '<td class="col-file" title="' + escAttr(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+          '<td class="col-size">' + fmtSize(item.file_size) + '</td>' +
+          '<td class="col-status">' + badge(item.status || '') + '</td>' +
+          '<td class="col-source" title="' + escAttr(item.source_link || '') + '">' + esc(item.source_link || '-') + '</td>' +
+          '</tr>';
+      }).join('');
+    } else {
+      itemsSection.style.display = 'none';
+    }
+
+    // orphan files
+    var files = orph.files || [];
+    var orphansSection = $('#media-orphans-section');
+    var orphansTbody = $('#media-orphans-tbody');
+    if (files.length) {
+      orphansSection.style.display = '';
+      orphansTbody.innerHTML = files.map(function(f) {
+        return '<tr>' +
+          '<td><input type="checkbox" class="media-orphan-cb" data-file-path="' + escAttr(f.path) + '" data-type="orphan"></td>' +
+          '<td class="col-file" title="' + escAttr(f.path) + '">' + esc(f.path) + '</td>' +
+          '<td class="col-size">' + fmtSize(f.size) + '</td>' +
+          '<td>' + fmtTimestamp(f.mtime) + '</td>' +
+          '</tr>';
+      }).join('');
+    } else {
+      orphansSection.style.display = 'none';
+    }
+
+    var showBar = items.length > 0 || files.length > 0;
+    $('#media-cleanup-bar').style.display = showBar ? '' : 'none';
+    updateMediaSelectedInfo();
+
+    // select-all handlers
+    $('#media-select-all-items').onclick = function() {
+      $$('.media-item-cb').forEach(function(cb) { cb.checked = this.checked; }.bind(this));
+      updateMediaSelectedInfo();
+    };
+    $('#media-select-all-orphans').onclick = function() {
+      $$('.media-orphan-cb').forEach(function(cb) { cb.checked = this.checked; }.bind(this));
+      updateMediaSelectedInfo();
+    };
+
+    // individual checkbox handlers
+    $$('.media-item-cb, .media-orphan-cb').forEach(function(cb) {
+      cb.addEventListener('change', updateMediaSelectedInfo);
+    });
+  }
+
+  function parseSizeFromText(text) {
+    var m = (text || '').match(/^([\d.]+)\s*(B|KB|MB|GB)/);
+    if (!m) return 0;
+    return parseFloat(m[1]) * ({B:1,KB:1024,MB:1048576,GB:1073741824}[m[2]] || 1);
+  }
+
+  function updateMediaSelectedInfo() {
+    var itemCbs = $$('.media-item-cb:checked');
+    var orphanCbs = $$('.media-orphan-cb:checked');
+    var total = itemCbs.length + orphanCbs.length;
+    var size = 0;
+    itemCbs.forEach(function(cb) {
+      var row = cb.closest('tr');
+      if (row) {
+        var sizeCell = row.querySelector('.col-size');
+        if (sizeCell) size += parseSizeFromText(sizeCell.textContent);
+      }
+    });
+    orphanCbs.forEach(function(cb) {
+      var row = cb.closest('tr');
+      if (row) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length >= 2) size += parseSizeFromText(cells[1].textContent);
+      }
+    });
+    $('#media-selected-info').textContent = total ? t('media.selected') + ': ' + total + ' ' + t('media.files') + ' (' + fmtSize(Math.round(size)) + ')' : '';
+  }
+
+  async function doMediaCleanup() {
+    var itemCbs = $$('.media-item-cb:checked');
+    var orphanCbs = $$('.media-orphan-cb:checked');
+    if (!itemCbs.length && !orphanCbs.length) {
+      showToast(t('media.noSelection'));
+      return;
+    }
+    if (!confirm(t('media.confirmCleanup'))) return;
+
+    var payload = {
+      item_ids: Array.from(itemCbs).map(function(cb) { return Number(cb.dataset.itemId); }),
+      file_paths: Array.from(orphanCbs).map(function(cb) { return cb.dataset.filePath; })
+    };
+
+    var btn = $('#media-cleanup-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span>' + t('media.cleaning') + '</span>';
+
+    try {
+      var result = await postJson('/api/media/cleanup', payload);
+      var totalDeleted = result.total_deleted_count || 0;
+      var totalSize = result.total_deleted_size || 0;
+      showToast(t('media.cleanupDone').replace('{count}', totalDeleted).replace('{size}', fmtSize(totalSize)));
+      // reload scan
+      loadMedia();
+    } catch (err) {
+      showToast(translateApiError(err, 'form.requestFailed'));
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 6h18M5 6v13a2 2 0 002 2h10a2 2 0 002-2V6M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>' + t('media.cleanup') + '</span>';
+    }
+  }
+
+  async function loadCleanupLogs() {
+    try {
+      var data = await fetchJson('/api/media/cleanup-logs');
+      var logs = (data && data.logs) || [];
+      var logsSection = $('#media-logs-section');
+      var logsTbody = $('#media-logs-tbody');
+      if (logs.length) {
+        logsSection.style.display = '';
+        logsTbody.innerHTML = logs.map(function(log) {
+          return '<tr>' +
+            '<td class="col-file" title="' + escAttr(log.file_path || '') + '">' + esc(log.file_path || '-') + '</td>' +
+            '<td class="col-size">' + fmtSize(log.file_size) + '</td>' +
+            '<td>' + esc(log.reason || '-') + '</td>' +
+            '<td>' + fmtTime(log.created_at) + '</td>' +
+            '</tr>';
+        }).join('');
+      } else {
+        logsSection.style.display = 'none';
+      }
+    } catch (err) { /* silent */ }
+  }
+
+  $('#media-scan-btn').addEventListener('click', loadMedia);
+  $('#media-cleanup-btn').addEventListener('click', doMediaCleanup);
+
+  // 扩展 switchView
+  var _origSwitchView = switchView;
+  switchView = function(view) {
+    _origSwitchView(view);
+    if (view === 'media') loadMedia();
+  };
+  // 扩展初始化
+  (function() {
+    var origInit = window._authInit;
+    Object.defineProperty(window, '_authInit', {set: function(fn) {
+      var wrapped = function() { fn(); if ($('#view-media') && $('#view-media').classList.contains('active')) loadMedia(); };
+      origInit = wrapped;
+    }});
+  })();
 '''
 
 WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
@@ -4636,7 +5052,29 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     if (view === 'records') loadRecords();
     if (view === 'watches') loadWatches();
     if (view === 'statistics') loadStatistics();
+    if (view === 'media') loadMediaMobile();
   }
+
+  async function loadMediaMobile() {
+    var info = $('#mob-media-result');
+    info.innerHTML = '<p>' + t('media.scanning') + '</p>';
+    try {
+      var data = await fetchJson('/api/media/scan');
+      var ti = data.transfer_items || {};
+      var orph = data.orphan_files || {};
+      var totalCount = data.total_count || 0;
+      var totalSize = data.total_size || 0;
+      info.innerHTML =
+        '<p><strong>' + t('media.totalFiles') + ':</strong> ' + totalCount + '</p>' +
+        '<p><strong>' + t('media.totalSize') + ':</strong> ' + formatBytes(totalSize) + '</p>';
+    } catch (err) {
+      info.innerHTML = '<p>' + translateApiError(err, 'form.requestFailed') + '</p>';
+    }
+  }
+
+  // mobile media scan button
+  var mobMediaBtn = $('#mob-media-scan-btn');
+  if (mobMediaBtn) mobMediaBtn.addEventListener('click', loadMediaMobile);
 
   /* ====== 抽屉（更多菜单） ====== */
   function openDrawer() {
