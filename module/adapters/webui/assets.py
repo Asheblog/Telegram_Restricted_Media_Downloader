@@ -4670,11 +4670,11 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       itemsSection.style.display = '';
       itemsTbody.innerHTML = items.map(function(item) {
         return '<tr>' +
-          '<td><input type="checkbox" class="media-item-cb" data-item-id="' + escAttr(String(item.item_id)) + '" data-type="item"></td>' +
-          '<td class="col-file" title="' + escAttr(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+          '<td><input type="checkbox" class="media-item-cb" data-item-id="' + esc(String(item.item_id)) + '" data-type="item"></td>' +
+          '<td class="col-file" title="' + esc(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
           '<td class="col-size">' + fmtSize(item.file_size) + '</td>' +
           '<td class="col-status">' + badge(item.status || '') + '</td>' +
-          '<td class="col-source" title="' + escAttr(item.source_link || '') + '">' + esc(item.source_link || '-') + '</td>' +
+          '<td class="col-source" title="' + esc(item.source_link || '') + '">' + esc(item.source_link || '-') + '</td>' +
           '</tr>';
       }).join('');
     } else {
@@ -4689,8 +4689,8 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       orphansSection.style.display = '';
       orphansTbody.innerHTML = files.map(function(f) {
         return '<tr>' +
-          '<td><input type="checkbox" class="media-orphan-cb" data-file-path="' + escAttr(f.path) + '" data-type="orphan"></td>' +
-          '<td class="col-file" title="' + escAttr(f.path) + '">' + esc(f.path) + '</td>' +
+          '<td><input type="checkbox" class="media-orphan-cb" data-file-path="' + esc(f.path) + '" data-type="orphan"></td>' +
+          '<td class="col-file" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
           '<td class="col-size">' + fmtSize(f.size) + '</td>' +
           '<td>' + fmtTimestamp(f.mtime) + '</td>' +
           '</tr>';
@@ -4790,7 +4790,7 @@ WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
         logsSection.style.display = '';
         logsTbody.innerHTML = logs.map(function(log) {
           return '<tr>' +
-            '<td class="col-file" title="' + escAttr(log.file_path || '') + '">' + esc(log.file_path || '-') + '</td>' +
+            '<td class="col-file" title="' + esc(log.file_path || '') + '">' + esc(log.file_path || '-') + '</td>' +
             '<td class="col-size">' + fmtSize(log.file_size) + '</td>' +
             '<td>' + esc(log.reason || '-') + '</td>' +
             '<td>' + fmtTime(log.created_at) + '</td>' +
