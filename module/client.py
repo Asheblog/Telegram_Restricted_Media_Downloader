@@ -867,7 +867,7 @@ class TelegramRestrictedMediaDownloaderSession(Session):
                     )
 
                     await asyncio.sleep(amount)
-                except (OSError, InternalServerError, ServiceUnavailable) as e:
+                except (OSError, InternalServerError, ServiceUnavailable, ConnectionError) as e:
                     log.info(
                         '[%s] Retrying "%s" due to: %s', attempt, query_name, str(e) or repr(e)
                     )
@@ -921,7 +921,7 @@ class TelegramRestrictedMediaDownloaderSession(Session):
             except asyncio.TimeoutError:
                 pass
 
-            result = self.results.pop(msg_id).value
+            result = self.results.pop(msg_id, Result()).value
 
             if result is None:
                 raise TimeoutError('请求超时')
@@ -944,8 +944,12 @@ class TelegramRestrictedMediaDownloaderSession(Session):
                     raise BadMsgNotification(e_code)
 
                 log.warning(
-                    '%s: %s', BadMsgNotification.__name__, BadMsgNotification(e_code)
+                    '%s: %s (code %s), retrying...',
+                    BadMsgNotification.__name__,
+                    BadMsgNotification(e_code),
+                    e_code
                 )
+                raise ConnectionError(f'BadMsgNotification code {e_code}: {BadMsgNotification(e_code)}')
             if isinstance(result, raw.types.BadServerSalt):
                 self.salt = result.new_server_salt
                 return await self.send(data, wait_response, timeout)

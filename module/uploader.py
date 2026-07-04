@@ -64,6 +64,7 @@ from module.util import (
 
 class TelegramUploader:
     FILE_PART_MISSING_REPAIR_RETRIES = 5
+    PART_UPLOAD_DELAY: float = 0.1
 
     def __init__(
             self,
@@ -81,6 +82,7 @@ class TelegramUploader:
         self.upload_context = upload_context
         self.upload_queue: asyncio.Queue = asyncio.Queue()
         self.valid_link_cache = {}
+        self._save_file_lock: asyncio.Lock = asyncio.Lock()
         transfer_registry.notify = upload_context.done_notice
         transfer_registry.directory_name = os.path.join(
             transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
@@ -153,13 +155,16 @@ class TelegramUploader:
         # 上传缺失的分片。
         for part_index in missing_parts:
             try:
-                # 上传单个分片。
+                # 上传单个分片（加锁序列化，避免并发 save_file 导致 Session 协议状态竞争）。
                 part_size = 512 * 1024
-                await self.client.save_file(
-                    path=path,
-                    file_id=file_id,
-                    file_part=part_index
-                )
+                async with self._save_file_lock:
+                    await self.client.save_file(
+                        path=path,
+                        file_id=file_id,
+                        file_part=part_index
+                    )
+                if self.PART_UPLOAD_DELAY > 0:
+                    await asyncio.sleep(self.PART_UPLOAD_DELAY)
                 # 更新上传记录。
                 upload_task.update_file_part(part_index)
                 # 调用进度回调。
@@ -399,6 +404,7 @@ class TelegramUploader:
                             self.diagnostic.info(
                                 f'[Upload Worker]发送媒体组"{media_group_id}",包含{len(sorted_media_group)}个媒体（共预期{len(message_ids)}个）。')
                             try:
+                                file_part_missing_attempts = 0
                                 while True:
                                     try:
                                         await self.client.invoke(
@@ -409,6 +415,24 @@ class TelegramUploader:
                                             sleep_threshold=60
                                         )
                                         break
+                                    except FilePartMissing as e:
+                                        file_part_missing_attempts += 1
+                                        missing_part = self.file_part_missing_value(e)
+                                        if file_part_missing_attempts > self.file_part_missing_repair_retries():
+                                            raise
+                                        self.diagnostic.warning(
+                                            f'[Upload Worker] SendMultiMedia reported FILE_PART_X_MISSING part {missing_part}; '
+                                            f're-uploading part for group "{media_group_id}" '
+                                            f'({file_part_missing_attempts}/{self.file_part_missing_repair_retries()}).'
+                                        )
+                                        for task in UploadTask.TASKS:
+                                            if task.message_id in message_ids and task.status in (UploadStatus.SUCCESS, UploadStatus.UPLOADING):
+                                                async with self._save_file_lock:
+                                                    await self.client.save_file(
+                                                        path=task.file_path,
+                                                        file_id=task.file_id,
+                                                        file_part=missing_part
+                                                    )
                                     except (FloodWait, FloodPremiumWait) as flood_error:
                                         group_task = next(
                                             (
@@ -469,9 +493,11 @@ class TelegramUploader:
             media: raw.types.InputMediaDocument,
             upload_task: UploadTask
     ):
-        """发送单条媒体消息。"""
+        """发送单条媒体消息，遇到 FilePartMissing 时重传缺失分片后重试。"""
+        chat_id = upload_task.chat_id
+        file_id = upload_task.file_id
+        file_part_missing_attempts = 0
         try:
-            chat_id = upload_task.chat_id
             while True:
                 try:
                     await self.client.invoke(
@@ -488,17 +514,34 @@ class TelegramUploader:
                         )
                     )
                     break
+                except FilePartMissing as e:
+                    file_part_missing_attempts += 1
+                    missing_part = self.file_part_missing_value(e)
+                    if file_part_missing_attempts > self.file_part_missing_repair_retries():
+                        raise
+                    self.diagnostic.warning(
+                        f'[Upload Worker] SendMedia reported FILE_PART_X_MISSING part {missing_part}; '
+                        f're-uploading part and retrying ({file_part_missing_attempts}/'
+                        f'{self.file_part_missing_repair_retries()}).'
+                    )
+                    async with self._save_file_lock:
+                        await self.client.save_file(
+                            path=upload_task.file_path,
+                            file_id=file_id,
+                            file_part=missing_part
+                        )
                 except (FloodWait, FloodPremiumWait) as flood_error:
                     await self.wait_for_telegram_flood(flood_error, upload_task, action='send media')
-            upload_task.status = UploadStatus.SENT
-            self.notify_transfer_status(upload_task)
-            self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
-            self.diagnostic.info(f'[Upload Worker]单条消息发送完成,{_t(KeyWord.CHANNEL)}:"{chat_id}"')
         except Exception as e:
             self.diagnostic.error(f'"[Upload Worker]发送单条消息失败,{_t(KeyWord.REASON)}:"{e}"', exc_info=True)
             upload_task.error_msg = str(e)
             upload_task.status = UploadStatus.FAILURE
             self.notify_transfer_status(upload_task)
+            return
+        upload_task.status = UploadStatus.SENT
+        self.notify_transfer_status(upload_task)
+        self.valid_link_cache = {k: v for k, v in self.valid_link_cache.items() if v != chat_id}
+        self.diagnostic.info(f'[Upload Worker]单条消息发送完成,{_t(KeyWord.CHANNEL)}:"{chat_id}"')
 
     @staticmethod
     def get_video_info(video_path: str) -> Union[Dict[str, int], None]:

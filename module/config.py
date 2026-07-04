@@ -194,7 +194,7 @@ class UserConfig(BaseConfig):
         self.links: str = self.config.get('links')
         self.max_download_task: int = (self.config.get('max_tasks') or {}).get('download', 1) or 1
         self.max_download_retries: int = self.config.get('max_retries', {'download': 5}).get('download')
-        self.max_upload_task: int = (self.config.get('max_tasks') or {}).get('upload', 3) or 3
+        self.max_upload_task: int = (self.config.get('max_tasks') or {}).get('upload', 1) or 1
         self.max_upload_retries: int = (self.config.get('max_retries') or {}).get('upload', 3) or 3
         self.proxy: dict = self.config.get('proxy', {})
         self.enable_proxy: bool = self.proxy.get('enable_proxy', False)
@@ -548,9 +548,9 @@ class UserConfig(BaseConfig):
             'max_tasks',
             {
                 'download': 1,
-                'upload': 3
+                'upload': 1
             }
-        )['upload'] = (pre_load_config.get('max_tasks') or {}).get('upload', 3) or 3
+        )['upload'] = (pre_load_config.get('max_tasks') or {}).get('upload', 1) or 1
         pre_load_config.get(
             'max_retries',
             {

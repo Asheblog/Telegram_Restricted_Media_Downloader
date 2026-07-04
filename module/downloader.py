@@ -852,7 +852,7 @@ class TelegramRestrictedMediaDownloader:
         self.app.download_type = user_config.get('download_type')
         self.app.is_shutdown = user_config.get('is_shutdown')
         self.app.max_download_task = (user_config.get('max_tasks') or {}).get('download', 1) or 1
-        self.app.max_upload_task = (user_config.get('max_tasks') or {}).get('upload', 3) or 3
+        self.app.max_upload_task = (user_config.get('max_tasks') or {}).get('upload', 1) or 1
         self.app.max_download_retries = user_config.get('max_retries', {'download': 5}).get('download')
         self.app.max_upload_retries = (user_config.get('max_retries') or {}).get('upload', 3) or 3
         self.app.save_directory = user_config.get('save_directory')
