@@ -1004,6 +1004,36 @@ WEB_UI_CSS = r'''
     gap: 8px;
     justify-content: flex-end;
   }
+
+  .watch-row { cursor: pointer; }
+  .watch-row:hover { background: var(--surface-tertiary, #f5f5f5); }
+  .watch-events-row { display: none; }
+  .watch-events-row.open { display: table-row; }
+  .watch-events-row td {
+    padding: 0;
+    background: var(--surface-tertiary, #fafafa);
+  }
+  .watch-events-panel {
+    padding: 12px 16px;
+    font-size: 13px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .watch-event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--line, #e0e0e0);
+    font-size: 12px;
+  }
+  .watch-event-item:last-child { border-bottom: 0; }
+  .watch-event-time { color: var(--muted, #888); white-space: nowrap; min-width: 90px; }
+  .watch-event-badge { flex-shrink: 0; }
+  .watch-event-info { flex: 1; word-break: break-all; }
+  .watch-events-load-more {
+    display: block; margin: 8px auto 0; font-size: 12px; cursor: pointer;
+  }
 '''
 
 WEB_UI_MOBILE_CSS = r'''
@@ -1272,6 +1302,20 @@ WEB_UI_MOBILE_CSS = r'''
     margin-top: 8px;
     flex-wrap: wrap;
   }
+  .mob-watch-events {
+    margin-top: 8px;
+    border-top: 1px solid var(--line, #e0e0e0);
+    padding-top: 8px;
+    font-size: 12px;
+  }
+  .mob-watch-events .watch-event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--line, #e0e0e0);
+  }
+  .mob-watch-events .watch-event-item:last-child { border-bottom: 0; }
 
   /* ---- Collapse Panel ---- */
   .mob-collapse {
@@ -2854,6 +2898,12 @@ SHARED_WEB_UI_SCRIPT = r'''
       'watches.deleted': '实时监听已移除。',
       'watches.edit': '编辑',
       'watches.updated': '实时监听已更新。',
+      'watches.events': '转发记录',
+      'watches.noEvents': '暂无转发记录',
+      'watches.eventForwarded': '转发成功',
+      'watches.eventSkipped': '已过滤',
+      'watches.eventLoading': '加载中…',
+      'watches.loadMore': '加载更多',
       'watches.targetRequired': '目标频道为必填项。',
       'action.cancel': '取消',
       'action.save': '保存',
@@ -3115,6 +3165,12 @@ SHARED_WEB_UI_SCRIPT = r'''
       'watches.deleted': 'Live watch removed.',
       'watches.edit': 'Edit',
       'watches.updated': 'Live watch updated.',
+      'watches.events': 'Forwarding log',
+      'watches.noEvents': 'No forwarding events yet.',
+      'watches.eventForwarded': 'Forwarded',
+      'watches.eventSkipped': 'Filtered',
+      'watches.eventLoading': 'Loading…',
+      'watches.loadMore': 'Load more',
       'watches.targetRequired': 'Target link is required.',
       'action.cancel': 'Cancel',
       'action.save': 'Save',
@@ -3867,24 +3923,84 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     const watches = state.watches || [];
     $('#watch-count').textContent = watches.length;
     $('#watches-empty').style.display = watches.length ? 'none' : 'block';
-    $('#watches').innerHTML = watches.map(watch => `
-      <tr>
+    $('#watches').innerHTML = watches.map(watch => {
+      const sanitized = (watch.id || '').replace(/:/g, '_');
+      const ec = watch.event_count || 0;
+      const eventBadge = watch.type === 'forward' && ec ? ` <span class="badge info">${ec}</span>` : '';
+      const rowClick = watch.type === 'forward' ? ` class="watch-row" onclick="toggleWatchEvents('${encodeURIComponent(watch.id)}')"` : '';
+      const eventsRow = watch.type === 'forward' ? `
+      <tr class="watch-events-row" id="watch-events-${sanitized}">
+        <td colspan="5"><div class="watch-events-panel" id="watch-events-panel-${sanitized}"></div></td>
+      </tr>` : '';
+      return `<tr${rowClick}>
         <td>${esc(t(`watches.${watch.type}`))}</td>
-        <td>${badge(watch.status || 'running')}</td>
+        <td>${badge(watch.status || 'running')}${eventBadge}</td>
         <td class="mono">${esc(watch.source_link || '')}</td>
         <td class="mono">${esc(watch.target_link || '')}${watch.include_comment ? `<div>${esc(t('watches.includeComment'))}</div>` : ''}${watch.error_message ? `<div>${esc(watch.error_message)}</div>` : ''}</td>
         <td>
-          ${watch.type === 'forward' ? `<button class="secondary" type="button" onclick="openEditWatchModal('${encodeURIComponent(watch.id)}','${encodeURIComponent(watch.source_link || '')}','${encodeURIComponent(watch.target_link || '')}','${watch.include_comment ? '1' : '0'}')">
+          ${watch.type === 'forward' ? `<button class="secondary" type="button" onclick="event.stopPropagation(); openEditWatchModal('${encodeURIComponent(watch.id)}','${encodeURIComponent(watch.source_link || '')}','${encodeURIComponent(watch.target_link || '')}','${watch.include_comment ? '1' : '0'}')">
             <svg viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span data-i18n="watches.edit">${esc(t('watches.edit'))}</span>
           </button>` : ''}
-          <button class="danger" type="button" onclick="deleteWatch('${encodeURIComponent(watch.id)}')">
+          <button class="danger" type="button" onclick="event.stopPropagation(); deleteWatch('${encodeURIComponent(watch.id)}')">
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span data-i18n="watches.delete">${esc(t('watches.delete'))}</span>
           </button>
         </td>
-      </tr>
-    `).join('');
+      </tr>${eventsRow}`;
+    }).join('');
+  }
+
+  async function toggleWatchEvents(encodedId) {
+    const watchId = decodeURIComponent(encodedId);
+    const sanitized = watchId.replace(/:/g, '_');
+    const row = document.getElementById(`watch-events-${sanitized}`);
+    if (!row) return;
+    const isOpen = row.classList.contains('open');
+    if (isOpen) {
+      row.classList.remove('open');
+      return;
+    }
+    row.classList.add('open');
+    await loadWatchEvents(watchId, sanitized, 0);
+  }
+  window.toggleWatchEvents = toggleWatchEvents;
+
+  async function loadWatchEvents(watchId, sanitized, offset) {
+    const panel = document.getElementById(`watch-events-panel-${sanitized}`);
+    if (!panel) return;
+    if (offset === 0) panel.innerHTML = `<div class="watch-event-item">${esc(t('watches.eventLoading'))}</div>`;
+    try {
+      const res = await fetch(`/api/watches/${encodeURIComponent(watchId)}/events?limit=50&offset=${offset}`);
+      const data = await res.json();
+      if (!res.ok) { panel.innerHTML = `<div class="watch-event-item">${esc(data.error || 'Load failed')}</div>`; return; }
+      const items = data.events || [];
+      if (offset === 0) panel.innerHTML = '';
+      if (!items.length && offset === 0) {
+        panel.innerHTML = `<div class="watch-event-item">${esc(t('watches.noEvents'))}</div>`;
+        return;
+      }
+      items.forEach(evt => {
+        const time = new Date(evt.created_at + 'Z').toLocaleString();
+        const statusClass = evt.status === 'success' ? 'success' : 'warning';
+        const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+        const div = document.createElement('div');
+        div.className = 'watch-event-item';
+        div.innerHTML = `<span class="watch-event-time">${esc(time)}</span>`
+          + `<span class="watch-event-badge"><span class="badge ${statusClass}">${esc(statusLabel)}</span></span>`
+          + `<span class="watch-event-info">${esc(evt.message)} ${esc(t('watches.source'))}: #${esc(String(evt.source_message_id || ''))} → ${esc(t('watches.target'))}: ${esc(evt.target_link || evt.target_chat_id || '')}</span>`;
+        panel.appendChild(div);
+      });
+      if (data.has_more) {
+        const btn = document.createElement('button');
+        btn.className = 'watch-events-load-more small';
+        btn.textContent = t('watches.loadMore');
+        btn.onclick = () => loadWatchEvents(watchId, sanitized, offset + items.length);
+        panel.appendChild(btn);
+      }
+    } catch (e) {
+      panel.innerHTML = `<div class="watch-event-item">${esc(t('form.requestFailed'))}</div>`;
+    }
   }
 
   async function deleteWatch(encodedId) {
@@ -5197,6 +5313,15 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       if (w.target_link) {
         targetHtml = '<div class="mob-card__row"><span class="label">' + t('watches.target') + '</span><span>' + esc(w.target_link) + '</span></div>';
       }
+      var watchId = w.encoded_id || w.id;
+      var sanitized = (watchId || '').replace(/:/g, '_');
+      var eventsBtn = '';
+      var eventsPanel = '';
+      if (w.type === 'forward') {
+        var ec = w.event_count || 0;
+        eventsBtn = '<button class="small" data-watch-events="' + watchId + '">' + t('watches.events') + (ec ? ' (' + ec + ')' : '') + '</button>';
+        eventsPanel = '<div class="mob-watch-events" id="mob-watch-events-' + sanitized + '" style="display:none;"></div>';
+      }
       return '<div class="mob-card status-' + (w.status || 'running') + '">'
         + '<div class="mob-card__head">'
         + '<span class="mob-card__title">' + typeLabel + '</span>'
@@ -5204,14 +5329,61 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
         + '</div>'
         + sourceHtml + targetHtml
         + '<div class="mob-card__actions">'
-        + '<button class="danger small" data-delete-watch="' + (w.encoded_id || w.id) + '">' + t('watches.delete') + '</button>'
+        + '<button class="danger small" data-delete-watch="' + watchId + '">' + t('watches.delete') + '</button>'
+        + eventsBtn
         + '</div>'
+        + eventsPanel
         + '</div>';
     }).join('');
 
     container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
       btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
     });
+
+    container.querySelectorAll('[data-watch-events]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var watchId = btn.dataset.watchEvents;
+        var sanitized = watchId.replace(/:/g, '_');
+        var panel = document.getElementById('mob-watch-events-' + sanitized);
+        if (!panel) return;
+        if (panel.style.display === 'none' || panel.style.display === '') {
+          panel.style.display = 'block';
+          loadMobileWatchEvents(watchId, sanitized);
+        } else {
+          panel.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  async function loadMobileWatchEvents(watchId, sanitized) {
+    var panel = document.getElementById('mob-watch-events-' + sanitized);
+    if (!panel) return;
+    panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+    try {
+      var res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=0');
+      var data = await res.json();
+      if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || 'Load failed') + '</div>'; return; }
+      var items = data.events || [];
+      if (!items.length) {
+        panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noEvents')) + '</div>';
+        return;
+      }
+      panel.innerHTML = '';
+      items.forEach(function(evt) {
+        var time = new Date(evt.created_at + 'Z').toLocaleString();
+        var statusClass = evt.status === 'success' ? 'success' : 'warning';
+        var statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+        var div = document.createElement('div');
+        div.className = 'watch-event-item';
+        div.innerHTML = '<span class="watch-event-time">' + esc(time) + '</span>'
+          + '<span class="watch-event-badge"><span class="badge ' + statusClass + '">' + esc(statusLabel) + '</span></span>'
+          + '<span class="watch-event-info">' + esc(evt.message) + ' #' + esc(String(evt.source_message_id || '')) + '</span>';
+        panel.appendChild(div);
+      });
+    } catch (e) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+    }
   }
 
   /* ====== 任务详情 Sheet ====== */

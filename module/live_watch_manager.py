@@ -1,4 +1,6 @@
 # coding=UTF-8
+from typing import Optional
+
 from module.diagnostics import default_diagnostic
 from module.language import _t
 from module.transfer_store import TransferStatus
@@ -134,6 +136,12 @@ class LiveWatchManager:
         for watch_id, watch in sorted(self.web_pending_watches.items()):
             if watch_id not in running_ids:
                 watches_by_id[watch_id] = watch
+        store = self._transfer_store
+        for watch_id in watches_by_id:
+            count = 0
+            if store and watches_by_id[watch_id].get('type') == 'forward':
+                count = store.get_live_watch_event_count(watch_id)
+            watches_by_id[watch_id]['event_count'] = count
         return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
 
     def pending_watch_sources(self, watch_type: str) -> set:
@@ -266,6 +274,8 @@ class LiveWatchManager:
                 pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
                 store = self._transfer_store
                 store_deleted = store.delete_live_transfer_watch(watch_id) if store else False
+                if store:
+                    store.delete_live_watch_events(watch_id)
                 return pending_deleted or store_deleted
             client = self.web_watch_handler_clients.pop(watch_id, None) or self._user or (self._app.client if self._app else None)
             if client:
@@ -275,6 +285,7 @@ class LiveWatchManager:
             store = self._transfer_store
             if store:
                 store.delete_live_transfer_watch(watch_id)
+                store.delete_live_watch_events(watch_id)
             self.diagnostic.info(f'已通过WebUI删除监听下载,频道链接:"{value}"。')
             return True
         if watch_type == 'forward':
@@ -283,6 +294,8 @@ class LiveWatchManager:
                 pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
                 store = self._transfer_store
                 store_deleted = store.delete_live_transfer_watch(watch_id) if store else False
+                if store:
+                    store.delete_live_watch_events(watch_id)
                 return pending_deleted or store_deleted
             client = self.web_watch_handler_clients.pop(watch_id, None) or self._user or (self._app.client if self._app else None)
             if client:
@@ -292,6 +305,7 @@ class LiveWatchManager:
             store = self._transfer_store
             if store:
                 store.delete_live_transfer_watch(watch_id)
+                store.delete_live_watch_events(watch_id)
             self.diagnostic.info(f'已通过WebUI删除监听转发,转发规则:"{value}"。')
             return True
         return False
@@ -319,3 +333,17 @@ class LiveWatchManager:
             'target_link': new_target,
             'include_comment': new_include_comment
         })
+
+    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0) -> Optional[dict]:
+        store = self._transfer_store
+        if not store:
+            return None
+        events, total = store.list_live_watch_events(watch_id, limit=limit, offset=offset)
+        return {
+            'watch_id': watch_id,
+            'events': events,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': (offset + len(events)) < total
+        }

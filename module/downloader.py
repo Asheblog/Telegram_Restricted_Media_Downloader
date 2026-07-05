@@ -611,6 +611,9 @@ class TelegramRestrictedMediaDownloader:
     def update_watch(self, watch_id: str, payload: dict) -> dict:
         return self.watch_manager.update_watch(watch_id, payload)
 
+    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0):
+        return self.watch_manager.list_watch_events(watch_id, limit=limit, offset=offset)
+
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
         wm = getattr(self, 'web_task_manager', None)
         if wm is not None:
@@ -2029,6 +2032,22 @@ class TelegramRestrictedMediaDownloader:
     async def callback_data(self, client: pyrogram.Client, callback_query: pyrogram.types.CallbackQuery):
         return await self.callback_handler.handle(client, callback_query)
 
+    def _record_watch_event(self, watch_id, origin_chat_id, message_id, target_chat_id, target_link, status, message):
+        try:
+            ts = getattr(self, 'transfer_store', None)
+            if ts:
+                ts.add_live_watch_event(
+                    watch_id=watch_id,
+                    source_chat_id=str(origin_chat_id),
+                    source_message_id=int(message_id),
+                    target_chat_id=str(target_chat_id),
+                    target_link=str(target_link),
+                    status=status,
+                    message=message
+                )
+        except Exception as e:
+            log.debug(f'记录实时监听事件失败(watch_id={watch_id}, status={status}): {e}')
+
     async def forward(
             self,
             client: pyrogram.Client,
@@ -2041,7 +2060,8 @@ class TelegramRestrictedMediaDownloader:
             media_group: Optional[list] = None,
             done_notice: Optional[bool] = True,
             ignore_type_filter: Optional[bool] = False,
-            archive_after_success: Optional[bool] = True
+            archive_after_success: Optional[bool] = True,
+            watch_id: Optional[str] = None
     ):
         try:
             if not ignore_type_filter and not self.check_type(message):
@@ -2051,6 +2071,8 @@ class TelegramRestrictedMediaDownloader:
                     f'{_t(KeyWord.CHANNEL)}:"{target_chat_id}",'
                     f'{_t(KeyWord.STATUS)}:{_t(KeyWord.FORWARD_SKIP)}。'
                 )
+                if watch_id:
+                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', '跳过转发(该类型已过滤)。')
                 if done_notice:
                     await asyncio.create_task(
                         self.done_notice(
@@ -2132,6 +2154,8 @@ class TelegramRestrictedMediaDownloader:
                         f'"{target_chat_id}",{_t(KeyWord.FORWARD_SUCCESS)}。'
                     )
                 )
+            if watch_id:
+                self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'success', '转发成功。')
             if archive_after_success and target_link and 'pikpak' in str(target_link).lower():
                 archive_result = self.archive_pikpak_item(
                     target_profile='pikpak',
@@ -2615,7 +2639,8 @@ class TelegramRestrictedMediaDownloader:
             source_message_id: int,
             target_chat_id: Union[str, int],
             target_link: str,
-            done_notice: Optional[bool] = True
+            done_notice: Optional[bool] = True,
+            watch_id: Optional[str] = None
     ) -> int:
         count = 0
         try:
@@ -2634,7 +2659,8 @@ class TelegramRestrictedMediaDownloader:
                     target_chat_id=target_chat_id,
                     target_link=target_link,
                     download_upload=True,
-                    done_notice=done_notice
+                    done_notice=done_notice,
+                    watch_id=watch_id
                 )
                 count += 1
         except (ValueError, AttributeError, MsgIdInvalid):
@@ -2666,6 +2692,7 @@ class TelegramRestrictedMediaDownloader:
                 _listen_chat_id = _listen_link_meta.get('chat_id')
                 _target_chat_id = _target_link_meta.get('chat_id')
                 if listen_chat_id == _listen_chat_id:
+                    watch_id = self.watch_manager.forward_watch_id(m)
                     try:
                         media_group_ids = await message.get_media_group()
                         if not media_group_ids:
@@ -2713,7 +2740,8 @@ class TelegramRestrictedMediaDownloader:
                                 target_chat_id=_target_chat_id,
                                 target_link=target_link,
                                 download_upload=False,
-                                media_group=sorted(ids)
+                                media_group=sorted(ids),
+                                watch_id=watch_id
                             )
                             if include_comment:
                                 await self.forward_discussion_replies(
@@ -2721,7 +2749,8 @@ class TelegramRestrictedMediaDownloader:
                                     source_chat_id=_listen_chat_id,
                                     source_message_id=message.id,
                                     target_chat_id=_target_chat_id,
-                                    target_link=target_link
+                                    target_link=target_link,
+                                    watch_id=watch_id
                                 )
                             break
                         break
@@ -2734,7 +2763,8 @@ class TelegramRestrictedMediaDownloader:
                         origin_chat_id=_listen_chat_id,
                         target_chat_id=_target_chat_id,
                         target_link=target_link,
-                        download_upload=True
+                        download_upload=True,
+                        watch_id=watch_id
                     )
                     if include_comment:
                         await self.forward_discussion_replies(
@@ -2742,7 +2772,8 @@ class TelegramRestrictedMediaDownloader:
                             source_chat_id=_listen_chat_id,
                             source_message_id=message.id,
                             target_chat_id=_target_chat_id,
-                            target_link=target_link
+                            target_link=target_link,
+                            watch_id=watch_id
                         )
         except (ValueError, KeyError, UsernameInvalid, ChatWriteForbidden) as e:
             log.error(

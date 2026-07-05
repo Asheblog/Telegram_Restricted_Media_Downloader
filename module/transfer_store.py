@@ -185,6 +185,18 @@ class TransferStore:
                     reason TEXT,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS live_watch_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    watch_id TEXT NOT NULL,
+                    source_chat_id TEXT,
+                    source_message_id INTEGER,
+                    target_chat_id TEXT,
+                    target_link TEXT,
+                    status TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 '''
             )
             self._ensure_columns(
@@ -219,6 +231,8 @@ class TransferStore:
                 ON download_success_records(updated_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_live_transfer_watches_created_order
                 ON live_transfer_watches(created_at ASC, id ASC);
+            CREATE INDEX IF NOT EXISTS idx_live_watch_events_watch_order
+                ON live_watch_events(watch_id, id DESC);
             '''
         )
 
@@ -1079,3 +1093,60 @@ class TransferStore:
         with self.connect() as conn:
             cursor = conn.execute('DELETE FROM live_transfer_watches WHERE id = ?', (watch_id,))
             return cursor.rowcount > 0
+
+    def add_live_watch_event(
+            self,
+            watch_id: str,
+            source_chat_id: Optional[str],
+            source_message_id: Optional[int],
+            target_chat_id: Optional[str],
+            target_link: Optional[str],
+            status: str,
+            message: str
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                INSERT INTO live_watch_events (
+                    watch_id, source_chat_id, source_message_id,
+                    target_chat_id, target_link, status, message, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (watch_id, source_chat_id, source_message_id,
+                 target_chat_id, target_link, status, message, self.utc_now())
+            )
+            return int(cursor.lastrowid)
+
+    def list_live_watch_events(
+            self, watch_id: str, limit: int = 50, offset: int = 0
+    ) -> tuple:
+        with self.connect() as conn:
+            total = int(conn.execute(
+                'SELECT COUNT(*) FROM live_watch_events WHERE watch_id = ?',
+                (watch_id,)
+            ).fetchone()[0])
+            rows = conn.execute(
+                '''
+                SELECT * FROM live_watch_events
+                WHERE watch_id = ?
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                ''',
+                (watch_id, limit, offset)
+            ).fetchall()
+            return [dict(row) for row in rows], total
+
+    def get_live_watch_event_count(self, watch_id: str) -> int:
+        with self.connect() as conn:
+            return int(conn.execute(
+                'SELECT COUNT(*) FROM live_watch_events WHERE watch_id = ?',
+                (watch_id,)
+            ).fetchone()[0])
+
+    def delete_live_watch_events(self, watch_id: str) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                'DELETE FROM live_watch_events WHERE watch_id = ?',
+                (watch_id,)
+            )
+            return int(cursor.rowcount)

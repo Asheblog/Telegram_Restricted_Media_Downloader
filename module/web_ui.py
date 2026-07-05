@@ -750,6 +750,21 @@ class WebUiServer:
                 if parsed.path == '/api/watches':
                     self._send_json({'watches': server.list_watches()})
                     return
+                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/events'):
+                    watch_path = parsed.path[len('/api/watches/'):][:-len('/events')]
+                    watch_id = unquote(watch_path)
+                    if not watch_id:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    query = parse_qs(parsed.query)
+                    limit = self._query_int(query, 'limit', 50)
+                    offset = self._query_int(query, 'offset', 0)
+                    result = server.list_watch_events(watch_id, limit=limit, offset=offset)
+                    if not result:
+                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
+                        return
+                    self._send_json(result)
+                    return
                 if parsed.path.startswith('/api/tasks/'):
                     # 提取路径段: /api/tasks/123 或 /api/tasks/123/summary
                     subpath = parsed.path[len('/api/tasks/'):]
@@ -1186,6 +1201,11 @@ class WebUiServer:
         if isinstance(self.operations, IWebUiOperations):
             return bool(self.operations.delete_watch(watch_id))
         return False
+
+    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0):
+        if isinstance(self.operations, IWebUiOperations):
+            return self.operations.list_watch_events(watch_id, limit=limit, offset=offset)
+        return None
 
     def delete_task(self, task_id: int) -> bool:
         if isinstance(self.operations, IWebUiOperations):
