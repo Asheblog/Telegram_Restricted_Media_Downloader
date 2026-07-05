@@ -6,6 +6,7 @@ assembles the final HTML documents, and writes them as Python
 constants in assets.py.
 """
 
+import base64
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -47,18 +48,40 @@ def migrate_colors(text: str) -> str:
     return text
 
 
-def build_login_page(tailwind_css: str) -> str:
+def _load_font_data() -> tuple[str, dict[str, str]]:
+    """Return (fonts_css, {filename: base64_data}) or ("", {}) if no fonts."""
+    fonts_css_path = STATIC_DIR / "fonts.css"
+    fonts_dir = STATIC_DIR / "fonts"
+    if not fonts_css_path.exists():
+        return "", {}
+
+    fonts_css = read_text(fonts_css_path)
+    font_files: dict[str, str] = {}
+    for f in sorted(fonts_dir.iterdir()) if fonts_dir.is_dir() else []:
+        if f.suffix in (".woff2", ".woff", ".ttf"):
+            font_files[f.name] = base64.b64encode(f.read_bytes()).decode("ascii")
+    return fonts_css, font_files
+
+
+def _inject_css(html: str, fonts_css: str, tailwind_css: str) -> str:
+    """Replace CSS placeholders with actual content."""
+    html = html.replace("/* fonts.css */", fonts_css)
+    html = html.replace("/* tailwind.min.css */", tailwind_css)
+    return html
+
+
+def build_login_page(tailwind_css: str, fonts_css: str) -> str:
     html = read_text(TEMPLATES_DIR / "login.html")
-    return html.replace("/* tailwind.min.css */", tailwind_css)
+    return _inject_css(html, fonts_css, tailwind_css)
 
 
-def build_desktop_html(tailwind_css: str) -> str:
+def build_desktop_html(tailwind_css: str, fonts_css: str) -> str:
     base = read_text(TEMPLATES_DIR / "base.html")
     views = read_text(TEMPLATES_DIR / "views.html")
     shared_js = read_text(STATIC_DIR / "shared.js")
     desktop_js = read_text(STATIC_DIR / "desktop.js")
 
-    html = base.replace("/* tailwind.min.css */", tailwind_css)
+    html = _inject_css(base, fonts_css, tailwind_css)
     html = html.replace("<!-- VIEWS PLACEHOLDER -->", views)
     html = html.replace("/* shared.js */", shared_js)
     html = html.replace("/* desktop.js */", desktop_js)
@@ -90,9 +113,10 @@ def build_mobile_html() -> str:
 
 def main():
     tailwind_css = read_text(DIST_DIR / "tailwind.min.css")
+    fonts_css, font_files = _load_font_data()
 
-    login_html = build_login_page(tailwind_css)
-    desktop_html = build_desktop_html(tailwind_css)
+    login_html = build_login_page(tailwind_css, fonts_css)
+    desktop_html = build_desktop_html(tailwind_css, fonts_css)
     mobile_html = build_mobile_html()
 
     # Backward-compatible exports
@@ -105,6 +129,15 @@ def main():
     # Sentinel: __DLB__ → {, __DRB__ → }
     LB = "__DLB__"
     RB = "__DRB__"
+
+    # Build font data dict source code
+    if font_files:
+        font_entries = ",\n    ".join(
+            f'"{name}": "{data}"' for name, data in sorted(font_files.items())
+        )
+        font_dict_src = "{\n    " + font_entries + "\n}"
+    else:
+        font_dict_src = "{}"
 
     output = f'''# coding=UTF-8
 # WebUI 静态资源 — 由 build_frontend.py 自动生成
@@ -159,6 +192,8 @@ WEB_UI_MOBILE_BODY = r"""{mobile_body}"""
 
 SHARED_WEB_UI_SCRIPT = r"""{shared_js}"""
 WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r"""{mobile_script}"""
+
+FONTS = {font_dict_src}
 '''
 
     # Resolve sentinels
@@ -166,6 +201,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r"""{mobile_script}"""
 
     OUTPUT_FILE.write_text(output, encoding="utf-8")
     print(f"[build_frontend] Written {OUTPUT_FILE} ({len(output)} bytes)")
+    print(f"  Fonts CSS:    {len(fonts_css)} bytes ({len(font_files)} files, {sum(len(b64) for b64 in font_files.values()) * 3 // 4 // 1024} KB raw)")
     print(f"  Tailwind CSS: {len(tailwind_css)} bytes")
     print(f"  Desktop HTML: {len(desktop_html)} bytes")
     print(f"  Login HTML:   {len(login_html)} bytes")

@@ -21,7 +21,7 @@ from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
 from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
-from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML
+from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, FONTS
 
 
 SENSITIVE_SETTING_KEYS = {
@@ -344,6 +344,25 @@ class WebUiServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _send_font(self, filename: str):
+                b64_data = FONTS.get(filename)
+                if not b64_data:
+                    self._send_error('font_not_found', 'Font not found.', HTTPStatus.NOT_FOUND)
+                    return
+                font_bytes = base64.b64decode(b64_data)
+                ext = filename.rsplit('.', 1)[-1] if '.' in filename else 'woff2'
+                mime = {
+                    'woff2': 'font/woff2',
+                    'woff': 'font/woff',
+                    'ttf': 'font/truetype',
+                }.get(ext, 'font/woff2')
+                self.send_response(HTTPStatus.OK)
+                self.send_header('content-type', mime)
+                self.send_header('cache-control', 'public, max-age=31536000, immutable')
+                self.send_header('content-length', str(len(font_bytes)))
+                self.end_headers()
+                self.wfile.write(font_bytes)
+
             def _send_json(self, payload, status=HTTPStatus.OK):
                 data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
                 self.send_response(status)
@@ -438,6 +457,15 @@ class WebUiServer:
 
             def do_GET(self):
                 parsed = urlparse(self.path)
+
+                # Font files (public, no auth required)
+                if parsed.path.startswith('/fonts/'):
+                    filename = parsed.path[len('/fonts/'):]
+                    if filename and '/' not in filename:
+                        self._send_font(filename)
+                        return
+                    self._send_error('invalid_font_path', 'Invalid font path.', HTTPStatus.BAD_REQUEST)
+                    return
 
                 # Page requests: show login page when unauthorized
                 if parsed.path in ('/', '/index.html'):
