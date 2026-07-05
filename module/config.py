@@ -643,7 +643,7 @@ class GlobalConfig(BaseConfig):
             },
             'keywords': {
                 'enabled': False,
-                'words': []
+                'words': ['广告', '推广', '赞助']
             }
         }
     }
