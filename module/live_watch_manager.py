@@ -24,6 +24,8 @@ class LiveWatchManager:
         self.listen_forward_chat = listen_forward_chat if listen_forward_chat is not None else {}
         self.web_pending_watches = web_pending_watches if web_pending_watches is not None else {}
         self.web_watch_handler_clients = web_watch_handler_clients if web_watch_handler_clients is not None else {}
+        # chat_id → watch_id 反向映射，供 listen_download 过滤事件记录使用
+        self._download_chat_watch_id: dict = {}
         self._transfer_store_getter = transfer_store_getter
         self._operation_submitter = operation_submitter
         self._user_getter = user_getter
@@ -282,6 +284,10 @@ class LiveWatchManager:
                 client.remove_handler(handler)
             self.listen_download_chat.pop(value, None)
             self.web_pending_watches.pop(watch_id, None)
+            # 清理 chat_id → watch_id 反向映射
+            stale_keys = [k for k, v in self._download_chat_watch_id.items() if v == watch_id]
+            for k in stale_keys:
+                self._download_chat_watch_id.pop(k, None)
             store = self._transfer_store
             if store:
                 store.delete_live_transfer_watch(watch_id)

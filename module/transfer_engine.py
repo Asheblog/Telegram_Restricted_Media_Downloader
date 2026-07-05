@@ -28,6 +28,7 @@ from module.stdio import MetaData
 from module.util import is_allow_upload, parse_link
 from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.local_storage_guard import LocalStorageGuard
+from module.filter import MessageFilter
 
 
 class TransferEngine:
@@ -454,13 +455,18 @@ class TransferEngine:
 
     # ── 辅助方法 ──
 
+    @property
+    def message_filter(self) -> MessageFilter:
+        """获取共享消息过滤器实例。config reload 时自动重建。"""
+        current_mf = self.gc.message_filter
+        if not hasattr(self, '_message_filter') or self._msg_filter_config_id != id(current_mf):
+            self._message_filter = MessageFilter(current_mf)
+            self._msg_filter_config_id = id(current_mf)
+        return self._message_filter
+
     def check_type(self, message: pyrogram.types.Message):
-        for dtype, is_forward in self.gc.forward_type.items():
-            if is_forward:
-                result = getattr(message, dtype, None)
-                if result:
-                    return True
-        return False
+        """检查消息媒体类型是否允许（兼容旧接口，内部调用 MessageFilter）。"""
+        return self.message_filter.should_pass_media_type(message)
 
     def get_media_meta(self, message: pyrogram.types.Message, dtype) -> Dict[str, Union[int, str]]:
         file_id: int = getattr(message, 'id')

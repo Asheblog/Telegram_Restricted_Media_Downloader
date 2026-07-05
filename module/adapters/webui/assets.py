@@ -2034,6 +2034,10 @@ WEB_UI_MOBILE_BODY = f'''
       <div class="mob-collapse__head" data-i18n="settings.forwardTypes">转发类型 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body" id="mob-settings-forward-types-fields"></div>
     </div>
+    <div class="mob-collapse" id="collapse-settings-message-filter">
+      <div class="mob-collapse__head" data-i18n="settings.messageFilter">消息过滤 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-message-filter-fields"></div>
+    </div>
     <div class="mob-collapse" id="collapse-settings-exports">
       <div class="mob-collapse__head" data-i18n="settings.exports">导出表格 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>
@@ -2567,10 +2571,29 @@ WEB_UI_BODY = f'''
               </div>
               <div class="settings-section">
                 <div class="settings-section__head">
-                  <h3 class="settings-section__title" data-i18n="settings.forwardTypes">转发类型</h3>
+                  <h3 class="settings-section__title" data-i18n="settings.messageFilter">消息过滤</h3>
+                  <label class="switch-label"><input name="global.message_filter.enabled" type="checkbox" id="filter-enabled"><span></span></label>
                 </div>
-                <div class="settings-section__body">
-                  <div class="settings-check-grid" id="forward-type-settings"></div>
+                <div class="settings-section__body" id="message-filter-body">
+                  <div class="settings-subsection">
+                    <h4 class="settings-subsection__title" data-i18n="settings.mediaTypes">媒体类型</h4>
+                    <div class="settings-check-grid" id="filter-media-types"></div>
+                  </div>
+                  <div class="settings-subsection">
+                    <h4 class="settings-subsection__title" data-i18n="settings.dateRange">日期范围</h4>
+                    <label class="switch-label"><input name="global.message_filter.date_range.enabled" type="checkbox"><span data-i18n="settings.enabled">启用</span></label>
+                    <div class="field-grid field-grid--two" style="margin-top:12px">
+                      <label class="field"><span data-i18n="settings.startDate">起始日期</span><input name="global.message_filter.date_range.start_date" type="datetime-local"></label>
+                      <label class="field"><span data-i18n="settings.endDate">结束日期</span><input name="global.message_filter.date_range.end_date" type="datetime-local"></label>
+                    </div>
+                  </div>
+                  <div class="settings-subsection">
+                    <h4 class="settings-subsection__title" data-i18n="settings.keywords">关键词</h4>
+                    <label class="switch-label"><input name="global.message_filter.keywords.enabled" type="checkbox"><span data-i18n="settings.enabled">启用</span></label>
+                    <div style="margin-top:12px">
+                      <label class="field"><span data-i18n="settings.keywordList">关键词列表（逗号分隔）</span><input name="global.message_filter.keywords.words" data-i18n-placeholder="settings.keywordPlaceholder" placeholder="输入关键词,用逗号分隔"></label>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="settings-section">
@@ -3055,6 +3078,15 @@ SHARED_WEB_UI_SCRIPT = r'''
       'settings.secretNotConfigured': '未配置',
       'settings.downloadTypes': '下载类型',
       'settings.forwardTypes': '转发类型',
+      'settings.messageFilter': '消息过滤',
+      'settings.mediaTypes': '媒体类型',
+      'settings.dateRange': '日期范围',
+      'settings.keywords': '关键词',
+      'settings.enabled': '启用',
+      'settings.startDate': '起始日期',
+      'settings.endDate': '结束日期',
+      'settings.keywordList': '关键词列表（逗号分隔）',
+      'settings.keywordPlaceholder': '输入关键词,用逗号分隔',
       'settings.exports': '导出表格',
       'settings.exportLink': '链接统计表',
       'settings.exportCount': '计数统计表',
@@ -3323,6 +3355,15 @@ SHARED_WEB_UI_SCRIPT = r'''
       'settings.secretNotConfigured': 'Not configured',
       'settings.downloadTypes': 'Download types',
       'settings.forwardTypes': 'Forward types',
+      'settings.messageFilter': 'Message filter',
+      'settings.mediaTypes': 'Media types',
+      'settings.dateRange': 'Date range',
+      'settings.keywords': 'Keywords',
+      'settings.enabled': 'Enabled',
+      'settings.startDate': 'Start date',
+      'settings.endDate': 'End date',
+      'settings.keywordList': 'Keywords (comma separated)',
+      'settings.keywordPlaceholder': 'Enter keywords, separated by commas',
       'settings.exports': 'Table exports',
       'settings.exportLink': 'Link table',
       'settings.exportCount': 'Count table',
@@ -4241,12 +4282,23 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
   function renderTypeSettings() {
     const downloadTypes = state.schema.download_type || [];
     const forwardTypes = state.schema.forward_type || [];
+    const filterMediaTypes = (state.schema.message_filter && state.schema.message_filter.media_types) || forwardTypes;
     $('#download-type-settings').innerHTML = downloadTypes.map(type => `
       <label class="check-card"><input name="user.download_type" value="${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
     `).join('');
-    $('#forward-type-settings').innerHTML = forwardTypes.map(type => `
-      <label class="check-card"><input name="global.forward_type.${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
-    `).join('');
+    var fwdEl = $('#forward-type-settings');
+    if (fwdEl) {
+      fwdEl.innerHTML = forwardTypes.map(type => `
+        <label class="check-card"><input name="global.forward_type.${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
+      `).join('');
+    }
+    // 消息过滤 — 媒体类型
+    var filterEl = $('#filter-media-types');
+    if (filterEl) {
+      filterEl.innerHTML = filterMediaTypes.map(type => `
+        <label class="check-card"><input name="global.message_filter.media_types.${esc(type)}" type="checkbox"><span>${esc(type)}</span></label>
+      `).join('');
+    }
   }
 
   function fillSettingsForm() {
@@ -4255,6 +4307,18 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       if (!el.name) return;
       if (el.name === 'user.download_type') {
         el.checked = (getPath(state.settings, 'user.download_type') || []).includes(el.value);
+        return;
+      }
+      // 消息过滤 — 日期范围：timestamp → datetime-local
+      if (el.name === 'global.message_filter.date_range.start_date' || el.name === 'global.message_filter.date_range.end_date') {
+        const ts = getPath(state.settings, el.name);
+        el.value = ts ? new Date(ts * 1000).toISOString().slice(0, 16) : '';
+        return;
+      }
+      // 消息过滤 — 关键词：数组 → 逗号分隔字符串
+      if (el.name === 'global.message_filter.keywords.words') {
+        const words = getPath(state.settings, el.name);
+        el.value = Array.isArray(words) ? words.join(', ') : '';
         return;
       }
       const value = getPath(state.settings, el.name);
@@ -4276,6 +4340,18 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       if (!el.name) return;
       if (el.name === 'user.download_type') {
         if (el.checked) downloadTypes.push(el.value);
+        return;
+      }
+      // 消息过滤 — 日期范围：datetime-local → timestamp
+      if (el.name === 'global.message_filter.date_range.start_date' || el.name === 'global.message_filter.date_range.end_date') {
+        const v = el.value;
+        setPath(payload, el.name, v ? (new Date(v).getTime() / 1000) : null);
+        return;
+      }
+      // 消息过滤 — 关键词：逗号分隔字符串 → 数组
+      if (el.name === 'global.message_filter.keywords.words') {
+        const words = el.value ? el.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        setPath(payload, el.name, words);
         return;
       }
       let value = el.type === 'checkbox' ? el.checked : el.value;
@@ -5730,6 +5806,30 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     // Forward Types
     $('#mob-settings-forward-types-fields').innerHTML = renderCheckCards('global.forward_type', forwardTypes, selectedForward(glob));
 
+    // Message Filter
+    var mf = glob.message_filter || {};
+    var mfMediaTypes = (state.schema.message_filter && state.schema.message_filter.media_types) || forwardTypes;
+    var mfDateRange = mf.date_range || {};
+    var mfKeywords = mf.keywords || {};
+    var mfDateStart = mfDateRange.start_date ? new Date(mfDateRange.start_date * 1000).toISOString().slice(0, 16) : '';
+    var mfDateEnd = mfDateRange.end_date ? new Date(mfDateRange.end_date * 1000).toISOString().slice(0, 16) : '';
+    var mfKwStr = Array.isArray(mfKeywords.words) ? mfKeywords.words.join(', ') : '';
+    $('#mob-settings-message-filter-fields').innerHTML =
+      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled" style="width:auto;min-height:auto;"' + (mf.enabled !== false ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      + '<div class="mob-subsection"><h4>' + t('settings.mediaTypes') + '</h4>'
+      + renderCheckCards('global.message_filter.media_types', mfMediaTypes, selectedMediaTypes(glob))
+      + '</div>'
+      + '<div class="mob-subsection"><h4>' + t('settings.dateRange') + '</h4>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.date_range.enabled" style="width:auto;min-height:auto;"' + (mfDateRange.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      + '<div class="field-grid field-grid--two" style="margin-top:8px">'
+      + '<label class="field"><span>' + t('settings.startDate') + '</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(mfDateStart) + '"></label>'
+      + '<label class="field"><span>' + t('settings.endDate') + '</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(mfDateEnd) + '"></label>'
+      + '</div></div>'
+      + '<div class="mob-subsection"><h4>' + t('settings.keywords') + '</h4>'
+      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.keywords.enabled" style="width:auto;min-height:auto;"' + (mfKeywords.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      + '<label class="field" style="margin-top:8px"><span>' + t('settings.keywordList') + '</span><input name="global.message_filter.keywords.words" value="' + escAttr(mfKwStr) + '" placeholder="' + t('settings.keywordPlaceholder') + '"></label>'
+      + '</div>';
+
     // Export Tables
     $('#mob-settings-exports-fields').innerHTML =
       '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link" style="width:auto;min-height:auto;"' + (exportTable.link ? ' checked' : '') + '><span>' + t('settings.exportLink') + '</span></label>'
@@ -5746,6 +5846,18 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
     var result = [];
     for (var k in ft) { if (ft[k]) result.push(k); }
     return result;
+  }
+
+  function selectedMediaTypes(glob) {
+    var mf = glob.message_filter || {};
+    var mt = mf.media_types || glob.forward_type || {};
+    var result = [];
+    for (var k in mt) { if (mt[k]) result.push(k); }
+    return result;
+  }
+
+  function escAttr(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function renderCheckCards(baseName, types, selected) {
@@ -5937,7 +6049,7 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
       var downloadTypes = [];
 
       // 收集所有设置区域的 input
-      var allInputs = document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input, #mob-settings-download-types-fields input, #mob-settings-forward-types-fields input, #mob-settings-exports-fields input');
+      var allInputs = document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input, #mob-settings-download-types-fields input, #mob-settings-forward-types-fields input, #mob-settings-message-filter-fields input, #mob-settings-exports-fields input');
 
       allInputs.forEach(function(input) {
         var name = input.name || '';
@@ -5961,6 +6073,18 @@ WEB_UI_MOBILE_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
         // 收集 forward_type 多选
         if (name === 'global.forward_type' && input.type === 'checkbox') {
           setPath(globalPayload, 'forward_type.' + input.value, input.checked);
+          return;
+        }
+        // 消息过滤 — 日期范围：datetime-local → timestamp
+        if (name === 'global.message_filter.date_range.start_date' || name === 'global.message_filter.date_range.end_date') {
+          var ts = input.value ? (new Date(input.value).getTime() / 1000) : null;
+          setPath(globalPayload, name.substring(7), ts);
+          return;
+        }
+        // 消息过滤 — 关键词：逗号分隔字符串 → 数组
+        if (name === 'global.message_filter.keywords.words') {
+          var words = input.value ? input.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+          setPath(globalPayload, name.substring(7), words);
           return;
         }
 

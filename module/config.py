@@ -623,7 +623,29 @@ class GlobalConfig(BaseConfig):
                 'text': True,
                 'animation': True,
                 'video_note': True
+            },
+        'message_filter': {
+            'enabled': True,
+            'media_types': {
+                'video': True,
+                'photo': True,
+                'audio': True,
+                'document': True,
+                'voice': True,
+                'text': True,
+                'animation': True,
+                'video_note': True
+            },
+            'date_range': {
+                'enabled': False,
+                'start_date': None,
+                'end_date': None
+            },
+            'keywords': {
+                'enabled': False,
+                'words': []
             }
+        }
     }
 
     def __init__(self):
@@ -631,6 +653,7 @@ class GlobalConfig(BaseConfig):
         self.default_upload_nesting = self.TEMPLATE.get('upload')
         self.default_target_profiles_nesting = self.TEMPLATE.get('target_profiles')
         self.default_forward_type_nesting = self.TEMPLATE.get('forward_type')
+        self.default_message_filter_nesting = self.TEMPLATE.get('message_filter')
         self.load_config()
         self.__check_params(deepcopy(self.config))
         self.download_upload: bool = self.get_nesting_config(
@@ -646,10 +669,53 @@ class GlobalConfig(BaseConfig):
         self.upload_pending_limit: int = self.get_upload_pending_limit()
         self.local_storage_reserve_bytes: int = self.get_local_storage_reserve_bytes()
         self.target_profiles: dict = self.config.get('target_profiles', self.default_target_profiles_nesting)
-        self.forward_type: dict = self.config.get('forward_type')
+        self.forward_type: dict = self._resolve_forward_type()
+        self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
         return self.config.get(param, default_nesting).get(nesting_param)
+
+    def _resolve_forward_type(self) -> dict:
+        """解析 forward_type，优先从 message_filter.media_types 读取。
+
+        向后兼容：如果 message_filter.media_types 是首次创建的默认值（用户未自定义过），
+        则回退到旧 forward_type，避免覆盖用户升级前的自定义设置。
+        """
+        mf = self.config.get('message_filter')
+        if isinstance(mf, dict) and mf.get('media_types'):
+            mf_media = mf.get('media_types')
+            default_media = self.default_message_filter_nesting.get('media_types', {})
+            if mf_media != default_media:
+                # 用户自定义过 message_filter → 以它为准
+                return dict(mf_media)
+        # message_filter 是默认值或不存在 → 回退到 forward_type
+        return self.config.get('forward_type', self.default_forward_type_nesting)
+
+    def _sync_message_filter_media_types(self) -> None:
+        """双向同步 message_filter.media_types ↔ forward_type（双写兼容）。
+
+        规则：
+        1. 如果 message_filter.media_types 与模板默认值不同 → 用户自定义过 → 同步到 forward_type
+        2. 如果 message_filter.media_types 是模板默认值（首次创建）→ 从 forward_type 回填
+        3. 这种设计保护用户在升级前的 forward_type 自定义设置不被默认值覆盖
+        """
+        ft = self.config.get('forward_type')
+        mf = self.config.get('message_filter')
+        if not isinstance(mf, dict):
+            mf = {}
+            self.config['message_filter'] = mf
+        mf_media = mf.get('media_types')
+        default_media = self.default_message_filter_nesting.get('media_types', {})
+        is_default = isinstance(mf_media, dict) and mf_media == default_media
+        if isinstance(mf_media, dict) and not is_default:
+            # message_filter.media_types 被用户自定义过 → 同步到 forward_type
+            self.config['forward_type'] = dict(mf_media)
+        elif ft and isinstance(ft, dict):
+            # forward_type 有值，message_filter 还是默认值 → 从 forward_type 回填
+            mf['media_types'] = dict(ft)
+        elif not isinstance(mf_media, dict):
+            # 都没有 → 用默认值
+            mf['media_types'] = dict(default_media)
 
     def get_upload_pending_limit(self) -> int:
         try:
@@ -689,7 +755,9 @@ class GlobalConfig(BaseConfig):
         self.upload_pending_limit = self.get_upload_pending_limit()
         self.local_storage_reserve_bytes = self.get_local_storage_reserve_bytes()
         self.target_profiles = self.config.get('target_profiles', self.default_target_profiles_nesting)
-        self.forward_type: dict = self.config.get('forward_type')
+        self._sync_message_filter_media_types()
+        self.forward_type: dict = self._resolve_forward_type()
+        self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')
         log.info(f'{p}{self.config}')
@@ -737,6 +805,42 @@ class GlobalConfig(BaseConfig):
                 log_message=f'"{{}}"不在target_profiles.{profile_name}模板中,已删除。'
             )
 
+    def process_message_filter(self, config: dict) -> None:
+        """处理 message_filter 嵌套配置，确保子段完整。"""
+        mf_template = self.TEMPLATE.get('message_filter', {})
+        mf = config.get('message_filter')
+        if not isinstance(mf, dict):
+            mf = {}
+            config['message_filter'] = mf
+        self.add_missing_keys(
+            target=mf,
+            template=mf_template,
+            log_message='"{}"不在message_filter配置文件中,已添加。'
+        )
+        # 处理 media_types 子嵌套
+        for nested_key in ('media_types', 'date_range', 'keywords'):
+            nested_template = mf_template.get(nested_key, {})
+            if isinstance(nested_template, dict):
+                nested_config = mf.get(nested_key)
+                if not isinstance(nested_config, dict):
+                    nested_config = {}
+                    mf[nested_key] = nested_config
+                self.add_missing_keys(
+                    target=nested_config,
+                    template=nested_template,
+                    log_message=f'"{{}}"不在message_filter.{nested_key}配置文件中,已添加。'
+                )
+                self.remove_extra_keys(
+                    target=nested_config,
+                    template=nested_template,
+                    log_message=f'"{{}}"不在message_filter.{nested_key}模板中,已删除。'
+                )
+        self.remove_extra_keys(
+            target=mf,
+            template=mf_template,
+            log_message='"{}"不在message_filter模板中,已删除。'
+        )
+
     def __check_params(self, config: dict) -> None:
         if config is None:
             config = {}
@@ -752,6 +856,7 @@ class GlobalConfig(BaseConfig):
         self.process_nesting(param_name='upload', config=config)
         self.process_target_profiles(config=config)
         self.process_nesting(param_name='forward_type', config=config)
+        self.process_message_filter(config=config)
         # 删除父级模板中没有的字段。
         self.remove_extra_keys(
             target=config,

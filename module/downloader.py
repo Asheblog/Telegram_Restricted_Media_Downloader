@@ -59,7 +59,7 @@ from module import (
     LINK_PREVIEW_OPTIONS,
     SLEEP_THRESHOLD
 )
-from module.filter import Filter
+from module.filter import Filter, MessageFilter
 from module.app import Application
 from module.app import DownloadFileName
 from module.config import GlobalConfig
@@ -332,6 +332,18 @@ class TelegramRestrictedMediaDownloader:
             create_download_task_getter=lambda: self.create_download_task,
             detect_transfer_range_async_getter=lambda: self.detect_transfer_range_async,
         )
+
+    @property
+    def message_filter(self) -> MessageFilter:
+        """共享消息过滤器实例，所有管线统一使用。
+
+        每次访问时检查配置是否变更（通过 id 对比），确保 config reload 后使用最新配置。
+        """
+        current_mf = self.gc.message_filter
+        if not hasattr(self, '_msg_filter') or self._msg_filter_config_id != id(current_mf):
+            self._msg_filter = MessageFilter(current_mf)
+            self._msg_filter_config_id = id(current_mf)
+        return self._msg_filter
 
     @property
     def transfer_engine(self):
@@ -911,7 +923,7 @@ class TelegramRestrictedMediaDownloader:
         global_config = merge_allowed_settings(
             target=deepcopy(self.gc.config),
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'}
+            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter'}
         )
         self.app.save_config(user_config)
         self.app.config = user_config
@@ -1834,6 +1846,7 @@ class TelegramRestrictedMediaDownloader:
                 raise PeerIdInvalid
             handler = MessageHandler(self.listen_download, filters=pyrogram.filters.chat(chat.id))
             self.listen_download_chat[link] = handler
+            self.watch_manager._download_chat_watch_id[str(chat.id)] = watch_id
             user_client.add_handler(handler)
             self.web_watch_handler_clients[watch_id] = user_client
             self.set_live_watch_status(watch_id, TransferStatus.RUNNING)
@@ -2064,7 +2077,7 @@ class TelegramRestrictedMediaDownloader:
             watch_id: Optional[str] = None
     ):
         try:
-            if not ignore_type_filter and not self.check_type(message):
+            if not ignore_type_filter and not self.message_filter.should_pass(message):
                 console.log(
                     f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{message_id}"'
                     f' -> '
@@ -2072,13 +2085,13 @@ class TelegramRestrictedMediaDownloader:
                     f'{_t(KeyWord.STATUS)}:{_t(KeyWord.FORWARD_SKIP)}。'
                 )
                 if watch_id:
-                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', '跳过转发(该类型已过滤)。')
+                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', '跳过转发(已被消息过滤器过滤)。')
                 if done_notice:
                     await asyncio.create_task(
                         self.done_notice(
                             f'"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:{message_id}'
                             f' ➡️ '
-                            f'"{target_chat_id}",{_t(KeyWord.FORWARD_SKIP)}(该类型已过滤)。'
+                            f'"{target_chat_id}",{_t(KeyWord.FORWARD_SKIP)}(已被消息过滤器过滤)。'
                         )
                     )
                 return None
@@ -2625,6 +2638,19 @@ class TelegramRestrictedMediaDownloader:
             message: pyrogram.types.Message
     ):
         try:
+            if not self.message_filter.should_pass(message):
+                msg_id = getattr(message, 'id', '?')
+                log.info(f'监听下载:消息已被过滤器过滤,跳过。message_id={msg_id}')
+                # 记录过滤事件到 watch events：通过 chat_id 反查 watch_id
+                origin_chat_id = str(getattr(getattr(message, 'chat', None), 'id', ''))
+                watch_id = self.watch_manager._download_chat_watch_id.get(origin_chat_id)
+                if watch_id:
+                    self._record_watch_event(
+                        watch_id, origin_chat_id,
+                        getattr(message, 'id', 0), '', '',
+                        'skipped', '消息被过滤器过滤,跳过下载。'
+                    )
+                return
             await self.create_download_task(message_ids=message.link, single_link=True)
         except Exception as e:
             log.exception(f'监听下载出现错误,{_t(KeyWord.REASON)}:"{e}"')
@@ -3208,7 +3234,9 @@ class TelegramRestrictedMediaDownloader:
                     messages_to_download.append(message)
                     continue
 
-                if (_filter.date_range(message, start_date, end_date) and
+                # 先过全局消息过滤器（预过滤），再过 per-chat 过滤
+                if self.message_filter.should_pass(message) and (
+                        _filter.date_range(message, start_date, end_date) and
                         _filter.dtype(message, download_type) and
                         _filter.keyword_filter(message, active_keywords)):
                     messages_to_download.append(message)

@@ -1365,6 +1365,13 @@ class WebUiServer:
             'forward_type': [
                 'video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'
             ],
+            'message_filter': {
+                'media_types': [
+                    'video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'
+                ],
+                'date_range': {'enabled': False},
+                'keywords': {'enabled': False}
+            },
             'upload_pending_limit': {'min': 1, 'max': 5},
             'target_profiles': {
                 'pikpak': {
@@ -1465,7 +1472,7 @@ def save_runtime_settings(payload: dict) -> dict:
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles'},
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter'},
         gc=global_config
     )
     user.save_config(user_config)
