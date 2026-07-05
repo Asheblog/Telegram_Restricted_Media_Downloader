@@ -1,0 +1,28 @@
+{
+  "name": "tgbot",
+  "version": "1.0.0",
+  "description": "这是一个面向长期运行的 Telegram 媒体转存 WebUI。它可以把你有权访问的 Telegram 内容转存到目标会话，默认目标是 PikPak bot，并可通过 rclone 把 PikPak 入库后的文件按来源频道归档。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Asheblog/Telegram_Restricted_Media_Downloader.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Asheblog/Telegram_Restricted_Media_Downloader/issues"
+  },
+  "homepage": "https://github.com/Asheblog/Telegram_Restricted_Media_Downloader#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.18",
+    "tailwindcss": "^4.1.18"
+  }
+}

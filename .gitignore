@@ -1,4 +1,5 @@
 # ignore folders
+node_modules/
 .idea/
 __pycache__/
 sessions/

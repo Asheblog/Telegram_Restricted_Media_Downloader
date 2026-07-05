@@ -386,30 +386,30 @@
   }
 
   .login-card {
-    @apply bg-surface border border-line rounded-[12px] p-8 max-w-[400px] w-full shadow-lg;
+    @apply bg-surface border border-line rounded-[16px] p-10 max-w-[448px] w-full shadow-lg;
   }
 
   .login-brand {
-    @apply text-center mb-6;
+    @apply text-center mb-8;
   }
 
   .login-brand-mark {
-    @apply w-12 h-12 rounded-xl inline-flex items-center justify-center text-white text-[22px] font-bold mb-3.5;
+    @apply w-[52px] h-[52px] rounded-[14px] inline-flex items-center justify-center text-white text-[24px] font-bold mb-4;
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
     font-family: var(--font-heading);
   }
 
   .login-brand h1 {
-    @apply text-[26px] font-extrabold text-text;
+    @apply text-[28px] font-extrabold text-text;
     font-family: var(--font-heading);
   }
 
   .login-brand p {
-    @apply text-[13px] text-muted mt-1;
+    @apply text-[13px] text-muted mt-1.5;
   }
 
   .login-error {
-    @apply text-[13px] text-danger bg-danger-bg border border-red-300 rounded-[6px] px-3.5 py-2.5 mb-4 hidden;
+    @apply text-[13px] text-danger bg-danger-bg border border-red-300 rounded-[8px] px-3.5 py-2.5 mb-[18px] hidden;
   }
 
   .login-error.visible {
@@ -417,15 +417,15 @@
   }
 
   .login-field {
-    @apply mb-[18px];
+    @apply mb-5;
   }
 
   .login-field label {
-    @apply block text-[13px] font-medium text-text mb-1.5;
+    @apply block text-[13px] font-medium text-text mb-2;
   }
 
   .login-field input {
-    @apply w-full h-[42px] border border-line rounded-[6px] px-3 text-sm bg-surface text-text
+    @apply w-full h-[46px] border border-line rounded-[8px] px-3.5 text-sm bg-surface text-text
            outline-none transition-colors duration-150;
     font-family: inherit;
   }
@@ -436,7 +436,7 @@
   }
 
   .login-options {
-    @apply flex items-center justify-between mb-6;
+    @apply flex items-center justify-between mb-7;
   }
 
   .login-checkbox {
@@ -444,7 +444,7 @@
   }
 
   .login-submit {
-    @apply w-full h-11 border-0 rounded-[6px] bg-primary text-white text-[15px] font-semibold
+    @apply w-full h-[46px] border-0 rounded-[8px] bg-primary text-white text-[15px] font-semibold
            cursor-pointer flex items-center justify-center gap-2 transition-colors duration-150;
     font-family: inherit;
   }
