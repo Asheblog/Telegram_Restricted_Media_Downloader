@@ -327,6 +327,8 @@
   .badge-pending { @apply bg-orange-50 text-cta; }
   .badge-paused { @apply bg-slate-100 text-slate-500; }
   .badge-skipped { @apply bg-slate-100 text-slate-500; }
+  .badge-warning { @apply bg-warning-bg text-warning; }
+  .badge-muted { @apply bg-slate-100 text-slate-500; }
 
   /* Progress */
   .progress-bar {
@@ -478,6 +480,37 @@
 
   .watch-dialog {
     @apply bg-surface rounded-[10px] shadow-lg p-6 w-[440px] max-w-[calc(100vw-32px)] grid gap-4;
+  }
+
+  /* Watch events (expandable forwarding log) */
+  .watch-row { @apply cursor-pointer; }
+  .watch-row:hover { background: var(--color-surface-hover); }
+  .watch-events-row { display: none; }
+  .watch-events-row.open { display: table-row; }
+  .watch-events-row td {
+    padding: 0;
+    background: var(--color-surface-alt);
+  }
+  .watch-events-panel {
+    padding: 12px 16px;
+    font-size: 13px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .watch-event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 12px;
+  }
+  .watch-event-item:last-child { border-bottom: 0; }
+  .watch-event-time { color: var(--color-muted); white-space: nowrap; min-width: 90px; }
+  .watch-event-badge { flex-shrink: 0; }
+  .watch-event-info { flex: 1; word-break: break-all; }
+  .watch-events-load-more {
+    display: block; margin: 8px auto 0; font-size: 12px; cursor: pointer;
   }
 
   /* Responsive */

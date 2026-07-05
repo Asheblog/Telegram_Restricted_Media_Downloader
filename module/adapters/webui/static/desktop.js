@@ -517,18 +517,89 @@ function renderWatches() {
     const typeCls = w.type === 'download' ? 'badge-success' : 'badge-running';
     const statusCls = w.status === 'paused' ? 'badge-paused' : 'badge-success';
     const statusLabel = w.status === 'paused' ? t('status.paused') : '● ' + t('status.running');
-    return '<tr>' +
+    const eventCount = w.event_count || 0;
+    const eventBadge = w.type === 'forward' && eventCount ? ' <span class="badge badge-muted ml-1">' + eventCount + '</span>' : '';
+    const sanitized = sanitizeWatchId(w.id);
+    const rowAttrs = w.type === 'forward' ? ' class="watch-row" data-watch-id="' + esc(w.id) + '"' : '';
+    const eventsRow = w.type === 'forward' ?
+      '<tr class="watch-events-row" id="watch-events-' + sanitized + '">' +
+      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div></td>' +
+      '</tr>' : '';
+    return '<tr' + rowAttrs + '>' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
       '<td class="text-[12px] max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted">' + esc(w.source_link || '-') + '</td>' +
       '<td class="text-[12px]">' + esc(w.target_link || '本地') + '</td>' +
-      '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span></td>' +
-      '<td class="text-[12px] font-semibold">' + (w.event_count || 0) + '</td>' +
+      '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span>' + eventBadge + '</td>' +
+      '<td class="text-[12px] font-semibold">' + eventCount + '</td>' +
       '<td><div class="flex gap-1">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
       '</div></td>' +
-      '</tr>';
+      '</tr>' + eventsRow;
   }).join('');
+}
+
+/* ====== Watch Events (expandable forwarding log) ====== */
+function sanitizeWatchId(id) {
+  return (id || '').replace(/:/g, '_');
+}
+
+document.addEventListener('click', function(e) {
+  const row = e.target.closest('.watch-row');
+  if (!row) return;
+  if (e.target.closest('button, a')) return;
+  toggleWatchEvents(row.dataset.watchId);
+});
+
+function toggleWatchEvents(watchId) {
+  const sanitized = sanitizeWatchId(watchId);
+  const row = document.getElementById('watch-events-' + sanitized);
+  if (!row) return;
+  const isOpen = row.classList.contains('open');
+  if (isOpen) {
+    row.classList.remove('open');
+    return;
+  }
+  row.classList.add('open');
+  loadWatchEvents(watchId, 0);
+}
+
+async function loadWatchEvents(watchId, offset) {
+  const sanitized = sanitizeWatchId(watchId);
+  const panel = document.getElementById('watch-events-panel-' + sanitized);
+  if (!panel) return;
+  if (offset === 0) panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+  try {
+    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset);
+    const data = await res.json();
+    if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>'; return; }
+    const items = data.events || [];
+    if (offset === 0) panel.innerHTML = '';
+    if (!items.length && offset === 0) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noEvents')) + '</div>';
+      return;
+    }
+    items.forEach(evt => {
+      const time = new Date(evt.created_at + 'Z').toLocaleString();
+      const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+      const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
+      const div = document.createElement('div');
+      div.className = 'watch-event-item';
+      div.innerHTML = '<span class="watch-event-time">' + esc(time) + '</span>'
+        + '<span class="watch-event-badge"><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></span>'
+        + '<span class="watch-event-info">' + esc(evt.message) + ' ' + esc(t('watches.source')) + ': #' + esc(String(evt.source_message_id || '')) + ' → ' + esc(t('watches.target')) + ': ' + esc(evt.target_link || evt.target_chat_id || '') + '</span>';
+      panel.appendChild(div);
+    });
+    if (data.has_more) {
+      const btn = document.createElement('button');
+      btn.className = 'watch-events-load-more btn btn-sm';
+      btn.textContent = t('watches.loadMore');
+      btn.onclick = function() { loadWatchEvents(watchId, offset + items.length); };
+      panel.appendChild(btn);
+    }
+  } catch (e) {
+    panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+  }
 }
 
 /* watch form */
