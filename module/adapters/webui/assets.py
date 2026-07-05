@@ -281,6 +281,29 @@ WEB_UI_CSS = r'''
     letter-spacing: .03em;
     border: 1px solid var(--line);
   }
+  .sidebar-footer__logout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: var(--font-xs);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    cursor: pointer;
+    padding: 4px 0;
+    min-height: auto;
+    transition: color .18s ease;
+    margin-bottom: 10px;
+  }
+  .sidebar-footer__logout:hover {
+    color: var(--danger);
+  }
+  .sidebar-footer__logout svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
   .topbar {
     display: flex;
     align-items: flex-start;
@@ -1406,6 +1429,18 @@ WEB_UI_MOBILE_CSS = r'''
     height: 20px;
     color: var(--muted);
   }
+  .mob-drawer__separator {
+    height: 1px;
+    background: var(--line);
+    margin: 8px 20px;
+  }
+  .mob-drawer__item--logout {
+    color: var(--muted);
+  }
+  .mob-drawer__item--logout svg {
+    color: var(--danger);
+    opacity: .72;
+  }
 
   /* ---- FAB ---- */
   .mob-fab {
@@ -2146,6 +2181,11 @@ WEB_UI_MOBILE_BODY = f'''
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14v16H5z" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <span data-i18n="nav.records">下载记录</span>
     </button>
+    <div class="mob-drawer__separator"></div>
+    <button type="button" class="mob-drawer__item mob-drawer__item--logout" id="mob-btn-logout">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.logout">退出登录</span>
+    </button>
   </div>
 </div>
 
@@ -2208,6 +2248,10 @@ WEB_UI_BODY = f'''
 <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
       </div>
       <div class="sidebar-footer">
+        <button type="button" class="sidebar-footer__logout" id="btn-logout" data-i18n-title="nav.logout" title="退出登录">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="nav.logout">退出登录</span>
+        </button>
         <a class="sidebar-footer__link" href="https://github.com/Asheblog/Telegram_Restricted_Media_Downloader" target="_blank" rel="noopener" title="GitHub">
           <svg class="sidebar-footer__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12Z"/></svg>
           <span>Asheblog/TRMD</span>
@@ -2857,6 +2901,7 @@ SHARED_WEB_UI_SCRIPT = r'''
       'nav.statistics': '统计',
       'nav.settings': '设置',
       'nav.records': '下载记录',
+      'nav.logout': '退出登录',
       'nav.primary': '主导航',
 'side.failed': '失败',
       'hero.title': 'PikPak 转存队列',
@@ -3124,6 +3169,7 @@ SHARED_WEB_UI_SCRIPT = r'''
       'nav.statistics': 'Statistics',
       'nav.settings': 'Settings',
       'nav.records': 'Download records',
+      'nav.logout': 'Log out',
       'nav.primary': 'Primary navigation',
 'side.failed': 'Failed',
       'hero.title': 'PikPak transfer queue',
@@ -3558,6 +3604,13 @@ SHARED_WEB_UI_SCRIPT = r'''
   function applyLanguageAndRefresh() {
     applyLanguage();
     refreshVisibleDynamicText();
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) { /* proceed regardless */ }
+    window.location.href = '/';
   }
 
   function switchView(view) {
@@ -4360,6 +4413,12 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       </tr>
     `).join('');
   }
+
+  /* ====== 退出登录 ====== */
+  var btnLogout = $('#btn-logout');
+  if (btnLogout) btnLogout.addEventListener('click', handleLogout);
+  var mobBtnLogout = $('#mob-btn-logout');
+  if (mobBtnLogout) mobBtnLogout.addEventListener('click', handleLogout);
 '''
 
 WEB_UI_SCRIPT = SHARED_WEB_UI_SCRIPT + r'''
