@@ -3438,6 +3438,13 @@ SHARED_WEB_UI_SCRIPT = r'''
     }
   }
 
+  async function fetchJson(path) {
+    const res = await fetch(path);
+    const data = await res.json();
+    if (!res.ok) throw data;
+    return data;
+  }
+
   async function postJson(path, payload) {
     const res = await fetch(path, {
       method: 'POST',
