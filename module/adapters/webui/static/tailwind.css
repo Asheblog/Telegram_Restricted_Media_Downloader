@@ -388,15 +388,17 @@
 
   /* Login page */
   .login-page {
-    @apply min-h-screen bg-bg flex items-center justify-center p-6;
+    @apply min-h-screen bg-bg flex items-center justify-center p-6 max-sm:items-start max-sm:pt-[12vh] max-sm:p-5;
   }
 
   .login-card {
-    @apply bg-surface border border-line rounded-[16px] p-12 max-w-[600px] w-full shadow-lg;
+    @apply bg-surface border border-line rounded-[16px] p-12 max-w-[600px] w-full shadow-lg max-sm:p-6;
+    animation: fadeIn .5s ease .1s both;
   }
 
   .login-brand {
     @apply text-center mb-5;
+    animation: fadeIn .5s ease both;
   }
 
   .login-brand-mark {
@@ -420,6 +422,16 @@
 
   .login-error.visible {
     @apply block;
+    animation: shake .4s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
   }
 
   .login-field {
