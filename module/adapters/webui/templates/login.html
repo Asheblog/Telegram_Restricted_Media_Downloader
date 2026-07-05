@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRMD · 登录</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>/* tailwind.min.css */</style>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--color-bg, #F0F4FF);
+    color: var(--color-text, #1E293B);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+  }
+  .login-page {
+    width: 100%;
+    max-width: 400px;
+    display: grid;
+    gap: 28px;
+  }
+  .login-brand {
+    text-align: center;
+    animation: fadeIn .5s ease both;
+  }
+  .login-brand-mark {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: inline-grid;
+    place-items: center;
+    color: #fff;
+    font-family: 'Poppins', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    background: linear-gradient(135deg, #2563EB, #3B82F6);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+  .login-brand h1 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--color-text, #1E293B);
+  }
+  .login-brand p {
+    font-size: 13px;
+    color: var(--color-muted, #94A3B8);
+    margin-top: 4px;
+  }
+  .login-card {
+    background: #fff;
+    border: 1px solid var(--color-line, #E2E8F0);
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: 0 18px 42px rgba(37, 99, 235, 0.08);
+    animation: fadeIn .5s ease .1s both;
+  }
+  .login-card h2 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 18px;
+    font-weight: 650;
+    margin-bottom: 24px;
+    color: var(--color-text, #1E293B);
+  }
+  .login-error {
+    font-size: 13px;
+    color: #EF4444;
+    background: #FEF2F2;
+    border: 1px solid #FCA5A5;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .login-error.visible { display: block; animation: shake .4s ease; }
+  .login-field {
+    margin-bottom: 18px;
+  }
+  .login-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text, #1E293B);
+    margin-bottom: 6px;
+  }
+  .login-field input {
+    width: 100%;
+    height: 42px;
+    border: 1px solid var(--color-line, #E2E8F0);
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--color-text, #1E293B);
+    transition: border-color .18s ease, box-shadow .18s ease;
+    outline: none;
+  }
+  .login-field input:focus {
+    border-color: #2563EB;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
+  .login-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .login-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-muted, #94A3B8);
+    user-select: none;
+  }
+  .login-submit {
+    width: 100%;
+    height: 44px;
+    border: 0;
+    border-radius: 6px;
+    background: #2563EB;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background .18s ease;
+    font-family: inherit;
+  }
+  .login-submit:hover { background: #1D4ED8; }
+  .login-submit:disabled { cursor: not-allowed; opacity: .72; }
+  .login-submit:disabled:hover { background: #2563EB; }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+  }
+  @media (max-width: 480px) {
+    body { padding: 20px; align-items: flex-start; padding-top: 12vh; }
+    .login-card { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="login-page">
+  <div class="login-brand">
+    <div class="login-brand-mark" aria-hidden="true">T</div>
+    <h1>TRMD</h1>
+    <p>Telegram Restricted Media Downloader</p>
+  </div>
+  <div class="login-card">
+    <h2>登录控制台</h2>
+    <div class="login-error" id="login-error" role="alert"></div>
+    <form id="login-form" method="post" autocomplete="on" novalidate>
+      <div class="login-field">
+        <label for="username">用户名</label>
+        <input id="username" type="text" name="username" autocomplete="username" placeholder="请输入用户名" required autofocus>
+      </div>
+      <div class="login-field">
+        <label for="password">密码</label>
+        <input id="password" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" required>
+      </div>
+      <div class="login-options">
+        <label class="login-checkbox">
+          <input type="checkbox" id="remember-me" name="remember_me" style="width:16px;height:16px;accent-color:#2563EB;">
+          <span>保持登录 30 天</span>
+        </label>
+      </div>
+      <button type="submit" id="login-submit" class="login-submit">
+        <span id="login-btn-text">登 录</span>
+      </button>
+    </form>
+  </div>
+</div>
+<script>
+(function() {
+  var form = document.getElementById('login-form');
+  var errorEl = document.getElementById('login-error');
+  var submitBtn = document.getElementById('login-submit');
+  var btnText = document.getElementById('login-btn-text');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('visible');
+  }
+
+  function hideError() {
+    errorEl.textContent = '';
+    errorEl.classList.remove('visible');
+  }
+
+  function setLoading(loading) {
+    submitBtn.disabled = loading;
+    btnText.innerHTML = loading ? '<span class="spinner"></span>登录中...' : '登 录';
+  }
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    hideError();
+    var username = document.getElementById('username').value.trim();
+    var password = document.getElementById('password').value;
+    if (!username) { showError('请输入用户名'); document.getElementById('username').focus(); return; }
+    if (!password) { showError('请输入密码'); document.getElementById('password').focus(); return; }
+    setLoading(true);
+    try {
+      var resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username,
+          password: password,
+          remember_me: document.getElementById('remember-me').checked
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.success) {
+        window.location.href = '/';
+      } else {
+        showError(data.error || '登录失败，请检查用户名和密码。');
+        setLoading(false);
+        document.getElementById('password').value = '';
+        document.getElementById('password').focus();
+      }
+    } catch (err) {
+      showError('网络错误，请检查连接后重试。');
+      setLoading(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>

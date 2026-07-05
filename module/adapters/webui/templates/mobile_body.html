@@ -1,0 +1,386 @@
+<div class="mob-topbar">
+  <div class="mob-brand">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <span>TRMD</span>
+  </div>
+  <div class="mob-topbar-actions">
+    <select id="language-select" aria-label="语言">
+      <option value="zh">中文</option>
+      <option value="en">EN</option>
+    </select>
+    <button class="secondary small" type="button" id="refresh" aria-label="刷新">
+      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="login-container" id="login-container">
+  <div class="login-brand">
+    <h1>TRMD</h1>
+    <p>Telegram 账号登录</p>
+  </div>
+  <div class="login-card">
+    <div class="login-error" id="login-error"></div>
+    <div id="login-form-phone" class="login-step">
+      <div class="login-card__step">步骤 1 / 3</div>
+      <h2 class="login-card__title">输入电话号码</h2>
+      <p class="login-card__subtitle">请输入您的 Telegram 账号绑定的手机号</p>
+      <div class="login-field">
+        <label for="login-phone">电话号码</label>
+        <input id="login-phone" type="tel" placeholder="+8615000000000" autocomplete="tel">
+        <div class="login-field__hint">需以「+地区号」开头，如中国 +86</div>
+      </div>
+      <div class="login-actions">
+        <button type="button" id="login-btn-phone" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          发送验证码
+        </button>
+      </div>
+    </div>
+    <div id="login-form-code" class="login-step" style="display:none">
+      <div class="login-card__step">步骤 2 / 3</div>
+      <h2 class="login-card__title">输入验证码</h2>
+      <p class="login-card__subtitle" id="login-code-desc">验证码已发送到您的设备</p>
+      <div class="login-field">
+        <label for="login-code">验证码</label>
+        <input id="login-code" type="text" inputmode="numeric" maxlength="10" placeholder="输入验证码" autocomplete="one-time-code">
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back">返回</button>
+        <button type="button" id="login-btn-code" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          验证
+        </button>
+      </div>
+    </div>
+    <div id="login-form-password" class="login-step" style="display:none">
+      <div class="login-card__step">步骤 2.5 / 3</div>
+      <h2 class="login-card__title">两步验证密码</h2>
+      <p class="login-card__subtitle" id="login-password-hint">该账号已设置两步验证</p>
+      <div class="login-field">
+        <label for="login-password">密码</label>
+        <input id="login-password" type="password" placeholder="输入两步验证密码" autocomplete="current-password">
+        <div class="login-field__hint" id="login-password-hint-text"></div>
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back-pwd">取消</button>
+        <button type="button" id="login-btn-password" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          验证
+        </button>
+      </div>
+    </div>
+    <div id="login-form-recovery" class="login-step" style="display:none">
+      <div class="login-card__step">密码恢复</div>
+      <h2 class="login-card__title">输入恢复代码</h2>
+      <p class="login-card__subtitle" id="login-recovery-desc">恢复代码已发送</p>
+      <div class="login-field">
+        <label for="login-recovery">恢复代码</label>
+        <input id="login-recovery" type="text" placeholder="输入恢复代码">
+      </div>
+      <div class="login-actions">
+        <button type="button" class="secondary" id="login-btn-back-recovery">返回</button>
+        <button type="button" id="login-btn-recovery" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          提交
+        </button>
+      </div>
+    </div>
+    <div id="login-form-signup" class="login-step" style="display:none">
+      <div class="login-card__step">注册信息</div>
+      <h2 class="login-card__title">完善个人信息</h2>
+      <p class="login-card__subtitle">首次登录，请输入您的名字</p>
+      <div class="login-field">
+        <label for="login-first-name">名字</label>
+        <input id="login-first-name" type="text" placeholder="名字">
+      </div>
+      <div class="login-field">
+        <label for="login-last-name">姓氏</label>
+        <input id="login-last-name" type="text" placeholder="姓氏（可选）">
+      </div>
+      <div class="login-actions">
+        <button type="button" id="login-btn-signup" class="login-submit">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          完成注册
+        </button>
+      </div>
+    </div>
+    <div id="login-form-done" class="login-step" style="display:none">
+      <div class="login-success">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <p class="login-success__text" id="login-user-name">登录成功</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mob-content" id="mob-content">
+  <!-- 转存任务 -->
+  <div class="mob-view active" id="mob-view-transfers">
+    <div class="mob-collapse" id="collapse-transfer-form">
+      <div class="mob-collapse__head" data-i18n="new.title">新建转存 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-transfer-form">
+          <label><span data-i18n="new.source">来源链接</span>
+            <input type="text" name="source_link" placeholder="https://t.me/..." required>
+          </label>
+          <label><span data-i18n="new.target">目标</span>
+            <input type="text" name="target_link" value="https://t.me/pikpak_bot" required>
+          </label>
+          <label><span data-i18n="new.targetProfile">目标配置</span>
+            <select name="target_profile">
+              <option value="pikpak" data-i18n="profile.pikpak">PikPak 文档转存</option>
+              <option value="generic" data-i18n="profile.generic">通用 Telegram 目标</option>
+            </select>
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label><span data-i18n="new.startId">起始 ID</span>
+              <input type="number" name="start_id" placeholder="可选">
+            </label>
+            <label><span data-i18n="new.endId">结束 ID</span>
+              <input type="number" name="end_id" placeholder="可选">
+            </label>
+          </div>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+            <span data-i18n="new.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="new.create">创建任务</button>
+          <p class="mob-empty" id="mob-form-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-tasks-list"></div>
+  </div>
+
+  <!-- 实时监听 -->
+  <div class="mob-view" id="mob-view-watches">
+    <div class="mob-collapse" id="collapse-watch-form">
+      <div class="mob-collapse__head" data-i18n="watches.title">实时监听 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-watch-form">
+          <label><span data-i18n="watches.type">类型</span>
+            <select name="type" id="mob-watch-type">
+              <option value="download" data-i18n="watches.download">监听下载</option>
+              <option value="forward" data-i18n="watches.forward">监听转发</option>
+            </select>
+          </label>
+          <div id="mob-watch-source-group">
+            <label id="mob-watch-source-label"><span data-i18n="watches.sources">来源频道</span>
+              <textarea name="source_links" rows="3" placeholder="每行一个 https://t.me/... 链接" required></textarea>
+              <input type="text" name="source_link" placeholder="https://t.me/source" style="display:none;">
+            </label>
+          </div>
+          <div id="mob-watch-target-group" style="display:none;">
+            <label><span data-i18n="watches.target">目标频道</span>
+              <input type="text" name="target_link" placeholder="https://t.me/...">
+            </label>
+          </div>
+          <div id="mob-watch-comment-group" style="display:none;">
+            <label style="flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+              <span data-i18n="watches.includeComment">包含评论区</span>
+            </label>
+          </div>
+          <button type="submit" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
+          <p class="mob-empty" id="mob-watch-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-watches-list"></div>
+  </div>
+
+  <!-- 设置 -->
+  <div class="mob-view" id="mob-view-settings">
+    <div class="mob-collapse open" id="collapse-settings-paths">
+      <div class="mob-collapse__head" data-i18n="settings.paths">路径与任务 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-path-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-behavior">
+      <div class="mob-collapse__head" data-i18n="settings.behavior">行为 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-behavior-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-archive">
+      <div class="mob-collapse__head" data-i18n="settings.pikpakArchive">PikPak 归档 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-archive-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-sensitive">
+      <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-download-types">
+      <div class="mob-collapse__head" data-i18n="settings.downloadTypes">下载类型 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-download-types-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-forward-types">
+      <div class="mob-collapse__head" data-i18n="settings.forwardTypes">转发类型 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-forward-types-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-message-filter">
+      <div class="mob-collapse__head" data-i18n="settings.messageFilter">消息过滤 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-message-filter-fields"></div>
+    </div>
+    <div class="mob-collapse" id="collapse-settings-exports">
+      <div class="mob-collapse__head" data-i18n="settings.exports">导出表格 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>
+    </div>
+    <button id="mob-save-settings" style="width:100%;margin-top:4px;" data-i18n="settings.save">保存设置</button>
+    <p class="mob-empty" id="mob-settings-notice" style="display:none;"></p>
+  </div>
+
+  <!-- 频道下载 -->
+  <div class="mob-view" id="mob-view-channel-downloads">
+    <div class="mob-collapse" id="collapse-channel-form">
+      <div class="mob-collapse__head" data-i18n="channel.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-channel-form">
+          <label><span data-i18n="channel.link">频道链接</span>
+            <input type="text" name="chat_link" placeholder="https://t.me/..." required>
+          </label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label><span data-i18n="channel.startDate">起始时间</span>
+              <input type="datetime-local" name="start_date">
+            </label>
+            <label><span data-i18n="channel.endDate">结束时间</span>
+              <input type="datetime-local" name="end_date">
+            </label>
+          </div>
+          <label><span data-i18n="channel.keywords">关键词</span>
+            <input type="text" name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          </label>
+          <fieldset class="mob-check-group">
+            <legend data-i18n="channel.types">下载类型</legend>
+            <div id="mob-channel-download-types" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;">
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="video" checked style="width:auto;min-height:auto;">video</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="photo" checked style="width:auto;min-height:auto;">photo</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="audio" checked style="width:auto;min-height:auto;">audio</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="voice" checked style="width:auto;min-height:auto;">voice</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="animation" checked style="width:auto;min-height:auto;">animation</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="document" checked style="width:auto;min-height:auto;">document</label>
+              <label style="flex-direction:row;align-items:center;gap:4px;font-size:var(--font-sm);"><input type="checkbox" name="download_type" value="video_note" checked style="width:auto;min-height:auto;">video_note</label>
+            </div>
+          </fieldset>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="include_comment" style="width:auto;min-height:auto;">
+            <span data-i18n="channel.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="channel.create">创建频道下载</button>
+          <p class="mob-empty" id="mob-channel-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-channel-downloads-list"></div>
+  </div>
+
+  <!-- 本地上传 -->
+  <div class="mob-view" id="mob-view-uploads">
+    <div class="mob-collapse" id="collapse-upload-form">
+      <div class="mob-collapse__head" data-i18n="uploads.title">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__body">
+        <form id="mob-upload-form">
+          <label><span data-i18n="uploads.path">本地路径</span>
+            <input type="text" name="path" placeholder="/path/to/file" required>
+          </label>
+          <label><span data-i18n="uploads.target">目标频道</span>
+            <input type="text" name="target_link" placeholder="https://t.me/..." required>
+          </label>
+          <label style="flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="recursive" style="width:auto;min-height:auto;">
+            <span data-i18n="uploads.recursive">递归上传文件夹</span>
+          </label>
+          <button type="submit" style="width:100%;" data-i18n="uploads.create">创建上传</button>
+          <p class="mob-empty" id="mob-upload-notice" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+    <div id="mob-uploads-list"></div>
+  </div>
+
+  <!-- 统计 -->
+  <div class="mob-view" id="mob-view-statistics">
+    <div class="mob-section-title" data-i18n="statistics.table">表格</div>
+    <div id="mob-statistics-list"></div>
+  </div>
+
+  <!-- 下载记录 -->
+  <div class="mob-view" id="mob-view-records">
+    <div class="mob-section-title" data-i18n="records.title">下载记录</div>
+    <div id="mob-records-list"></div>
+  </div>
+  <div class="mob-view" id="mob-view-media">
+    <div class="mob-section-title" data-i18n="media.title">媒体管理</div>
+    <button id="mob-media-scan-btn" class="mob-media-scan-btn" data-i18n="media.scan">扫描可清理文件</button>
+    <div id="mob-media-result"></div>
+  </div>
+</div>
+
+<!-- FAB + Menu -->
+<div class="mob-fab-menu" id="mob-fab-menu">
+  <button class="mob-fab-menu__item" id="mob-fab-new-transfer">
+    <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="new.title">新建转存</span>
+  </button>
+  <button class="mob-fab-menu__item" id="mob-fab-new-watch">
+    <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    <span data-i18n="watches.title">新建监听</span>
+  </button>
+</div>
+<button class="mob-fab" id="mob-fab" aria-label="新建">+</button>
+
+<!-- Bottom Tab Bar -->
+<div class="mob-tabbar" id="mob-tabbar">
+  <button class="mob-tab active" data-mob-nav="transfers">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="nav.transfers">转存</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="watches">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 9v3l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <span data-i18n="nav.watches">监听</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="settings">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.82 2.82l-.04-.04A1.8 1.8 0 0 0 15 19.4M4.6 9a1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 0 1 2.82-2.82l.04.04A1.8 1.8 0 0 0 9 4.6" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span data-i18n="nav.settings">设置</span>
+  </button>
+  <button class="mob-tab" data-mob-nav="more">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>
+    <span>更多</span>
+  </button>
+</div>
+
+<!-- 更多 Drawer -->
+<div class="mob-drawer-overlay" id="mob-drawer-overlay">
+  <div class="mob-drawer" id="mob-drawer">
+    <div class="mob-drawer__handle"></div>
+    <button class="mob-drawer__item" data-mob-drawer-nav="channel-downloads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.channelDownloads">频道下载</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="uploads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.uploads">本地上传</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="statistics">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.statistics">统计</span>
+    </button>
+    <button class="mob-drawer__item" data-mob-drawer-nav="records">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14v16H5z" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.records">下载记录</span>
+    </button>
+    <div class="mob-drawer__separator"></div>
+    <button type="button" class="mob-drawer__item mob-drawer__item--logout" id="mob-btn-logout">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.logout">退出登录</span>
+    </button>
+  </div>
+</div>
+
+<!-- Bottom Sheet Overlay (通用) -->
+<div class="mob-sheet-overlay" id="mob-sheet-overlay">
+  <div class="mob-sheet" id="mob-sheet"></div>
+</div>
+
+<!-- Toast -->
+<div class="mob-toast" id="mob-toast"></div>

@@ -26,6 +26,9 @@ Pipfile
 # opencode / superpowers
 .superpowers/
 AGENTS.md
+# playwright artifacts
+.playwright-cli/
+.playwright-mcp/
 # include files
 !rar.exe
 !requirements.txt

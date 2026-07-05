@@ -1,0 +1,655 @@
+<!-- ====== Transfers View ====== -->
+<div class="view active" id="view-transfers">
+  <!-- Stat Cards -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-card-icon blue">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-total">0</div>
+        <div class="stat-card-label">总任务</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon green">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-success">0</div>
+        <div class="stat-card-label">已完成</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon orange">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-running">0</div>
+        <div class="stat-card-label">运行中</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon red">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-failed">0</div>
+        <div class="stat-card-label">失败项</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content Grid: Form + Table -->
+  <div style="display:grid;grid-template-columns:380px 1fr;gap:16px;">
+    <!-- Transfer Form -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3 data-i18n="new.title">新建转存</h3>
+      </div>
+      <div class="panel-body">
+        <form id="transfer-form">
+          <div class="form-group">
+            <label class="form-label" data-i18n="new.source">来源链接</label>
+            <input class="form-input" name="source_link" type="text" placeholder="https://t.me/channel/123" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="new.target">目标</label>
+            <input class="form-input" name="target_link" type="text" value="https://t.me/pikpak_bot" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="new.targetProfile">目标配置</label>
+            <select class="form-select" name="target_profile">
+              <option value="pikpak" data-i18n="profile.pikpak">PikPak 文档转存</option>
+              <option value="generic" data-i18n="profile.generic">通用 Telegram 目标</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" data-i18n="new.startId">起始 ID</label>
+              <input class="form-input" name="start_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="new.endId">结束 ID</label>
+              <input class="form-input" name="end_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-muted);cursor:pointer;margin-bottom:12px;">
+            <input type="checkbox" name="include_comment" style="width:16px;height:16px;">
+            <span data-i18n="new.includeComment">包含评论区</span>
+          </label>
+          <p style="font-size:11px;color:var(--color-muted);line-height:1.5;margin-bottom:8px;" data-i18n="new.hint">
+            单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
+          </p>
+          <div id="transfer-notice" class="text-[12px] mt-2" style="display:none;"></div>
+          <button type="submit" class="form-submit" id="transfer-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span data-i18n="new.create">创建任务</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div class="panel">
+      <div class="panel-header">
+        <h3 data-i18n="tasks.title">转存任务列表</h3>
+        <span style="font-size:12px;color:var(--color-muted);" id="last-sync" data-i18n="tasks.notSynced">尚未同步</span>
+      </div>
+      <div style="overflow:auto;flex:1;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:60px;" data-i18n="tasks.id">ID</th>
+              <th style="width:80px;" data-i18n="tasks.status">状态</th>
+              <th style="width:180px;" data-i18n="tasks.source">来源</th>
+              <th style="width:80px;" data-i18n="tasks.target">目标</th>
+              <th style="width:160px;" data-i18n="tasks.progress">进度</th>
+              <th style="width:90px;" data-i18n="tasks.actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody"></tbody>
+        </table>
+        <div id="tasks-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="tasks.empty">还没有转存任务。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Detail Panel -->
+  <div class="panel" id="task-detail">
+    <div class="p-8 text-center text-muted text-[13px]" data-i18n="items.selectTask">选择一个任务查看详情</div>
+  </div>
+</div>
+
+<!-- ====== Watches View ====== -->
+<div class="view" id="view-watches">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <!-- Download Watch -->
+    <div class="panel">
+      <div class="panel-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="stat-card-icon green" style="width:34px;height:34px;">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="watches.downloadTitle">监听下载</h3>
+            <span class="text-[11px] text-muted" data-i18n="watches.downloadMeta">新消息自动下载</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <form id="watch-download-form">
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.sources">来源频道（每行一个）</label>
+            <textarea class="form-input" name="source_links" rows="3" placeholder="https://t.me/channel1&#10;https://t.me/channel2" required style="min-height:80px;"></textarea>
+          </div>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span data-i18n="watches.createDownload">新增监听下载</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Forward Watch -->
+    <div class="panel">
+      <div class="panel-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="stat-card-icon blue" style="width:34px;height:34px;">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="watches.forwardTitle">监听转发</h3>
+            <span class="text-[11px] text-muted" data-i18n="watches.forwardMeta">新消息自动转发</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <form id="watch-forward-form">
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.source">来源频道</label>
+            <input class="form-input" name="source_link" type="text" placeholder="https://t.me/source" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.target">目标频道</label>
+            <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-muted);cursor:pointer;margin-bottom:12px;">
+            <input type="checkbox" name="include_comment" style="width:16px;height:16px;">
+            <span data-i18n="watches.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span data-i18n="watches.createForward">新增监听转发</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watch List -->
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="watches.title">活跃监听</h3>
+    </div>
+    <div style="overflow:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-i18n="watches.type">类型</th>
+            <th data-i18n="watches.source">来源频道</th>
+            <th data-i18n="watches.target">目标频道</th>
+            <th>状态</th>
+            <th style="width:80px;">今日</th>
+            <th style="width:80px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="watches-tbody"></tbody>
+      </table>
+      <div id="watches-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="watches.empty">还没有实时监听。</div>
+    </div>
+  </div>
+</div>
+
+<!-- Watch Edit Overlay -->
+<div class="watch-overlay" id="watch-edit-overlay">
+  <div class="watch-dialog">
+    <h3 style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;">
+      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="watches.edit">编辑监听</span>
+    </h3>
+    <form id="watch-edit-form">
+      <input type="hidden" name="id" id="edit-watch-id">
+      <div class="form-group">
+        <label class="form-label" data-i18n="watches.target">目标频道</label>
+        <input class="form-input" name="target_link" id="edit-watch-target" type="text" required>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-muted);cursor:pointer;margin-bottom:12px;">
+        <input type="checkbox" name="include_comment" id="edit-watch-comment" style="width:16px;height:16px;">
+        <span data-i18n="watches.includeComment">包含评论区</span>
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
+        <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ====== Channel Downloads View ====== -->
+<div class="view" id="view-channel-downloads">
+  <div class="panel" style="max-width:640px;">
+    <div class="panel-header">
+      <h3 data-i18n="channel.title">频道下载</h3>
+    </div>
+    <div class="panel-body">
+      <form id="channel-download-form">
+        <div class="form-group">
+          <label class="form-label" data-i18n="channel.link">频道链接</label>
+          <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="channel.startDate">起始时间</label>
+            <input class="form-input" name="start_date" type="datetime-local">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="channel.endDate">结束时间</label>
+            <input class="form-input" name="end_date" type="datetime-local">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="channel.keywords">关键词</label>
+          <input class="form-input" name="keywords" type="text" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+        </div>
+        <fieldset style="border:1px solid var(--color-line);border-radius:6px;padding:10px 14px;margin-bottom:14px;">
+          <legend style="font-size:12px;font-weight:600;color:var(--color-muted);" data-i18n="channel.types">下载类型</legend>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="video" checked style="width:16px;height:16px;">video</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="photo" checked style="width:16px;height:16px;">photo</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="audio" checked style="width:16px;height:16px;">audio</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="voice" checked style="width:16px;height:16px;">voice</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="animation" checked style="width:16px;height:16px;">animation</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="document" checked style="width:16px;height:16px;">document</label>
+            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="video_note" checked style="width:16px;height:16px;">video_note</label>
+          </div>
+        </fieldset>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-muted);cursor:pointer;margin-bottom:12px;">
+          <input type="checkbox" name="include_comment" style="width:16px;height:16px;">
+          <span data-i18n="channel.includeComment">包含评论区</span>
+        </label>
+        <button type="submit" class="form-submit">
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="channel.create">创建频道下载</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Uploads View ====== -->
+<div class="view" id="view-uploads">
+  <div class="panel" style="max-width:640px;">
+    <div class="panel-header">
+      <h3 data-i18n="uploads.title">本地上传</h3>
+    </div>
+    <div class="panel-body">
+      <form id="upload-form">
+        <div class="form-group">
+          <label class="form-label" data-i18n="uploads.path">本地路径</label>
+          <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="uploads.target">目标频道</label>
+          <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-muted);cursor:pointer;margin-bottom:12px;">
+          <input type="checkbox" name="recursive" style="width:16px;height:16px;">
+          <span data-i18n="uploads.recursive">递归上传文件夹</span>
+        </label>
+        <button type="submit" class="form-submit">
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="uploads.create">创建上传</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Statistics View ====== -->
+<div class="view" id="view-statistics">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="statistics.title">统计与导出</h3>
+    </div>
+    <div style="overflow:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-i18n="statistics.table">表格</th>
+            <th data-i18n="statistics.available">可用</th>
+            <th data-i18n="statistics.rows">行数</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="statistics-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Records View ====== -->
+<div class="view" id="view-records">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="records.title">下载记录</h3>
+    </div>
+    <div style="overflow:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th data-i18n="records.chat">频道 ID</th>
+            <th data-i18n="records.message">消息 ID</th>
+            <th data-i18n="records.file">文件</th>
+            <th data-i18n="records.size">大小</th>
+            <th data-i18n="records.updated">更新时间</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+      <div id="records-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="records.empty">还没有下载成功记录。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Media View ====== -->
+<div class="view" id="view-media">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="media.title">媒体管理</h3>
+      <button class="btn btn-primary btn-sm" id="media-scan-btn">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="media.scan">扫描可清理文件</span>
+      </button>
+    </div>
+    <div class="panel-body">
+      <div id="media-result" style="display:none;">
+        <div id="media-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+
+        <div id="media-items-section" class="mb-4" style="display:none;">
+          <h4 class="text-sm font-semibold mb-2" data-i18n="media.transferItems">转存任务文件</h4>
+          <div class="overflow-x-auto rounded-lg border border-line">
+            <table class="data-table" style="min-width:600px;">
+              <thead><tr>
+                <th style="width:40px;"><input type="checkbox" id="media-select-all-items"></th>
+                <th data-i18n="media.file">文件</th>
+                <th data-i18n="media.size" class="text-right">大小</th>
+                <th data-i18n="media.status" class="text-center">状态</th>
+                <th data-i18n="media.source">来源</th>
+              </tr></thead>
+              <tbody id="media-items-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="media-orphans-section" class="mb-4" style="display:none;">
+          <h4 class="text-sm font-semibold mb-2" data-i18n="media.orphanFiles">遗留文件</h4>
+          <div class="overflow-x-auto rounded-lg border border-line">
+            <table class="data-table" style="min-width:600px;">
+              <thead><tr>
+                <th style="width:40px;"><input type="checkbox" id="media-select-all-orphans"></th>
+                <th data-i18n="media.path">路径</th>
+                <th data-i18n="media.size" class="text-right">大小</th>
+                <th data-i18n="media.mtime">最后修改</th>
+              </tr></thead>
+              <tbody id="media-orphans-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 pt-3 border-t border-line">
+          <button class="btn btn-danger btn-sm" id="media-cleanup-btn" data-i18n="media.cleanup">清理选中文件</button>
+        </div>
+      </div>
+
+      <div id="media-logs-section" style="display:none;">
+        <h4 class="text-sm font-semibold mb-2 mt-4" data-i18n="media.cleanupHistory">清理历史</h4>
+        <div class="overflow-x-auto rounded-lg border border-line">
+          <table class="data-table">
+            <thead><tr>
+              <th data-i18n="media.file">文件</th>
+              <th data-i18n="media.size" class="text-right">大小</th>
+              <th data-i18n="media.reason">原因</th>
+              <th data-i18n="media.time">时间</th>
+            </tr></thead>
+            <tbody id="media-logs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Settings View ====== -->
+<div class="view" id="view-settings">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="settings.title">系统设置</h3>
+      <span class="text-[12px] text-muted" data-i18n="settings.safeNote">敏感字段只显示是否已配置</span>
+    </div>
+    <div class="panel-body" id="settings-body" style="max-width:900px;">
+
+      <!-- Paths -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.paths">路径与任务</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.saveDirectory">保存目录</label>
+            <input class="form-input" name="user.save_directory">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.tempDirectory">临时目录</label>
+            <input class="form-input" name="user.temp_directory">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.sessionDirectory">会话目录</label>
+          <input class="form-input" name="user.session_directory">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.maxDownload">最大下载任务</label>
+            <input class="form-input" name="user.max_tasks.download" type="number" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.maxUpload">最大上传任务</label>
+            <input class="form-input" name="user.max_tasks.upload" type="number" min="1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.retryDownload">下载重试</label>
+            <input class="form-input" name="user.max_retries.download" type="number" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.retryUpload">上传重试</label>
+            <input class="form-input" name="user.max_retries.upload" type="number" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</label>
+          <input class="form-input" name="global.target_profiles.pikpak.max_file_size" type="number" min="1">
+        </div>
+      </div>
+
+      <!-- Behavior -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.behavior">行为</h4>
+        <div class="form-row">
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.notice" style="width:16px;height:16px;">
+            <span data-i18n="settings.notice">机器人通知</span>
+          </label>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="user.is_shutdown" style="width:16px;height:16px;">
+            <span data-i18n="settings.shutdown">退出后关机</span>
+          </label>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.upload.download_upload" style="width:16px;height:16px;">
+            <span data-i18n="settings.downloadUpload">受限转发时下载后上传</span>
+          </label>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.upload.delete" style="width:16px;height:16px;">
+            <span data-i18n="settings.uploadDelete">上传完成删除本地文件</span>
+          </label>
+        </div>
+        <div class="form-group mt-3">
+          <label class="form-label" data-i18n="settings.pendingLimit">下载后上传队列</label>
+          <input class="form-input" name="global.upload.pending_limit" type="number" min="1" max="5">
+        </div>
+      </div>
+
+      <!-- PikPak Archive -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
+        <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-3">
+          <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" style="width:16px;height:16px;">
+          <span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span>
+        </label>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.remote">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchiveSource">PikPak入库目录</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.source_directory">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.root_directory">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchivePoll">入库轮询秒数</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakArchiveWindow">匹配时间窗口秒数</label>
+            <input class="form-input" name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Account & Proxy -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.sensitive">账号与代理</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">API ID</label>
+            <input class="form-input" name="user.api_id">
+          </div>
+          <div class="form-group">
+            <label class="form-label">API Hash</label>
+            <input class="form-input" name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Bot Token</label>
+            <input class="form-input" name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.proxyPassword">代理密码</label>
+            <input class="form-input" name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
+          </div>
+        </div>
+      </div>
+
+      <!-- Download Types -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
+        <div class="grid grid-cols-2 gap-2" id="download-type-grid"></div>
+      </div>
+
+      <!-- Forward Types -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
+        <div class="grid grid-cols-2 gap-2" id="forward-type-grid"></div>
+      </div>
+
+      <!-- Message Filter -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.messageFilter">消息过滤</h4>
+        <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-3">
+          <input type="checkbox" name="global.message_filter.enabled" style="width:16px;height:16px;">
+          <span data-i18n="settings.enabled">启用消息过滤</span>
+        </label>
+        <div class="mb-3">
+          <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
+          <div class="grid grid-cols-2 gap-2 mt-1" id="filter-media-grid"></div>
+        </div>
+        <div class="mb-3">
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-2">
+            <input type="checkbox" name="global.message_filter.date_range.enabled" style="width:16px;height:16px;">
+            <span data-i18n="settings.dateRange">日期范围过滤</span>
+          </label>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.startDate">起始日期</label>
+              <input class="form-input" name="global.message_filter.date_range.start_date" type="datetime-local">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.endDate">结束日期</label>
+              <input class="form-input" name="global.message_filter.date_range.end_date" type="datetime-local">
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-2">
+            <input type="checkbox" name="global.message_filter.keywords.enabled" style="width:16px;height:16px;">
+            <span data-i18n="settings.keywords">关键词过滤</span>
+          </label>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.keywordList">关键词列表（逗号分隔）</label>
+            <input class="form-input" name="global.message_filter.keywords.words" data-i18n-placeholder="settings.keywordPlaceholder" placeholder="广告,推广,赞助">
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Tables -->
+      <div style="border:1px solid var(--color-line);border-radius:8px;padding:16px;margin-bottom:14px;">
+        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.exports">导出表格</h4>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.export_table.link" style="width:16px;height:16px;">
+            <span data-i18n="settings.exportLink">链接统计表</span>
+          </label>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.export_table.count" style="width:16px;height:16px;">
+            <span data-i18n="settings.exportCount">计数统计表</span>
+          </label>
+          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+            <input type="checkbox" name="global.export_table.upload" style="width:16px;height:16px;">
+            <span data-i18n="settings.exportUpload">上传统计表</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 sticky bottom-0 bg-white py-3 border-t border-line mt-2">
+        <div id="settings-notice" class="text-[12px]" style="display:none;"></div>
+        <button class="btn btn-primary" id="settings-save">
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="settings.save">保存设置</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

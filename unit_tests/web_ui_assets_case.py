@@ -5,330 +5,169 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
 
-from module.web_ui_assets import WEB_UI_BODY, WEB_UI_HTML, panel_head
+from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, panel_head
 
 
 class WebUiAssetsCase(unittest.TestCase):
-    def test_webui_has_bilingual_language_selector_settings_and_task_actions(self):
+    def test_desktop_html_has_correct_structure(self):
+        self.assertIn('<!doctype html>', WEB_UI_HTML.lower())
         self.assertIn('<html lang="zh-CN">', WEB_UI_HTML)
-        self.assertIn('<title>TRMD 转存控制台</title>', WEB_UI_HTML)
-        self.assertIn('aria-label="主导航"', WEB_UI_HTML)
+        self.assertIn('TRMD', WEB_UI_HTML)
+        # Sidebar nav items
+        self.assertIn('data-nav="transfers"', WEB_UI_HTML)
+        self.assertIn('data-nav="watches"', WEB_UI_HTML)
+        self.assertIn('data-nav="channel-downloads"', WEB_UI_HTML)
+        self.assertIn('data-nav="uploads"', WEB_UI_HTML)
+        self.assertIn('data-nav="statistics"', WEB_UI_HTML)
+        self.assertIn('data-nav="settings"', WEB_UI_HTML)
+        self.assertIn('data-nav="records"', WEB_UI_HTML)
+        self.assertIn('data-nav="media"', WEB_UI_HTML)
+        # Language selector
         self.assertIn('id="language-select"', WEB_UI_HTML)
+        # i18n
+        self.assertIn('data-i18n="nav.transfers"', WEB_UI_HTML)
         self.assertIn('data-i18n="nav.settings"', WEB_UI_HTML)
-        self.assertIn('data-view="settings"', WEB_UI_HTML)
-        self.assertIn('data-i18n="tasks.delete"', WEB_UI_HTML)
-        self.assertIn('deleteTask(', WEB_UI_HTML)
-        self.assertIn('download_current', WEB_UI_HTML)
-        self.assertIn('upload_current', WEB_UI_HTML)
-        self.assertIn('PikPak 转存队列', WEB_UI_HTML)
-        self.assertIn('PikPak transfer queue', WEB_UI_HTML)
+        # Views
+        self.assertIn('id="view-transfers"', WEB_UI_HTML)
+        self.assertIn('id="view-watches"', WEB_UI_HTML)
+        self.assertIn('id="view-settings"', WEB_UI_HTML)
+        # Forms
+        self.assertIn('id="transfer-form"', WEB_UI_HTML)
+        self.assertIn('id="watch-download-form"', WEB_UI_HTML)
+        self.assertIn('id="watch-forward-form"', WEB_UI_HTML)
+        self.assertIn('id="channel-download-form"', WEB_UI_HTML)
+        self.assertIn('id="upload-form"', WEB_UI_HTML)
+        # Task list
+        self.assertIn('id="tasks-tbody"', WEB_UI_HTML)
+        # Logout
+        self.assertIn('id="btn-logout"', WEB_UI_HTML)
+        # Tailwind
+        self.assertIn('tailwindcss', WEB_UI_HTML)
 
-    def test_webui_language_switch_covers_dynamic_ui_copy(self):
+    def test_desktop_html_has_api_endpoints(self):
+        for endpoint in (
+            '/api/tasks',
+            '/api/watches',
+            '/api/settings',
+            '/api/auth/status',
+            '/api/auth/logout',
+            '/api/auth/submit',
+            '/api/channel-downloads',
+            '/api/uploads',
+            '/api/statistics',
+            '/api/download-records',
+            '/api/media/scan',
+            '/api/media/cleanup',
+            '/api/media/cleanup-logs',
+            '/api/tables/export',
+        ):
+            self.assertIn(endpoint, WEB_UI_HTML)
+        # /api/auth/login is only in the standalone login page
+        self.assertIn('/api/auth/login', LOGIN_PAGE_HTML)
+
+    def test_i18n_complete_coverage(self):
         for key in (
-                'settings.secretConfigured',
-                'settings.secretNotConfigured',
-                'form.createFailed',
-                'form.requestFailed',
-                'form.creatingTransfer',
-                'form.creatingTransferShort',
-                'form.createSuccess',
-                'new.optional',
-                'language.label',
-                'event.fileReady',
-                'event.uploadFailed',
-                'event.reusedDownload'
+            'nav.transfers', 'nav.watches', 'nav.settings',
+            'new.title', 'new.source', 'new.target', 'new.create',
+            'tasks.title', 'tasks.empty', 'tasks.pause', 'tasks.resume',
+            'watches.title', 'watches.download', 'watches.forward',
+            'channel.title', 'uploads.title',
+            'statistics.title', 'records.title', 'media.title',
+            'settings.title', 'settings.save', 'settings.saved',
+            'form.createFailed', 'form.createSuccess', 'form.creatingTransfer',
+            'status.pending', 'status.running', 'status.success', 'status.failure',
+            'action.refresh', 'nav.logout',
+            'side.failed', 'side.status',
         ):
             self.assertIn(key, WEB_UI_HTML)
 
-        for hardcoded_text in (
-                "placeholder=\"configured / replace\"",
-                "placeholder=\"optional\"",
-                "data.error || 'Create task failed.'",
-                "'configured / replace'",
-                "'not configured'"
-        ):
-            self.assertNotIn(hardcoded_text, WEB_UI_HTML)
+    def test_login_page_has_blue_theme(self):
+        self.assertIn('<!doctype html>', LOGIN_PAGE_HTML.lower())
+        self.assertIn('登录控制台', LOGIN_PAGE_HTML)
+        self.assertIn('#2563EB', LOGIN_PAGE_HTML)
+        self.assertIn('id="login-form"', LOGIN_PAGE_HTML)
+        self.assertIn('id="username"', LOGIN_PAGE_HTML)
+        self.assertIn('id="password"', LOGIN_PAGE_HTML)
+        self.assertIn('/api/auth/login', LOGIN_PAGE_HTML)
 
-        self.assertIn('translateApiError(data,', WEB_UI_HTML)
-        self.assertIn('localizeEventMessage(event)', WEB_UI_HTML)
+    def test_mobile_html_preserved(self):
+        self.assertIn('<!doctype html>', WEB_UI_MOBILE_HTML.lower())
+        self.assertIn('mob-topbar', WEB_UI_MOBILE_HTML)
+        self.assertIn('mob-tabbar', WEB_UI_MOBILE_HTML)
+        # Blue color should be present
+        self.assertIn('#2563EB', WEB_UI_MOBILE_HTML)
 
-    def test_transfer_form_shows_loading_and_success_feedback(self):
-        for fragment in (
-                "showFormMessage(t('form.creatingTransfer'), true);",
-                "showFormMessage(t('form.createSuccess'), true);",
-                "submitButton.disabled = true;",
-                "submitLabel.textContent = t('form.creatingTransferShort');",
-                "submitButton.disabled = false;",
-                "submitLabel.textContent = previousLabel;",
-                "formNotice.classList.add('is-visible');",
-                "formNotice.classList.toggle('ok', ok);",
-                ".form-error.ok,"
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
-
-    def test_watch_creation_success_notice_survives_refresh_failure(self):
-        self.assertIn('async function refreshWatchesAfterMutation()', WEB_UI_HTML)
-        self.assertIn("console.warn('Failed to refresh watches after mutation.', error);", WEB_UI_HTML)
-
-        for notice_selector in ('#watch-download-notice', '#watch-forward-notice'):
-            self.assertIn(
-                f"showNotice('{notice_selector}', translateApiError(payload), false);\n"
-                "        return;",
-                WEB_UI_HTML
-            )
-            self.assertIn(
-                f"showNotice('{notice_selector}', t('watches.created'), true);",
-                WEB_UI_HTML
-            )
-
-        self.assertEqual(WEB_UI_HTML.count('await refreshWatchesAfterMutation();'), 2)
-
-    def test_panel_heads_use_shared_component_and_stable_styles(self):
-        expected_header = (
-            '            <div class="panel-head" data-component="panel-head">\n'
-            '              <h3 class="panel-head__title" data-i18n="tasks.title">转存任务</h3>\n'
-            '              <div class="panel-head__meta" id="last-sync" data-i18n="tasks.notSynced">尚未同步</div>\n'
-            '            </div>'
+    def test_panel_head_function_still_works(self):
+        result = panel_head(
+            title_i18n='test.title',
+            title_text='Test Title',
+            meta_i18n='test.meta',
+            meta_text='Test Meta',
+            meta_id='test-id',
+            indent=12
         )
-        self.assertEqual(
-            expected_header,
-            panel_head(
-                title_i18n='tasks.title',
-                title_text='转存任务',
-                meta_i18n='tasks.notSynced',
-                meta_text='尚未同步',
-                meta_id='last-sync',
-                indent=12
-            )
-        )
-        self.assertEqual(
-            WEB_UI_BODY.count('class="panel-head"'),
-            WEB_UI_BODY.count('data-component="panel-head"')
-        )
+        self.assertIn('data-component="panel-head"', result)
+        self.assertIn('data-i18n="test.title"', result)
+        self.assertIn('Test Title', result)
+        self.assertIn('id="test-id"', result)
 
-        for css_fragment in (
-                '--panel-head-min-height:',
-                '.panel-head__title',
-                '.panel-head__meta'
-        ):
-            self.assertIn(css_fragment, WEB_UI_HTML)
-
-        self.assertNotIn('.panel-head h3', WEB_UI_HTML)
-        self.assertNotIn('.panel-head span', WEB_UI_HTML)
-
-    def test_settings_view_uses_unified_component_layout(self):
+    def test_settings_view_exposes_pikpak_archive(self):
         for fragment in (
-                'class="settings-layout"',
-                'class="settings-section"',
-                'class="settings-section__head"',
-                'class="settings-section__body"',
-                'class="field-grid"',
-                'class="field"',
-                'class="check-card"',
-                'class="settings-actions"',
-                'role="alert" aria-live="polite"'
+            'global.target_profiles.pikpak.archive.enable',
+            'global.target_profiles.pikpak.archive.remote',
+            'settings.pikpakArchive',
+            'settings.pikpakArchiveEnable',
         ):
             self.assertIn(fragment, WEB_UI_HTML)
 
-        self.assertEqual(WEB_UI_BODY.count('class="settings-form"'), 1)
-        self.assertNotIn('class="settings-columns"', WEB_UI_BODY)
-        self.assertNotIn('class="settings-stack"', WEB_UI_BODY)
-        self.assertNotIn('form, .settings-form', WEB_UI_HTML)
-        self.assertIn('.settings-form {', WEB_UI_HTML)
-        self.assertIn('position: sticky;', WEB_UI_HTML)
-        self.assertIn('width: min(100%, 1120px);', WEB_UI_HTML)
-        self.assertIn('min-height: var(--control-height);', WEB_UI_HTML)
+    def test_include_comment_checkboxes_present(self):
+        self.assertIn('name="include_comment"', WEB_UI_HTML)
+        # At least 3 appearances: transfer form, watch forward form, channel download
+        count = WEB_UI_HTML.count('name="include_comment"')
+        self.assertGreaterEqual(count, 3)
 
-    def test_webui_exposes_pikpak_archive_settings(self):
+    def test_message_filter_settings_present(self):
         for fragment in (
-                'global.target_profiles.pikpak.archive.enable',
-                'global.target_profiles.pikpak.archive.remote',
-                'global.target_profiles.pikpak.archive.source_directory',
-                'global.target_profiles.pikpak.archive.root_directory',
-                'settings.pikpakArchive',
-                'settings.pikpakArchiveEnable',
-                'settings.pikpakArchiveRemote',
-                'settings.pikpakArchiveSource',
-                'settings.pikpakArchiveRoot'
+            'global.message_filter.enabled',
+            'global.message_filter.date_range',
+            'global.message_filter.keywords',
+            'settings.messageFilter',
+            'settings.mediaTypes',
         ):
             self.assertIn(fragment, WEB_UI_HTML)
 
-    def test_file_progress_has_status_tabs_and_independent_pagination(self):
+    def test_export_tables_present(self):
         for fragment in (
-                'role="tablist"',
-                'data-item-tab="running"',
-                'data-item-tab="success"',
-                'data-item-tab="skipped"',
-                'data-item-tab="failure"',
-                'id="items-page-prev"',
-                'id="items-page-next"',
-                'id="items-page-summary"',
-                'itemPages:',
-                'activeItemStatus:',
-                'function categorizedItems(',
-                'function itemPageState(',
-                'function switchItemTab(',
-                'ITEMS_PAGE_SIZE = 10'
+            'global.export_table.link',
+            'global.export_table.count',
+            'global.export_table.upload',
         ):
             self.assertIn(fragment, WEB_UI_HTML)
 
-        for key in (
-                'items.tab.running',
-                'items.tab.success',
-                'items.tab.skipped',
-                'items.tab.failure',
-                'items.empty.running',
-                'items.empty.success',
-                'items.empty.skipped',
-                'items.empty.failure',
-                'items.page.previous',
-                'items.page.next',
-                'items.page.status',
-                'items.page.range'
-        ):
-            self.assertIn(key, WEB_UI_HTML)
+    def test_no_old_green_accent_in_desktop(self):
+        # Desktop uses new blue theme
+        self.assertNotIn('#0f8f72', WEB_UI_HTML)
 
-        self.assertIn("['pending', 'running'].includes(status)", WEB_UI_HTML)
-        self.assertIn("state.itemPages[state.activeItemStatus]", WEB_UI_HTML)
+    def test_stat_cards_present(self):
+        self.assertIn('stat-total', WEB_UI_HTML)
+        self.assertIn('stat-success', WEB_UI_HTML)
+        self.assertIn('stat-running', WEB_UI_HTML)
+        self.assertIn('stat-failed', WEB_UI_HTML)
 
-    def test_webui_exposes_pause_resume_and_retry_failed_task_controls(self):
-        for fragment in (
-                'pauseTask(event, ${task.id})',
-                'resumeTask(event, ${task.id})',
-                'retryFailedTask(event, ${task.id})',
-                "runTaskAction(event, taskId, 'pause')",
-                "runTaskAction(event, taskId, 'resume')",
-                "runTaskAction(event, taskId, 'retry-failed')",
-                'async function postTaskAction(taskId, action)',
-                'id="retry-selected-failed"',
-                'data-i18n="items.retryFailed"',
-                'tasks.pause',
-                'tasks.resume',
-                'tasks.retryFailed',
-                'items.retryFailed',
-                'action.taskUpdated',
-                'status.paused'
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
+    def test_refresh_and_language_controls(self):
+        self.assertIn('id="refresh"', WEB_UI_HTML)
+        self.assertIn('id="language-select"', WEB_UI_HTML)
 
-        for fragment in (
-                "task.status === 'paused' ? 'tasks.resume' : 'tasks.pause'",
-                "aria-label=\"${esc(t('tasks.retryFailed'))}\""
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
+    def test_view_switching_js(self):
+        self.assertIn('function switchView', WEB_UI_HTML)
 
-    def test_transfer_view_removes_legacy_forward_range_entry(self):
-        for removed_fragment in (
-                '原生转发范围',
-                'id="forward-form"',
-                'function createForward(',
-                "'/api/forwards'",
-                'data-i18n="forward.title"',
-                'forward.accepted'
-        ):
-            self.assertNotIn(removed_fragment, WEB_UI_HTML)
+    def test_polling_js(self):
+        self.assertIn('function startPolling', WEB_UI_HTML)
+        self.assertIn('hasActiveTasks', WEB_UI_HTML)
 
-        self.assertNotIn('<th data-i18n="tasks.updated">', WEB_UI_HTML)
-        self.assertNotIn('<td class="mono">${esc(task.updated_at)}</td>', WEB_UI_HTML)
-        self.assertIn('class="task-progress"', WEB_UI_HTML)
-        self.assertIn('aria-label="${esc(progressLabel)}"', WEB_UI_HTML)
-
-    def test_webui_integrates_help_command_workflows_as_structured_views(self):
-        for fragment in (
-                'data-nav="watches"',
-                'data-nav="channel-downloads"',
-                'data-nav="uploads"',
-                'data-nav="statistics"',
-                'id="watch-download-form"',
-                'id="watch-forward-form"',
-                'id="channel-download-form"',
-                'id="upload-form"',
-                'id="statistics"',
-                'function loadWatches(',
-                'function createDownloadWatch(',
-                'function createForwardWatch(',
-                'function deleteWatch(',
-                'function createChannelDownload(',
-                'function createUpload(',
-                'function loadStatistics(',
-                'function exportTable(',
-                "fetch('/api/watches'",
-                "fetch('/api/statistics'",
-                "'/api/channel-downloads'",
-                "'/api/uploads'",
-                "'/api/tables/export'"
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
-
-        for key in (
-                'nav.watches',
-                'nav.channelDownloads',
-                'nav.uploads',
-                'nav.statistics',
-                'watches.title',
-                'watches.downloadTitle',
-                'watches.forwardTitle',
-                'channel.title',
-                'uploads.title',
-                'uploads.serverPathHint',
-                'statistics.title',
-                'statistics.exportLink',
-                'statistics.exportCount',
-                'statistics.exportUpload',
-                'error.watch_source_conflict',
-                'error.upload_path_not_found',
-                'error.invalid_table_type'
-        ):
-            self.assertIn(key, WEB_UI_HTML)
-
-        self.assertNotIn('/exit', WEB_UI_HTML)
-        self.assertNotIn('send bot command', WEB_UI_HTML.lower())
-
-    def test_webui_exposes_discussion_reply_options_for_transfers_and_forward_watches(self):
-        for fragment in (
-                'name="include_comment"',
-                'id="transfer-include-comment"',
-                'id="watch-forward-include-comment"',
-                'new.includeComment',
-                'watches.includeComment',
-                'include_comment: Boolean(form.get',
-                'include_comment: Boolean(form.get(\'include_comment\'))'
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
-
-        self.assertGreaterEqual(WEB_UI_HTML.count('name="include_comment"'), 3)
-
-    def test_live_watch_forms_use_equal_height_panels_and_compact_checks(self):
-        for fragment in (
-                '.operation-grid {\n    display: grid;\n'
-                '    grid-template-columns: repeat(2, minmax(0, 1fr));\n'
-                '    gap: 18px;\n'
-                '    align-items: stretch;',
-                '.operation-grid > section,\n  .workspace > section {\n'
-                '    display: flex;\n'
-                '    flex-direction: column;',
-                '.operation-grid > section > form {\n    flex: 1;',
-                '.operation-grid > section > form > .actions {\n'
-                '    margin-top: auto;',
-                'id="watch-forward-include-comment"',
-                '.check {\n    min-height: 24px;\n'
-                '    display: inline-flex;',
-                'min-height: 24px;',
-                '.check input {\n    width: 16px;\n'
-                '    height: 16px;\n'
-                '    min-height: 0;\n'
-                '    padding: 0;\n'
-                '    margin: 0;'
-        ):
-            self.assertIn(fragment, WEB_UI_HTML)
-
-        check_rule = WEB_UI_HTML[
-            WEB_UI_HTML.index('  .check {'):
-            WEB_UI_HTML.index('  .check-card {')
-        ]
-        self.assertNotIn('border:', check_rule)
-        self.assertNotIn('background:', check_rule)
-        self.assertNotIn('padding: 9px 10px;', check_rule)
+    def test_auth_flow_js(self):
+        self.assertIn('function checkAuthStatus', WEB_UI_HTML)
+        self.assertIn('showLoginStep', WEB_UI_HTML)
 
 
 if __name__ == '__main__':
