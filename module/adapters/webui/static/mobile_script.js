@@ -82,7 +82,7 @@
   }
 
   async function submitAuth(payload) {
-    var btn = document.querySelector('.login-submit');
+    var btn = document.querySelector('.mob-login-submit');
     if (btn) btn.disabled = true;
     showLoginError('');
     try {
@@ -513,7 +513,7 @@
       + '</div>'
       + '<div id="mob-sheet-items"></div>'
       + '<div id="mob-sheet-items-pagination"></div>'
-      + '<div class="mob-section-title" style="margin-top:6px;">' + t('events.title') + ' (' + String(sheetEvents.length) + (sheetEventTotal > sheetEvents.length ? ' / ' + sheetEventTotal : '') + ')</div>'
+      + '<div class="mob-section-title mt-1.5">' + t('events.title') + ' (' + String(sheetEvents.length) + (sheetEventTotal > sheetEvents.length ? ' / ' + sheetEventTotal : '') + ')</div>'
       + '<div id="mob-sheet-events"></div>';
 
     var sheet = $('#mob-sheet');
@@ -587,7 +587,7 @@
         var ulPct = pct(item.upload_current, item.upload_total);
         return '<div class="mob-item-row">'
           + '<div class="mob-item-row__name">' + esc(item.file_name || item.local_path || '#' + (item.source_message_id || item.id)) + '</div>'
-          + '<div style="text-align:right;font-size:var(--font-xs);color:var(--muted);flex-shrink:0;">'
+          + '<div class="text-right text-xs text-muted shrink-0">'
           + '<div>' + t('items.download') + ' ' + dlPct + '%</div>'
           + '<div>' + t('items.upload') + ' ' + ulPct + '%</div>'
           + '</div>'
@@ -619,7 +619,7 @@
     var html = sheetEvents.map(function(event) {
       return '<div class="mob-event-row">'
         + '<time>' + esc(event.created_at) + '</time>'
-        + '<span style="color:var(--accent);">[' + esc(localizeEventLevel(event.level)) + ']</span> '
+        + '<span class="text-primary">[' + esc(localizeEventLevel(event.level)) + ']</span> '
         + esc(localizeEventMessage(event))
         + '</div>';
     }).join('');
@@ -695,11 +695,11 @@
       '<label><span>' + t('settings.saveDirectory') + '</span><input type="text" name="user.save_directory" value="' + esc(user.save_directory || '') + '"></label>'
       + '<label><span>' + t('settings.tempDirectory') + '</span><input type="text" name="user.temp_directory" value="' + esc(user.temp_directory || '') + '"></label>'
       + '<label><span>' + t('settings.sessionDirectory') + '</span><input type="text" name="user.session_directory" value="' + esc(user.session_directory || '') + '"></label>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<div class="grid grid-cols-2 gap-2.5">'
       + '<label><span>' + t('settings.maxDownload') + '</span><input type="number" name="user.max_tasks.download" value="' + esc(maxTasks.download || '') + '" min="1"></label>'
       + '<label><span>' + t('settings.maxUpload') + '</span><input type="number" name="user.max_tasks.upload" value="' + esc(maxTasks.upload || '') + '" min="1"></label>'
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<div class="grid grid-cols-2 gap-2.5">'
       + '<label><span>' + t('settings.retryDownload') + '</span><input type="number" name="user.max_retries.download" value="' + esc(maxRetries.download || '') + '" min="0"></label>'
       + '<label><span>' + t('settings.retryUpload') + '</span><input type="number" name="user.max_retries.upload" value="' + esc(maxRetries.upload || '') + '" min="0"></label>'
       + '</div>'
@@ -707,19 +707,19 @@
 
     // Behavior
     $('#mob-settings-behavior-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;"' + (glob.notice ? ' checked' : '') + '><span>' + t('settings.notice') + '</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="user.is_shutdown" style="width:auto;min-height:auto;"' + (user.is_shutdown ? ' checked' : '') + '><span>' + t('settings.shutdown') + '</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload" style="width:auto;min-height:auto;"' + (upload.download_upload ? ' checked' : '') + '><span>' + t('settings.downloadUpload') + '</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete" style="width:auto;min-height:auto;"' + (upload.delete ? ' checked' : '') + '><span>' + t('settings.uploadDelete') + '</span></label>'
+      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.notice" class="!w-auto !min-h-0"' + (glob.notice ? ' checked' : '') + '><span>' + t('settings.notice') + '</span></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="user.is_shutdown" class="!w-auto !min-h-0"' + (user.is_shutdown ? ' checked' : '') + '><span>' + t('settings.shutdown') + '</span></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.upload.download_upload" class="!w-auto !min-h-0"' + (upload.download_upload ? ' checked' : '') + '><span>' + t('settings.downloadUpload') + '</span></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.upload.delete" class="!w-auto !min-h-0"' + (upload.delete ? ' checked' : '') + '><span>' + t('settings.uploadDelete') + '</span></label>'
       + '<label><span>' + t('settings.pendingLimit') + '</span><input type="number" name="global.upload.pending_limit" value="' + esc(upload.pending_limit || '') + '" min="1" max="5"></label>';
 
     // PikPak Archive
     $('#mob-settings-archive-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" style="width:auto;min-height:auto;"' + (archive.enable ? ' checked' : '') + '><span>' + t('settings.pikpakArchiveEnable') + '</span></label>'
+      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="!w-auto !min-h-0"' + (archive.enable ? ' checked' : '') + '><span>' + t('settings.pikpakArchiveEnable') + '</span></label>'
       + '<label><span>' + t('settings.pikpakArchiveRemote') + '</span><input type="text" name="global.target_profiles.pikpak.archive.remote" value="' + esc(archive.remote || '') + '"></label>'
       + '<label><span>' + t('settings.pikpakArchiveSource') + '</span><input type="text" name="global.target_profiles.pikpak.archive.source_directory" value="' + esc(archive.source_directory || '') + '"></label>'
       + '<label><span>' + t('settings.pikpakArchiveRoot') + '</span><input type="text" name="global.target_profiles.pikpak.archive.root_directory" value="' + esc(archive.root_directory || '') + '"></label>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+      + '<div class="grid grid-cols-2 gap-2.5">'
       + '<label><span>' + t('settings.pikpakArchivePoll') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_seconds" value="' + esc(archive.poll_seconds || '') + '" min="0"></label>'
       + '<label><span>' + t('settings.pikpakArchiveInterval') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_interval_seconds" value="' + esc(archive.poll_interval_seconds || '') + '" min="0"></label>'
       + '</div>'
@@ -748,26 +748,26 @@
     var mfDateEnd = mfDateRange.end_date ? new Date(mfDateRange.end_date * 1000).toISOString().slice(0, 16) : '';
     var mfKwStr = Array.isArray(mfKeywords.words) ? mfKeywords.words.join(', ') : '';
     $('#mob-settings-message-filter-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled" style="width:auto;min-height:auto;"' + (mf.enabled !== false ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.enabled" class="!w-auto !min-h-0"' + (mf.enabled !== false ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
       + '<div class="mob-subsection"><h4>' + t('settings.mediaTypes') + '</h4>'
       + renderCheckCards('global.message_filter.media_types', mfMediaTypes, selectedMediaTypes(glob))
       + '</div>'
       + '<div class="mob-subsection"><h4>' + t('settings.dateRange') + '</h4>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.date_range.enabled" style="width:auto;min-height:auto;"' + (mfDateRange.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
-      + '<div class="field-grid field-grid--two" style="margin-top:8px">'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.date_range.enabled" class="!w-auto !min-h-0"' + (mfDateRange.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      + '<div class="field-grid field-grid--two mt-2">'
       + '<label class="field"><span>' + t('settings.startDate') + '</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(mfDateStart) + '"></label>'
       + '<label class="field"><span>' + t('settings.endDate') + '</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(mfDateEnd) + '"></label>'
       + '</div></div>'
       + '<div class="mob-subsection"><h4>' + t('settings.keywords') + '</h4>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.keywords.enabled" style="width:auto;min-height:auto;"' + (mfKeywords.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
-      + '<label class="field" style="margin-top:8px"><span>' + t('settings.keywordList') + '</span><input name="global.message_filter.keywords.words" value="' + escAttr(mfKwStr) + '" placeholder="' + t('settings.keywordPlaceholder') + '"></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.keywords.enabled" class="!w-auto !min-h-0"' + (mfKeywords.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
+      + '<label class="field mt-2"><span>' + t('settings.keywordList') + '</span><input name="global.message_filter.keywords.words" value="' + escAttr(mfKwStr) + '" placeholder="' + t('settings.keywordPlaceholder') + '"></label>'
       + '</div>';
 
     // Export Tables
     $('#mob-settings-exports-fields').innerHTML =
-      '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link" style="width:auto;min-height:auto;"' + (exportTable.link ? ' checked' : '') + '><span>' + t('settings.exportLink') + '</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.count" style="width:auto;min-height:auto;"' + (exportTable.count ? ' checked' : '') + '><span>' + t('settings.exportCount') + '</span></label>'
-      + '<label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.upload" style="width:auto;min-height:auto;"' + (exportTable.upload ? ' checked' : '') + '><span>' + t('settings.exportUpload') + '</span></label>';
+      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.link" class="!w-auto !min-h-0"' + (exportTable.link ? ' checked' : '') + '><span>' + t('settings.exportLink') + '</span></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.count" class="!w-auto !min-h-0"' + (exportTable.count ? ' checked' : '') + '><span>' + t('settings.exportCount') + '</span></label>'
+      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.upload" class="!w-auto !min-h-0"' + (exportTable.upload ? ' checked' : '') + '><span>' + t('settings.exportUpload') + '</span></label>';
   }
 
   function getSettingLeafKey(key) {
@@ -795,7 +795,7 @@
 
   function renderCheckCards(baseName, types, selected) {
     return types.map(function(type) {
-      return '<label style="flex-direction:row;align-items:center;gap:8px;padding:6px 0;"><input type="checkbox" name="' + baseName + '" value="' + esc(type) + '" style="width:auto;min-height:auto;"' + (selected.indexOf(type) >= 0 ? ' checked' : '') + '><span>' + esc(type) + '</span></label>';
+      return '<label class="!flex-row !items-center gap-2 py-1.5"><input type="checkbox" name="' + baseName + '" value="' + esc(type) + '" class="!w-auto !min-h-0"' + (selected.indexOf(type) >= 0 ? ' checked' : '') + '><span>' + esc(type) + '</span></label>';
     }).join('');
   }
 
@@ -1073,7 +1073,7 @@
     for (var key in tables) {
       if (!tables.hasOwnProperty(key)) continue;
       var tbl = tables[key];
-      html += '<div class="mob-card" style="margin-bottom:10px;">'
+      html += '<div class="mob-card mb-2.5">'
         + '<div class="mob-card__row"><span class="label">' + (tableNames[key] || key) + '</span><span>' + t('statistics.available') + ': ' + (tbl.available ? t('statistics.yes') : t('statistics.no')) + '</span></div>'
         + '<div class="mob-card__row"><span class="label">' + t('statistics.rows') + '</span><span>' + (tbl.rows || 0) + '</span></div>'
         + '</div>';

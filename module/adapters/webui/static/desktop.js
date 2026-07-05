@@ -64,7 +64,7 @@ function renderTasks() {
     const isSelected = task.id === state.selectedTaskId;
     const progressPct = task.total_items > 0 ? Math.round((task.completed_items / task.total_items) * 100) : 0;
     return '<tr data-task-id="' + task.id + '" class="' + (isSelected ? 'selected' : '') + '">' +
-      '<td style="font-weight:600;color:var(--color-primary);">#' + task.id + '</td>' +
+      '<td class="font-semibold text-primary">#' + task.id + '</td>' +
       '<td>' + statusBadge(task.status) + '</td>' +
       '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap text-[12px]" title="' + esc(task.source_link || '') + '">' + esc(task.source_link || '-') + '</td>' +
       '<td class="text-[12px]">' + esc(task.target_profile || task.target_link || '-') + '</td>' +
@@ -72,7 +72,7 @@ function renderTasks() {
         (task.total_items > 0 ? (
           '<div class="flex items-center gap-2">' +
           '<span class="text-[12px] font-semibold">' + progressPct + '%</span>' +
-          '<div style="flex:1;min-width:60px;">' +
+          '<div class="flex-1 min-w-[60px]">' +
           '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
           '<span class="text-[10px] text-muted">' + task.completed_items + '/' + task.total_items + '</span>' +
           '</div></div>'
@@ -139,7 +139,7 @@ document.addEventListener('click', async function(e) {
 /* ====== Task Detail ====== */
 async function loadTaskDetail(taskId) {
   const container = $('#task-detail');
-  container.innerHTML = '<div class="p-8 text-center"><div class="spinner" style="margin:0 auto;"></div></div>';
+  container.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
 
   try {
     const data = await fetchJson('/api/tasks/' + taskId + '/summary');
@@ -167,8 +167,8 @@ function renderTaskDetail(taskId, data) {
       '<button class="panel-tab" data-item-tab="failure">' + t('items.tab.failure') + ' (' + (summary.failure || 0) + ')</button>' +
     '</div>' +
     '</div>' +
-    '<div id="task-items-body" style="overflow:auto;max-height:300px;"></div>' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 18px 14px;gap:12px;flex-wrap:wrap;" id="task-items-pagination"></div>';
+    '<div id="task-items-body" class="overflow-auto max-h-[300px]"></div>' +
+    '<div class="flex items-center justify-between px-[18px] py-2 pb-[14px] gap-3 flex-wrap" id="task-items-pagination"></div>';
 
   detailEl.innerHTML = html;
   loadTaskItems(taskId, 'running');
@@ -188,7 +188,7 @@ async function loadTaskItems(taskId, status) {
   const page = state.itemPages[status] || 1;
   const body = $('#task-items-body');
   const pagEl = $('#task-items-pagination');
-  body.innerHTML = '<div class="p-8 text-center"><div class="spinner" style="margin:0 auto;"></div></div>';
+  body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
 
   try {
     const data = await fetchJson('/api/tasks/' + taskId + '?items_limit=50&items_offset=' + ((page - 1) * 50));
