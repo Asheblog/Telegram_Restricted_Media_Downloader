@@ -2161,11 +2161,7 @@ WEB_UI_BODY = f'''
           <span data-i18n="nav.media">媒体管理</span>
         </button>
       </nav>
-        <div class="nav-title" data-i18n="side.runtime">运行状态</div>
-        <div class="metric"><span data-i18n="side.defaultTarget">默认目标</span><strong>@pikpak_bot</strong></div>
-        <div class="metric"><span data-i18n="side.totalTasks">任务总数</span><strong id="metric-total">0</strong></div>
-        <div class="metric"><span data-i18n="side.running">运行中</span><strong id="metric-running">0</strong></div>
-        <div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
+<div class="metric"><span data-i18n="side.failed">失败</span><strong id="metric-failed">0</strong></div>
       </div>
       <div class="sidebar-footer">
         <a class="sidebar-footer__link" href="https://github.com/Asheblog/Telegram_Restricted_Media_Downloader" target="_blank" rel="noopener" title="GitHub">
@@ -2818,11 +2814,7 @@ SHARED_WEB_UI_SCRIPT = r'''
       'nav.settings': '设置',
       'nav.records': '下载记录',
       'nav.primary': '主导航',
-      'side.runtime': '运行状态',
-      'side.defaultTarget': '默认目标',
-      'side.totalTasks': '任务总数',
-      'side.running': '运行中',
-      'side.failed': '失败',
+'side.failed': '失败',
       'hero.title': 'PikPak 转存队列',
       'hero.body': '创建、监控和配置 Telegram 受限内容转存任务。状态、文件进度、失败事件和下载成功记录会持久化保存。',
       'action.refresh': '刷新',
@@ -3083,11 +3075,7 @@ SHARED_WEB_UI_SCRIPT = r'''
       'nav.settings': 'Settings',
       'nav.records': 'Download records',
       'nav.primary': 'Primary navigation',
-      'side.runtime': 'Runtime',
-      'side.defaultTarget': 'Default target',
-      'side.totalTasks': 'Total tasks',
-      'side.running': 'Running',
-      'side.failed': 'Failed',
+'side.failed': 'Failed',
       'hero.title': 'PikPak transfer queue',
       'hero.body': 'Create, monitor, and configure Telegram restricted content transfer tasks. State, file progress, failure events, and download success records are persisted.',
       'action.refresh': 'Refresh',
@@ -3550,9 +3538,7 @@ SHARED_WEB_UI_SCRIPT = r'''
 
   function renderTasks() {
     const tasks = state.tasks || [];
-    $('#metric-total').textContent = tasks.length;
-    $('#metric-running').textContent = tasks.filter(task => task.status === 'running').length;
-    $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure').length;
+$('#metric-failed').textContent = tasks.filter(task => task.status === 'failure').length;
     if (state.lastSync) $('#last-sync').textContent = state.lastSync;
     $('#empty').style.display = tasks.length ? 'none' : 'block';
     $('#tasks').innerHTML = tasks.map(task => `
