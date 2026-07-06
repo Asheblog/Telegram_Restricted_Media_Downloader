@@ -1248,8 +1248,23 @@ def merge_allowed_settings(target: dict, patch: dict, allowed: set, gc=None) -> 
         elif key in SENSITIVE_SETTING_KEYS and value in (None, ''):
             continue
         else:
-            target[key] = value
+            target[key] = _coerce_type(target.get(key), value)
     return target
+
+
+def _coerce_type(target_val, new_val):
+    """将 new_val 转换为 target_val 的类型，防止 Web UI 表单字符串污染配置类型。"""
+    if target_val is None or new_val is None:
+        return new_val
+    target_type = type(target_val)
+    if target_type is bool:
+        if isinstance(new_val, str):
+            return new_val.lower() in ('true', '1', 'yes', 'on')
+        return bool(new_val)
+    try:
+        return target_type(new_val)
+    except (TypeError, ValueError):
+        return new_val
 
 
 def get_web_port_from_env(default: int = 0) -> int:

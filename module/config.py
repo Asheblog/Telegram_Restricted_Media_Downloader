@@ -192,10 +192,10 @@ class UserConfig(BaseConfig):
         self.download_type: list = self.config.get('download_type')
         self.is_shutdown: bool = self.config.get('is_shutdown')
         self.links: str = self.config.get('links')
-        self.max_download_task: int = (self.config.get('max_tasks') or {}).get('download', 1) or 1
-        self.max_download_retries: int = self.config.get('max_retries', {'download': 5}).get('download')
-        self.max_upload_task: int = (self.config.get('max_tasks') or {}).get('upload', 1) or 1
-        self.max_upload_retries: int = (self.config.get('max_retries') or {}).get('upload', 3) or 3
+        self.max_download_task: int = int((self.config.get('max_tasks') or {}).get('download', 1) or 1)
+        self.max_download_retries: int = int(self.config.get('max_retries', {'download': 5}).get('download', 5) or 5)
+        self.max_upload_task: int = int((self.config.get('max_tasks') or {}).get('upload', 1) or 1)
+        self.max_upload_retries: int = int((self.config.get('max_retries') or {}).get('upload', 3) or 3)
         self.proxy: dict = self.config.get('proxy', {})
         self.enable_proxy: bool = self.proxy.get('enable_proxy', False)
         self.save_directory: str = self.config.get('save_directory')
