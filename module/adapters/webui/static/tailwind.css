@@ -398,13 +398,13 @@
   }
 
   .login-card {
-    @apply bg-surface border border-line rounded-[16px] p-12 max-w-[600px] w-full shadow-lg
+    @apply bg-surface border border-line rounded-[16px] p-8 max-w-[420px] w-full shadow-lg
            max-sm:rounded-[14px] max-sm:p-6;
     animation: fadeIn .5s ease .1s both;
   }
 
   .login-brand {
-    @apply w-full max-w-[600px] text-center mb-5 max-sm:mb-4;
+    @apply w-full max-w-[420px] text-center mb-5 max-sm:mb-4;
     animation: fadeIn .5s ease both;
   }
 

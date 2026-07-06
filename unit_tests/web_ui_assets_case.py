@@ -95,7 +95,7 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('flex:1;justify-content:center;align-items:center;display:flex', LOGIN_PAGE_HTML)
         self.assertIn('.login-page{min-height:100svh}', LOGIN_PAGE_HTML)
         self.assertIn('.login-card{', LOGIN_PAGE_HTML)
-        self.assertIn('width:100%;max-width:600px', LOGIN_PAGE_HTML)
+        self.assertIn('width:100%;max-width:420px', LOGIN_PAGE_HTML)
         self.assertIn('login-page login-overlay hidden', WEB_UI_HTML)
         self.assertIn('.login-overlay{', WEB_UI_HTML)
         self.assertIn('position:fixed', WEB_UI_HTML)
