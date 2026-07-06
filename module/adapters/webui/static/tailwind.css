@@ -388,7 +388,7 @@
 
   /* Login page */
   .login-page {
-    @apply min-h-screen bg-bg flex items-center justify-center p-6 max-sm:items-start max-sm:pt-[12vh] max-sm:p-5;
+    @apply min-h-screen bg-bg flex flex-col items-center justify-center p-6 max-sm:items-start max-sm:pt-[12vh] max-sm:p-5;
   }
 
   .login-card {
