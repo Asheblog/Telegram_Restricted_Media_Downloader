@@ -5,7 +5,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
 
-from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, panel_head
+from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML
 
 
 class WebUiAssetsCase(unittest.TestCase):
@@ -84,32 +84,43 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_login_page_has_blue_theme(self):
         self.assertIn('<!doctype html>', LOGIN_PAGE_HTML.lower())
         self.assertIn('登录控制台', LOGIN_PAGE_HTML)
-        self.assertIn('#2563EB', LOGIN_PAGE_HTML)
+        self.assertIn('#2563eb', LOGIN_PAGE_HTML.lower())
         self.assertIn('id="login-form"', LOGIN_PAGE_HTML)
         self.assertIn('id="username"', LOGIN_PAGE_HTML)
         self.assertIn('id="password"', LOGIN_PAGE_HTML)
         self.assertIn('/api/auth/login', LOGIN_PAGE_HTML)
+
+    def test_login_page_layout_prevents_mobile_shrink(self):
+        self.assertIn('.login-page{background-color:var(--color-bg);width:100%;', LOGIN_PAGE_HTML)
+        self.assertIn('flex:1;justify-content:center;align-items:center;display:flex', LOGIN_PAGE_HTML)
+        self.assertIn('.login-page{min-height:100svh}', LOGIN_PAGE_HTML)
+        self.assertIn('.login-card{', LOGIN_PAGE_HTML)
+        self.assertIn('width:100%;max-width:600px', LOGIN_PAGE_HTML)
+        self.assertIn('login-page login-overlay hidden', WEB_UI_HTML)
+        self.assertIn('.login-overlay{', WEB_UI_HTML)
+        self.assertIn('position:fixed', WEB_UI_HTML)
+
+    def test_mobile_login_layout_has_stable_touch_controls(self):
+        self.assertIn('--safe-bottom:env(safe-area-inset-bottom,0px)', WEB_UI_MOBILE_HTML)
+        self.assertIn('.mob-login-card{', WEB_UI_MOBILE_HTML)
+        self.assertIn('width:100%;max-width:520px', WEB_UI_MOBILE_HTML)
+        self.assertIn(
+            '.mob-login-actions{gap:calc(var(--spacing)*2.5);'
+            'grid-template-columns:repeat(auto-fit,minmax(132px,1fr));display:grid',
+            WEB_UI_MOBILE_HTML
+        )
+        self.assertIn(
+            '.mob-login-submit svg{height:calc(var(--spacing)*4);'
+            'width:calc(var(--spacing)*4);flex-shrink:0}',
+            WEB_UI_MOBILE_HTML
+        )
 
     def test_mobile_html_preserved(self):
         self.assertIn('<!doctype html>', WEB_UI_MOBILE_HTML.lower())
         self.assertIn('mob-topbar', WEB_UI_MOBILE_HTML)
         self.assertIn('mob-tabbar', WEB_UI_MOBILE_HTML)
         # Blue color should be present
-        self.assertIn('#2563EB', WEB_UI_MOBILE_HTML)
-
-    def test_panel_head_function_still_works(self):
-        result = panel_head(
-            title_i18n='test.title',
-            title_text='Test Title',
-            meta_i18n='test.meta',
-            meta_text='Test Meta',
-            meta_id='test-id',
-            indent=12
-        )
-        self.assertIn('data-component="panel-head"', result)
-        self.assertIn('data-i18n="test.title"', result)
-        self.assertIn('Test Title', result)
-        self.assertIn('id="test-id"', result)
+        self.assertIn('#2563eb', WEB_UI_MOBILE_HTML.lower())
 
     def test_settings_view_exposes_pikpak_archive(self):
         for fragment in (

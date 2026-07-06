@@ -36,6 +36,10 @@
 
 /* Base layer */
 @layer base {
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   html {
     font-family: var(--font-body);
     font-size: 14px;
@@ -388,16 +392,19 @@
 
   /* Login page */
   .login-page {
-    @apply min-h-screen bg-bg flex flex-col items-center justify-center p-6 max-sm:items-start max-sm:pt-[12vh] max-sm:p-5;
+    @apply min-h-screen w-full flex-1 bg-bg flex flex-col items-center justify-center
+           overflow-x-hidden px-6 py-8 max-sm:justify-start max-sm:px-4 max-sm:pt-14 max-sm:pb-8;
+    min-height: 100svh;
   }
 
   .login-card {
-    @apply bg-surface border border-line rounded-[16px] p-12 max-w-[600px] w-full shadow-lg max-sm:p-6;
+    @apply bg-surface border border-line rounded-[16px] p-12 max-w-[600px] w-full shadow-lg
+           max-sm:rounded-[14px] max-sm:p-6;
     animation: fadeIn .5s ease .1s both;
   }
 
   .login-brand {
-    @apply text-center mb-5;
+    @apply w-full max-w-[600px] text-center mb-5 max-sm:mb-4;
     animation: fadeIn .5s ease both;
   }
 
@@ -413,7 +420,11 @@
   }
 
   .login-brand p {
-    @apply text-sm text-muted mt-1;
+    @apply text-sm text-muted mt-1 max-sm:px-2 max-sm:leading-5;
+  }
+
+  .login-overlay {
+    @apply fixed inset-0 z-[1000] min-h-[100svh] w-full bg-bg;
   }
 
   .login-error {
@@ -921,21 +932,22 @@
 
   /* --- Mobile Login (Telegram auth) --- */
   .mob-login-overlay {
-    @apply fixed inset-0 bg-bg z-[1000] items-center justify-center flex-col gap-5 p-4 hidden;
+    @apply fixed inset-0 bg-bg z-[1000] hidden flex-col items-center justify-start
+           gap-4 overflow-y-auto px-4 pt-14;
+    padding-bottom: max(32px, calc(24px + var(--safe-bottom)));
   }
   .mob-login-overlay.active { @apply flex; }
   .mob-login-card {
-    @apply bg-surface border border-line rounded-xl p-6 w-full shadow-sm;
-    max-width: 420px;
+    @apply bg-surface border border-line rounded-[16px] p-5 w-full max-w-[520px] shadow-sm;
   }
   .mob-login-card__step {
     @apply text-xs text-muted uppercase tracking-[0.06em] mb-2;
   }
   .mob-login-card__title {
-    @apply text-lg font-bold m-0 mb-1.5 text-text;
+    @apply text-xl font-bold m-0 mb-1.5 text-text;
   }
   .mob-login-card__subtitle {
-    @apply text-[13px] text-muted m-0 mb-5;
+    @apply text-sm text-muted m-0 mb-5 leading-5;
   }
   .mob-login-field {
     @apply mb-4;
@@ -944,7 +956,7 @@
     @apply block text-[13px] font-medium text-text mb-1.5;
   }
   .mob-login-field input {
-    @apply w-full h-[42px] border border-line rounded-md px-3 text-[15px] bg-surface text-text;
+    @apply w-full h-12 border border-line rounded-lg px-3.5 text-base bg-surface text-text;
     transition: border-color .18s ease;
   }
   .mob-login-field input:focus {
@@ -961,10 +973,17 @@
   }
   .mob-login-error.visible { @apply block; }
   .mob-login-actions {
-    @apply flex gap-2.5 justify-end;
+    @apply grid gap-2.5;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
   .mob-login-actions button {
-    min-width: 100px;
+    @apply w-full min-w-0;
+  }
+  .mob-login-submit {
+    @apply inline-flex items-center justify-center gap-2;
+  }
+  .mob-login-submit svg {
+    @apply w-4 h-4 flex-shrink-0;
   }
   .mob-login-success {
     @apply text-center py-4;
@@ -976,7 +995,7 @@
     @apply text-base font-semibold text-success m-0;
   }
   .mob-login-brand {
-    @apply text-center mb-1;
+    @apply text-center w-full max-w-[520px];
   }
   .mob-login-brand h1 {
     @apply text-2xl font-extrabold m-0 text-text;
@@ -984,6 +1003,17 @@
   }
   .mob-login-brand p {
     @apply text-[13px] text-muted mt-0.5;
+  }
+
+  @media (min-width: 640px) {
+    .mob-login-overlay {
+      justify-content: center;
+      padding-top: 16px;
+    }
+
+    .mob-login-card {
+      @apply p-6;
+    }
   }
 }
 
