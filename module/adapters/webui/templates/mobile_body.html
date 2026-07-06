@@ -230,72 +230,65 @@
     <p class="mob-empty hidden" id="mob-settings-notice"></p>
   </div>
 
-  <!-- 频道下载 -->
-  <div class="mob-view" id="mob-view-channel-downloads">
+  <!-- 下载与上传（合并） -->
+  <div class="mob-view" id="mob-view-downloads-uploads">
+    <!-- 频道下载 -->
     <div class="mob-collapse" id="collapse-channel-form">
-      <div class="mob-collapse__head" data-i18n="channel.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__head" data-i18n="dl.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body">
         <form id="mob-channel-form">
-          <label><span data-i18n="channel.link">频道链接</span>
+          <label><span data-i18n="dl.link">频道链接</span>
             <input type="text" name="chat_link" placeholder="https://t.me/..." required>
           </label>
           <div class="grid grid-cols-2 gap-2.5">
-            <label><span data-i18n="channel.startDate">起始时间</span>
+            <label><span data-i18n="dl.startDate">起始时间</span>
               <input type="datetime-local" name="start_date">
             </label>
-            <label><span data-i18n="channel.endDate">结束时间</span>
+            <label><span data-i18n="dl.endDate">结束时间</span>
               <input type="datetime-local" name="end_date">
             </label>
           </div>
-          <label><span data-i18n="channel.keywords">关键词</span>
-            <input type="text" name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          <label><span data-i18n="dl.keywords">关键词</span>
+            <input type="text" name="keywords" data-i18n-placeholder="dl.keywordsPlaceholder" placeholder="逗号分隔，可留空">
           </label>
           <fieldset class="mob-check-group">
-            <legend data-i18n="channel.types">下载类型</legend>
-            <div id="mob-channel-download-types" class="grid grid-cols-2 gap-y-0.5 gap-x-2.5">
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="video" checked class="!w-auto !min-h-0">video</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="photo" checked class="!w-auto !min-h-0">photo</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="audio" checked class="!w-auto !min-h-0">audio</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="voice" checked class="!w-auto !min-h-0">voice</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="animation" checked class="!w-auto !min-h-0">animation</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="document" checked class="!w-auto !min-h-0">document</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="video_note" checked class="!w-auto !min-h-0">video_note</label>
-            </div>
+            <legend data-i18n="dl.types">下载类型</legend>
+            <div id="mob-channel-download-types" class="grid grid-cols-2 gap-y-0.5 gap-x-2.5"></div>
           </fieldset>
           <label class="!flex-row !items-center gap-2">
             <input type="checkbox" name="include_comment" class="!w-auto !min-h-0">
-            <span data-i18n="channel.includeComment">包含评论区</span>
+            <span data-i18n="dl.includeComment">包含评论区</span>
           </label>
-          <button type="submit" class="mob-btn w-full" data-i18n="channel.create">创建频道下载</button>
+          <button type="submit" class="mob-btn w-full" data-i18n="dl.create">创建下载任务</button>
           <p class="mob-empty hidden" id="mob-channel-notice"></p>
         </form>
       </div>
     </div>
-    <div id="mob-channel-downloads-list"></div>
-  </div>
 
-  <!-- 本地上传 -->
-  <div class="mob-view" id="mob-view-uploads">
+    <!-- 本地上传 -->
     <div class="mob-collapse" id="collapse-upload-form">
-      <div class="mob-collapse__head" data-i18n="uploads.title">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__head" data-i18n="dl.uploadTitle">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body">
         <form id="mob-upload-form">
-          <label><span data-i18n="uploads.path">本地路径</span>
+          <label><span data-i18n="dl.uploadPath">本地路径</span>
             <input type="text" name="path" placeholder="/path/to/file" required>
           </label>
-          <label><span data-i18n="uploads.target">目标频道</span>
+          <label><span data-i18n="dl.uploadTarget">目标频道</span>
             <input type="text" name="target_link" placeholder="https://t.me/..." required>
           </label>
           <label class="!flex-row !items-center gap-2">
             <input type="checkbox" name="recursive" class="!w-auto !min-h-0">
-            <span data-i18n="uploads.recursive">递归上传文件夹</span>
+            <span data-i18n="dl.recursive">递归上传文件夹</span>
           </label>
-          <button type="submit" class="mob-btn w-full" data-i18n="uploads.create">创建上传</button>
+          <button type="submit" class="mob-btn w-full" data-i18n="dl.createUpload">创建上传任务</button>
           <p class="mob-empty hidden" id="mob-upload-notice"></p>
         </form>
       </div>
     </div>
-    <div id="mob-uploads-list"></div>
+
+    <!-- 操作历史 -->
+    <div class="mob-section-title" data-i18n="dl.history">操作历史</div>
+    <div id="mob-operations-list"></div>
   </div>
 
   <!-- 统计 -->
@@ -353,13 +346,9 @@
 <div class="mob-drawer-overlay" id="mob-drawer-overlay">
   <div class="mob-drawer" id="mob-drawer">
     <div class="mob-drawer__handle"></div>
-    <button class="mob-drawer__item" data-mob-drawer-nav="channel-downloads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.channelDownloads">频道下载</span>
-    </button>
-    <button class="mob-drawer__item" data-mob-drawer-nav="uploads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.uploads">本地上传</span>
+    <button class="mob-drawer__item" data-mob-drawer-nav="downloads-uploads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M8 17l4 4 4-4M12 21V3M4 10l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.downloadsUploads">下载与上传</span>
     </button>
     <button class="mob-drawer__item" data-mob-drawer-nav="statistics">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

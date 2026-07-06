@@ -225,6 +225,7 @@
     $$('.mob-tab').forEach(el => el.classList.toggle('active', el.dataset.mobNav === view));
     closeDrawer();
     closeFabMenu();
+    if (view === 'downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
     if (view === 'settings') loadSettings();
     if (view === 'records') loadRecords();
     if (view === 'watches') loadWatches();
@@ -1040,7 +1041,111 @@
     });
   }
 
-  /* ====== Phase 2: 频道下载 ====== */
+  /* ====== 下载与上传（合并页面） ====== */
+
+  /* 初始化下载类型 checkboxes（移动端） */
+  function mobInitDownloadTypes() {
+    var grid = $('#mob-channel-download-types');
+    if (!grid) return;
+    var types = ['video','photo','audio','voice','animation','document','video_note'];
+    var settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
+    var selected = Array.isArray(settings) ? settings : types;
+    grid.innerHTML = types.map(function(t) {
+      return '<label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="' + t + '" class="!w-auto !min-h-0"' + (selected.indexOf(t) >= 0 ? ' checked' : '') + '>' + t + '</label>';
+    }).join('');
+  }
+
+  /* 频道下载表单 */
+  var channelForm = $('#mob-channel-form');
+  if (channelForm) {
+    channelForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.include_comment = !!payload.include_comment;
+      if (payload.start_date) {
+        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
+        delete payload.start_date;
+      }
+      if (payload.end_date) {
+        payload.date_range = payload.date_range || {};
+        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
+        delete payload.end_date;
+      }
+      if (payload.keywords) {
+        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      } else {
+        payload.keywords = [];
+      }
+      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
+      try {
+        await postJson('/api/channel-downloads', payload);
+        showToast(t('dl.accepted'));
+        this.reset();
+        mobInitDownloadTypes();
+        loadMobileOperations();
+        $('#collapse-channel-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 本地上传表单 */
+  var uploadForm = $('#mob-upload-form');
+  if (uploadForm) {
+    uploadForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.recursive = !!payload.recursive;
+      try {
+        await postJson('/api/uploads', payload);
+        showToast(t('dl.uploadAccepted'));
+        this.reset();
+        loadMobileOperations();
+        $('#collapse-upload-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 操作历史列表（移动端） */
+  async function loadMobileOperations() {
+    var container = $('#mob-operations-list');
+    if (!container) return;
+    try {
+      var data = await fetchJson('/api/operations');
+      var ops = data.operations || [];
+      if (!ops.length) {
+        container.innerHTML = '<div class="mob-empty">' + t('dl.historyEmpty') + '</div>';
+        return;
+      }
+      container.innerHTML = ops.map(function(op) {
+        var typeLabel = op.type === 'channel_download' ? t('dl.typeDownload') : t('dl.typeUpload');
+        var payload = op.payload || {};
+        var detail = op.type === 'channel_download' ? (payload.chat_link || '-') : (payload.path || '-');
+        return '<div class="mob-card status-' + (op.status || 'pending') + '">'
+          + '<div class="mob-card__head">'
+          + '<span class="mob-card__title">' + esc(typeLabel) + ' · ' + esc(String(op.id || '-')) + '</span>'
+          + mobBadge(op.status)
+          + '</div>'
+          + '<div class="mob-card__row"><span class="label">' + t('dl.historyDetail') + '</span><span>' + esc(detail) + '</span></div>'
+          + (op.error_message ? '<div class="mob-card__row"><span class="label">' + t('dl.historyError') + '</span><span class="text-danger">' + esc(op.error_message) + '</span></div>' : '')
+          + '<div class="mob-card__row"><span class="label">' + t('dl.historyTime') + '</span><span>' + esc(op.created_at || '') + '</span></div>'
+          + '</div>';
+      }).join('');
+    } catch(e) {}
+  }
+
+  /* 操作历史轮询（移动端） */
+  setInterval(function() {
+    var activeView = document.querySelector('.mob-view.active');
+    if (activeView && activeView.id === 'mob-view-downloads-uploads') loadMobileOperations();
+  }, 10000);
+
+  /* ====== 下载记录（移动端） ====== */
   function renderMobRecords() {
     var records = state.records || [];
     var container = $('#mob-records-list');
@@ -1059,7 +1164,7 @@
     }).join('');
   }
 
-  /* ====== Phase 2: 统计表格 ====== */
+  /* ====== 统计表格（移动端） ====== */
   function renderMobStatistics() {
     var stats = state.statistics;
     var container = $('#mob-statistics-list');
@@ -1097,63 +1202,5 @@
     try { await _origLoadStatistics(); } catch(e) {}
     renderMobStatistics();
   };
-
-  /* ====== Phase 2 事件绑定 ====== */
-
-  /* 频道下载表单 */
-  var channelForm = $('#mob-channel-form');
-  if (channelForm) {
-    channelForm.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.include_comment = !!payload.include_comment;
-      if (payload.start_date) {
-        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
-        delete payload.start_date;
-      }
-      if (payload.end_date) {
-        payload.date_range = payload.date_range || {};
-        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
-        delete payload.end_date;
-      }
-      if (payload.keywords) {
-        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-      } else {
-        payload.keywords = [];
-      }
-      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
-      try {
-        await postJson('/api/channel-downloads', payload);
-        showToast(t('channel.accepted'));
-        this.reset();
-        $('#collapse-channel-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
-      }
-    });
-  }
-
-  /* 本地上传表单 */
-  var uploadForm = $('#mob-upload-form');
-  if (uploadForm) {
-    uploadForm.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.recursive = !!payload.recursive;
-      try {
-        await postJson('/api/uploads', payload);
-        showToast(t('uploads.accepted'));
-        this.reset();
-        $('#collapse-upload-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
-      }
-    });
-  }
-
-  /* 统计导出 */
-  /* 已通过 loadStatistics 覆盖自动渲染 */
 
   /* ====== 初始加载（由 checkAuthStatus 驱动） ====== */

@@ -499,6 +499,9 @@ class WebUiServer:
                 if parsed.path == '/api/statistics':
                     self._send_json(server.statistics())
                     return
+                if parsed.path == '/api/operations':
+                    self._send_json({'operations': server.list_operations()})
+                    return
                 if parsed.path == '/api/watches':
                     self._send_json({'watches': server.list_watches()})
                     return

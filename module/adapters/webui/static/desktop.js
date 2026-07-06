@@ -13,6 +13,7 @@ function switchView(view) {
 
   if (view === 'transfers') renderTasks();
   if (view === 'watches') loadWatches();
+  if (view === 'downloads-uploads') { loadDownloadTypes(); loadOperations(); }
   if (view === 'settings') loadSettings();
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
@@ -454,6 +455,7 @@ $('#refresh').addEventListener('click', () => {
   if (state.activeView === 'settings') loadSettings();
   if (state.activeView === 'watches') loadWatches();
   if (state.activeView === 'statistics') loadStatistics();
+  if (state.activeView === 'downloads-uploads') loadOperations();
 });
 
 /* ====== Logout ====== */
@@ -685,7 +687,24 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
   }
 });
 
-/* ====== Channel Download ====== */
+/* ====== Downloads & Uploads ====== */
+
+/* download type checkboxes — populate from global settings defaults */
+function loadDownloadTypes() {
+  const grid = $('#dl-download-type-grid');
+  if (!grid) return;
+  const types = ['video','photo','audio','voice','animation','document','video_note'];
+  const settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
+  const selected = Array.isArray(settings) ? settings : types;
+  grid.innerHTML = types.map(t =>
+    '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
+      '<input type="checkbox" name="download_type" value="' + t + '" class="w-4 h-4"' + (selected.includes(t) ? ' checked' : '') + '>' +
+      '<span>' + t + '</span>' +
+    '</label>'
+  ).join('');
+}
+
+/* Channel Download form */
 $('#channel-download-form')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const fd = new FormData(this);
@@ -705,14 +724,16 @@ $('#channel-download-form')?.addEventListener('submit', async function(e) {
   }
   try {
     await postJson('/api/channel-downloads', payload);
-    alert(t('channel.accepted'));
+    alert(t('dl.accepted'));
     this.reset();
+    loadDownloadTypes();
+    loadOperations();
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
 
-/* ====== Upload ====== */
+/* Upload form */
 $('#upload-form')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const fd = new FormData(this);
@@ -722,12 +743,52 @@ $('#upload-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       recursive: Boolean(fd.get('recursive')),
     });
-    alert(t('uploads.accepted'));
+    alert(t('dl.uploadAccepted'));
     this.reset();
+    loadOperations();
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
+
+/* Operations history */
+async function loadOperations() {
+  if (state.activeView !== 'downloads-uploads') return;
+  const tbody = $('#dl-operations-tbody');
+  const empty = $('#dl-operations-empty');
+  try {
+    const data = await fetchJson('/api/operations');
+    const ops = data.operations || [];
+    if (!ops.length) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = ops.map(op => {
+      const typeLabel = op.type === 'channel_download' ? t('dl.typeDownload') : t('dl.typeUpload');
+      const payload = op.payload || {};
+      const detail = op.type === 'channel_download'
+        ? (payload.chat_link || '-')
+        : (payload.path || '-');
+      return '<tr>' +
+        '<td class="font-mono text-xs text-muted">' + esc(String(op.id || '-')) + '</td>' +
+        '<td><span class="badge ' + (op.type === 'channel_download' ? 'badge-running' : 'badge-success') + '">' + esc(typeLabel) + '</span></td>' +
+        '<td class="text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(detail) + '</td>' +
+        '<td>' + statusBadge(op.status) + '</td>' +
+        '<td class="text-xs text-danger max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(op.error_message || '') + '">' + esc(op.error_message || '-') + '</td>' +
+        '<td class="text-xs text-muted">' + fmtTime(op.created_at) + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) {}
+}
+
+$('#dl-history-refresh')?.addEventListener('click', () => loadOperations());
+
+/* poll operations when active */
+setInterval(() => {
+  if (state.activeView === 'downloads-uploads') loadOperations();
+}, 10000);
 
 /* ====== Statistics ====== */
 async function loadStatistics() {

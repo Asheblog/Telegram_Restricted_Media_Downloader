@@ -839,6 +839,13 @@ class TelegramRestrictedMediaDownloader:
         operation = self.submit_web_operation('channel_download', payload)
         return {'accepted': True, 'operation_id': operation['id']}
 
+    def list_operations(self, limit: int = 50) -> list:
+        """列出 WebUI 下载/上传操作记录（最近 N 条）。"""
+        ops = [op for op in self.web_operations.values()
+               if op.get('type') in ('channel_download', 'upload')]
+        ops.sort(key=lambda o: o.get('created_at', ''), reverse=True)
+        return ops[:limit]
+
     # --- 媒体管理 (Media Manager) ---
 
     def _ensure_media_manager(self) -> MediaManager:

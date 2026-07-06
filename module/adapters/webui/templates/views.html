@@ -236,82 +236,119 @@
   </div>
 </div>
 
-<!-- ====== Channel Downloads View ====== -->
-<div class="view" id="view-channel-downloads">
-  <div class="panel max-w-[640px]">
-    <div class="panel-header">
-      <h3 data-i18n="channel.title">频道下载</h3>
+<!-- ====== Downloads & Uploads View ====== -->
+<div class="view" id="view-downloads-uploads">
+  <!-- Two-panel form row: channel download (left) + local upload (right) -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Channel Download -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="flex items-center gap-2.5">
+          <div class="stat-card-icon green !w-[34px] !h-[34px]">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="dl.title">频道下载</h3>
+            <span class="text-xs text-muted" data-i18n="dl.meta">从 Telegram 频道拉取文件</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <form id="channel-download-form">
+          <div class="form-group">
+            <label class="form-label" data-i18n="dl.link">频道链接</label>
+            <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" data-i18n="dl.startDate">起始时间</label>
+              <input class="form-input" name="start_date" type="datetime-local">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="dl.endDate">结束时间</label>
+              <input class="form-input" name="end_date" type="datetime-local">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="dl.keywords">关键词</label>
+            <input class="form-input" name="keywords" type="text" data-i18n-placeholder="dl.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          </div>
+          <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
+            <legend class="text-xs font-semibold text-muted" data-i18n="dl.types">下载类型</legend>
+            <div class="grid grid-cols-2 gap-y-1 gap-x-2.5" id="dl-download-type-grid"></div>
+          </fieldset>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
+            <input type="checkbox" name="include_comment" class="w-4 h-4">
+            <span data-i18n="dl.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="dl.create">创建下载任务</span>
+          </button>
+        </form>
+      </div>
     </div>
-    <div class="panel-body">
-      <form id="channel-download-form">
-        <div class="form-group">
-          <label class="form-label" data-i18n="channel.link">频道链接</label>
-          <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+
+    <!-- Local Upload -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="flex items-center gap-2.5">
+          <div class="stat-card-icon blue !w-[34px] !h-[34px]">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="dl.uploadTitle">本地上传</h3>
+            <span class="text-xs text-muted" data-i18n="dl.uploadMeta">推送到 Telegram 频道</span>
+          </div>
         </div>
-        <div class="form-row">
+      </div>
+      <div class="panel-body">
+        <form id="upload-form">
           <div class="form-group">
-            <label class="form-label" data-i18n="channel.startDate">起始时间</label>
-            <input class="form-input" name="start_date" type="datetime-local">
+            <label class="form-label" data-i18n="dl.uploadPath">本地路径</label>
+            <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="channel.endDate">结束时间</label>
-            <input class="form-input" name="end_date" type="datetime-local">
+            <label class="form-label" data-i18n="dl.uploadTarget">目标频道</label>
+            <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="channel.keywords">关键词</label>
-          <input class="form-input" name="keywords" type="text" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
-        </div>
-        <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
-          <legend class="text-xs font-semibold text-muted" data-i18n="channel.types">下载类型</legend>
-          <div class="grid grid-cols-2 gap-y-1 gap-x-2.5">
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video" checked class="w-4 h-4">video</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="photo" checked class="w-4 h-4">photo</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="audio" checked class="w-4 h-4">audio</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="voice" checked class="w-4 h-4">voice</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="animation" checked class="w-4 h-4">animation</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="document" checked class="w-4 h-4">document</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video_note" checked class="w-4 h-4">video_note</label>
-          </div>
-        </fieldset>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-          <input type="checkbox" name="include_comment" class="w-4 h-4">
-          <span data-i18n="channel.includeComment">包含评论区</span>
-        </label>
-        <button type="submit" class="form-submit">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="channel.create">创建频道下载</span>
-        </button>
-      </form>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
+            <input type="checkbox" name="recursive" class="w-4 h-4">
+            <span data-i18n="dl.recursive">递归上传文件夹</span>
+          </label>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="dl.createUpload">创建上传任务</span>
+          </button>
+        </form>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ====== Uploads View ====== -->
-<div class="view" id="view-uploads">
-  <div class="panel max-w-[640px]">
+  <!-- Operation History -->
+  <div class="panel">
     <div class="panel-header">
-      <h3 data-i18n="uploads.title">本地上传</h3>
+      <h3 data-i18n="dl.history">操作历史</h3>
+      <button class="btn btn-sm" id="dl-history-refresh">
+        <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="action.refresh">刷新</span>
+      </button>
     </div>
-    <div class="panel-body">
-      <form id="upload-form">
-        <div class="form-group">
-          <label class="form-label" data-i18n="uploads.path">本地路径</label>
-          <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="uploads.target">目标频道</label>
-          <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-          <input type="checkbox" name="recursive" class="w-4 h-4">
-          <span data-i18n="uploads.recursive">递归上传文件夹</span>
-        </label>
-        <button type="submit" class="form-submit">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="uploads.create">创建上传</span>
-        </button>
-      </form>
+    <div class="overflow-auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="w-[80px]" data-i18n="dl.historyId">ID</th>
+            <th class="w-24" data-i18n="dl.historyType">类型</th>
+            <th data-i18n="dl.historyDetail">详情</th>
+            <th class="w-24" data-i18n="dl.historyStatus">状态</th>
+            <th class="w-40" data-i18n="dl.historyError">错误信息</th>
+            <th class="w-[160px]" data-i18n="dl.historyTime">创建时间</th>
+          </tr>
+        </thead>
+        <tbody id="dl-operations-tbody"></tbody>
+      </table>
+      <div id="dl-operations-empty" class="p-8 text-center text-muted text-sm" data-i18n="dl.historyEmpty">还没有下载或上传操作记录。</div>
     </div>
   </div>
 </div>

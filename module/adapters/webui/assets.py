@@ -249,13 +249,9 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <span data-i18n="nav.watches">实时监听</span>
       <span class="sidebar-nav-badge" id="badge-watches">0</span>
     </button>
-    <button class="sidebar-nav-item" data-nav="channel-downloads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.channelDownloads">频道下载</span>
-    </button>
-    <button class="sidebar-nav-item" data-nav="uploads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.uploads">本地上传</span>
+    <button class="sidebar-nav-item" data-nav="downloads-uploads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M8 17l4 4 4-4M12 21V3M4 10l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.downloadsUploads">下载与上传</span>
     </button>
 
     <div class="sidebar-nav-label" data-i18n="nav.section.monitor">监控与数据</div>
@@ -659,82 +655,119 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ====== Channel Downloads View ====== -->
-<div class="view" id="view-channel-downloads">
-  <div class="panel max-w-[640px]">
-    <div class="panel-header">
-      <h3 data-i18n="channel.title">频道下载</h3>
+<!-- ====== Downloads & Uploads View ====== -->
+<div class="view" id="view-downloads-uploads">
+  <!-- Two-panel form row: channel download (left) + local upload (right) -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Channel Download -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="flex items-center gap-2.5">
+          <div class="stat-card-icon green !w-[34px] !h-[34px]">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="dl.title">频道下载</h3>
+            <span class="text-xs text-muted" data-i18n="dl.meta">从 Telegram 频道拉取文件</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <form id="channel-download-form">
+          <div class="form-group">
+            <label class="form-label" data-i18n="dl.link">频道链接</label>
+            <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" data-i18n="dl.startDate">起始时间</label>
+              <input class="form-input" name="start_date" type="datetime-local">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="dl.endDate">结束时间</label>
+              <input class="form-input" name="end_date" type="datetime-local">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="dl.keywords">关键词</label>
+            <input class="form-input" name="keywords" type="text" data-i18n-placeholder="dl.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          </div>
+          <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
+            <legend class="text-xs font-semibold text-muted" data-i18n="dl.types">下载类型</legend>
+            <div class="grid grid-cols-2 gap-y-1 gap-x-2.5" id="dl-download-type-grid"></div>
+          </fieldset>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
+            <input type="checkbox" name="include_comment" class="w-4 h-4">
+            <span data-i18n="dl.includeComment">包含评论区</span>
+          </label>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="dl.create">创建下载任务</span>
+          </button>
+        </form>
+      </div>
     </div>
-    <div class="panel-body">
-      <form id="channel-download-form">
-        <div class="form-group">
-          <label class="form-label" data-i18n="channel.link">频道链接</label>
-          <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+
+    <!-- Local Upload -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="flex items-center gap-2.5">
+          <div class="stat-card-icon blue !w-[34px] !h-[34px]">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 data-i18n="dl.uploadTitle">本地上传</h3>
+            <span class="text-xs text-muted" data-i18n="dl.uploadMeta">推送到 Telegram 频道</span>
+          </div>
         </div>
-        <div class="form-row">
+      </div>
+      <div class="panel-body">
+        <form id="upload-form">
           <div class="form-group">
-            <label class="form-label" data-i18n="channel.startDate">起始时间</label>
-            <input class="form-input" name="start_date" type="datetime-local">
+            <label class="form-label" data-i18n="dl.uploadPath">本地路径</label>
+            <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="channel.endDate">结束时间</label>
-            <input class="form-input" name="end_date" type="datetime-local">
+            <label class="form-label" data-i18n="dl.uploadTarget">目标频道</label>
+            <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="channel.keywords">关键词</label>
-          <input class="form-input" name="keywords" type="text" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
-        </div>
-        <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
-          <legend class="text-xs font-semibold text-muted" data-i18n="channel.types">下载类型</legend>
-          <div class="grid grid-cols-2 gap-y-1 gap-x-2.5">
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video" checked class="w-4 h-4">video</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="photo" checked class="w-4 h-4">photo</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="audio" checked class="w-4 h-4">audio</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="voice" checked class="w-4 h-4">voice</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="animation" checked class="w-4 h-4">animation</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="document" checked class="w-4 h-4">document</label>
-            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video_note" checked class="w-4 h-4">video_note</label>
-          </div>
-        </fieldset>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-          <input type="checkbox" name="include_comment" class="w-4 h-4">
-          <span data-i18n="channel.includeComment">包含评论区</span>
-        </label>
-        <button type="submit" class="form-submit">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="channel.create">创建频道下载</span>
-        </button>
-      </form>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
+            <input type="checkbox" name="recursive" class="w-4 h-4">
+            <span data-i18n="dl.recursive">递归上传文件夹</span>
+          </label>
+          <button type="submit" class="form-submit">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="dl.createUpload">创建上传任务</span>
+          </button>
+        </form>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ====== Uploads View ====== -->
-<div class="view" id="view-uploads">
-  <div class="panel max-w-[640px]">
+  <!-- Operation History -->
+  <div class="panel">
     <div class="panel-header">
-      <h3 data-i18n="uploads.title">本地上传</h3>
+      <h3 data-i18n="dl.history">操作历史</h3>
+      <button class="btn btn-sm" id="dl-history-refresh">
+        <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="action.refresh">刷新</span>
+      </button>
     </div>
-    <div class="panel-body">
-      <form id="upload-form">
-        <div class="form-group">
-          <label class="form-label" data-i18n="uploads.path">本地路径</label>
-          <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="uploads.target">目标频道</label>
-          <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-          <input type="checkbox" name="recursive" class="w-4 h-4">
-          <span data-i18n="uploads.recursive">递归上传文件夹</span>
-        </label>
-        <button type="submit" class="form-submit">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="uploads.create">创建上传</span>
-        </button>
-      </form>
+    <div class="overflow-auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="w-[80px]" data-i18n="dl.historyId">ID</th>
+            <th class="w-24" data-i18n="dl.historyType">类型</th>
+            <th data-i18n="dl.historyDetail">详情</th>
+            <th class="w-24" data-i18n="dl.historyStatus">状态</th>
+            <th class="w-40" data-i18n="dl.historyError">错误信息</th>
+            <th class="w-[160px]" data-i18n="dl.historyTime">创建时间</th>
+          </tr>
+        </thead>
+        <tbody id="dl-operations-tbody"></tbody>
+      </table>
+      <div id="dl-operations-empty" class="p-8 text-center text-muted text-sm" data-i18n="dl.historyEmpty">还没有下载或上传操作记录。</div>
     </div>
   </div>
 </div>
@@ -1091,8 +1124,7 @@ const i18n = {
     'nav.section.system': '系统',
     'nav.transfers': '转存任务',
     'nav.watches': '实时监听',
-    'nav.channelDownloads': '频道下载',
-    'nav.uploads': '本地上传',
+    'nav.downloadsUploads': '下载与上传',
     'nav.statistics': '统计面板',
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
@@ -1145,22 +1177,35 @@ const i18n = {
     'watches.sourceRequired': '来源频道为必填项。',
     'action.cancel': '取消',
     'action.save': '保存',
-    'channel.title': '频道下载',
-    'channel.link': '频道链接',
-    'channel.startDate': '起始时间',
-    'channel.endDate': '结束时间',
-    'channel.types': '下载类型',
-    'channel.keywords': '关键词',
-    'channel.keywordsPlaceholder': '逗号分隔，可留空',
-    'channel.includeComment': '包含评论区',
-    'channel.create': '创建频道下载',
-    'channel.accepted': '频道下载任务已创建。',
-    'uploads.title': '本地上传',
-    'uploads.path': '本地路径',
-    'uploads.target': '目标频道',
-    'uploads.recursive': '递归上传文件夹',
-    'uploads.create': '创建上传',
-    'uploads.accepted': '上传任务已创建。',
+    // merged downloads & uploads page
+    'dl.title': '频道下载',
+    'dl.meta': '从 Telegram 频道拉取文件',
+    'dl.link': '频道链接',
+    'dl.startDate': '起始时间',
+    'dl.endDate': '结束时间',
+    'dl.keywords': '关键词',
+    'dl.keywordsPlaceholder': '逗号分隔，可留空',
+    'dl.types': '下载类型',
+    'dl.includeComment': '包含评论区',
+    'dl.create': '创建下载任务',
+    'dl.accepted': '频道下载任务已创建。',
+    'dl.uploadTitle': '本地上传',
+    'dl.uploadMeta': '推送到 Telegram 频道',
+    'dl.uploadPath': '本地路径',
+    'dl.uploadTarget': '目标频道',
+    'dl.recursive': '递归上传文件夹',
+    'dl.createUpload': '创建上传任务',
+    'dl.uploadAccepted': '上传任务已创建。',
+    'dl.history': '操作历史',
+    'dl.historyId': 'ID',
+    'dl.historyType': '类型',
+    'dl.historyDetail': '详情',
+    'dl.historyStatus': '状态',
+    'dl.historyError': '错误信息',
+    'dl.historyTime': '创建时间',
+    'dl.historyEmpty': '还没有下载或上传操作记录。',
+    'dl.typeDownload': '频道下载',
+    'dl.typeUpload': '本地上传',
     'statistics.title': '统计与导出',
     'statistics.table': '表格',
     'statistics.available': '可用',
@@ -1308,8 +1353,7 @@ const i18n = {
     'nav.section.system': 'System',
     'nav.transfers': 'Transfer Tasks',
     'nav.watches': 'Live Watches',
-    'nav.channelDownloads': 'Channel DL',
-    'nav.uploads': 'Uploads',
+    'nav.downloadsUploads': 'DL & Upload',
     'nav.statistics': 'Statistics',
     'nav.settings': 'Settings',
     'nav.records': 'Records',
@@ -1362,22 +1406,35 @@ const i18n = {
     'watches.sourceRequired': 'Source link is required.',
     'action.cancel': 'Cancel',
     'action.save': 'Save',
-    'channel.title': 'Channel Download',
-    'channel.link': 'Channel link',
-    'channel.startDate': 'Start time',
-    'channel.endDate': 'End time',
-    'channel.types': 'Download types',
-    'channel.keywords': 'Keywords',
-    'channel.keywordsPlaceholder': 'Comma-separated, optional',
-    'channel.includeComment': 'Include comments',
-    'channel.create': 'Create download',
-    'channel.accepted': 'Channel download task created.',
-    'uploads.title': 'Local Upload',
-    'uploads.path': 'Local path',
-    'uploads.target': 'Target channel',
-    'uploads.recursive': 'Upload folder recursively',
-    'uploads.create': 'Create upload',
-    'uploads.accepted': 'Upload task created.',
+    // merged downloads & uploads page
+    'dl.title': 'Channel Download',
+    'dl.meta': 'Pull files from Telegram channels',
+    'dl.link': 'Channel link',
+    'dl.startDate': 'Start time',
+    'dl.endDate': 'End time',
+    'dl.keywords': 'Keywords',
+    'dl.keywordsPlaceholder': 'Comma-separated, optional',
+    'dl.types': 'Download types',
+    'dl.includeComment': 'Include comments',
+    'dl.create': 'Create download',
+    'dl.accepted': 'Channel download task created.',
+    'dl.uploadTitle': 'Local Upload',
+    'dl.uploadMeta': 'Push files to Telegram channel',
+    'dl.uploadPath': 'Local path',
+    'dl.uploadTarget': 'Target channel',
+    'dl.recursive': 'Upload folder recursively',
+    'dl.createUpload': 'Create upload',
+    'dl.uploadAccepted': 'Upload task created.',
+    'dl.history': 'Operation History',
+    'dl.historyId': 'ID',
+    'dl.historyType': 'Type',
+    'dl.historyDetail': 'Detail',
+    'dl.historyStatus': 'Status',
+    'dl.historyError': 'Error',
+    'dl.historyTime': 'Created',
+    'dl.historyEmpty': 'No download or upload operations yet.',
+    'dl.typeDownload': 'Channel DL',
+    'dl.typeUpload': 'Local Upload',
     'statistics.title': 'Statistics & Export',
     'statistics.table': 'Table',
     'statistics.available': 'Available',
@@ -1656,6 +1713,7 @@ function switchView(view) {
 
   if (view === 'transfers') renderTasks();
   if (view === 'watches') loadWatches();
+  if (view === 'downloads-uploads') { loadDownloadTypes(); loadOperations(); }
   if (view === 'settings') loadSettings();
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
@@ -2097,6 +2155,7 @@ $('#refresh').addEventListener('click', () => {
   if (state.activeView === 'settings') loadSettings();
   if (state.activeView === 'watches') loadWatches();
   if (state.activeView === 'statistics') loadStatistics();
+  if (state.activeView === 'downloads-uploads') loadOperations();
 });
 
 /* ====== Logout ====== */
@@ -2328,7 +2387,24 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
   }
 });
 
-/* ====== Channel Download ====== */
+/* ====== Downloads & Uploads ====== */
+
+/* download type checkboxes — populate from global settings defaults */
+function loadDownloadTypes() {
+  const grid = $('#dl-download-type-grid');
+  if (!grid) return;
+  const types = ['video','photo','audio','voice','animation','document','video_note'];
+  const settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
+  const selected = Array.isArray(settings) ? settings : types;
+  grid.innerHTML = types.map(t =>
+    '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
+      '<input type="checkbox" name="download_type" value="' + t + '" class="w-4 h-4"' + (selected.includes(t) ? ' checked' : '') + '>' +
+      '<span>' + t + '</span>' +
+    '</label>'
+  ).join('');
+}
+
+/* Channel Download form */
 $('#channel-download-form')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const fd = new FormData(this);
@@ -2348,14 +2424,16 @@ $('#channel-download-form')?.addEventListener('submit', async function(e) {
   }
   try {
     await postJson('/api/channel-downloads', payload);
-    alert(t('channel.accepted'));
+    alert(t('dl.accepted'));
     this.reset();
+    loadDownloadTypes();
+    loadOperations();
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
 
-/* ====== Upload ====== */
+/* Upload form */
 $('#upload-form')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const fd = new FormData(this);
@@ -2365,12 +2443,52 @@ $('#upload-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       recursive: Boolean(fd.get('recursive')),
     });
-    alert(t('uploads.accepted'));
+    alert(t('dl.uploadAccepted'));
     this.reset();
+    loadOperations();
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
+
+/* Operations history */
+async function loadOperations() {
+  if (state.activeView !== 'downloads-uploads') return;
+  const tbody = $('#dl-operations-tbody');
+  const empty = $('#dl-operations-empty');
+  try {
+    const data = await fetchJson('/api/operations');
+    const ops = data.operations || [];
+    if (!ops.length) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = ops.map(op => {
+      const typeLabel = op.type === 'channel_download' ? t('dl.typeDownload') : t('dl.typeUpload');
+      const payload = op.payload || {};
+      const detail = op.type === 'channel_download'
+        ? (payload.chat_link || '-')
+        : (payload.path || '-');
+      return '<tr>' +
+        '<td class="font-mono text-xs text-muted">' + esc(String(op.id || '-')) + '</td>' +
+        '<td><span class="badge ' + (op.type === 'channel_download' ? 'badge-running' : 'badge-success') + '">' + esc(typeLabel) + '</span></td>' +
+        '<td class="text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(detail) + '</td>' +
+        '<td>' + statusBadge(op.status) + '</td>' +
+        '<td class="text-xs text-danger max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(op.error_message || '') + '">' + esc(op.error_message || '-') + '</td>' +
+        '<td class="text-xs text-muted">' + fmtTime(op.created_at) + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) {}
+}
+
+$('#dl-history-refresh')?.addEventListener('click', () => loadOperations());
+
+/* poll operations when active */
+setInterval(() => {
+  if (state.activeView === 'downloads-uploads') loadOperations();
+}, 10000);
 
 /* ====== Statistics ====== */
 async function loadStatistics() {
@@ -3187,72 +3305,65 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
     <p class="mob-empty hidden" id="mob-settings-notice"></p>
   </div>
 
-  <!-- 频道下载 -->
-  <div class="mob-view" id="mob-view-channel-downloads">
+  <!-- 下载与上传（合并） -->
+  <div class="mob-view" id="mob-view-downloads-uploads">
+    <!-- 频道下载 -->
     <div class="mob-collapse" id="collapse-channel-form">
-      <div class="mob-collapse__head" data-i18n="channel.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__head" data-i18n="dl.title">频道下载 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body">
         <form id="mob-channel-form">
-          <label><span data-i18n="channel.link">频道链接</span>
+          <label><span data-i18n="dl.link">频道链接</span>
             <input type="text" name="chat_link" placeholder="https://t.me/..." required>
           </label>
           <div class="grid grid-cols-2 gap-2.5">
-            <label><span data-i18n="channel.startDate">起始时间</span>
+            <label><span data-i18n="dl.startDate">起始时间</span>
               <input type="datetime-local" name="start_date">
             </label>
-            <label><span data-i18n="channel.endDate">结束时间</span>
+            <label><span data-i18n="dl.endDate">结束时间</span>
               <input type="datetime-local" name="end_date">
             </label>
           </div>
-          <label><span data-i18n="channel.keywords">关键词</span>
-            <input type="text" name="keywords" data-i18n-placeholder="channel.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+          <label><span data-i18n="dl.keywords">关键词</span>
+            <input type="text" name="keywords" data-i18n-placeholder="dl.keywordsPlaceholder" placeholder="逗号分隔，可留空">
           </label>
           <fieldset class="mob-check-group">
-            <legend data-i18n="channel.types">下载类型</legend>
-            <div id="mob-channel-download-types" class="grid grid-cols-2 gap-y-0.5 gap-x-2.5">
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="video" checked class="!w-auto !min-h-0">video</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="photo" checked class="!w-auto !min-h-0">photo</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="audio" checked class="!w-auto !min-h-0">audio</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="voice" checked class="!w-auto !min-h-0">voice</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="animation" checked class="!w-auto !min-h-0">animation</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="document" checked class="!w-auto !min-h-0">document</label>
-              <label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="video_note" checked class="!w-auto !min-h-0">video_note</label>
-            </div>
+            <legend data-i18n="dl.types">下载类型</legend>
+            <div id="mob-channel-download-types" class="grid grid-cols-2 gap-y-0.5 gap-x-2.5"></div>
           </fieldset>
           <label class="!flex-row !items-center gap-2">
             <input type="checkbox" name="include_comment" class="!w-auto !min-h-0">
-            <span data-i18n="channel.includeComment">包含评论区</span>
+            <span data-i18n="dl.includeComment">包含评论区</span>
           </label>
-          <button type="submit" class="mob-btn w-full" data-i18n="channel.create">创建频道下载</button>
+          <button type="submit" class="mob-btn w-full" data-i18n="dl.create">创建下载任务</button>
           <p class="mob-empty hidden" id="mob-channel-notice"></p>
         </form>
       </div>
     </div>
-    <div id="mob-channel-downloads-list"></div>
-  </div>
 
-  <!-- 本地上传 -->
-  <div class="mob-view" id="mob-view-uploads">
+    <!-- 本地上传 -->
     <div class="mob-collapse" id="collapse-upload-form">
-      <div class="mob-collapse__head" data-i18n="uploads.title">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
+      <div class="mob-collapse__head" data-i18n="dl.uploadTitle">本地上传 <span class="mob-collapse__arrow">&#9660;</span></div>
       <div class="mob-collapse__body">
         <form id="mob-upload-form">
-          <label><span data-i18n="uploads.path">本地路径</span>
+          <label><span data-i18n="dl.uploadPath">本地路径</span>
             <input type="text" name="path" placeholder="/path/to/file" required>
           </label>
-          <label><span data-i18n="uploads.target">目标频道</span>
+          <label><span data-i18n="dl.uploadTarget">目标频道</span>
             <input type="text" name="target_link" placeholder="https://t.me/..." required>
           </label>
           <label class="!flex-row !items-center gap-2">
             <input type="checkbox" name="recursive" class="!w-auto !min-h-0">
-            <span data-i18n="uploads.recursive">递归上传文件夹</span>
+            <span data-i18n="dl.recursive">递归上传文件夹</span>
           </label>
-          <button type="submit" class="mob-btn w-full" data-i18n="uploads.create">创建上传</button>
+          <button type="submit" class="mob-btn w-full" data-i18n="dl.createUpload">创建上传任务</button>
           <p class="mob-empty hidden" id="mob-upload-notice"></p>
         </form>
       </div>
     </div>
-    <div id="mob-uploads-list"></div>
+
+    <!-- 操作历史 -->
+    <div class="mob-section-title" data-i18n="dl.history">操作历史</div>
+    <div id="mob-operations-list"></div>
   </div>
 
   <!-- 统计 -->
@@ -3310,13 +3421,9 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
 <div class="mob-drawer-overlay" id="mob-drawer-overlay">
   <div class="mob-drawer" id="mob-drawer">
     <div class="mob-drawer__handle"></div>
-    <button class="mob-drawer__item" data-mob-drawer-nav="channel-downloads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.channelDownloads">频道下载</span>
-    </button>
-    <button class="mob-drawer__item" data-mob-drawer-nav="uploads">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span data-i18n="nav.uploads">本地上传</span>
+    <button class="mob-drawer__item" data-mob-drawer-nav="downloads-uploads">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M8 17l4 4 4-4M12 21V3M4 10l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="nav.downloadsUploads">下载与上传</span>
     </button>
     <button class="mob-drawer__item" data-mob-drawer-nav="statistics">
       <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -3349,8 +3456,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       'app.title': 'TRMD 转存控制台',
       'nav.transfers': '转存任务',
       'nav.watches': '实时监听',
-      'nav.channelDownloads': '频道下载',
-      'nav.uploads': '本地上传',
+      'nav.downloadsUploads': '下载与上传',
       'nav.statistics': '统计',
       'nav.settings': '设置',
       'nav.records': '下载记录',
@@ -3405,26 +3511,34 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       'watches.targetRequired': '目标频道为必填项。',
       'action.cancel': '取消',
       'action.save': '保存',
-      'channel.title': '频道下载',
-      'channel.meta': '筛选后创建下载',
-      'channel.link': '频道链接',
-      'channel.startDate': '起始时间',
-      'channel.endDate': '结束时间',
-      'channel.types': '下载类型',
-      'channel.keywords': '关键词',
-      'channel.keywordsPlaceholder': '逗号分隔，可留空',
-      'channel.includeComment': '包含评论区',
-      'channel.hint': '频道下载会检索匹配消息并创建下载任务，执行时间取决于频道历史消息数量。',
-      'channel.create': '创建频道下载',
-      'channel.accepted': '频道下载已接收。',
-      'uploads.title': '本地上传',
-      'uploads.meta': '服务器路径',
-      'uploads.path': '本地路径',
-      'uploads.target': '目标频道',
-      'uploads.recursive': '递归上传文件夹',
-      'uploads.serverPathHint': '路径位于运行 TRMD 的服务器或容器，不是当前浏览器所在电脑。关闭递归时，文件夹只上传第一层文件；开启递归时包含子文件夹。',
-      'uploads.create': '创建上传',
-      'uploads.accepted': '上传任务已接收。',
+      'dl.title': '频道下载',
+      'dl.meta': '从 Telegram 频道拉取文件',
+      'dl.link': '频道链接',
+      'dl.startDate': '起始时间',
+      'dl.endDate': '结束时间',
+      'dl.types': '下载类型',
+      'dl.keywords': '关键词',
+      'dl.keywordsPlaceholder': '逗号分隔，可留空',
+      'dl.includeComment': '包含评论区',
+      'dl.create': '创建下载任务',
+      'dl.accepted': '频道下载任务已创建。',
+      'dl.uploadTitle': '本地上传',
+      'dl.uploadMeta': '推送到 Telegram 频道',
+      'dl.uploadPath': '本地路径',
+      'dl.uploadTarget': '目标频道',
+      'dl.recursive': '递归上传文件夹',
+      'dl.createUpload': '创建上传任务',
+      'dl.uploadAccepted': '上传任务已创建。',
+      'dl.history': '操作历史',
+      'dl.historyId': 'ID',
+      'dl.historyType': '类型',
+      'dl.historyDetail': '详情',
+      'dl.historyStatus': '状态',
+      'dl.historyError': '错误信息',
+      'dl.historyTime': '创建时间',
+      'dl.historyEmpty': '还没有下载或上传操作记录。',
+      'dl.typeDownload': '频道下载',
+      'dl.typeUpload': '本地上传',
       'statistics.title': '统计与导出',
       'statistics.meta': '运行态数据',
       'statistics.table': '表格',
@@ -3626,8 +3740,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       'app.title': 'TRMD Transfer Console',
       'nav.transfers': 'Transfer tasks',
       'nav.watches': 'Live watches',
-      'nav.channelDownloads': 'Channel downloads',
-      'nav.uploads': 'Local uploads',
+      'nav.downloadsUploads': 'DL & Upload',
       'nav.statistics': 'Statistics',
       'nav.settings': 'Settings',
       'nav.records': 'Download records',
@@ -3682,26 +3795,34 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       'watches.targetRequired': 'Target link is required.',
       'action.cancel': 'Cancel',
       'action.save': 'Save',
-      'channel.title': 'Channel download',
-      'channel.meta': 'Create downloads after filtering',
-      'channel.link': 'Channel link',
-      'channel.startDate': 'Start time',
-      'channel.endDate': 'End time',
-      'channel.types': 'Download types',
-      'channel.keywords': 'Keywords',
-      'channel.keywordsPlaceholder': 'Comma-separated, optional',
-      'channel.includeComment': 'Include discussion replies',
-      'channel.hint': 'Channel download scans matching messages and creates download tasks. Runtime depends on channel history size.',
-      'channel.create': 'Create channel download',
-      'channel.accepted': 'Channel download accepted.',
-      'uploads.title': 'Local upload',
-      'uploads.meta': 'Server path',
-      'uploads.path': 'Local path',
-      'uploads.target': 'Target channel',
-      'uploads.recursive': 'Upload folder recursively',
-      'uploads.serverPathHint': 'The path is on the server or container running TRMD, not on this browser device. With recursion off, a folder uploads only its top-level files; with recursion on, subfolders are included.',
-      'uploads.create': 'Create upload',
-      'uploads.accepted': 'Upload request accepted.',
+      'dl.title': 'Channel Download',
+      'dl.meta': 'Pull files from Telegram channels',
+      'dl.link': 'Channel link',
+      'dl.startDate': 'Start time',
+      'dl.endDate': 'End time',
+      'dl.types': 'Download types',
+      'dl.keywords': 'Keywords',
+      'dl.keywordsPlaceholder': 'Comma-separated, optional',
+      'dl.includeComment': 'Include comments',
+      'dl.create': 'Create download',
+      'dl.accepted': 'Channel download task created.',
+      'dl.uploadTitle': 'Local Upload',
+      'dl.uploadMeta': 'Push files to Telegram channel',
+      'dl.uploadPath': 'Local path',
+      'dl.uploadTarget': 'Target channel',
+      'dl.recursive': 'Upload folder recursively',
+      'dl.createUpload': 'Create upload',
+      'dl.uploadAccepted': 'Upload task created.',
+      'dl.history': 'Operation History',
+      'dl.historyId': 'ID',
+      'dl.historyType': 'Type',
+      'dl.historyDetail': 'Detail',
+      'dl.historyStatus': 'Status',
+      'dl.historyError': 'Error',
+      'dl.historyTime': 'Created',
+      'dl.historyEmpty': 'No download or upload operations yet.',
+      'dl.typeDownload': 'Channel DL',
+      'dl.typeUpload': 'Local Upload',
       'statistics.title': 'Statistics and export',
       'statistics.meta': 'Runtime data',
       'statistics.table': 'Table',
@@ -5153,6 +5274,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     $$('.mob-tab').forEach(el => el.classList.toggle('active', el.dataset.mobNav === view));
     closeDrawer();
     closeFabMenu();
+    if (view === 'downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
     if (view === 'settings') loadSettings();
     if (view === 'records') loadRecords();
     if (view === 'watches') loadWatches();
@@ -5968,7 +6090,111 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     });
   }
 
-  /* ====== Phase 2: 频道下载 ====== */
+  /* ====== 下载与上传（合并页面） ====== */
+
+  /* 初始化下载类型 checkboxes（移动端） */
+  function mobInitDownloadTypes() {
+    var grid = $('#mob-channel-download-types');
+    if (!grid) return;
+    var types = ['video','photo','audio','voice','animation','document','video_note'];
+    var settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
+    var selected = Array.isArray(settings) ? settings : types;
+    grid.innerHTML = types.map(function(t) {
+      return '<label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="' + t + '" class="!w-auto !min-h-0"' + (selected.indexOf(t) >= 0 ? ' checked' : '') + '>' + t + '</label>';
+    }).join('');
+  }
+
+  /* 频道下载表单 */
+  var channelForm = $('#mob-channel-form');
+  if (channelForm) {
+    channelForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.include_comment = !!payload.include_comment;
+      if (payload.start_date) {
+        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
+        delete payload.start_date;
+      }
+      if (payload.end_date) {
+        payload.date_range = payload.date_range || {};
+        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
+        delete payload.end_date;
+      }
+      if (payload.keywords) {
+        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      } else {
+        payload.keywords = [];
+      }
+      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
+      try {
+        await postJson('/api/channel-downloads', payload);
+        showToast(t('dl.accepted'));
+        this.reset();
+        mobInitDownloadTypes();
+        loadMobileOperations();
+        $('#collapse-channel-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 本地上传表单 */
+  var uploadForm = $('#mob-upload-form');
+  if (uploadForm) {
+    uploadForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      var form = new FormData(this);
+      var payload = Object.fromEntries(form.entries());
+      payload.recursive = !!payload.recursive;
+      try {
+        await postJson('/api/uploads', payload);
+        showToast(t('dl.uploadAccepted'));
+        this.reset();
+        loadMobileOperations();
+        $('#collapse-upload-form').classList.remove('open');
+      } catch (err) {
+        showToast(translateApiError(err, 'form.requestFailed'));
+      }
+    });
+  }
+
+  /* 操作历史列表（移动端） */
+  async function loadMobileOperations() {
+    var container = $('#mob-operations-list');
+    if (!container) return;
+    try {
+      var data = await fetchJson('/api/operations');
+      var ops = data.operations || [];
+      if (!ops.length) {
+        container.innerHTML = '<div class="mob-empty">' + t('dl.historyEmpty') + '</div>';
+        return;
+      }
+      container.innerHTML = ops.map(function(op) {
+        var typeLabel = op.type === 'channel_download' ? t('dl.typeDownload') : t('dl.typeUpload');
+        var payload = op.payload || {};
+        var detail = op.type === 'channel_download' ? (payload.chat_link || '-') : (payload.path || '-');
+        return '<div class="mob-card status-' + (op.status || 'pending') + '">'
+          + '<div class="mob-card__head">'
+          + '<span class="mob-card__title">' + esc(typeLabel) + ' · ' + esc(String(op.id || '-')) + '</span>'
+          + mobBadge(op.status)
+          + '</div>'
+          + '<div class="mob-card__row"><span class="label">' + t('dl.historyDetail') + '</span><span>' + esc(detail) + '</span></div>'
+          + (op.error_message ? '<div class="mob-card__row"><span class="label">' + t('dl.historyError') + '</span><span class="text-danger">' + esc(op.error_message) + '</span></div>' : '')
+          + '<div class="mob-card__row"><span class="label">' + t('dl.historyTime') + '</span><span>' + esc(op.created_at || '') + '</span></div>'
+          + '</div>';
+      }).join('');
+    } catch(e) {}
+  }
+
+  /* 操作历史轮询（移动端） */
+  setInterval(function() {
+    var activeView = document.querySelector('.mob-view.active');
+    if (activeView && activeView.id === 'mob-view-downloads-uploads') loadMobileOperations();
+  }, 10000);
+
+  /* ====== 下载记录（移动端） ====== */
   function renderMobRecords() {
     var records = state.records || [];
     var container = $('#mob-records-list');
@@ -5987,7 +6213,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     }).join('');
   }
 
-  /* ====== Phase 2: 统计表格 ====== */
+  /* ====== 统计表格（移动端） ====== */
   function renderMobStatistics() {
     var stats = state.statistics;
     var container = $('#mob-statistics-list');
@@ -6025,64 +6251,6 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     try { await _origLoadStatistics(); } catch(e) {}
     renderMobStatistics();
   };
-
-  /* ====== Phase 2 事件绑定 ====== */
-
-  /* 频道下载表单 */
-  var channelForm = $('#mob-channel-form');
-  if (channelForm) {
-    channelForm.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.include_comment = !!payload.include_comment;
-      if (payload.start_date) {
-        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
-        delete payload.start_date;
-      }
-      if (payload.end_date) {
-        payload.date_range = payload.date_range || {};
-        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
-        delete payload.end_date;
-      }
-      if (payload.keywords) {
-        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-      } else {
-        payload.keywords = [];
-      }
-      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
-      try {
-        await postJson('/api/channel-downloads', payload);
-        showToast(t('channel.accepted'));
-        this.reset();
-        $('#collapse-channel-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
-      }
-    });
-  }
-
-  /* 本地上传表单 */
-  var uploadForm = $('#mob-upload-form');
-  if (uploadForm) {
-    uploadForm.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.recursive = !!payload.recursive;
-      try {
-        await postJson('/api/uploads', payload);
-        showToast(t('uploads.accepted'));
-        this.reset();
-        $('#collapse-upload-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
-      }
-    });
-  }
-
-  /* 统计导出 */
-  /* 已通过 loadStatistics 覆盖自动渲染 */
 
   /* ====== 初始加载（由 checkAuthStatus 驱动） ====== */
 </script>
