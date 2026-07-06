@@ -439,7 +439,7 @@
       }
       panel.innerHTML = '';
       items.forEach(function(evt) {
-        var time = new Date(evt.created_at + 'Z').toLocaleString();
+        var time = new Date(evt.created_at).toLocaleString();
         var statusClass = evt.status === 'success' ? 'success' : 'warning';
         var statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
         var div = document.createElement('div');

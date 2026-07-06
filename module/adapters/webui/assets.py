@@ -2119,8 +2119,8 @@ async function loadRecords() {
     }
     empty.style.display = 'none';
     tbody.innerHTML = records.map(r => '<tr>' +
-      '<td class="text-xs font-mono text-muted">' + esc(String(r.chat_id || '-')) + '</td>' +
-      '<td class="text-xs font-mono text-muted">' + esc(String(r.message_id || '-')) + '</td>' +
+      '<td class="text-xs font-mono text-muted">' + esc(String(r.source_chat_id || '-')) + '</td>' +
+      '<td class="text-xs font-mono text-muted">' + esc(String(r.source_message_id || '-')) + '</td>' +
       '<td class="text-xs max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(r.file_path || r.file_name || '-') + '</td>' +
       '<td class="text-xs">' + fmtSize(r.file_size) + '</td>' +
       '<td class="text-xs text-muted">' + fmtTime(r.updated_at) + '</td>' +
@@ -2223,7 +2223,7 @@ async function loadWatchEvents(watchId, offset) {
       return;
     }
     items.forEach(evt => {
-      const time = new Date(evt.created_at + 'Z').toLocaleString();
+      const time = new Date(evt.created_at).toLocaleString();
       const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
       const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
       const div = document.createElement('div');
@@ -4505,7 +4505,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         return;
       }
       items.forEach(evt => {
-        const time = new Date(evt.created_at + 'Z').toLocaleString();
+        const time = new Date(evt.created_at).toLocaleString();
         const statusClass = evt.status === 'success' ? 'success' : 'warning';
         const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
         const div = document.createElement('div');
@@ -5367,7 +5367,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       }
       panel.innerHTML = '';
       items.forEach(function(evt) {
-        var time = new Date(evt.created_at + 'Z').toLocaleString();
+        var time = new Date(evt.created_at).toLocaleString();
         var statusClass = evt.status === 'success' ? 'success' : 'warning';
         var statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
         var div = document.createElement('div');

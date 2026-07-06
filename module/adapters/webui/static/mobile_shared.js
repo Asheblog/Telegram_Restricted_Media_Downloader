@@ -1161,7 +1161,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         return;
       }
       items.forEach(evt => {
-        const time = new Date(evt.created_at + 'Z').toLocaleString();
+        const time = new Date(evt.created_at).toLocaleString();
         const statusClass = evt.status === 'success' ? 'success' : 'warning';
         const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
         const div = document.createElement('div');
