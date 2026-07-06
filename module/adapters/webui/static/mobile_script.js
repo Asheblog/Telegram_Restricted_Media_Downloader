@@ -1,1206 +1,1154 @@
+// ================================================================
+// mobile_script.js v2 — 4-tab clean navigation, no FAB/Drawer
+// ================================================================
 
-  /* ====== 登录流程（移动端） ====== */
-  var authPollTimer = null;
-  var authStep = '';
+// ---------------------------------------------------------------------------
+// Shortcuts
+// ---------------------------------------------------------------------------
+function $(sel) { return document.querySelector(sel); }
 
-  function showLoginStep(step) {
-    authStep = step;
-    var steps = ['login-form-phone', 'login-form-code', 'login-form-password', 'login-form-recovery', 'login-form-signup', 'login-form-done'];
-    steps.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
-    var el = document.getElementById('login-form-' + step);
-    if (el) el.style.display = '';
-    var container = document.getElementById('login-container');
-    if (container) container.classList.add('active');
-    var loginError = document.getElementById('login-error');
-    if (loginError) loginError.classList.remove('visible');
-  }
+// ---------------------------------------------------------------------------
+// Login helpers (delegates to mobile_shared.js)
+// ---------------------------------------------------------------------------
+function showLoginStep(step) {
+  var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
+  steps.forEach(function(id) { var el = document.getElementById('login-form-' + id); if (el) el.style.display = 'none'; });
+  var el = document.getElementById('login-form-' + step);
+  if (el) el.style.display = '';
+  var container = document.getElementById('login-container');
+  if (container && !container.classList.contains('active')) container.classList.add('active');
+  var loginError = document.getElementById('login-error');
+  if (loginError) loginError.classList.remove('visible');
+}
 
-  function hideLogin() {
-    var container = document.getElementById('login-container');
-    if (container) container.classList.remove('active');
-    if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
-  }
+function hideLogin() {
+  var container = document.getElementById('login-container');
+  if (container) container.classList.remove('active');
+}
 
-  function showLoginError(msg) {
-    var el = document.getElementById('login-error');
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.add('visible');
-  }
+function showLoginError(msg) {
+  var el = document.getElementById('login-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+}
 
-  async function checkAuthStatus() {
-    try {
-      var resp = await fetch('/api/auth/status');
-      if (resp.status === 401) return;
-      var state = await resp.json();
-      if (!state || !state.step) return;
-      switch (state.step) {
-        case 'pending':
-          var container = document.getElementById('login-container');
-          if (container) container.classList.remove('active');
-          return;
-        case 'done': case 'none':
-          hideLogin();
-          loadTasks();
-          startPolling();
-          return;
-        case 'phone':
-          showLoginStep('phone');
-          if (state.error) showLoginError(state.error);
-          break;
-        case 'code':
-          showLoginStep('code');
-          if (state.code_type) {
-            var desc = document.getElementById('login-code-desc');
-            if (desc) desc.textContent = '\u9a8c\u8bc1\u7801\u5df2\u901a\u8fc7\u300c' + state.code_type + '\u300d\u53d1\u9001';
-          }
-          if (state.error) showLoginError(state.error);
-          break;
-        case 'password':
-          showLoginStep('password');
-          var hintEl = document.getElementById('login-password-hint-text');
-          if (hintEl && state.hint) hintEl.textContent = state.hint;
-          if (state.error) showLoginError(state.error);
-          break;
-        case 'recovery_code':
-          showLoginStep('recovery');
-          var rDesc = document.getElementById('login-recovery-desc');
-          if (rDesc && state.message) rDesc.textContent = state.message;
-          if (state.error) showLoginError(state.error);
-          break;
-        case 'signup':
-          showLoginStep('signup');
-          if (state.error) showLoginError(state.error);
-          break;
-        case 'error':
-          if (state.error) showLoginError(state.error);
-          break;
-        default:
-          break;
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  async function submitAuth(payload) {
-    var btn = document.querySelector('.mob-login-submit');
-    if (btn) btn.disabled = true;
-    showLoginError('');
-    try {
-      await fetch('/api/auth/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      await new Promise(function(r) { setTimeout(r, 500); });
-      await checkAuthStatus();
-    } catch (e) {
-      showLoginError('\u63d0\u4ea4\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5');
-    } finally {
-      if (btn) btn.disabled = false;
+async function checkAuthStatus() {
+  try {
+    var resp = await fetch('/api/auth/status');
+    if (resp.status === 401) return;
+    var state = await resp.json();
+    if (!state || !state.step) return;
+    switch (state.step) {
+      case 'pending':
+        var container = document.getElementById('login-container');
+        if (container) container.classList.remove('active');
+        return;
+      case 'done': case 'none':
+        hideLogin();
+        startPolling();
+        return;
+      case 'phone':
+        showLoginStep('phone');
+        if (state.error) showLoginError(state.error);
+        break;
+      case 'code':
+        showLoginStep('code');
+        if (state.code_type) {
+          var desc = document.getElementById('login-code-desc');
+          if (desc) desc.textContent = '验证码已通过「' + state.code_type + '」发送';
+        }
+        if (state.error) showLoginError(state.error);
+        break;
+      case 'password':
+        showLoginStep('password');
+        var hintEl = document.getElementById('login-password-hint-text');
+        if (hintEl && state.hint) hintEl.textContent = state.hint;
+        if (state.error) showLoginError(state.error);
+        break;
+      case 'recovery_code':
+        showLoginStep('recovery');
+        var rDesc = document.getElementById('login-recovery-desc');
+        if (rDesc && state.message) rDesc.textContent = state.message;
+        if (state.error) showLoginError(state.error);
+        break;
+      case 'signup':
+        showLoginStep('signup');
+        if (state.error) showLoginError(state.error);
+        break;
+      case 'error':
+        if (state.error) showLoginError(state.error);
+        break;
+      default:
+        break;
     }
-  }
+  } catch (e) { /* ignore */ }
+}
 
-  /* phone submit */
-  var phoneBtn = document.getElementById('login-btn-phone');
-  if (phoneBtn) {
-    phoneBtn.addEventListener('click', function() {
-      var phone = document.getElementById('login-phone').value.trim();
-      if (!phone) { showLoginError('\u8bf7\u8f93\u5165\u7535\u8bdd\u53f7\u7801'); return; }
-      if (!phone.startsWith('+')) { showLoginError('\u7535\u8bdd\u53f7\u7801\u9700\u4ee5 +\u5730\u533a\u53f7\u5f00\u5934'); return; }
-      submitAuth({ phone: phone });
-    });
+async function submitAuth(payload) {
+  var btns = document.querySelectorAll('.mob-login-submit');
+  btns.forEach(function(b) { b.disabled = true; });
+  showLoginError('');
+  try {
+    await fetch('/api/auth/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    await new Promise(function(r) { setTimeout(r, 500); });
+    await checkAuthStatus();
+  } catch (e) {
+    showLoginError('提交失败，请重试');
+  } finally {
+    btns.forEach(function(b) { b.disabled = false; });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Login button bindings
+// ---------------------------------------------------------------------------
+(function() {
+  var phoneBtn = document.getElementById('login-btn-phone');
+  if (phoneBtn) phoneBtn.addEventListener('click', function() {
+    var phone = document.getElementById('login-phone').value.trim();
+    if (!phone) { showLoginError('请输入电话号码'); return; }
+    submitAuth({ phone: phone });
+  });
 
   var codeBtn = document.getElementById('login-btn-code');
-  if (codeBtn) {
-    codeBtn.addEventListener('click', function() {
-      var code = document.getElementById('login-code').value.trim();
-      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u9a8c\u8bc1\u7801'); return; }
-      submitAuth({ code: code });
-    });
-  }
+  if (codeBtn) codeBtn.addEventListener('click', function() {
+    var code = document.getElementById('login-code').value.trim();
+    if (!code) { showLoginError('请输入验证码'); return; }
+    submitAuth({ code: code });
+  });
 
   var backBtn = document.getElementById('login-btn-back');
-  if (backBtn) {
-    backBtn.addEventListener('click', function() {
-      showLoginStep('phone');
-      document.getElementById('login-code').value = '';
-    });
-  }
+  if (backBtn) backBtn.addEventListener('click', function() {
+    document.getElementById('login-code').value = '';
+    showLoginStep('phone');
+  });
 
   var pwdBtn = document.getElementById('login-btn-password');
-  if (pwdBtn) {
-    pwdBtn.addEventListener('click', function() {
-      var pwd = document.getElementById('login-password').value;
-      submitAuth({ password: pwd });
-    });
-  }
+  if (pwdBtn) pwdBtn.addEventListener('click', function() {
+    var pwd = document.getElementById('login-password').value;
+    if (!pwd) { showLoginError('请输入两步验证密码'); return; }
+    submitAuth({ password: pwd });
+  });
 
   var pwdBackBtn = document.getElementById('login-btn-back-pwd');
-  if (pwdBackBtn) {
-    pwdBackBtn.addEventListener('click', function() {
-      showLoginStep('code');
-      document.getElementById('login-password').value = '';
-    });
-  }
+  if (pwdBackBtn) pwdBackBtn.addEventListener('click', function() {
+    document.getElementById('login-password').value = '';
+    showLoginStep('phone');
+  });
 
   var recBtn = document.getElementById('login-btn-recovery');
-  if (recBtn) {
-    recBtn.addEventListener('click', function() {
-      var code = document.getElementById('login-recovery').value.trim();
-      if (!code) { showLoginError('\u8bf7\u8f93\u5165\u6062\u590d\u4ee3\u7801'); return; }
-      submitAuth({ recovery_code: code });
-    });
-  }
+  if (recBtn) recBtn.addEventListener('click', function() {
+    var code = document.getElementById('login-recovery').value.trim();
+    if (!code) { showLoginError('请输入恢复代码'); return; }
+    submitAuth({ recovery_code: code });
+  });
 
   var recBackBtn = document.getElementById('login-btn-back-recovery');
-  if (recBackBtn) {
-    recBackBtn.addEventListener('click', function() {
-      showLoginStep('password');
-      document.getElementById('login-recovery').value = '';
-    });
-  }
+  if (recBackBtn) recBackBtn.addEventListener('click', function() {
+    document.getElementById('login-recovery').value = '';
+    showLoginStep('phone');
+  });
 
   var signupBtn = document.getElementById('login-btn-signup');
-  if (signupBtn) {
-    signupBtn.addEventListener('click', function() {
-      var first = document.getElementById('login-first-name').value.trim();
-      if (!first) { showLoginError('\u8bf7\u8f93\u5165\u540d\u5b57'); return; }
-      submitAuth({ first_name: first, last_name: document.getElementById('login-last-name').value.trim() });
+  if (signupBtn) signupBtn.addEventListener('click', function() {
+    var first = document.getElementById('login-first-name').value.trim();
+    if (!first) { showLoginError('请输入名字'); return; }
+    submitAuth({ first_name: first, last_name: document.getElementById('login-last-name').value.trim() });
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Polling
+// ---------------------------------------------------------------------------
+var pollTimer = null;
+var initialLoadDone = false;
+
+function hasActiveTasks() { return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) { return t.status === 'running'; })); }
+
+function startPolling() {
+  stopPolling();
+  initialLoadDone = true;
+  loadCurrentView();
+  pollTimer = setInterval(function() { loadCurrentView(); }, hasActiveTasks() ? 3000 : 10000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function loadCurrentView() {
+  var active = document.querySelector('.mob-view.active');
+  if (!active) return;
+  var id = active.id;
+  if (id === 'mob-view-transfers') { renderMobTasks(); }
+  else if (id === 'mob-view-watches') { renderMobWatches(); }
+  else if (id === 'mob-view-downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
+  // profile sub-pages load on demand
+  var subActive = document.querySelector('.mob-subpage.active');
+  if (subActive) {
+    if (subActive.id === 'mob-subpage-statistics') { loadMobileStatistics(); }
+    else if (subActive.id === 'mob-subpage-records') { loadMobileRecords(); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+var currentMainTab = 'transfers';
+var currentProfileSub = null;
+var profileTitles = {
+  statistics: '统计面板',
+  records: '下载记录',
+  media: '媒体管理',
+  settings: '系统设置'
+};
+
+function mobSwitchView(view) {
+  // Hide all main views
+  var views = document.querySelectorAll('.mob-view');
+  views.forEach(function(v) { v.classList.remove('active'); });
+
+  // Show target view
+  var target = document.getElementById('mob-view-' + view);
+  if (target) target.classList.add('active');
+
+  // Update tab bar
+  var tabs = document.querySelectorAll('#mob-tabbar .mob-tab');
+  tabs.forEach(function(t) { t.classList.remove('active'); });
+  var tab = document.querySelector('#mob-tabbar [data-mob-tab="' + view + '"]');
+  if (tab) tab.classList.add('active');
+
+  // Reset top bar (exit sub-page mode)
+  exitSubPage();
+
+  currentMainTab = view;
+
+  // Load content
+  if (view === 'transfers') { renderMobTasks(); }
+  else if (view === 'watches') { renderMobWatches(); }
+  else if (view === 'downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
+  else if (view === 'profile') { /* menu is static, sub-pages load on demand */ }
+}
+
+function mobNavigateTo(subpage) {
+  // Hide profile menu
+  var menu = document.getElementById('mob-profile-menu');
+  if (menu) menu.style.display = 'none';
+
+  // Hide all subpages
+  var subs = document.querySelectorAll('.mob-subpage');
+  subs.forEach(function(s) { s.classList.remove('active'); });
+
+  // Show target subpage
+  var target = document.getElementById('mob-subpage-' + subpage);
+  if (target) target.classList.add('active');
+
+  // Update top bar
+  enterSubPage(profileTitles[subpage] || subpage);
+
+  currentProfileSub = subpage;
+
+  // Load content
+  if (subpage === 'statistics') { loadMobileStatistics(); }
+  else if (subpage === 'records') { loadMobileRecords(); }
+  else if (subpage === 'media') { loadMediaMobile(); }
+  else if (subpage === 'settings') { ensureSettingsForm(); }
+}
+
+function mobNavigateBack() {
+  exitSubPage();
+
+  // Hide all subpages
+  var subs = document.querySelectorAll('.mob-subpage');
+  subs.forEach(function(s) { s.classList.remove('active'); });
+
+  // Show profile menu
+  var menu = document.getElementById('mob-profile-menu');
+  if (menu) menu.style.display = '';
+
+  currentProfileSub = null;
+}
+
+function enterSubPage(title) {
+  var topbar = document.getElementById('mob-topbar');
+  var titleEl = document.getElementById('mob-topbar-title');
+  if (topbar) topbar.classList.add('sub');
+  if (titleEl) titleEl.textContent = title;
+}
+
+function exitSubPage() {
+  var topbar = document.getElementById('mob-topbar');
+  var titleEl = document.getElementById('mob-topbar-title');
+  if (topbar) topbar.classList.remove('sub');
+  if (titleEl) titleEl.textContent = 'TRMD';
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+function showToast(message, duration) {
+  var el = document.getElementById('mob-toast');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(function() { el.classList.remove('show'); }, duration || 2000);
+}
+
+// ---------------------------------------------------------------------------
+// Badge helper
+// ---------------------------------------------------------------------------
+function mobBadge(status) {
+  var map = {
+    pending: '<span class="mob-card__badge pending">等待中</span>',
+    running: '<span class="mob-card__badge running">运行中</span>',
+    paused: '<span class="mob-card__badge paused">已暂停</span>',
+    completed: '<span class="mob-card__badge completed">已完成</span>',
+    success: '<span class="mob-card__badge completed">已完成</span>',
+    failure: '<span class="mob-card__badge failure">失败</span>',
+    cancelled: '<span class="mob-card__badge cancelled">已取消</span>',
+    skipped: '<span class="mob-card__badge cancelled">已跳过</span>'
+  };
+  return map[status] || '<span class="mob-card__badge pending">' + esc(status) + '</span>';
+}
+
+// ---------------------------------------------------------------------------
+// Collapse toggle
+// ---------------------------------------------------------------------------
+function toggleCollapse(head) {
+  var parent = head.closest('.mob-collapse');
+  if (!parent) return;
+  parent.classList.toggle('open');
+}
+
+// ---------------------------------------------------------------------------
+// Task rendering
+// ---------------------------------------------------------------------------
+function renderMobTasks() {
+  var container = document.getElementById('mob-tasks-list');
+  if (!container) return;
+  if (!window.state || !Array.isArray(window.state.tasks)) {
+    container.innerHTML = '<div class="mob-empty">加载中...</div>';
+    return;
+  }
+  if (window.state.tasks.length === 0) {
+    container.innerHTML = '<div class="mob-empty" data-i18n="tasks.empty">还没有转存任务。</div>';
+    return;
+  }
+
+  var html = '';
+  window.state.tasks.forEach(function(t) {
+    var progressPct = t.total_items > 0 ? Math.round((t.success_count || 0) / t.total_items * 100) : 0;
+    html += '<div class="mob-card status-' + esc(t.status) + '" data-task-id="' + t.id + '">' +
+      '<div class="mob-card__head">' +
+        '<span class="mob-card__title">' + esc(t.title || t.source_link || '#' + t.id) + '</span>' +
+        mobBadge(t.status) +
+      '</div>' +
+      '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(t.source_link || '-') + '</span></div>' +
+      '<div class="mob-card__row"><span class="label">进度</span><span>' + (t.success_count || 0) + ' / ' + (t.total_items || '?') + '</span></div>' +
+      '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + progressPct + '%"></div></div>' +
+      '<div class="mob-card__actions">' +
+        (t.status === 'running' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-pause="' + t.id + '">暂停</button>' : '') +
+        (t.status === 'paused' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-resume="' + t.id + '">继续</button>' : '') +
+        (t.status === 'failure' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-retry="' + t.id + '">重试</button>' : '') +
+        '<button class="mob-btn mob-btn-sm mob-btn-danger" data-delete="' + t.id + '">删除</button>' +
+      '</div>' +
+    '</div>';
+  });
+  container.innerHTML = html || '<div class="mob-empty">还没有转存任务。</div>';
+  bindTaskCardEvents(container);
+}
+
+function bindTaskCardEvents(container) {
+  container.querySelectorAll('[data-pause]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); runTaskAction(e, Number(btn.dataset.pause), 'pause'); });
+  });
+  container.querySelectorAll('[data-resume]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); runTaskAction(e, Number(btn.dataset.resume), 'resume'); });
+  });
+  container.querySelectorAll('[data-retry]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); runTaskAction(e, Number(btn.dataset.retry), 'retry-failed'); });
+  });
+  container.querySelectorAll('[data-delete]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); deleteTask(e, Number(btn.dataset.delete)); });
+  });
+  container.querySelectorAll('.mob-card').forEach(function(card) {
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('button')) return;
+      openTaskDetail(Number(card.dataset.taskId));
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Watch rendering
+// ---------------------------------------------------------------------------
+function renderMobWatches() {
+  var container = document.getElementById('mob-watches-list');
+  if (!container) return;
+  if (!window.state || !Array.isArray(window.state.watches)) {
+    container.innerHTML = '<div class="mob-empty">加载中...</div>';
+    return;
+  }
+  if (window.state.watches.length === 0) {
+    container.innerHTML = '<div class="mob-empty" data-i18n="watches.empty">还没有实时监听。</div>';
+    return;
   }
 
-  (function() {
-    checkAuthStatus();
-    authPollTimer = setInterval(function() {
-      if (authStep === 'done' || authStep === 'none') {
-        clearInterval(authPollTimer);
-        authPollTimer = null;
-        return;
-      }
-      checkAuthStatus();
-    }, 2000);
-  })();
+  var typeLabels = { download: '下载监听', forward: '转发监听' };
+  var html = '';
+  window.state.watches.forEach(function(w) {
+    var statusClass = w.enabled !== false ? 'running' : 'paused';
+    var statusLabel = w.enabled !== false ? '运行中' : '已暂停';
+    var sanitized = esc(w.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    html += '<div class="mob-card status-' + statusClass + '">' +
+      '<div class="mob-card__head">' +
+        '<span class="mob-card__title">' + esc(typeLabels[w.type] || w.type || '监听') + '</span>' +
+        '<span class="mob-card__badge ' + statusClass + '">' + statusLabel + '</span>' +
+      '</div>' +
+      '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(Array.isArray(w.source_links) ? w.source_links.join(', ') : (w.source_link || '-')) + '</span></div>' +
+      (w.target_link ? '<div class="mob-card__row"><span class="label">目标</span><span>' + esc(w.target_link) + '</span></div>' : '') +
+      '<div class="mob-card__row"><span class="label">今日</span><span>' + (w.today_count || 0) + '</span></div>' +
+      '<div class="mob-card__actions">' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
+        (w.type === 'download' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">事件</button>' : '') +
+      '</div>' +
+      '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
+    '</div>';
+  });
+  container.innerHTML = html || '<div class="mob-empty">还没有实时监听。</div>';
 
-  /* ====== 移动端初始化 ====== */
-  function hasActiveTasks() {
-    return state.tasks.some(function(t) { return t.status === 'pending' || t.status === 'running'; });
-  }
+  container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
+    btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
+  });
+  container.querySelectorAll('[data-events-watch]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var panel = document.getElementById('mob-watch-events-' + btn.dataset.sanitized);
+      if (!panel) return;
+      var isHidden = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden');
+      if (isHidden) loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
+    });
+  });
+}
 
-  function startPolling() {
-    if (state.taskPollTimer) return;
-    var fastInterval = 3000;
-    var slowInterval = 15000;
-    var currentInterval = fastInterval;
-    var lastPollTime = 0;
-
-    async function poll() {
-      if (document.hidden) { scheduleNext(currentInterval); return; }
-      var now = Date.now();
-      var minGap = currentInterval - 500;
-      if (now - lastPollTime < minGap) { scheduleNext(currentInterval); return; }
-      lastPollTime = now;
-      try { await loadTasks(); } catch (e) { console.warn('Poll failed:', e); }
-      currentInterval = hasActiveTasks() ? fastInterval : slowInterval;
-      scheduleNext(currentInterval);
-    }
-
-    function scheduleNext(interval) {
-      state.taskPollTimer = setTimeout(poll, interval);
-    }
-
-    poll();
-  }
-
-  function stopPolling() {
-    if (state.taskPollTimer) {
-      clearTimeout(state.taskPollTimer);
-      state.taskPollTimer = null;
-    }
-  }
-
-  /* ====== 移动端视图切换 ====== */
-  function mobSwitchView(view) {
-    $$('.mob-view').forEach(el => el.classList.toggle('active', el.id === `mob-view-${view}`));
-    $$('.mob-tab').forEach(el => el.classList.toggle('active', el.dataset.mobNav === view));
-    closeDrawer();
-    closeFabMenu();
-    if (view === 'downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
-    if (view === 'settings') loadSettings();
-    if (view === 'records') loadRecords();
-    if (view === 'watches') loadWatches();
-    if (view === 'statistics') loadStatistics();
-    if (view === 'media') loadMediaMobile();
-  }
-
-  async function loadMediaMobile() {
-    var info = $('#mob-media-result');
-    info.innerHTML = '<p>' + t('media.scanning') + '</p>';
-    try {
-      var data = await fetchJson('/api/media/scan');
-      var ti = data.transfer_items || {};
-      var orph = data.orphan_files || {};
-      var totalCount = data.total_count || 0;
-      var totalSize = data.total_size || 0;
-      info.innerHTML =
-        '<p><strong>' + t('media.totalFiles') + ':</strong> ' + totalCount + '</p>' +
-        '<p><strong>' + t('media.totalSize') + ':</strong> ' + formatBytes(totalSize) + '</p>';
-    } catch (err) {
-      info.innerHTML = '<p>' + translateApiError(err, 'form.requestFailed') + '</p>';
-    }
-  }
-
-  // mobile media scan button
-  var mobMediaBtn = $('#mob-media-scan-btn');
-  if (mobMediaBtn) mobMediaBtn.addEventListener('click', loadMediaMobile);
-
-  /* ====== 抽屉（更多菜单） ====== */
-  function openDrawer() {
-    $('#mob-drawer-overlay').classList.add('open');
-  }
-  function closeDrawer() {
-    $('#mob-drawer-overlay').classList.remove('open');
-  }
-
-  /* ====== FAB 菜单 ====== */
-  function toggleFabMenu() {
-    const menu = $('#mob-fab-menu');
-    const fab = $('#mob-fab');
-    const isOpen = menu.classList.contains('open');
-    if (isOpen) {
-      menu.classList.remove('open');
-      fab.textContent = '+';
-    } else {
-      menu.classList.add('open');
-      fab.textContent = '\u00d7';
-    }
-  }
-  function closeFabMenu() {
-    const menu = $('#mob-fab-menu');
-    const fab = $('#mob-fab');
-    menu.classList.remove('open');
-    fab.textContent = '+';
-  }
-
-  /* ====== 折叠面板 ====== */
-  function toggleCollapse(head) {
-    head.closest('.mob-collapse').classList.toggle('open');
-  }
-
-  /* ====== Toast ====== */
-  let mobToastTimer = null;
-  function showToast(message, duration) {
-    if (duration === void 0) duration = 2500;
-    const toast = $('#mob-toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    clearTimeout(mobToastTimer);
-    mobToastTimer = setTimeout(function() { toast.classList.remove('show'); }, duration);
-  }
-
-  /* ====== 卡片状态徽章 ====== */
-  function mobBadge(status) {
-    var cls;
-    if (status === 'running') cls = 'running';
-    else if (status === 'success') cls = 'completed';
-    else if (status === 'paused') cls = 'paused';
-    else if (status === 'failure') cls = 'failure';
-    else if (status === 'cancelled') cls = 'cancelled';
-    else cls = 'pending';
-    return '<span class="mob-card__badge ' + cls + '">' + esc(t('status.' + status)) + '</span>';
-  }
-
-  /* ====== 渲染转存任务卡片列表 ====== */
-  function renderMobTasks() {
-    var tasks = state.tasks || [];
-    var container = $('#mob-tasks-list');
-    if (!tasks.length) {
-      container.innerHTML = '<div class="mob-empty" data-i18n="tasks.empty">' + t('tasks.empty') + '</div>';
+async function loadMobileWatchEvents(watchId, sanitized) {
+  var panel = document.getElementById('mob-watch-events-' + sanitized);
+  if (!panel) return;
+  panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
+  try {
+    var data = await fetchJson('/api/watches/' + watchId + '/events?limit=20');
+    if (!data || !data.events || data.events.length === 0) {
+      panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无事件</div>';
       return;
     }
-    container.innerHTML = tasks.map(function(task) {
-      var total = Number(task.total_items || 0);
-      var done = Number(task.completed_items || 0);
-      var failed = Number(task.failed_items || 0);
-      var percent = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
-      var actions = '';
-      if (task.status === 'running') actions += '<button class="secondary small" data-pause="' + task.id + '">' + t('tasks.pause') + '</button>';
-      if (task.status === 'paused') actions += '<button class="secondary small" data-resume="' + task.id + '">' + t('tasks.resume') + '</button>';
-      if (task.failed_items > 0) actions += '<button class="secondary small" data-retry="' + task.id + '">' + t('tasks.retryFailed') + '</button>';
-      actions += '<button class="danger small" data-delete="' + task.id + '">' + t('tasks.delete') + '</button>';
-      return '<div class="mob-card status-' + task.status + '">'
-        + '<div class="mob-card__head">'
-        + '<span class="mob-card__title">' + esc(task.source_link) + '</span>'
-        + mobBadge(task.status)
-        + '</div>'
-        + '<div class="mob-card__row"><span class="label">' + t('tasks.target') + '</span><span>' + esc(task.target_link) + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('tasks.progress') + '</span><span>' + done + '/' + total + (failed ? ' (' + failed + ' ' + t('side.failed') + ')' : '') + '</span></div>'
-        + '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + percent + '%"></div></div>'
-        + '<div class="mob-card__actions">' + actions + '</div>'
-        + '</div>';
-    }).join('');
-
-    container.querySelectorAll('[data-pause]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.pause), 'pause'); });
+    var html = '';
+    data.events.forEach(function(ev) {
+      html += '<div class="watch-event-item">' +
+        '<span class="watch-event-time">' + esc(ev.time || '') + '</span>' +
+        '<span class="watch-event-badge badge badge-sm badge-' + (ev.status === 'ok' ? 'success' : 'failed') + '">' + esc(ev.status || '') + '</span>' +
+        '<span class="watch-event-info">' + esc(ev.message || ev.file || '') + '</span>' +
+      '</div>';
     });
-    container.querySelectorAll('[data-resume]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.resume), 'resume'); });
-    });
-    container.querySelectorAll('[data-retry]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) { runTaskAction(e, Number(btn.dataset.retry), 'retry-failed'); });
-    });
-    container.querySelectorAll('[data-delete]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) { deleteTask(e, Number(btn.dataset.delete)); });
-    });
-
-    // 点击卡片打开详情
-    container.querySelectorAll('.mob-card').forEach(function(card, idx) {
-      card.addEventListener('click', function(e) {
-        if (e.target.closest('button')) return;
-        openTaskDetail(tasks[idx].id);
-      });
-    });
+    panel.innerHTML = html;
+  } catch (e) {
+    panel.innerHTML = '<div style="padding:8px;color:var(--color-danger);">加载失败</div>';
   }
+}
 
-  /* ====== 渲染监听卡片列表 ====== */
-  function renderMobWatches() {
-    var watches = state.watches || [];
-    var container = $('#mob-watches-list');
-    if (!watches.length) {
-      container.innerHTML = '<div class="mob-empty" data-i18n="watches.empty">' + t('watches.empty') + '</div>';
-      return;
-    }
-    container.innerHTML = watches.map(function(w) {
-      var typeLabel = w.type === 'download' ? t('watches.download') : t('watches.forward');
-      var sourceHtml = '';
-      if (w.source_links) {
-        sourceHtml = '<div class="mob-card__row"><span class="label">' + t('watches.sources') + '</span><span>' + esc((w.source_links || []).join(', ')) + '</span></div>';
-      } else if (w.source_link) {
-        sourceHtml = '<div class="mob-card__row"><span class="label">' + t('watches.source') + '</span><span>' + esc(w.source_link) + '</span></div>';
-      }
-      var targetHtml = '';
-      if (w.target_link) {
-        targetHtml = '<div class="mob-card__row"><span class="label">' + t('watches.target') + '</span><span>' + esc(w.target_link) + '</span></div>';
-      }
-      var watchId = w.encoded_id || w.id;
-      var sanitized = (watchId || '').replace(/:/g, '_');
-      var eventsBtn = '';
-      var eventsPanel = '';
-      if (w.type === 'forward') {
-        var ec = w.event_count || 0;
-        eventsBtn = '<button class="small" data-watch-events="' + watchId + '">' + t('watches.events') + (ec ? ' (' + ec + ')' : '') + '</button>';
-        eventsPanel = '<div class="mob-watch-events" id="mob-watch-events-' + sanitized + '" style="display:none;"></div>';
-      }
-      return '<div class="mob-card status-' + (w.status || 'running') + '">'
-        + '<div class="mob-card__head">'
-        + '<span class="mob-card__title">' + typeLabel + '</span>'
-        + '<span class="mob-card__badge running">' + esc(w.type) + '</span>'
-        + '</div>'
-        + sourceHtml + targetHtml
-        + '<div class="mob-card__actions">'
-        + '<button class="danger small" data-delete-watch="' + watchId + '">' + t('watches.delete') + '</button>'
-        + eventsBtn
-        + '</div>'
-        + eventsPanel
-        + '</div>';
-    }).join('');
+// ---------------------------------------------------------------------------
+// Task detail sheet
+// ---------------------------------------------------------------------------
+var sheetState = { taskId: null, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
 
-    container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
-      btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
-    });
+async function openTaskDetail(taskId) {
+  sheetState = { taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  if (!overlay || !sheet) return;
+  sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
+  overlay.classList.add('open');
 
-    container.querySelectorAll('[data-watch-events]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var watchId = btn.dataset.watchEvents;
-        var sanitized = watchId.replace(/:/g, '_');
-        var panel = document.getElementById('mob-watch-events-' + sanitized);
-        if (!panel) return;
-        if (panel.style.display === 'none' || panel.style.display === '') {
-          panel.style.display = 'block';
-          loadMobileWatchEvents(watchId, sanitized);
-        } else {
-          panel.style.display = 'none';
-        }
-      });
-    });
+  try {
+    var data = await fetchJson('/api/tasks/' + taskId);
+    sheetState.items = data.items || [];
+    sheetState.events = data.events || [];
+    renderSheetContent(data);
+  } catch (e) {
+    sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
   }
+}
 
-  async function loadMobileWatchEvents(watchId, sanitized) {
-    var panel = document.getElementById('mob-watch-events-' + sanitized);
-    if (!panel) return;
-    panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
-    try {
-      var res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=0');
-      var data = await res.json();
-      if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || 'Load failed') + '</div>'; return; }
-      var items = data.events || [];
-      if (!items.length) {
-        panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noEvents')) + '</div>';
-        return;
-      }
-      panel.innerHTML = '';
-      items.forEach(function(evt) {
-        var time = new Date(evt.created_at).toLocaleString();
-        var statusClass = evt.status === 'success' ? 'success' : 'warning';
-        var statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
-        var div = document.createElement('div');
-        div.className = 'watch-event-item';
-        div.innerHTML = '<span class="watch-event-time">' + esc(time) + '</span>'
-          + '<span class="watch-event-badge"><span class="badge ' + statusClass + '">' + esc(statusLabel) + '</span></span>'
-          + '<span class="watch-event-info">' + esc(evt.message) + ' #' + esc(String(evt.source_message_id || '')) + '</span>';
-        panel.appendChild(div);
-      });
-    } catch (e) {
-      panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
-    }
-  }
+function renderSheetContent(data) {
+  var sheet = document.getElementById('mob-sheet');
+  if (!sheet) return;
 
-  /* ====== 任务详情 Sheet ====== */
-  var sheetTaskId = null;
-  var sheetItems = [];
-  var sheetEvents = [];
-  var sheetItemTotal = 0;
-  var sheetEventTotal = 0;
-  var sheetItemOffset = 0;
-  var sheetEventOffset = 0;
-  var sheetHasMoreItems = false;
-  var sheetHasMoreEvents = false;
-  var sheetActiveTab = 'running';
-  var sheetItemPage = 1;
-  var sheetItemPageSize = 10;
+  var totalItems = data.total_items || sheetState.items.length || 0;
+  var successCount = data.success_count || 0;
+  var failedCount = data.failed_count || 0;
+  var skippedCount = data.skipped_count || 0;
 
-  async function openTaskDetail(taskId) {
-    sheetTaskId = taskId;
-    state.selectedTaskId = taskId;
-    sheetItems = [];
-    sheetEvents = [];
-    sheetActiveTab = 'running';
-    sheetItemPage = 1;
-    sheetItemOffset = 0;
-    sheetEventOffset = 0;
-    try {
-      var res = await fetch('/api/tasks/' + taskId + '?items_limit=200&items_offset=0&events_limit=100&events_offset=0');
-      if (!res.ok) { showToast(translateApiError(await res.json())); return; }
-      var data = await res.json();
-      sheetItems = data.items || [];
-      sheetEvents = data.events || [];
-      sheetItemTotal = data.item_count || 0;
-      sheetEventTotal = data.event_count || 0;
-      sheetItemOffset = data.items_offset || 0;
-      sheetEventOffset = data.events_offset || 0;
-      sheetHasMoreItems = data.has_more_items || false;
-      sheetHasMoreEvents = data.has_more_events || false;
-    } catch (e) { showToast(t('form.requestFailed')); return; }
+  var tabsHtml = '';
+  var tabs = [
+    { key: 'all', label: '全部', count: totalItems },
+    { key: 'success', label: '成功', count: successCount },
+    { key: 'failure', label: '失败', count: failedCount },
+    { key: 'skipped', label: '跳过', count: skippedCount }
+  ];
+  tabs.forEach(function(tab) {
+    tabsHtml += '<button class="mob-sheet-tab' + (sheetState.currentTab === tab.key ? ' active' : '') + '" data-sheet-tab="' + tab.key + '">' +
+      tab.label + '<span class="count">' + tab.count + '</span></button>';
+  });
 
-    var task = state.tasks.find(function(t) { return t.id === taskId; });
-    var total = Number((task && task.total_items) || 0);
-    var done = Number((task && task.completed_items) || 0);
-    var failed = Number((task && task.failed_items) || 0);
-    var percent = total > 0 ? Math.round(((done + failed) / total) * 100) : 0;
+  sheet.innerHTML =
+    '<div class="mob-sheet__title">任务详情 #' + data.id + '</div>' +
+    '<div class="mob-sheet__task-header">' +
+      '<div class="task-title">' + esc(data.title || data.source_link || '任务 #' + data.id) + '</div>' +
+      '<div class="task-meta">状态: ' + esc(data.status || '-') + ' · 进度: ' + successCount + ' / ' + totalItems + '</div>' +
+    '</div>' +
+    '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">' + tabsHtml + '</div>' +
+    '<div id="mob-sheet-item-list"></div>' +
+    '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:4px;" id="mob-sheet-close">关闭</button>';
 
-    var groups = categorizeSheetItems();
-    var html = '<h3 class="mob-sheet__title">#' + taskId + ' ' + esc((task && task.source_link) || '') + '</h3>'
-      + '<div class="mob-sheet__task-header">'
-      + '<div class="task-title">' + esc((task && task.source_link) || '') + '</div>'
-      + '<div class="task-meta">' + (task ? (mobBadge(task.status) + ' ' + esc(task.target_link || '')) : '') + '</div>'
-      + '<div class="mob-card__row"><span class="label">' + t('tasks.progress') + '</span><span>' + done + '/' + total + (failed ? ' (' + failed + ' ' + t('side.failed') + ')' : '') + '</span></div>'
-      + '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + percent + '%"></div></div>'
-      + '</div>'
-      + '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">'
-      + renderSheetTab('running', groups.running.length)
-      + renderSheetTab('success', groups.success.length)
-      + renderSheetTab('skipped', groups.skipped.length)
-      + renderSheetTab('failure', groups.failure.length)
-      + '</div>'
-      + '<div id="mob-sheet-items"></div>'
-      + '<div id="mob-sheet-items-pagination"></div>'
-      + '<div class="mob-section-title mt-1.5">' + t('events.title') + ' (' + String(sheetEvents.length) + (sheetEventTotal > sheetEvents.length ? ' / ' + sheetEventTotal : '') + ')</div>'
-      + '<div id="mob-sheet-events"></div>';
+  bindSheetTabClicks();
+  renderSheetItemPage();
+  document.getElementById('mob-sheet-close').addEventListener('click', closeSheet);
+}
 
-    var sheet = $('#mob-sheet');
-    sheet.innerHTML = html;
-    $('#mob-sheet-overlay').classList.add('open');
+function closeSheet() {
+  var overlay = document.getElementById('mob-sheet-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
 
-    bindSheetTabClicks();
-    renderSheetItemPage();
-    renderSheetEvents();
-
-    // Sheet overlay 点击关闭
-    $('#mob-sheet-overlay').onclick = function(e) {
-      if (e.target === this) closeSheet();
-    };
-  }
-
-  function closeSheet() {
-    $('#mob-sheet-overlay').classList.remove('open');
-    sheetTaskId = null;
-  }
-
-  function renderSheetTab(status, count) {
-    var labelKey = 'items.tab.' + status;
-    var active = sheetActiveTab === status ? ' active' : '';
-    return '<button class="mob-sheet-tab' + active + '" data-sheet-tab="' + status + '">' + t(labelKey) + '<span class="count">' + count + '</span></button>';
-  }
-
-  function bindSheetTabClicks() {
-    var tabs = document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab');
-    tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        sheetActiveTab = this.dataset.sheetTab;
-        sheetItemPage = 1;
-        var allTabs = document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab');
-        allTabs.forEach(function(t) { t.classList.remove('active'); });
-        this.classList.add('active');
-        renderSheetItemPage();
-      });
-    });
-  }
-
-  function categorizeSheetItems() {
-    var groups = { running: [], success: [], skipped: [], failure: [] };
-    (sheetItems || []).forEach(function(item) {
-      var status = String((item && item.status) || 'pending');
-      if (status === 'success' || status === 'skipped' || status === 'failure') {
-        groups[status].push(item);
-      } else {
-        groups.running.push(item);
-      }
-    });
-    return groups;
-  }
-
-  function renderSheetItemPage() {
-    var groups = categorizeSheetItems();
-    var activeItems = groups[sheetActiveTab] || [];
-    var total = activeItems.length;
-    var pages = Math.max(1, Math.ceil(total / sheetItemPageSize));
-    if (sheetItemPage > pages) sheetItemPage = pages;
-    var start = (sheetItemPage - 1) * sheetItemPageSize;
-    var end = Math.min(start + sheetItemPageSize, total);
-    var pageItems = activeItems.slice(start, end);
-
-    var container = $('#mob-sheet-items');
-    if (!pageItems.length) {
-      container.innerHTML = '<div class="mob-empty">' + t('items.empty.' + sheetActiveTab) + '</div>';
-    } else {
-      container.innerHTML = pageItems.map(function(item) {
-        var dlPct = pct(item.download_current, item.download_total);
-        var ulPct = pct(item.upload_current, item.upload_total);
-        return '<div class="mob-item-row">'
-          + '<div class="mob-item-row__name">' + esc(item.file_name || item.local_path || '#' + (item.source_message_id || item.id)) + '</div>'
-          + '<div class="text-right text-xs text-muted shrink-0">'
-          + '<div>' + t('items.download') + ' ' + dlPct + '%</div>'
-          + '<div>' + t('items.upload') + ' ' + ulPct + '%</div>'
-          + '</div>'
-          + '</div>';
-      }).join('');
-    }
-
-    var pagEl = $('#mob-sheet-items-pagination');
-    var pagHtml = '';
-    if (pages > 1) {
-      pagHtml += '<div class="mob-sheet-pagination">'
-        + '<button class="secondary small" ' + (sheetItemPage <= 1 ? 'disabled' : '') + ' onclick="sheetPrevPage()">' + t('items.page.previous') + '</button>'
-        + '<span>' + interpolate(t('items.page.range'), { start: start + 1, end: end, total: total }) + '</span>'
-        + '<button class="secondary small" ' + (sheetItemPage >= pages ? 'disabled' : '') + ' onclick="sheetNextPage()">' + t('items.page.next') + '</button>'
-        + '</div>';
-    }
-    if (sheetHasMoreItems && sheetItems.length < sheetItemTotal) {
-      pagHtml += '<div class="mob-load-more"><button class="secondary small" onclick="loadMoreSheetItems()">' + t('items.loadMore') + ' (' + (sheetItemTotal - sheetItems.length) + ' ' + t('items.remaining') + ')</button></div>';
-    }
-    pagEl.innerHTML = pagHtml;
-  }
-
-  function renderSheetEvents() {
-    var container = $('#mob-sheet-events');
-    if (!sheetEvents.length) {
-      container.innerHTML = '<div class="mob-empty">' + t('events.empty') + '</div>';
-      return;
-    }
-    var html = sheetEvents.map(function(event) {
-      return '<div class="mob-event-row">'
-        + '<time>' + esc(event.created_at) + '</time>'
-        + '<span class="text-primary">[' + esc(localizeEventLevel(event.level)) + ']</span> '
-        + esc(localizeEventMessage(event))
-        + '</div>';
-    }).join('');
-    if (sheetHasMoreEvents && sheetEvents.length < sheetEventTotal) {
-      html += '<div class="mob-load-more"><button class="secondary small" onclick="loadMoreSheetEvents()">' + t('events.loadMore') + ' (' + (sheetEventTotal - sheetEvents.length) + ' ' + t('events.remaining') + ')</button></div>';
-    }
-    container.innerHTML = html;
-  }
-
-  function sheetPrevPage() {
-    if (sheetItemPage > 1) { sheetItemPage--; renderSheetItemPage(); }
-  }
-  function sheetNextPage() {
-    sheetItemPage++;
-    renderSheetItemPage();
-  }
-  window.sheetPrevPage = sheetPrevPage;
-  window.sheetNextPage = sheetNextPage;
-
-  async function loadMoreSheetItems() {
-    if (!sheetTaskId) return;
-    var offset = sheetItemOffset + 200;
-    try {
-      var res = await fetch('/api/tasks/' + sheetTaskId + '?items_limit=200&items_offset=' + offset + '&events_limit=0&events_offset=0');
-      if (!res.ok) return;
-      var data = await res.json();
-      sheetItems = sheetItems.concat(data.items || []);
-      sheetItemTotal = data.item_count || sheetItemTotal;
-      sheetItemOffset = offset;
-      sheetHasMoreItems = data.has_more_items || false;
+function bindSheetTabClicks() {
+  var tabs = document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      sheetState.currentTab = tab.dataset.sheetTab;
+      sheetState.currentPage = 0;
       renderSheetItemPage();
-    } catch (e) { /* ignore */ }
-  }
-  window.loadMoreSheetItems = loadMoreSheetItems;
+    });
+  });
+}
 
-  async function loadMoreSheetEvents() {
-    if (!sheetTaskId) return;
-    var offset = sheetEventOffset + 100;
-    try {
-      var res = await fetch('/api/tasks/' + sheetTaskId + '?items_limit=0&items_offset=0&events_limit=100&events_offset=' + offset);
-      if (!res.ok) return;
-      var data = await res.json();
-      sheetEvents = sheetEvents.concat(data.events || []);
-      sheetEventTotal = data.event_count || sheetEventTotal;
-      sheetEventOffset = offset;
-      sheetHasMoreEvents = data.has_more_events || false;
-      renderSheetEvents();
-    } catch (e) { /* ignore */ }
-  }
-  window.loadMoreSheetEvents = loadMoreSheetEvents;
+function renderSheetItemPage() {
+  var container = document.getElementById('mob-sheet-item-list');
+  if (!container) return;
 
-  /* ====== 渲染设置表单 ====== */
-  function renderMobSettingsForm() {
-    if (!state.settings || !state.schema) return;
-    var s = state.settings;
-    var schema = state.schema;
-    var user = s.user || {};
-    var glob = s.global || {};
-    var tp = (glob.target_profiles || {});
-    var pikpak = tp.pikpak || {};
-    var archive = pikpak.archive || {};
-    var upload = glob.upload || {};
-    var sensitiveKeys = schema.sensitive_keys || [];
-    var downloadTypes = schema.download_type || [];
-    var forwardTypes = schema.forward_type || [];
-    var selectedDownload = user.download_type || [];
-    var exportTable = glob.export_table || {};
-
-    // Path & Task
-    var maxTasks = user.max_tasks || {};
-    var maxRetries = user.max_retries || {};
-    $('#mob-settings-path-fields').innerHTML =
-      '<label><span>' + t('settings.saveDirectory') + '</span><input type="text" name="user.save_directory" value="' + esc(user.save_directory || '') + '"></label>'
-      + '<label><span>' + t('settings.tempDirectory') + '</span><input type="text" name="user.temp_directory" value="' + esc(user.temp_directory || '') + '"></label>'
-      + '<label><span>' + t('settings.sessionDirectory') + '</span><input type="text" name="user.session_directory" value="' + esc(user.session_directory || '') + '"></label>'
-      + '<div class="grid grid-cols-2 gap-2.5">'
-      + '<label><span>' + t('settings.maxDownload') + '</span><input type="number" name="user.max_tasks.download" value="' + esc(maxTasks.download || '') + '" min="1"></label>'
-      + '<label><span>' + t('settings.maxUpload') + '</span><input type="number" name="user.max_tasks.upload" value="' + esc(maxTasks.upload || '') + '" min="1"></label>'
-      + '</div>'
-      + '<div class="grid grid-cols-2 gap-2.5">'
-      + '<label><span>' + t('settings.retryDownload') + '</span><input type="number" name="user.max_retries.download" value="' + esc(maxRetries.download || '') + '" min="0"></label>'
-      + '<label><span>' + t('settings.retryUpload') + '</span><input type="number" name="user.max_retries.upload" value="' + esc(maxRetries.upload || '') + '" min="0"></label>'
-      + '</div>'
-      + '<label><span>' + t('settings.pikpakMaxFileSize') + '</span><input type="number" name="global.target_profiles.pikpak.max_file_size" value="' + esc(pikpak.max_file_size || '') + '" min="1"></label>';
-
-    // Behavior
-    $('#mob-settings-behavior-fields').innerHTML =
-      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.notice" class="!w-auto !min-h-0"' + (glob.notice ? ' checked' : '') + '><span>' + t('settings.notice') + '</span></label>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="user.is_shutdown" class="!w-auto !min-h-0"' + (user.is_shutdown ? ' checked' : '') + '><span>' + t('settings.shutdown') + '</span></label>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.upload.download_upload" class="!w-auto !min-h-0"' + (upload.download_upload ? ' checked' : '') + '><span>' + t('settings.downloadUpload') + '</span></label>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.upload.delete" class="!w-auto !min-h-0"' + (upload.delete ? ' checked' : '') + '><span>' + t('settings.uploadDelete') + '</span></label>'
-      + '<label><span>' + t('settings.pendingLimit') + '</span><input type="number" name="global.upload.pending_limit" value="' + esc(upload.pending_limit || '') + '" min="1" max="5"></label>';
-
-    // PikPak Archive
-    $('#mob-settings-archive-fields').innerHTML =
-      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="!w-auto !min-h-0"' + (archive.enable ? ' checked' : '') + '><span>' + t('settings.pikpakArchiveEnable') + '</span></label>'
-      + '<label><span>' + t('settings.pikpakArchiveRemote') + '</span><input type="text" name="global.target_profiles.pikpak.archive.remote" value="' + esc(archive.remote || '') + '"></label>'
-      + '<label><span>' + t('settings.pikpakArchiveSource') + '</span><input type="text" name="global.target_profiles.pikpak.archive.source_directory" value="' + esc(archive.source_directory || '') + '"></label>'
-      + '<label><span>' + t('settings.pikpakArchiveRoot') + '</span><input type="text" name="global.target_profiles.pikpak.archive.root_directory" value="' + esc(archive.root_directory || '') + '"></label>'
-      + '<div class="grid grid-cols-2 gap-2.5">'
-      + '<label><span>' + t('settings.pikpakArchivePoll') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_seconds" value="' + esc(archive.poll_seconds || '') + '" min="0"></label>'
-      + '<label><span>' + t('settings.pikpakArchiveInterval') + '</span><input type="number" name="global.target_profiles.pikpak.archive.poll_interval_seconds" value="' + esc(archive.poll_interval_seconds || '') + '" min="0"></label>'
-      + '</div>'
-      + '<label><span>' + t('settings.pikpakArchiveWindow') + '</span><input type="number" name="global.target_profiles.pikpak.archive.match_window_seconds" value="' + esc(archive.match_window_seconds || '') + '" min="0"></label>';
-
-    // Account & Proxy
-    $('#mob-settings-sensitive-fields').innerHTML =
-      '<label><span>API ID</span><input type="text" name="user.api_id" value="' + esc(user.api_id || '') + '"></label>'
-      + sensitiveKeys.map(function(k) {
-        var v = getPath(user, getSettingLeafKey(k));
-        return '<label><span>' + esc(k) + '</span><input type="password" name="user.' + esc(k) + '" placeholder="' + (v && v.configured ? t('settings.secretConfigured') : t('settings.secretNotConfigured')) + '" autocomplete="new-password"></label>';
-      }).join('');
-
-    // Download Types
-    $('#mob-settings-download-types-fields').innerHTML = renderCheckCards('user.download_type', downloadTypes, selectedDownload);
-
-    // Forward Types
-    $('#mob-settings-forward-types-fields').innerHTML = renderCheckCards('global.forward_type', forwardTypes, selectedForward(glob));
-
-    // Message Filter
-    var mf = glob.message_filter || {};
-    var mfMediaTypes = (state.schema.message_filter && state.schema.message_filter.media_types) || forwardTypes;
-    var mfDateRange = mf.date_range || {};
-    var mfKeywords = mf.keywords || {};
-    var mfDateStart = mfDateRange.start_date ? new Date(mfDateRange.start_date * 1000).toISOString().slice(0, 16) : '';
-    var mfDateEnd = mfDateRange.end_date ? new Date(mfDateRange.end_date * 1000).toISOString().slice(0, 16) : '';
-    var mfKwStr = Array.isArray(mfKeywords.words) ? mfKeywords.words.join(', ') : '';
-    $('#mob-settings-message-filter-fields').innerHTML =
-      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.enabled" class="!w-auto !min-h-0"' + (mf.enabled !== false ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
-      + '<div class="mob-subsection"><h4>' + t('settings.mediaTypes') + '</h4>'
-      + renderCheckCards('global.message_filter.media_types', mfMediaTypes, selectedMediaTypes(glob))
-      + '</div>'
-      + '<div class="mob-subsection"><h4>' + t('settings.dateRange') + '</h4>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.date_range.enabled" class="!w-auto !min-h-0"' + (mfDateRange.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
-      + '<div class="field-grid field-grid--two mt-2">'
-      + '<label class="field"><span>' + t('settings.startDate') + '</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(mfDateStart) + '"></label>'
-      + '<label class="field"><span>' + t('settings.endDate') + '</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(mfDateEnd) + '"></label>'
-      + '</div></div>'
-      + '<div class="mob-subsection"><h4>' + t('settings.keywords') + '</h4>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.message_filter.keywords.enabled" class="!w-auto !min-h-0"' + (mfKeywords.enabled ? ' checked' : '') + '><span>' + t('settings.enabled') + '</span></label>'
-      + '<label class="field mt-2"><span>' + t('settings.keywordList') + '</span><input name="global.message_filter.keywords.words" value="' + escAttr(mfKwStr) + '" placeholder="' + t('settings.keywordPlaceholder') + '"></label>'
-      + '</div>';
-
-    // Export Tables
-    $('#mob-settings-exports-fields').innerHTML =
-      '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.link" class="!w-auto !min-h-0"' + (exportTable.link ? ' checked' : '') + '><span>' + t('settings.exportLink') + '</span></label>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.count" class="!w-auto !min-h-0"' + (exportTable.count ? ' checked' : '') + '><span>' + t('settings.exportCount') + '</span></label>'
-      + '<label class="!flex-row !items-center gap-2"><input type="checkbox" name="global.export_table.upload" class="!w-auto !min-h-0"' + (exportTable.upload ? ' checked' : '') + '><span>' + t('settings.exportUpload') + '</span></label>';
+  var filtered = sheetState.items;
+  if (sheetState.currentTab !== 'all') {
+    filtered = sheetState.items.filter(function(item) { return item.status === sheetState.currentTab; });
   }
 
-  function getSettingLeafKey(key) {
-    return key;
+  var start = sheetState.currentPage * sheetState.pageSize;
+  var page = filtered.slice(start, start + sheetState.pageSize);
+  sheetState.hasMore = start + sheetState.pageSize < filtered.length;
+
+  if (page.length === 0) {
+    container.innerHTML = '<div class="mob-empty">暂无数据</div>';
+    return;
   }
 
-  function selectedForward(glob) {
-    var ft = glob.forward_type || {};
-    var result = [];
-    for (var k in ft) { if (ft[k]) result.push(k); }
-    return result;
-  }
-
-  function selectedMediaTypes(glob) {
-    var mf = glob.message_filter || {};
-    var mt = mf.media_types || glob.forward_type || {};
-    var result = [];
-    for (var k in mt) { if (mt[k]) result.push(k); }
-    return result;
-  }
-
-  function escAttr(value) {
-    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function renderCheckCards(baseName, types, selected) {
-    return types.map(function(type) {
-      return '<label class="!flex-row !items-center gap-2 py-1.5"><input type="checkbox" name="' + baseName + '" value="' + esc(type) + '" class="!w-auto !min-h-0"' + (selected.indexOf(type) >= 0 ? ' checked' : '') + '><span>' + esc(type) + '</span></label>';
-    }).join('');
-  }
-
-  /* ====== 覆盖：renderTasks / loadTasks / loadWatches / loadSettings ====== */
-  var _origRenderTasks = renderTasks;
-  renderTasks = function() {
-    try { _origRenderTasks(); } catch(e) {}
-    if (state.tasks) renderMobTasks();
-  };
-  var _origLoadTasks = loadTasks;
-  loadTasks = async function() {
-    try { await _origLoadTasks(); } catch(e) {}
-    if (state.tasks) renderMobTasks();
-  };
-
-  var _origLoadWatches = loadWatches;
-  loadWatches = async function() {
-    try { await _origLoadWatches(); } catch(e) {}
-    if (state.watches) renderMobWatches();
-  };
-  var _origRenderWatches = renderWatches;
-  renderWatches = function() {
-    try { _origRenderWatches(); } catch(e) {}
-    if (state.watches) renderMobWatches();
-  };
-
-  var _origLoadSettings = loadSettings;
-  loadSettings = async function() {
-    try { await _origLoadSettings(); } catch(e) {}
-    renderMobSettingsForm();
-  };
-
-  /* ====== 事件绑定 ====== */
-  $('#language-select').addEventListener('change', function(event) {
-    state.lang = event.target.value;
-    localStorage.setItem('trmd-lang', state.lang);
-    applyLanguageAndRefresh();
-    renderMobTasks();
-    renderMobWatches();
-    renderMobRecords();
-    renderMobStatistics();
-    renderMobSettingsForm();
+  var html = '';
+  page.forEach(function(item) {
+    html += '<div class="mob-item-row">' +
+      '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) + '</span>' +
+      '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
+    '</div>';
   });
 
-  $('#refresh').addEventListener('click', function() {
-    loadTasks();
-    var activeView = document.querySelector('.mob-view.active');
-    if (activeView) {
-      var viewId = activeView.id.replace('mob-view-', '');
-      if (viewId === 'settings') loadSettings();
-      if (viewId === 'watches') loadWatches();
+  if (sheetState.hasMore) {
+    html += '<div style="text-align:center;padding:8px;">' +
+      '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-sheet-load-more">加载更多</button>' +
+    '</div>';
+  }
+
+  container.innerHTML = html;
+
+  var loadMoreBtn = document.getElementById('mob-sheet-load-more');
+  if (loadMoreBtn) loadMoreBtn.addEventListener('click', function() {
+    sheetState.currentPage++;
+    renderSheetItemPage();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Task actions
+// ---------------------------------------------------------------------------
+async function runTaskAction(e, taskId, action) {
+  e.stopPropagation();
+  try {
+    await postJson('/api/tasks/' + taskId + '/' + action, {});
+    showToast('操作成功');
+    setTimeout(function() { renderMobTasks(); }, 500);
+  } catch (err) { showToast('操作失败: ' + (err.message || '')); }
+}
+
+async function deleteTask(e, taskId) {
+  e.stopPropagation();
+  if (!confirm('确认删除任务 #' + taskId + '？')) return;
+  try {
+    await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+    showToast('已删除');
+    setTimeout(function() { renderMobTasks(); }, 500);
+  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
+}
+
+async function deleteWatch(watchId) {
+  if (!confirm('确认删除监听？')) return;
+  try {
+    await fetch('/api/watches/' + watchId, { method: 'DELETE' });
+    showToast('已删除');
+    setTimeout(function() { renderMobWatches(); }, 500);
+  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+var settingsRendered = false;
+function ensureSettingsForm() {
+  if (!settingsRendered) { renderMobSettingsForm(); settingsRendered = true; }
+}
+
+function renderMobSettingsForm() {
+  if (!window.state || !window.state.settings) return;
+  var settings = window.state.settings;
+  var glob = settings.global || {};
+  var user = settings.user || {};
+
+  // Paths
+  var pathFields = document.getElementById('mob-settings-path-fields');
+  if (pathFields) pathFields.innerHTML =
+    '<label><span>保存目录</span><input name="user.save_directory" value="' + escAttr(user.save_directory || '') + '"></label>' +
+    '<label><span>临时目录</span><input name="user.temp_directory" value="' + escAttr(user.temp_directory || '') + '"></label>' +
+    '<label><span>会话目录</span><input name="user.session_directory" value="' + escAttr(user.session_directory || '') + '"></label>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<label><span>最大下载</span><input name="user.max_tasks.download" type="number" min="1" value="' + (getSettingLeafKey(user, 'max_tasks.download') || '') + '"></label>' +
+      '<label><span>最大上传</span><input name="user.max_tasks.upload" type="number" min="1" value="' + (getSettingLeafKey(user, 'max_tasks.upload') || '') + '"></label>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<label><span>下载重试</span><input name="user.max_retries.download" type="number" min="0" value="' + (getSettingLeafKey(user, 'max_retries.download') || '') + '"></label>' +
+      '<label><span>上传重试</span><input name="user.max_retries.upload" type="number" min="0" value="' + (getSettingLeafKey(user, 'max_retries.upload') || '') + '"></label>' +
+    '</div>' +
+    '<label><span>PikPak大小上限(字节)</span><input name="global.target_profiles.pikpak.max_file_size" type="number" min="1" value="' + (getSettingLeafKey(glob, 'target_profiles.pikpak.max_file_size') || '') + '"></label>';
+
+  // Behavior
+  var behFields = document.getElementById('mob-settings-behavior-fields');
+  if (behFields) behFields.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;"' + (glob.notice ? ' checked' : '') + '><span>机器人通知</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="user.is_shutdown" style="width:auto;min-height:auto;"' + (user.is_shutdown ? ' checked' : '') + '><span>退出后关机</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload" style="width:auto;min-height:auto;"' + (getSettingLeafKey(glob, 'upload.download_upload') ? ' checked' : '') + '><span>受限转发时下载后上传</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete" style="width:auto;min-height:auto;"' + (getSettingLeafKey(glob, 'upload.delete') ? ' checked' : '') + '><span>上传完成删除本地文件</span></label>' +
+    '</div>' +
+    '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>';
+
+  // Archive
+  var archiveFields = document.getElementById('mob-settings-archive-fields');
+  if (archiveFields) {
+    var arch = getSettingLeafKey(glob, 'target_profiles.pikpak.archive') || {};
+    archiveFields.innerHTML =
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" style="width:auto;min-height:auto;"' + (arch.enable ? ' checked' : '') + '><span>PikPak按来源频道归档</span></label>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+        '<label><span>PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote" value="' + escAttr(arch.remote || '') + '"></label>' +
+        '<label><span>入库目录</span><input name="global.target_profiles.pikpak.archive.source_directory" value="' + escAttr(arch.source_directory || '') + '"></label>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+        '<label><span>归档根目录</span><input name="global.target_profiles.pikpak.archive.root_directory" value="' + escAttr(arch.root_directory || '') + '"></label>' +
+        '<label><span>入库轮询秒数</span><input name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0" value="' + (arch.poll_seconds || '') + '"></label>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+        '<label><span>轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0" value="' + (arch.poll_interval_seconds || '') + '"></label>' +
+        '<label><span>匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0" value="' + (arch.match_window_seconds || '') + '"></label>' +
+      '</div>';
+  }
+
+  // Sensitive
+  var sensFields = document.getElementById('mob-settings-sensitive-fields');
+  if (sensFields) sensFields.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<label><span>API ID</span><input name="user.api_id" value="' + escAttr(user.api_id || '') + '"></label>' +
+      '<label><span>API Hash</span><input name="user.api_hash" type="password" placeholder="已配置"></label>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<label><span>Bot Token</span><input name="user.bot_token" type="password" placeholder="已配置"></label>' +
+      '<label><span>代理密码</span><input name="user.proxy.password" type="password" placeholder="已配置"></label>' +
+    '</div>';
+
+  // Download types
+  var dlFields = document.getElementById('mob-settings-download-types-fields');
+  if (dlFields) dlFields.innerHTML = renderCheckCards('global.download.types', settings.downloadTypes || {}, selectedDownloadTypes(glob));
+
+  // Forward types
+  var fwFields = document.getElementById('mob-settings-forward-types-fields');
+  if (fwFields) fwFields.innerHTML = renderCheckCards('global.forward.types', settings.forwardTypes || {}, selectedForward(glob));
+
+  // Message filter
+  var mf = glob.message_filter || {};
+  var mfFields = document.getElementById('mob-settings-message-filter-fields');
+  if (mfFields) mfFields.innerHTML =
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled" style="width:auto;min-height:auto;"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
+    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', settings.mediaTypes || {}, selectedMediaTypes(glob)) + '</div>' +
+    '</div>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled" style="width:auto;min-height:auto;"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<label><span>起始日期</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
+      '<label><span>结束日期</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
+    '</div>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled" style="width:auto;min-height:auto;"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>关键词过滤</span></label>' +
+    '<label><span>关键词列表（逗号分隔）</span><input name="global.message_filter.keywords.words" value="' + escAttr(getSettingLeafKey(mf, 'keywords.words') || '') + '" placeholder="广告,推广,赞助"></label>';
+
+  // Exports
+  var expFields = document.getElementById('mob-settings-exports-fields');
+  if (expFields) {
+    var et = glob.export_table || {};
+    expFields.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link" style="width:auto;min-height:auto;"' + (et.link ? ' checked' : '') + '><span>链接统计表</span></label>' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.count" style="width:auto;min-height:auto;"' + (et.count ? ' checked' : '') + '><span>计数统计表</span></label>' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.upload" style="width:auto;min-height:auto;"' + (et.upload ? ' checked' : '') + '><span>上传统计表</span></label>' +
+      '</div>';
+  }
+}
+
+function getSettingLeafKey(obj, key) {
+  if (!obj) return '';
+  var parts = key.split('.');
+  var cur = obj;
+  for (var i = 0; i < parts.length; i++) { if (cur == null) return ''; cur = cur[parts[i]]; }
+  return cur;
+}
+
+function selectedForward(glob) {
+  var types = getSettingLeafKey(glob, 'forward.types');
+  if (!types || typeof types !== 'object') return [];
+  return Object.keys(types).filter(function(k) { return types[k]; });
+}
+
+function selectedMediaTypes(glob) {
+  var types = getSettingLeafKey(glob, 'message_filter.media_types');
+  if (!types || typeof types !== 'object') return [];
+  return Object.keys(types).filter(function(k) { return types[k]; });
+}
+
+function selectedDownloadTypes(glob) {
+  var types = getSettingLeafKey(glob, 'download.types');
+  if (!types || typeof types !== 'object') return [];
+  return Object.keys(types).filter(function(k) { return types[k]; });
+}
+
+function escAttr(value) { return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function renderCheckCards(baseName, types, selected) {
+  var html = '';
+  var selSet = {};
+  (selected || []).forEach(function(k) { selSet[k] = true; });
+  Object.keys(types || {}).forEach(function(key) {
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0;">' +
+      '<input type="checkbox" name="' + baseName + '.' + key + '" value="' + escAttr(key) + '" style="width:auto;min-height:auto;"' + (selSet[key] ? ' checked' : '') + '>' +
+      '<span>' + esc(types[key] || key) + '</span></label>';
+  });
+  return html || '<span style="font-size:13px;color:var(--color-muted);">无可用选项</span>';
+}
+
+// ---------------------------------------------------------------------------
+// Operations history
+// ---------------------------------------------------------------------------
+function mobInitDownloadTypes() {
+  var grid = document.getElementById('mob-channel-download-types');
+  if (!grid) return;
+  var types = (window.state && window.state.settings && window.state.settings.downloadTypes) || {};
+  var selected = (window.state && window.state.settings && window.state.settings.global && selectedDownloadTypes(window.state.settings.global)) || [];
+  var selSet = {};
+  selected.forEach(function(k) { selSet[k] = true; });
+  var html = '';
+  Object.keys(types).forEach(function(key) {
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
+      '<input type="checkbox" name="download_types" value="' + escAttr(key) + '" style="width:auto;min-height:auto;"' + (selSet[key] ? ' checked' : '') + '>' +
+      '<span>' + esc(types[key] || key) + '</span></label>';
+  });
+  grid.innerHTML = html || '<span style="font-size:13px;color:var(--color-muted);">无可用类型</span>';
+}
+
+async function loadMobileOperations() {
+  var container = document.getElementById('mob-operations-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/operations?limit=30');
+    if (!data || !data.operations || data.operations.length === 0) {
+      container.innerHTML = '<div class="mob-empty">暂无操作记录</div>';
+      return;
     }
-    showToast(t('action.refresh') + ' OK');
-  });
+    var html = '';
+    data.operations.forEach(function(op) {
+      var typeLabel = op.type === 'download' ? '下载' : op.type === 'upload' ? '上传' : esc(op.type || '');
+      var statusClass = op.status === 'success' ? 'completed' : op.status === 'failure' ? 'failure' : 'pending';
+      html += '<div class="mob-card status-' + esc(op.status || 'pending') + '">' +
+        '<div class="mob-card__head">' +
+          '<span class="mob-card__title">' + esc(op.detail || op.file || '#' + op.id) + '</span>' +
+          '<span class="mob-card__badge ' + statusClass + '">' + typeLabel + '</span>' +
+        '</div>' +
+        '<div class="mob-card__row"><span class="label">状态</span><span>' + esc(op.status || '-') + '</span></div>' +
+        (op.error ? '<div class="mob-card__row"><span class="label">错误</span><span>' + esc(op.error) + '</span></div>' : '') +
+        '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(op.created_at || '') + '</span></div>' +
+      '</div>';
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
+}
 
-  /* Tab 栏点击 */
-  $$('.mob-tab').forEach(function(tab) {
-    tab.addEventListener('click', function() { mobSwitchView(tab.dataset.mobNav); });
-  });
+// ---------------------------------------------------------------------------
+// Records
+// ---------------------------------------------------------------------------
+async function loadMobileRecords() {
+  var container = document.getElementById('mob-records-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/download-records?limit=50');
+    if (!data || !Array.isArray(data.records) || data.records.length === 0) {
+      container.innerHTML = '<div class="mob-empty" data-i18n="records.empty">还没有下载成功记录。</div>';
+      return;
+    }
+    var html = '';
+    data.records.forEach(function(r) {
+      html += '<div class="mob-card">' +
+        '<div class="mob-card__row"><span class="label">频道</span><span>' + esc(r.chat_id || r.chat_title || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">消息</span><span>' + esc(r.message_id || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">文件</span><span>' + esc(r.file_name || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">大小</span><span>' + (r.file_size ? formatBytes(r.file_size) : '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(r.updated_at || '') + '</span></div>' +
+      '</div>';
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
+}
 
-  /* "更多"按钮 -> 打开 Drawer */
-  var moreTab = document.querySelector('.mob-tab[data-mob-nav="more"]');
-  if (moreTab) moreTab.addEventListener('click', openDrawer);
+// ---------------------------------------------------------------------------
+// Statistics
+// ---------------------------------------------------------------------------
+async function loadMobileStatistics() {
+  var container = document.getElementById('mob-statistics-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/statistics');
+    if (!data || !Array.isArray(data.tables) || data.tables.length === 0) {
+      container.innerHTML = '<div class="mob-empty">暂无统计数据</div>';
+      return;
+    }
+    var html = '';
+    data.tables.forEach(function(t) {
+      html += '<div class="mob-card">' +
+        '<div class="mob-card__head"><span class="mob-card__title">' + esc(t.name || t.table || '') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">行数</span><span>' + (t.row_count || t.rows || '0') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">可用</span><span>' + (t.available ? '是' : '否') + '</span></div>' +
+      '</div>';
+    });
+    container.innerHTML = html || '<div class="mob-empty">暂无统计数据</div>';
+  } catch (e) {
+    container.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
+}
 
-  /* Drawer 内菜单项点击 */
-  $$('[data-mob-drawer-nav]').forEach(function(item) {
-    item.addEventListener('click', function() { mobSwitchView(item.dataset.mobDrawerNav); });
-  });
+// ---------------------------------------------------------------------------
+// Media management
+// ---------------------------------------------------------------------------
+async function loadMediaMobile() {
+  var container = document.getElementById('mob-media-result');
+  if (!container) return;
+  container.innerHTML = '<div class="mob-empty">扫描中...</div>';
+  try {
+    var data = await fetchJson('/api/media/scan');
+    if (!data) { container.innerHTML = '<div class="mob-empty">扫描失败</div>'; return; }
 
-  /* Drawer overlay 点击关闭 */
-  $('#mob-drawer-overlay').addEventListener('click', function(e) {
-    if (e.target === this) closeDrawer();
-  });
+    var html = '<div style="font-size:13px;">' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
+        '<div><strong>总文件</strong><br>' + (data.total_files || 0) + '</div>' +
+        '<div><strong>总大小</strong><br>' + formatBytes(data.total_size || 0) + '</div>' +
+        '<div><strong>可清理</strong><br>' + (data.orphan_count || 0) + ' 个</div>' +
+      '</div></div>';
 
-  /* FAB 点击 */
-  $('#mob-fab').addEventListener('click', toggleFabMenu);
+    if (data.orphans && data.orphans.length > 0) {
+      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">可清理文件</strong></div>';
+      data.orphans.forEach(function(f) {
+        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--color-line);">' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(f.path || f.file || '') + '</span>' +
+          '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(f.size || 0) + '</span>' +
+        '</div>';
+      });
+    } else {
+      html += '<div class="mob-empty">没有可清理文件</div>';
+    }
 
-  /* FAB 菜单项 */
-  $('#mob-fab-new-transfer').addEventListener('click', function() {
-    closeFabMenu();
-    var collapse = $('#collapse-transfer-form');
-    collapse.classList.add('open');
-    collapse.scrollIntoView({ behavior: 'smooth' });
-  });
-  $('#mob-fab-new-watch').addEventListener('click', function() {
-    closeFabMenu();
-    mobSwitchView('watches');
-    var collapse = $('#collapse-watch-form');
-    collapse.classList.add('open');
-    collapse.scrollIntoView({ behavior: 'smooth' });
-  });
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div class="mob-empty">加载失败: ' + esc(e.message || '') + '</div>';
+  }
+}
 
-  /* 折叠面板切换 */
-  $$('.mob-collapse__head').forEach(function(head) {
-    head.addEventListener('click', function() { toggleCollapse(head); });
-  });
+// ---------------------------------------------------------------------------
+// Event bindings (init)
+// ---------------------------------------------------------------------------
+(function() {
+  // Tab bar clicks
+  var tabbar = document.getElementById('mob-tabbar');
+  if (tabbar) {
+    tabbar.querySelectorAll('.mob-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        mobSwitchView(tab.dataset.mobTab);
+      });
+    });
+  }
 
-  /* 点击外部关闭 FAB 菜单 */
+  // Top bar back button
+  var backBtn = document.getElementById('mob-topbar-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', function() {
+      mobNavigateBack();
+    });
+  }
+
+  // Profile menu items
+  var menu = document.getElementById('mob-profile-menu');
+  if (menu) {
+    menu.querySelectorAll('[data-profile-nav]').forEach(function(item) {
+      item.addEventListener('click', function() {
+        mobNavigateTo(item.dataset.profileNav);
+      });
+    });
+  }
+
+  // Language button (toggle zh/en)
+  var langBtn = document.getElementById('mob-btn-language');
+  if (langBtn) {
+    langBtn.addEventListener('click', function() {
+      var current = (window.state && window.state.lang) || 'zh';
+      var next = current === 'zh' ? 'en' : 'zh';
+      if (window.state) window.state.lang = next;
+      localStorage.setItem('trmd-lang', next);
+      var label = document.getElementById('mob-lang-label');
+      if (label) label.textContent = next === 'zh' ? '中文' : 'English';
+      if (typeof setLang === 'function') setLang(next);
+      showToast(next === 'zh' ? '已切换为中文' : 'Switched to English');
+      loadCurrentView();
+    });
+  }
+
+  // Logout button
+  var logoutBtn = document.getElementById('mob-btn-logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async function() {
+      if (!confirm('确认退出登录？')) return;
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        stopPolling();
+        if (window.state) { window.state.tasks = []; window.state.watches = []; }
+        document.querySelectorAll('.mob-view,.mob-subpage').forEach(function(v) { v.classList.remove('active'); });
+        var transfers = document.getElementById('mob-view-transfers');
+        if (transfers) transfers.classList.add('active');
+        mobSwitchView('transfers');
+        checkAuthStatus();
+      } catch (e) { showToast('退出失败'); }
+    });
+  }
+
+  // Collapse toggles (delegated only — avoid double-fire with inline handlers)
   document.addEventListener('click', function(e) {
-    if (!e.target.closest('#mob-fab') && !e.target.closest('#mob-fab-menu')) {
-      closeFabMenu();
+    var head = e.target.closest('.mob-collapse__head');
+    if (head && !e.target.closest('button, input, select, textarea, label')) {
+      toggleCollapse(head);
     }
   });
 
-  /* 监听类型切换 */
-  var watchTypeSelect = $('#mob-watch-type');
+  // Sheet overlay close
+  var sheetOverlay = document.getElementById('mob-sheet-overlay');
+  if (sheetOverlay) {
+    sheetOverlay.addEventListener('click', function(e) {
+      if (e.target === sheetOverlay) closeSheet();
+    });
+  }
+
+  // Watch type toggle
+  var watchTypeSelect = document.getElementById('mob-watch-type');
   if (watchTypeSelect) {
     watchTypeSelect.addEventListener('change', function() {
-      var isForward = this.value === 'forward';
-      var textarea = document.querySelector('#mob-watch-source-group textarea[name="source_links"]');
-      var input = document.querySelector('#mob-watch-source-group input[name="source_link"]');
-      var sourceLabel = $('#mob-watch-source-label').querySelector('span');
-      if (isForward) {
-        if (textarea) { textarea.style.display = 'none'; textarea.required = false; }
-        if (input) { input.style.display = ''; input.required = true; }
-        if (sourceLabel) sourceLabel.textContent = t('watches.source');
+      var val = watchTypeSelect.value;
+      var targetGroup = document.getElementById('mob-watch-target-group');
+      var commentGroup = document.getElementById('mob-watch-comment-group');
+      var sourceLabel = document.getElementById('mob-watch-source-label');
+      var sourceTextarea = document.querySelector('#mob-watch-source-group textarea[name="source_links"]');
+      var sourceInput = document.querySelector('#mob-watch-source-group input[name="source_link"]');
+
+      if (val === 'download') {
+        if (targetGroup) targetGroup.classList.add('hidden');
+        if (commentGroup) commentGroup.classList.add('hidden');
+        if (sourceLabel) sourceLabel.querySelector('span').textContent = '来源频道';
+        if (sourceTextarea) { sourceTextarea.classList.remove('hidden'); sourceTextarea.required = true; }
+        if (sourceInput) { sourceInput.classList.add('hidden'); sourceInput.required = false; }
       } else {
-        if (textarea) { textarea.style.display = ''; textarea.required = true; }
-        if (input) { input.style.display = 'none'; input.required = false; }
-        if (sourceLabel) sourceLabel.textContent = t('watches.sources');
+        if (targetGroup) targetGroup.classList.remove('hidden');
+        if (commentGroup) commentGroup.classList.remove('hidden');
+        if (sourceLabel) sourceLabel.querySelector('span').textContent = '来源频道';
+        if (sourceTextarea) { sourceTextarea.classList.add('hidden'); sourceTextarea.required = false; }
+        if (sourceInput) { sourceInput.classList.remove('hidden'); sourceInput.required = true; }
       }
-      $('#mob-watch-target-group').style.display = isForward ? '' : 'none';
-      $('#mob-watch-comment-group').style.display = isForward ? '' : 'none';
     });
   }
 
-  /* 新建转存表单提交 */
-  var transferForm = $('#mob-transfer-form');
+  // Transfer form
+  var transferForm = document.getElementById('mob-transfer-form');
   if (transferForm) {
     transferForm.addEventListener('submit', async function(event) {
       event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.start_id = payload.start_id ? Number(payload.start_id) : null;
-      payload.end_id = payload.end_id ? Number(payload.end_id) : null;
-      payload.include_comment = !!payload.include_comment;
+      var formData = new FormData(transferForm);
+      var payload = {};
+      formData.forEach(function(v, k) { payload[k] = v; });
+      if (payload.start_id) payload.start_id = Number(payload.start_id);
+      if (payload.end_id) payload.end_id = Number(payload.end_id);
+      payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
+      var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
-        showToast(t('form.transferCreated'));
-        this.reset();
-        $('#collapse-transfer-form').classList.remove('open');
-        loadTasks();
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        transferForm.reset();
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); renderMobTasks(); }, 1000);
+      } catch (e) {
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }
     });
   }
 
-  /* 新建监听表单提交 */
-  var watchForm = $('#mob-watch-form');
+  // Watch form
+  var watchForm = document.getElementById('mob-watch-form');
   if (watchForm) {
     watchForm.addEventListener('submit', async function(event) {
       event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      var isForward = payload.type === 'forward';
-      if (isForward) {
-        delete payload.source_links;
-        payload.include_comment = !!payload.include_comment;
+      var formData = new FormData(watchForm);
+      var payload = { type: formData.get('type') };
+      if (payload.type === 'download') {
+        payload.source_links = (formData.get('source_links') || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+        payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
       } else {
-        delete payload.source_link;
-        delete payload.target_link;
-        delete payload.include_comment;
-        payload.source_links = String(payload.source_links || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+        payload.source_link = formData.get('source_link');
+        payload.target_link = formData.get('target_link');
+        payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
       }
+      var notice = document.getElementById('mob-watch-notice');
       try {
         await postJson('/api/watches', payload);
-        showToast(t('watches.created'));
-        this.reset();
-        $('#collapse-watch-form').classList.remove('open');
-        loadWatches();
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        watchForm.reset();
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); renderMobWatches(); }, 1000);
+      } catch (e) {
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }
     });
   }
 
-  /* 保存设置 */
-  var saveBtn = $('#mob-save-settings');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async function() {
-      var userPayload = {};
-      var globalPayload = {};
-      var downloadTypes = [];
-
-      // 收集所有设置区域的 input
-      var allInputs = document.querySelectorAll('#mob-settings-path-fields input, #mob-settings-behavior-fields input, #mob-settings-sensitive-fields input, #mob-settings-archive-fields input, #mob-settings-download-types-fields input, #mob-settings-forward-types-fields input, #mob-settings-message-filter-fields input, #mob-settings-exports-fields input');
-
-      allInputs.forEach(function(input) {
-        var name = input.name || '';
-        if (!name) return;
-        var value;
-        if (input.type === 'checkbox') {
-          value = input.checked;
-        } else if (input.type === 'number') {
-          value = input.value === '' ? null : Number(input.value);
-        } else if (input.type === 'password' && input.value === '') {
-          return;
-        } else {
-          value = input.value;
-        }
-
-        // 收集 download_type 多选
-        if (name === 'user.download_type' && input.type === 'checkbox' && input.checked) {
-          downloadTypes.push(input.value);
-          return;
-        }
-        // 收集 forward_type 多选
-        if (name === 'global.forward_type' && input.type === 'checkbox') {
-          setPath(globalPayload, 'forward_type.' + input.value, input.checked);
-          return;
-        }
-        // 消息过滤 — 日期范围：datetime-local → timestamp
-        if (name === 'global.message_filter.date_range.start_date' || name === 'global.message_filter.date_range.end_date') {
-          var ts = input.value ? (new Date(input.value).getTime() / 1000) : null;
-          setPath(globalPayload, name.substring(7), ts);
-          return;
-        }
-        // 消息过滤 — 关键词：逗号分隔字符串 → 数组
-        if (name === 'global.message_filter.keywords.words') {
-          var words = input.value ? input.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-          setPath(globalPayload, name.substring(7), words);
-          return;
-        }
-
-        if (name.startsWith('user.')) {
-          setPath(userPayload, name.substring(5), value);
-        } else if (name.startsWith('global.')) {
-          setPath(globalPayload, name.substring(7), value);
-        }
-      });
-
-      setPath(userPayload, 'download_type', downloadTypes);
-
-      try {
-        await postJson('/api/settings', { user: userPayload, global: globalPayload });
-        showToast(t('settings.saved'));
-        loadSettings();
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
-      }
-    });
-  }
-
-  /* ====== 下载与上传（合并页面） ====== */
-
-  /* 初始化下载类型 checkboxes（移动端） */
-  function mobInitDownloadTypes() {
-    var grid = $('#mob-channel-download-types');
-    if (!grid) return;
-    var types = ['video','photo','audio','voice','animation','document','video_note'];
-    var settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
-    var selected = Array.isArray(settings) ? settings : types;
-    grid.innerHTML = types.map(function(t) {
-      return '<label class="!flex-row !items-center gap-1 text-[13px]"><input type="checkbox" name="download_type" value="' + t + '" class="!w-auto !min-h-0"' + (selected.indexOf(t) >= 0 ? ' checked' : '') + '>' + t + '</label>';
-    }).join('');
-  }
-
-  /* 频道下载表单 */
-  var channelForm = $('#mob-channel-form');
+  // Channel download form
+  var channelForm = document.getElementById('mob-channel-form');
   if (channelForm) {
     channelForm.addEventListener('submit', async function(event) {
       event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.include_comment = !!payload.include_comment;
-      if (payload.start_date) {
-        payload.date_range = { start_date: new Date(payload.start_date).getTime() / 1000 };
-        delete payload.start_date;
-      }
-      if (payload.end_date) {
-        payload.date_range = payload.date_range || {};
-        payload.date_range.end_date = new Date(payload.end_date).getTime() / 1000;
-        delete payload.end_date;
-      }
-      if (payload.keywords) {
-        payload.keywords = String(payload.keywords).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-      } else {
-        payload.keywords = [];
-      }
-      payload.download_type = Array.from(document.querySelectorAll('#mob-channel-download-types input[name="download_type"]:checked')).map(function(el) { return el.value; });
+      var formData = new FormData(channelForm);
+      var payload = { chat_link: formData.get('chat_link') };
+      if (formData.get('start_date')) payload.start_date = formData.get('start_date');
+      if (formData.get('end_date')) payload.end_date = formData.get('end_date');
+      if (formData.get('keywords')) payload.keywords = formData.get('keywords');
+      payload.include_comment = channelForm.querySelector('[name="include_comment"]').checked;
+      var checkboxes = channelForm.querySelectorAll('[name="download_types"]:checked');
+      if (checkboxes.length > 0) payload.download_type = Array.from(checkboxes).map(function(cb) { return cb.value; });
+
+      var notice = document.getElementById('mob-channel-notice');
       try {
         await postJson('/api/channel-downloads', payload);
-        showToast(t('dl.accepted'));
-        this.reset();
-        mobInitDownloadTypes();
-        loadMobileOperations();
-        $('#collapse-channel-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        channelForm.reset();
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileOperations(); }, 1000);
+      } catch (e) {
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }
     });
   }
 
-  /* 本地上传表单 */
-  var uploadForm = $('#mob-upload-form');
+  // Upload form
+  var uploadForm = document.getElementById('mob-upload-form');
   if (uploadForm) {
     uploadForm.addEventListener('submit', async function(event) {
       event.preventDefault();
-      var form = new FormData(this);
-      var payload = Object.fromEntries(form.entries());
-      payload.recursive = !!payload.recursive;
+      var formData = new FormData(uploadForm);
+      var payload = { path: formData.get('path'), target_link: formData.get('target_link'), recursive: uploadForm.querySelector('[name="recursive"]').checked };
+      var notice = document.getElementById('mob-upload-notice');
       try {
         await postJson('/api/uploads', payload);
-        showToast(t('dl.uploadAccepted'));
-        this.reset();
-        loadMobileOperations();
-        $('#collapse-upload-form').classList.remove('open');
-      } catch (err) {
-        showToast(translateApiError(err, 'form.requestFailed'));
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        uploadForm.reset();
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileOperations(); }, 1000);
+      } catch (e) {
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }
     });
   }
 
-  /* 操作历史列表（移动端） */
-  async function loadMobileOperations() {
-    var container = $('#mob-operations-list');
-    if (!container) return;
-    try {
-      var data = await fetchJson('/api/operations');
-      var ops = data.operations || [];
-      if (!ops.length) {
-        container.innerHTML = '<div class="mob-empty">' + t('dl.historyEmpty') + '</div>';
-        return;
+  // Settings save
+  var saveBtn = document.getElementById('mob-save-settings');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async function() {
+      var notice = document.getElementById('mob-settings-notice');
+      var settingsContainer = document.getElementById('mob-subpage-settings');
+      if (!settingsContainer) return;
+
+      // Collect form data from all inputs in settings subpage
+      var inputs = settingsContainer.querySelectorAll('input[name], select[name]');
+      var payload = {};
+      inputs.forEach(function(input) {
+        var keys = input.name.split('.');
+        var cur = payload;
+        for (var i = 0; i < keys.length - 1; i++) {
+          if (!cur[keys[i]]) cur[keys[i]] = {};
+          cur = cur[keys[i]];
+        }
+        var lastKey = keys[keys.length - 1];
+        if (input.type === 'checkbox') {
+          cur[lastKey] = input.checked;
+        } else if (input.type === 'number') {
+          cur[lastKey] = input.value !== '' ? Number(input.value) : undefined;
+        } else {
+          cur[lastKey] = input.value || undefined;
+        }
+      });
+
+      // Clean undefined values
+      function clean(obj) {
+        Object.keys(obj).forEach(function(k) {
+          if (obj[k] === undefined) delete obj[k];
+          else if (typeof obj[k] === 'object' && obj[k] !== null) clean(obj[k]);
+        });
       }
-      container.innerHTML = ops.map(function(op) {
-        var typeLabel = op.type === 'channel_download' ? t('dl.typeDownload') : t('dl.typeUpload');
-        var payload = op.payload || {};
-        var detail = op.type === 'channel_download' ? (payload.chat_link || '-') : (payload.path || '-');
-        return '<div class="mob-card status-' + (op.status || 'pending') + '">'
-          + '<div class="mob-card__head">'
-          + '<span class="mob-card__title">' + esc(typeLabel) + ' · ' + esc(String(op.id || '-')) + '</span>'
-          + mobBadge(op.status)
-          + '</div>'
-          + '<div class="mob-card__row"><span class="label">' + t('dl.historyDetail') + '</span><span>' + esc(detail) + '</span></div>'
-          + (op.error_message ? '<div class="mob-card__row"><span class="label">' + t('dl.historyError') + '</span><span class="text-danger">' + esc(op.error_message) + '</span></div>' : '')
-          + '<div class="mob-card__row"><span class="label">' + t('dl.historyTime') + '</span><span>' + esc(op.created_at || '') + '</span></div>'
-          + '</div>';
-      }).join('');
-    } catch(e) {}
+      clean(payload);
+
+      try {
+        await postJson('/api/settings', payload);
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存成功'; notice.style.color = 'var(--color-success)'; }
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 2000);
+      } catch (e) {
+        if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+      }
+    });
   }
 
-  /* 操作历史轮询（移动端） */
-  setInterval(function() {
-    var activeView = document.querySelector('.mob-view.active');
-    if (activeView && activeView.id === 'mob-view-downloads-uploads') loadMobileOperations();
-  }, 10000);
+  // Media scan button
+  var mediaBtn = document.getElementById('mob-media-scan-btn');
+  if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);
 
-  /* ====== 下载记录（移动端） ====== */
-  function renderMobRecords() {
-    var records = state.records || [];
-    var container = $('#mob-records-list');
-    if (!records.length) {
-      container.innerHTML = '<div class="mob-empty" data-i18n="records.empty">' + t('records.empty') + '</div>';
-      return;
-    }
-    container.innerHTML = records.map(function(r) {
-      return '<div class="mob-card">'
-        + '<div class="mob-card__head"><span class="mob-card__title">' + esc(r.file_name || r.local_path || '') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('records.chat') + '</span><span>' + esc(r.source_chat_id || '-') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('records.message') + '</span><span>' + esc(r.source_message_id || '-') + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('records.size') + '</span><span>' + formatBytes(r.file_size) + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('records.updated') + '</span><span>' + esc(r.updated_at || r.downloaded_at || '') + '</span></div>'
-        + '</div>';
-    }).join('');
-  }
-
-  /* ====== 统计表格（移动端） ====== */
-  function renderMobStatistics() {
-    var stats = state.statistics;
-    var container = $('#mob-statistics-list');
-    if (!stats || !stats.tables) {
-      container.innerHTML = '<div class="mob-empty">' + t('tasks.empty') + '</div>';
-      return;
-    }
-    var tables = stats.tables;
-    var html = '';
-    var tableNames = { link: t('statistics.link'), count: t('statistics.count'), upload: t('statistics.upload') };
-    for (var key in tables) {
-      if (!tables.hasOwnProperty(key)) continue;
-      var tbl = tables[key];
-      html += '<div class="mob-card mb-2.5">'
-        + '<div class="mob-card__row"><span class="label">' + (tableNames[key] || key) + '</span><span>' + t('statistics.available') + ': ' + (tbl.available ? t('statistics.yes') : t('statistics.no')) + '</span></div>'
-        + '<div class="mob-card__row"><span class="label">' + t('statistics.rows') + '</span><span>' + (tbl.rows || 0) + '</span></div>'
-        + '</div>';
-    }
-    container.innerHTML = html || '<div class="mob-empty">' + t('tasks.empty') + '</div>';
-  }
-
-  /* ====== 覆盖 loadRecords / renderRecords / loadStatistics ====== */
-  var _origLoadRecords = loadRecords;
-  loadRecords = async function() {
-    try { await _origLoadRecords(); } catch(e) {}
-    renderMobRecords();
-  };
-  var _origRenderRecords = renderRecords;
-  renderRecords = function() {
-    try { _origRenderRecords(); } catch(e) {}
-    renderMobRecords();
-  };
-  var _origLoadStatistics = loadStatistics;
-  loadStatistics = async function() {
-    try { await _origLoadStatistics(); } catch(e) {}
-    renderMobStatistics();
-  };
-
-  /* ====== 初始加载（由 checkAuthStatus 驱动） ====== */
+  // Kickoff
+  checkAuthStatus();
+})();
