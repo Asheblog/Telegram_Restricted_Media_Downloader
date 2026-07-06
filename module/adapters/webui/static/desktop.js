@@ -66,17 +66,17 @@ function renderTasks() {
     return '<tr data-task-id="' + task.id + '" class="' + (isSelected ? 'selected' : '') + '">' +
       '<td class="font-semibold text-primary">#' + task.id + '</td>' +
       '<td>' + statusBadge(task.status) + '</td>' +
-      '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap text-[12px]" title="' + esc(task.source_link || '') + '">' + esc(task.source_link || '-') + '</td>' +
-      '<td class="text-[12px]">' + esc(task.target_profile || task.target_link || '-') + '</td>' +
+      '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap text-xs" title="' + esc(task.source_link || '') + '">' + esc(task.source_link || '-') + '</td>' +
+      '<td class="text-xs">' + esc(task.target_profile || task.target_link || '-') + '</td>' +
       '<td>' +
         (task.total_items > 0 ? (
           '<div class="flex items-center gap-2">' +
-          '<span class="text-[12px] font-semibold">' + progressPct + '%</span>' +
+          '<span class="text-xs font-semibold">' + progressPct + '%</span>' +
           '<div class="flex-1 min-w-[60px]">' +
           '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
-          '<span class="text-[10px] text-muted">' + task.completed_items + '/' + task.total_items + '</span>' +
+          '<span class="text-[11px] text-muted">' + task.completed_items + '/' + task.total_items + '</span>' +
           '</div></div>'
-        ) : '<span class="text-muted text-[11px]">-</span>') +
+        ) : '<span class="text-muted text-xs">-</span>') +
       '</td>' +
       '<td>' + taskActions(task) + '</td>' +
       '</tr>';
@@ -124,7 +124,7 @@ document.addEventListener('click', async function(e) {
       state.tasks = state.tasks.filter(t => t.id !== taskId);
       if (state.selectedTaskId === taskId) state.selectedTaskId = null;
       renderTasks();
-      $('#task-detail').innerHTML = '<div class="p-8 text-center text-muted text-[13px]">' + t('items.selectTask') + '</div>';
+      $('#task-detail').innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.selectTask') + '</div>';
     } catch(e) { /* ignore */ }
     return;
   }
@@ -149,7 +149,7 @@ async function loadTaskDetail(taskId) {
     state.activeItemStatus = 'running';
     renderTaskDetail(taskId, data);
   } catch(e) {
-    container.innerHTML = '<div class="p-8 text-center text-muted text-[13px]">加载失败</div>';
+    container.innerHTML = '<div class="p-8 text-center text-muted text-sm">加载失败</div>';
   }
 }
 
@@ -196,16 +196,16 @@ async function loadTaskItems(taskId, status) {
     state.itemData[taskId] = data;
 
     if (!items.length) {
-      body.innerHTML = '<div class="p-8 text-center text-muted text-[13px]">' + t('items.empty.' + status) + '</div>';
+      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + status) + '</div>';
     } else {
       body.innerHTML = '<table class="data-table"><thead><tr>' +
         '<th>文件</th><th>大小</th><th>来源</th><th>目标</th><th>状态</th>' +
         '</tr></thead><tbody>' +
         items.map(item => '<tr>' +
-          '<td class="text-[12px]">' + esc(item.file_name || item.local_path || '-') + '</td>' +
-          '<td class="text-[12px]">' + fmtSize(item.file_size) + '</td>' +
-          '<td class="text-[12px]">' + esc(item.source_link || '-') + '</td>' +
-          '<td class="text-[12px]">' + esc(item.target_path || '-') + '</td>' +
+          '<td class="text-xs">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+          '<td class="text-xs">' + fmtSize(item.file_size) + '</td>' +
+          '<td class="text-xs">' + esc(item.source_link || '-') + '</td>' +
+          '<td class="text-xs">' + esc(item.target_path || '-') + '</td>' +
           '<td>' + statusBadge(item.status) + '</td>' +
           '</tr>').join('') +
         '</tbody></table>';
@@ -214,7 +214,7 @@ async function loadTaskItems(taskId, status) {
     const totalItems = state.itemData[taskId] ? Object.values(state.itemData[taskId].summary || {}).reduce((a, b) => a + (b || 0), 0) : 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / 50));
     pagEl.innerHTML =
-      '<span class="text-[12px] text-muted">第 ' + page + ' / ' + totalPages + ' 页</span>' +
+      '<span class="text-xs text-muted">第 ' + page + ' / ' + totalPages + ' 页</span>' +
       '<div class="flex gap-2">' +
         '<button class="btn btn-sm" ' + (page <= 1 ? 'disabled' : '') + ' id="items-prev-page">' + t('items.page.previous') + '</button>' +
         '<button class="btn btn-sm" ' + (page >= totalPages ? 'disabled' : '') + ' id="items-next-page">' + t('items.page.next') + '</button>' +
@@ -231,7 +231,7 @@ async function loadTaskItems(taskId, status) {
       loadTaskItems(taskId, state.activeItemStatus);
     });
   } catch(e) {
-    body.innerHTML = '<div class="p-8 text-center text-muted text-[13px]">加载失败</div>';
+    body.innerHTML = '<div class="p-8 text-center text-muted text-sm">加载失败</div>';
   }
 }
 
@@ -245,7 +245,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
 
   btn.disabled = true;
   btnText.textContent = t('form.creatingTransferShort');
-  notice.className = 'text-[12px] text-muted mt-2';
+  notice.className = 'text-xs text-muted mt-2';
   notice.textContent = t('form.creatingTransfer');
   notice.style.display = '';
 
@@ -262,11 +262,11 @@ $('#transfer-form').addEventListener('submit', async function(e) {
   try {
     const data = await postJson('/api/tasks', payload);
     state.selectedTaskId = data.task_id;
-    notice.className = 'text-[12px] text-success mt-2';
+    notice.className = 'text-xs text-success mt-2';
     notice.textContent = t('form.createSuccess');
     await loadTasks();
   } catch(err) {
-    notice.className = 'text-[12px] text-danger mt-2';
+    notice.className = 'text-xs text-danger mt-2';
     notice.textContent = translateApiError(err, 'form.createFailed');
   } finally {
     btn.disabled = false;
@@ -476,11 +476,11 @@ async function loadRecords() {
     }
     empty.style.display = 'none';
     tbody.innerHTML = records.map(r => '<tr>' +
-      '<td class="text-[12px] font-mono text-muted">' + esc(String(r.chat_id || '-')) + '</td>' +
-      '<td class="text-[12px] font-mono text-muted">' + esc(String(r.message_id || '-')) + '</td>' +
-      '<td class="text-[12px] max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(r.file_path || r.file_name || '-') + '</td>' +
-      '<td class="text-[12px]">' + fmtSize(r.file_size) + '</td>' +
-      '<td class="text-[12px] text-muted">' + fmtTime(r.updated_at) + '</td>' +
+      '<td class="text-xs font-mono text-muted">' + esc(String(r.chat_id || '-')) + '</td>' +
+      '<td class="text-xs font-mono text-muted">' + esc(String(r.message_id || '-')) + '</td>' +
+      '<td class="text-xs max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(r.file_path || r.file_name || '-') + '</td>' +
+      '<td class="text-xs">' + fmtSize(r.file_size) + '</td>' +
+      '<td class="text-xs text-muted">' + fmtTime(r.updated_at) + '</td>' +
       '</tr>').join('');
   } catch(e) {}
 }
@@ -527,10 +527,10 @@ function renderWatches() {
       '</tr>' : '';
     return '<tr' + rowAttrs + '>' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
-      '<td class="text-[12px] max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted">' + esc(w.source_link || '-') + '</td>' +
-      '<td class="text-[12px]">' + esc(w.target_link || '本地') + '</td>' +
+      '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted">' + esc(w.source_link || '-') + '</td>' +
+      '<td class="text-xs">' + esc(w.target_link || '本地') + '</td>' +
       '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span>' + eventBadge + '</td>' +
-      '<td class="text-[12px] font-semibold">' + eventCount + '</td>' +
+      '<td class="text-xs font-semibold">' + eventCount + '</td>' +
       '<td><div class="flex gap-1">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
@@ -851,7 +851,7 @@ function renderCheckboxGrid(containerId, typeKey, selected) {
   if (!container) return;
   const sel = Array.isArray(selected) ? selected : [];
   container.innerHTML = types.map(t =>
-    '<label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">' +
+    '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
       '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.includes(t) ? ' checked' : '') + '>' +
       '<span>' + t + '</span>' +
     '</label>'
@@ -891,12 +891,12 @@ $('#settings-save').addEventListener('click', async function() {
 
   try {
     await patchJson('/api/settings', payload);
-    notice.className = 'text-[12px] text-success mt-2';
+    notice.className = 'text-xs text-success mt-2';
     notice.textContent = t('settings.saved');
     notice.style.display = '';
     setTimeout(() => { notice.style.display = 'none'; }, 3000);
   } catch(err) {
-    notice.className = 'text-[12px] text-danger mt-2';
+    notice.className = 'text-xs text-danger mt-2';
     notice.textContent = translateApiError(err, 'form.requestFailed');
     notice.style.display = '';
   }
@@ -994,10 +994,10 @@ function renderMediaResult(data) {
     itemsSection.style.display = '';
     $('#media-items-tbody').innerHTML = items.map(item => '<tr>' +
       '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '"></td>' +
-      '<td class="text-[12px] max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
-      '<td class="text-[12px] text-right">' + fmtSize(item.file_size) + '</td>' +
+      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+      '<td class="text-xs text-right">' + fmtSize(item.file_size) + '</td>' +
       '<td class="text-center">' + statusBadge(item.status || '') + '</td>' +
-      '<td class="text-[12px] max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(item.source_link || '-') + '</td>' +
+      '<td class="text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(item.source_link || '-') + '</td>' +
       '</tr>').join('');
   } else {
     itemsSection.style.display = 'none';
@@ -1010,9 +1010,9 @@ function renderMediaResult(data) {
     orphansSection.style.display = '';
     $('#media-orphans-tbody').innerHTML = files.map(f => '<tr>' +
       '<td><input type="checkbox" class="media-cb" data-type="orphan" data-path="' + esc(f.path) + '"></td>' +
-      '<td class="text-[12px] max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
-      '<td class="text-[12px] text-right">' + fmtSize(f.size) + '</td>' +
-      '<td class="text-[12px] text-muted">' + fmtTimestamp(f.mtime) + '</td>' +
+      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
+      '<td class="text-xs text-right">' + fmtSize(f.size) + '</td>' +
+      '<td class="text-xs text-muted">' + fmtTimestamp(f.mtime) + '</td>' +
       '</tr>').join('');
   } else {
     orphansSection.style.display = 'none';
@@ -1055,10 +1055,10 @@ async function loadCleanupLogs() {
     if (logs.length) {
       section.style.display = '';
       $('#media-logs-tbody').innerHTML = logs.map(log => '<tr>' +
-        '<td class="text-[12px] max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(log.file_path || '-') + '</td>' +
-        '<td class="text-[12px] text-right">' + fmtSize(log.file_size) + '</td>' +
-        '<td class="text-[12px]">' + esc(log.reason || '-') + '</td>' +
-        '<td class="text-[12px] text-muted">' + fmtTime(log.created_at) + '</td>' +
+        '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(log.file_path || '-') + '</td>' +
+        '<td class="text-xs text-right">' + fmtSize(log.file_size) + '</td>' +
+        '<td class="text-xs">' + esc(log.reason || '-') + '</td>' +
+        '<td class="text-xs text-muted">' + fmtTime(log.created_at) + '</td>' +
         '</tr>').join('');
     } else {
       section.style.display = 'none';

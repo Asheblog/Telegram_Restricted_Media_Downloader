@@ -90,7 +90,7 @@
   }
 
   .sidebar-nav-item {
-    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-[13px] font-medium text-text-secondary
+    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-sm font-medium text-text-secondary
            transition-all duration-150 w-full text-left border-0 bg-transparent cursor-pointer;
     font-family: inherit;
   }
@@ -108,7 +108,7 @@
   }
 
   .sidebar-nav-badge {
-    @apply ml-auto bg-primary-ghost text-primary text-[11px] font-bold px-2 py-0.5 rounded-full;
+    @apply ml-auto bg-primary-ghost text-primary text-xs font-bold px-2 py-0.5 rounded-full;
   }
 
   .sidebar-footer {
@@ -140,17 +140,17 @@
   }
 
   .topbar h1 {
-    @apply text-2xl font-bold text-text leading-tight;
+    @apply text-xl font-bold text-text leading-tight;
     font-family: var(--font-heading);
   }
 
   .topbar p {
-    @apply text-[13px] text-muted mt-1;
+    @apply text-sm text-muted mt-1;
   }
 
   /* Buttons */
   .btn {
-    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-[13px] font-medium
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-sm font-medium
            border border-line bg-surface text-text cursor-pointer
            transition-all duration-150 whitespace-nowrap;
     font-family: inherit;
@@ -216,7 +216,7 @@
   }
 
   .stat-card-value {
-    @apply text-[28px] font-bold text-text leading-tight text-right;
+    @apply text-2xl font-bold text-text leading-tight text-right;
     font-family: var(--font-heading);
   }
 
@@ -234,7 +234,7 @@
   }
 
   .panel-header h3 {
-    @apply text-sm font-semibold text-text;
+    @apply text-base font-semibold text-text;
     font-family: var(--font-heading);
   }
 
@@ -247,7 +247,7 @@
   }
 
   .panel-tab {
-    @apply px-2.5 py-1 rounded text-[11px] font-medium text-text-secondary
+    @apply px-2.5 py-1 rounded text-xs font-medium text-text-secondary
            cursor-pointer border-0 bg-transparent transition-all duration-100;
     font-family: inherit;
   }
@@ -270,7 +270,7 @@
   }
 
   .form-input, .form-select {
-    @apply w-full h-10 border border-line rounded-[6px] px-3 text-[13px] text-text bg-surface
+    @apply w-full h-10 border border-line rounded-[6px] px-3 text-sm text-text bg-surface
            outline-none transition-all duration-150;
     font-family: inherit;
   }
@@ -285,7 +285,7 @@
   }
 
   .form-submit {
-    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-[13px] font-semibold
+    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-sm font-semibold
            cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 transition-colors duration-150;
     font-family: inherit;
   }
@@ -296,16 +296,16 @@
 
   /* Tables */
   .data-table {
-    @apply w-full border-collapse text-[13px];
+    @apply w-full border-collapse text-sm;
   }
 
   .data-table thead th {
-    @apply text-left py-2.5 px-3 text-[11px] font-semibold text-muted uppercase tracking-[0.05em]
+    @apply text-left py-2.5 px-3 text-xs font-semibold text-muted uppercase tracking-[0.05em]
            border-b-2 border-line bg-surface-alt sticky top-0 whitespace-nowrap;
   }
 
   .data-table tbody td {
-    @apply py-2.5 px-3 border-b border-line-light text-xs align-middle;
+    @apply py-2.5 px-3 border-b border-line-light text-sm align-middle;
   }
 
   .data-table tbody tr {
@@ -322,7 +322,7 @@
 
   /* Badges */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
 
   .badge-running { @apply bg-primary-soft text-primary; }
@@ -357,7 +357,7 @@
 
   /* Activity feed */
   .activity-item {
-    @apply flex gap-2 py-1.5 border-b border-line-light text-[11px] leading-[1.4];
+    @apply flex gap-2 py-1.5 border-b border-line-light text-xs leading-[1.4];
   }
 
   .activity-item:last-child {
@@ -365,12 +365,12 @@
   }
 
   .activity-time {
-    @apply text-muted whitespace-nowrap text-[10px] min-w-[44px];
+    @apply text-muted whitespace-nowrap text-[11px] min-w-[44px];
     font-family: ui-monospace, monospace;
   }
 
   .activity-badge {
-    @apply text-[10px] font-semibold whitespace-nowrap;
+    @apply text-[11px] font-semibold whitespace-nowrap;
   }
 
   .activity-badge.ok { @apply text-success; }
@@ -408,16 +408,16 @@
   }
 
   .login-brand h1 {
-    @apply text-[26px] font-extrabold text-text;
+    @apply text-xl font-extrabold text-text;
     font-family: var(--font-heading);
   }
 
   .login-brand p {
-    @apply text-[13px] text-muted mt-1;
+    @apply text-sm text-muted mt-1;
   }
 
   .login-error {
-    @apply text-[13px] text-danger bg-danger-bg border border-red-300 rounded-[8px] px-3.5 py-2.5 mb-[18px] hidden;
+    @apply text-sm text-danger bg-danger-bg border border-red-300 rounded-[8px] px-3.5 py-2.5 mb-[18px] hidden;
   }
 
   .login-error.visible {
@@ -458,11 +458,11 @@
   }
 
   .login-checkbox {
-    @apply flex items-center gap-2 cursor-pointer text-[13px] text-muted select-none;
+    @apply flex items-center gap-2 cursor-pointer text-sm text-muted select-none;
   }
 
   .login-submit {
-    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-[15px] font-semibold
+    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-sm font-semibold
            cursor-pointer flex items-center justify-center gap-2 transition-colors duration-150;
     font-family: inherit;
   }
@@ -509,7 +509,7 @@
   }
   .watch-events-panel {
     padding: 12px 16px;
-    font-size: 13px;
+    font-size: 14px;
     max-height: 300px;
     overflow-y: auto;
   }

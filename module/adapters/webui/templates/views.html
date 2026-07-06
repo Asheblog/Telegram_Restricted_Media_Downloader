@@ -74,11 +74,11 @@
               <input class="form-input" name="end_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
             </div>
           </div>
-          <label class="flex items-center gap-2 text-[13px] text-muted cursor-pointer mb-3">
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="new.includeComment">包含评论区</span>
           </label>
-          <p class="text-[11px] text-muted leading-[1.5] mb-2" data-i18n="new.hint">
+          <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.hint">
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
           <div id="transfer-notice" class="text-xs mt-2 hidden"></div>
@@ -110,14 +110,14 @@
           </thead>
           <tbody id="tasks-tbody"></tbody>
         </table>
-        <div id="tasks-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="tasks.empty">还没有转存任务。</div>
+        <div id="tasks-empty" class="p-8 text-center text-muted text-sm" data-i18n="tasks.empty">还没有转存任务。</div>
       </div>
     </div>
   </div>
 
   <!-- Task Detail Panel -->
   <div class="panel" id="task-detail">
-    <div class="p-8 text-center text-muted text-[13px]" data-i18n="items.selectTask">选择一个任务查看详情</div>
+    <div class="p-8 text-center text-muted text-sm" data-i18n="items.selectTask">选择一个任务查看详情</div>
   </div>
 </div>
 
@@ -133,7 +133,7 @@
           </div>
           <div>
             <h3 data-i18n="watches.downloadTitle">监听下载</h3>
-            <span class="text-[11px] text-muted" data-i18n="watches.downloadMeta">新消息自动下载</span>
+            <span class="text-xs text-muted" data-i18n="watches.downloadMeta">新消息自动下载</span>
           </div>
         </div>
       </div>
@@ -160,7 +160,7 @@
           </div>
           <div>
             <h3 data-i18n="watches.forwardTitle">监听转发</h3>
-            <span class="text-[11px] text-muted" data-i18n="watches.forwardMeta">新消息自动转发</span>
+            <span class="text-xs text-muted" data-i18n="watches.forwardMeta">新消息自动转发</span>
           </div>
         </div>
       </div>
@@ -174,7 +174,7 @@
             <label class="form-label" data-i18n="watches.target">目标频道</label>
             <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
           </div>
-          <label class="flex items-center gap-2 text-[13px] text-muted cursor-pointer mb-3">
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="watches.includeComment">包含评论区</span>
           </label>
@@ -206,7 +206,7 @@
         </thead>
         <tbody id="watches-tbody"></tbody>
       </table>
-      <div id="watches-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="watches.empty">还没有实时监听。</div>
+      <div id="watches-empty" class="p-8 text-center text-muted text-sm" data-i18n="watches.empty">还没有实时监听。</div>
     </div>
   </div>
 </div>
@@ -224,7 +224,7 @@
         <label class="form-label" data-i18n="watches.target">目标频道</label>
         <input class="form-input" name="target_link" id="edit-watch-target" type="text" required>
       </div>
-      <label class="flex items-center gap-2 text-[13px] text-muted cursor-pointer mb-3">
+      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
         <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
         <span data-i18n="watches.includeComment">包含评论区</span>
       </label>
@@ -265,16 +265,16 @@
         <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
           <legend class="text-xs font-semibold text-muted" data-i18n="channel.types">下载类型</legend>
           <div class="grid grid-cols-2 gap-y-1 gap-x-2.5">
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="video" checked class="w-4 h-4">video</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="photo" checked class="w-4 h-4">photo</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="audio" checked class="w-4 h-4">audio</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="voice" checked class="w-4 h-4">voice</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="animation" checked class="w-4 h-4">animation</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="document" checked class="w-4 h-4">document</label>
-            <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer"><input type="checkbox" name="download_type" value="video_note" checked class="w-4 h-4">video_note</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video" checked class="w-4 h-4">video</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="photo" checked class="w-4 h-4">photo</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="audio" checked class="w-4 h-4">audio</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="voice" checked class="w-4 h-4">voice</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="animation" checked class="w-4 h-4">animation</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="document" checked class="w-4 h-4">document</label>
+            <label class="flex items-center gap-2 text-sm text-text cursor-pointer"><input type="checkbox" name="download_type" value="video_note" checked class="w-4 h-4">video_note</label>
           </div>
         </fieldset>
-        <label class="flex items-center gap-2 text-[13px] text-muted cursor-pointer mb-3">
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
           <input type="checkbox" name="include_comment" class="w-4 h-4">
           <span data-i18n="channel.includeComment">包含评论区</span>
         </label>
@@ -303,7 +303,7 @@
           <label class="form-label" data-i18n="uploads.target">目标频道</label>
           <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
         </div>
-        <label class="flex items-center gap-2 text-[13px] text-muted cursor-pointer mb-3">
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
           <input type="checkbox" name="recursive" class="w-4 h-4">
           <span data-i18n="uploads.recursive">递归上传文件夹</span>
         </label>
@@ -357,7 +357,7 @@
         </thead>
         <tbody id="records-tbody"></tbody>
       </table>
-      <div id="records-empty" class="p-8 text-center text-muted text-[13px]" data-i18n="records.empty">还没有下载成功记录。</div>
+      <div id="records-empty" class="p-8 text-center text-muted text-sm" data-i18n="records.empty">还没有下载成功记录。</div>
     </div>
   </div>
 </div>
@@ -377,7 +377,7 @@
         <div id="media-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
 
         <div id="media-items-section" class="mb-4 hidden">
-          <h4 class="text-sm font-semibold mb-2" data-i18n="media.transferItems">转存任务文件</h4>
+          <h4 class="text-base font-semibold mb-2" data-i18n="media.transferItems">转存任务文件</h4>
           <div class="overflow-x-auto rounded-lg border border-line">
             <table class="data-table min-w-[600px]">
               <thead><tr>
@@ -393,7 +393,7 @@
         </div>
 
         <div id="media-orphans-section" class="mb-4 hidden">
-          <h4 class="text-sm font-semibold mb-2" data-i18n="media.orphanFiles">遗留文件</h4>
+          <h4 class="text-base font-semibold mb-2" data-i18n="media.orphanFiles">遗留文件</h4>
           <div class="overflow-x-auto rounded-lg border border-line">
             <table class="data-table min-w-[600px]">
               <thead><tr>
@@ -413,7 +413,7 @@
       </div>
 
       <div id="media-logs-section" class="hidden">
-        <h4 class="text-sm font-semibold mb-2 mt-4" data-i18n="media.cleanupHistory">清理历史</h4>
+        <h4 class="text-base font-semibold mb-2 mt-4" data-i18n="media.cleanupHistory">清理历史</h4>
         <div class="overflow-x-auto rounded-lg border border-line">
           <table class="data-table">
             <thead><tr>
@@ -441,7 +441,7 @@
 
       <!-- Paths -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.paths">路径与任务</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.paths">路径与任务</h4>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label" data-i18n="settings.saveDirectory">保存目录</label>
@@ -484,21 +484,21 @@
 
       <!-- Behavior -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.behavior">行为</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.behavior">行为</h4>
         <div class="form-row">
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.notice" class="w-4 h-4">
             <span data-i18n="settings.notice">机器人通知</span>
           </label>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="user.is_shutdown" class="w-4 h-4">
             <span data-i18n="settings.shutdown">退出后关机</span>
           </label>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.upload.download_upload" class="w-4 h-4">
             <span data-i18n="settings.downloadUpload">受限转发时下载后上传</span>
           </label>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.upload.delete" class="w-4 h-4">
             <span data-i18n="settings.uploadDelete">上传完成删除本地文件</span>
           </label>
@@ -511,8 +511,8 @@
 
       <!-- PikPak Archive -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
-        <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-3">
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">
           <span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span>
         </label>
@@ -550,7 +550,7 @@
 
       <!-- Account & Proxy -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.sensitive">账号与代理</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.sensitive">账号与代理</h4>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">API ID</label>
@@ -575,20 +575,20 @@
 
       <!-- Download Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
         <div class="grid grid-cols-2 gap-2" id="download-type-grid"></div>
       </div>
 
       <!-- Forward Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
         <div class="grid grid-cols-2 gap-2" id="forward-type-grid"></div>
       </div>
 
       <!-- Message Filter -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.messageFilter">消息过滤</h4>
-        <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-3">
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.messageFilter">消息过滤</h4>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
           <span data-i18n="settings.enabled">启用消息过滤</span>
         </label>
@@ -597,7 +597,7 @@
           <div class="grid grid-cols-2 gap-2 mt-1" id="filter-media-grid"></div>
         </div>
         <div class="mb-3">
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-2">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
             <input type="checkbox" name="global.message_filter.date_range.enabled" class="w-4 h-4">
             <span data-i18n="settings.dateRange">日期范围过滤</span>
           </label>
@@ -613,7 +613,7 @@
           </div>
         </div>
         <div>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer mb-2">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
             <input type="checkbox" name="global.message_filter.keywords.enabled" class="w-4 h-4">
             <span data-i18n="settings.keywords">关键词过滤</span>
           </label>
@@ -626,17 +626,17 @@
 
       <!-- Export Tables -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-sm font-semibold mb-3" data-i18n="settings.exports">导出表格</h4>
+        <h4 class="text-base font-semibold mb-3" data-i18n="settings.exports">导出表格</h4>
         <div class="grid grid-cols-2 gap-2">
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.export_table.link" class="w-4 h-4">
             <span data-i18n="settings.exportLink">链接统计表</span>
           </label>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.export_table.count" class="w-4 h-4">
             <span data-i18n="settings.exportCount">计数统计表</span>
           </label>
-          <label class="flex items-center gap-2 text-[13px] text-text cursor-pointer">
+          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.export_table.upload" class="w-4 h-4">
             <span data-i18n="settings.exportUpload">上传统计表</span>
           </label>
