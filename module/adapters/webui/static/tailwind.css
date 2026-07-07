@@ -289,6 +289,16 @@
     resize: vertical;
   }
 
+  .download-upload-align-spacer {
+    min-height: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .download-upload-align-spacer {
+      min-height: 110px;
+    }
+  }
+
   .form-row {
     @apply grid grid-cols-2 gap-2.5;
   }
