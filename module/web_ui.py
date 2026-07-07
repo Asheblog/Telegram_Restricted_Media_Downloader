@@ -525,7 +525,13 @@ class WebUiServer:
                     query = parse_qs(parsed.query)
                     limit = self._query_int(query, 'limit', 50)
                     offset = self._query_int(query, 'offset', 0)
-                    result = server.list_watch_events(watch_id, limit=limit, offset=offset)
+                    today_only = str((query.get('today') or [''])[0]).lower() in ('1', 'true', 'yes')
+                    result = server.list_watch_events(
+                        watch_id,
+                        limit=limit,
+                        offset=offset,
+                        today_only=today_only
+                    )
                     if not result:
                         self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
                         return
@@ -975,10 +981,10 @@ class WebUiServer:
             return bool(delete_watch(watch_id))
         return False
 
-    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0):
+    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False):
         list_watch_events = self._operation('list_watch_events')
         if list_watch_events:
-            return list_watch_events(watch_id, limit=limit, offset=offset)
+            return list_watch_events(watch_id, limit=limit, offset=offset, today_only=today_only)
         return None
 
     def delete_task(self, task_id: int) -> bool:

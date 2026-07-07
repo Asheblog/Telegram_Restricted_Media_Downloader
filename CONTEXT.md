@@ -120,7 +120,7 @@ _Avoid_: Preset, mode
 **Source Channel Folder** — 从来源链接提取的文件系统安全文件夹名，同一来源频道的媒体归入同一文件夹。
 _Avoid_: Target folder, chat title cache
 
-**Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发。
+**Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。
 _Avoid_: Listen job, bot listener
 
 **Live Transfer Status** — 用户可见的进度消息，展示下载/上传/目标发送/失败各阶段状态。

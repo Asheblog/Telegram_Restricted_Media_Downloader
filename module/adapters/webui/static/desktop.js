@@ -522,7 +522,7 @@ function renderWatches() {
     const statusCls = w.status === 'paused' ? 'badge-paused' : 'badge-success';
     const statusLabel = w.status === 'paused' ? t('status.paused') : '● ' + t('status.running');
     const eventCount = w.event_count || 0;
-    const eventBadge = w.type === 'forward' && eventCount ? ' <span class="badge badge-muted ml-1">' + eventCount + '</span>' : '';
+    const todayCount = w.today_count || 0;
     const sanitized = sanitizeWatchId(w.id);
     const rowAttrs = w.type === 'forward' ? ' class="watch-row" data-watch-id="' + esc(w.id) + '"' : '';
     const eventsRow = w.type === 'forward' ?
@@ -533,10 +533,11 @@ function renderWatches() {
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
       '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted">' + esc(w.source_link || '-') + '</td>' +
       '<td class="text-xs">' + esc(w.target_link || '本地') + '</td>' +
-      '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span>' + eventBadge + '</td>' +
-      '<td class="text-xs font-semibold">' + eventCount + '</td>' +
-      '<td><div class="flex gap-1">' +
+      '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span></td>' +
+      '<td class="text-xs font-semibold">' + todayCount + '</td>' +
+      '<td><div class="table-actions flex gap-1">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
+        (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-history="' + esc(w.id) + '">' + esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
       '</div></td>' +
       '</tr>' + eventsRow;
@@ -565,16 +566,17 @@ function toggleWatchEvents(watchId) {
     return;
   }
   row.classList.add('open');
-  loadWatchEvents(watchId, 0);
+  loadWatchEvents(watchId, 0, true);
 }
 
-async function loadWatchEvents(watchId, offset) {
+async function loadWatchEvents(watchId, offset, todayOnly) {
   const sanitized = sanitizeWatchId(watchId);
   const panel = document.getElementById('watch-events-panel-' + sanitized);
   if (!panel) return;
   if (offset === 0) panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
   try {
-    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset);
+    const todayQuery = todayOnly ? '&today=1' : '';
+    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset + todayQuery);
     const data = await res.json();
     if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>'; return; }
     const items = data.events || [];
@@ -598,12 +600,85 @@ async function loadWatchEvents(watchId, offset) {
       const btn = document.createElement('button');
       btn.className = 'watch-events-load-more btn btn-sm';
       btn.textContent = t('watches.loadMore');
-      btn.onclick = function() { loadWatchEvents(watchId, offset + items.length); };
+      btn.onclick = function() { loadWatchEvents(watchId, offset + items.length, todayOnly); };
       panel.appendChild(btn);
     }
   } catch (e) {
     panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
   }
+}
+
+function renderWatchEventRows(items) {
+  if (!items.length) {
+    return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
+  }
+  return '<table class="data-table watch-history-table"><thead><tr>' +
+    '<th>' + esc(t('events.title')) + '</th>' +
+    '<th>' + esc(t('tasks.status')) + '</th>' +
+    '<th>' + esc(t('watches.source')) + '</th>' +
+    '<th>' + esc(t('watches.target')) + '</th>' +
+    '<th>' + esc(t('records.updated')) + '</th>' +
+    '</tr></thead><tbody>' +
+    items.map(evt => {
+      const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+      const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
+      return '<tr>' +
+        '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.message || '') + '">' + esc(evt.message || '-') + '</td>' +
+        '<td><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></td>' +
+        '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
+        '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
+        '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table>';
+}
+
+async function openWatchHistoryModal(watchId, page) {
+  state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
+  const overlay = $('#watch-history-overlay');
+  const body = $('#watch-history-body');
+  if (!overlay || !body) return;
+  overlay.classList.add('open');
+  await loadWatchHistoryPage();
+}
+
+async function loadWatchHistoryPage() {
+  const body = $('#watch-history-body');
+  const pagination = $('#watch-history-pagination');
+  if (!body || !pagination || !state.watchHistory.watchId) return;
+  const page = state.watchHistory.page || 1;
+  const pageSize = state.watchHistory.pageSize || 20;
+  const offset = (page - 1) * pageSize;
+  body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
+  pagination.innerHTML = '';
+  try {
+    const data = await fetchJson('/api/watches/' + encodeURIComponent(state.watchHistory.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    const items = data.events || [];
+    const total = Number(data.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    state.watchHistory.total = total;
+    body.innerHTML = renderWatchEventRows(items);
+    pagination.innerHTML =
+      '<span class="text-xs text-muted">' + esc(t('watches.pageInfo').replace('{page}', page).replace('{pages}', totalPages).replace('{total}', total)) + '</span>' +
+      '<div class="table-actions flex gap-2">' +
+        '<button class="btn btn-sm" id="watch-history-prev" ' + (page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+        '<button class="btn btn-sm" id="watch-history-next" ' + (page >= totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+      '</div>';
+    $('#watch-history-prev')?.addEventListener('click', function() {
+      state.watchHistory.page = Math.max(1, page - 1);
+      loadWatchHistoryPage();
+    });
+    $('#watch-history-next')?.addEventListener('click', function() {
+      state.watchHistory.page = page + 1;
+      loadWatchHistoryPage();
+    });
+  } catch(e) {
+    body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(t('form.requestFailed')) + '</div>';
+  }
+}
+
+function closeWatchHistoryModal() {
+  $('#watch-history-overlay')?.classList.remove('open');
 }
 
 /* watch form */
@@ -650,6 +725,10 @@ document.addEventListener('click', async function(e) {
   if (editBtn) {
     openEditWatchModal(editBtn.dataset.editWatch);
   }
+  const historyBtn = e.target.closest('[data-watch-history]');
+  if (historyBtn) {
+    openWatchHistoryModal(historyBtn.dataset.watchHistory, 1);
+  }
 });
 
 function openEditWatchModal(watchId) {
@@ -668,6 +747,10 @@ function closeEditWatchModal() {
 
 $('#watch-edit-overlay')?.addEventListener('click', function(e) {
   if (e.target === this) closeEditWatchModal();
+});
+
+$('#watch-history-overlay')?.addEventListener('click', function(e) {
+  if (e.target === this) closeWatchHistoryModal();
 });
 
 $('#watch-edit-form')?.addEventListener('submit', async function(e) {

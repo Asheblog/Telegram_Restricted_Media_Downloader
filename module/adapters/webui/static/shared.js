@@ -54,6 +54,11 @@ const i18n = {
     'watches.deleted': '实时监听已移除。',
     'watches.updated': '实时监听已更新。',
     'watches.events': '转发记录',
+    'watches.todayEvents': '今日记录',
+    'watches.allEvents': '完整记录',
+    'watches.history': '记录',
+    'watches.historyTitle': '监听转发记录',
+    'watches.pageInfo': '第 {page} / {pages} 页 · 共 {total} 条',
     'watches.noEvents': '暂无转发记录',
     'watches.eventForwarded': '转发成功',
     'watches.eventSkipped': '已过滤',
@@ -287,6 +292,11 @@ const i18n = {
     'watches.deleted': 'Live watch removed.',
     'watches.updated': 'Live watch updated.',
     'watches.events': 'Forward log',
+    'watches.todayEvents': 'Today',
+    'watches.allEvents': 'Full log',
+    'watches.history': 'Log',
+    'watches.historyTitle': 'Forward watch log',
+    'watches.pageInfo': 'Page {page} / {pages} · {total} total',
     'watches.noEvents': 'No forwarding events yet.',
     'watches.eventForwarded': 'Forwarded',
     'watches.eventSkipped': 'Filtered',
@@ -490,6 +500,7 @@ const state = {
   eventData: {},
   taskPollTimer: null,
   watchEventCache: {},
+  watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
 };
 window.state = state;
 

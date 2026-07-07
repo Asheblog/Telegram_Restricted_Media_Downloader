@@ -479,9 +479,10 @@ function renderMobWatches() {
   var typeLabels = { download: '下载监听', forward: '转发监听' };
   var html = '';
   window.state.watches.forEach(function(w) {
-    var statusClass = w.enabled !== false ? 'running' : 'paused';
-    var statusLabel = w.enabled !== false ? '运行中' : '已暂停';
+    var statusClass = w.status === 'paused' ? 'paused' : 'running';
+    var statusLabel = w.status === 'paused' ? '已暂停' : '运行中';
     var sanitized = esc(w.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    var eventCount = Number(w.event_count || 0);
     html += '<div class="mob-card status-' + statusClass + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(typeLabels[w.type] || w.type || '监听') + '</span>' +
@@ -492,7 +493,8 @@ function renderMobWatches() {
       '<div class="mob-card__row"><span class="label">今日</span><span>' + (w.today_count || 0) + '</span></div>' +
       '<div class="mob-card__actions">' +
         '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
-        (w.type === 'download' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">事件</button>' : '') +
+        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">今日</button>' : '') +
+        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-history="' + esc(w.id) + '">记录' + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
       '</div>' +
       '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
     '</div>';
@@ -511,6 +513,11 @@ function renderMobWatches() {
       if (isHidden) loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
     });
   });
+  container.querySelectorAll('[data-watch-history]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      openMobileWatchHistory(btn.dataset.watchHistory, 1);
+    });
+  });
 }
 
 async function loadMobileWatchEvents(watchId, sanitized) {
@@ -518,22 +525,80 @@ async function loadMobileWatchEvents(watchId, sanitized) {
   if (!panel) return;
   panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
   try {
-    var data = await fetchJson('/api/watches/' + watchId + '/events?limit=20');
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=20&today=1');
     if (!data || !data.events || data.events.length === 0) {
       panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无事件</div>';
       return;
     }
     var html = '';
     data.events.forEach(function(ev) {
+      var statusLabel = ev.status === 'success' ? '转发成功' : '已过滤';
       html += '<div class="watch-event-item">' +
-        '<span class="watch-event-time">' + esc(ev.time || '') + '</span>' +
-        '<span class="watch-event-badge badge badge-sm badge-' + (ev.status === 'ok' ? 'success' : 'failed') + '">' + esc(ev.status || '') + '</span>' +
-        '<span class="watch-event-info">' + esc(ev.message || ev.file || '') + '</span>' +
+        '<span class="watch-event-time">' + esc(fmtTime(ev.created_at)) + '</span>' +
+        '<span class="watch-event-badge badge ' + (ev.status === 'success' ? 'badge-success' : 'badge-warning') + '">' + esc(statusLabel) + '</span>' +
+        '<span class="watch-event-info">' + esc(ev.message || '') + '</span>' +
       '</div>';
     });
     panel.innerHTML = html;
   } catch (e) {
     panel.innerHTML = '<div style="padding:8px;color:var(--color-danger);">加载失败</div>';
+  }
+}
+
+async function openMobileWatchHistory(watchId, page) {
+  state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  if (!overlay || !sheet) return;
+  sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
+  overlay.classList.add('open');
+  await loadMobileWatchHistoryPage();
+}
+
+async function loadMobileWatchHistoryPage() {
+  var sheet = document.getElementById('mob-sheet');
+  if (!sheet || !state.watchHistory.watchId) return;
+  var page = state.watchHistory.page || 1;
+  var pageSize = state.watchHistory.pageSize || 20;
+  var offset = (page - 1) * pageSize;
+  try {
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(state.watchHistory.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    var items = data.events || [];
+    var total = Number(data.total || 0);
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    var html = '<div class="mob-sheet__title">' + esc(t('watches.historyTitle')) + '</div>';
+    if (!items.length) {
+      html += '<div class="mob-empty">' + esc(t('watches.noEvents')) + '</div>';
+    } else {
+      items.forEach(function(ev) {
+        var statusLabel = ev.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+        html += '<div class="mob-event-row">' +
+          '<time>' + esc(fmtTime(ev.created_at)) + '</time>' +
+          '<span class="mob-card__badge ' + (ev.status === 'success' ? 'completed' : 'pending') + '">' + esc(statusLabel) + '</span>' +
+          '<div style="margin-top:4px;word-break:break-all;">' + esc(ev.message || '-') + '</div>' +
+        '</div>';
+      });
+    }
+    html += '<div class="mob-sheet-pagination">' +
+      '<span>' + esc(t('watches.pageInfo').replace('{page}', page).replace('{pages}', totalPages).replace('{total}', total)) + '</span>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-watch-history-prev" ' + (page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-watch-history-next" ' + (page >= totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+      '</div>' +
+    '</div>' +
+    '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:4px;" id="mob-watch-history-close">关闭</button>';
+    sheet.innerHTML = html;
+    document.getElementById('mob-watch-history-close')?.addEventListener('click', closeSheet);
+    document.getElementById('mob-watch-history-prev')?.addEventListener('click', function() {
+      state.watchHistory.page = Math.max(1, page - 1);
+      loadMobileWatchHistoryPage();
+    });
+    document.getElementById('mob-watch-history-next')?.addEventListener('click', function() {
+      state.watchHistory.page = page + 1;
+      loadMobileWatchHistoryPage();
+    });
+  } catch (e) {
+    sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
   }
 }
 

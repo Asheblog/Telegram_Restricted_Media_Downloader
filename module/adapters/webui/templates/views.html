@@ -200,14 +200,29 @@
             <th data-i18n="watches.source">来源频道</th>
             <th data-i18n="watches.target">目标频道</th>
             <th>状态</th>
-            <th class="w-20">今日</th>
-            <th class="w-20">操作</th>
+            <th class="w-20" data-i18n="watches.todayEvents">今日记录</th>
+            <th class="w-24">操作</th>
           </tr>
         </thead>
         <tbody id="watches-tbody"></tbody>
       </table>
       <div id="watches-empty" class="p-8 text-center text-muted text-sm" data-i18n="watches.empty">还没有实时监听。</div>
     </div>
+  </div>
+</div>
+
+<!-- Watch History Overlay -->
+<div class="watch-overlay" id="watch-history-overlay">
+  <div class="watch-dialog watch-history-dialog">
+    <div class="watch-history-header">
+      <h3 class="text-base font-semibold flex items-center gap-2">
+        <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="watches.historyTitle">监听转发记录</span>
+      </h3>
+      <button type="button" class="btn btn-sm btn-icon" onclick="closeWatchHistoryModal()">✕</button>
+    </div>
+    <div class="watch-history-body" id="watch-history-body"></div>
+    <div class="watch-history-pagination" id="watch-history-pagination"></div>
   </div>
 </div>
 

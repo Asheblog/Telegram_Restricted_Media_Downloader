@@ -1,6 +1,7 @@
 # coding=UTF-8
 import base64
 import asyncio
+import datetime
 import http.client
 import inspect
 import json
@@ -3476,6 +3477,59 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 })
         finally:
             loop.close()
+
+    def test_live_watch_manager_reports_total_and_today_event_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            watch_id = 'forward:https://t.me/source -> https://t.me/target'
+            store.upsert_live_transfer_watch(
+                watch_id=watch_id,
+                watch_type='forward',
+                source_link='https://t.me/source',
+                target_link='https://t.me/target',
+                include_comment=False,
+                status=TransferStatus.RUNNING,
+                error_message=None
+            )
+            old_event_id = store.add_live_watch_event(
+                watch_id=watch_id,
+                source_chat_id='source',
+                source_message_id=1,
+                target_chat_id='target',
+                target_link='https://t.me/target',
+                status=TransferStatus.SUCCESS,
+                message='old event'
+            )
+            store.add_live_watch_event(
+                watch_id=watch_id,
+                source_chat_id='source',
+                source_message_id=2,
+                target_chat_id='target',
+                target_link='https://t.me/target',
+                status=TransferStatus.SUCCESS,
+                message='today event'
+            )
+            today_start, _ = store.local_today_utc_bounds()
+            old_at = (
+                datetime.datetime.fromisoformat(today_start) - datetime.timedelta(seconds=1)
+            ).isoformat(timespec='seconds')
+            with store.connect() as conn:
+                conn.execute(
+                    'UPDATE live_watch_events SET created_at = ? WHERE id = ?',
+                    (old_at, old_event_id)
+                )
+
+            manager = LiveWatchManager(transfer_store_getter=lambda: store)
+            watch = manager.list_watches()[0]
+            self.assertEqual(2, watch['event_count'])
+            self.assertEqual(1, watch['today_count'])
+
+            today_events = manager.list_watch_events(watch_id, limit=50, offset=0, today_only=True)
+            self.assertEqual(1, today_events['total'])
+            self.assertEqual(2, today_events['events'][0]['source_message_id'])
+
+            all_events = manager.list_watch_events(watch_id, limit=50, offset=0)
+            self.assertEqual(2, all_events['total'])
 
 
 if __name__ == '__main__':

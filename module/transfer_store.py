@@ -36,6 +36,16 @@ class TransferStore:
     def utc_now() -> str:
         return datetime.datetime.now(datetime.UTC).isoformat(timespec='seconds')
 
+    @staticmethod
+    def local_today_utc_bounds() -> tuple[str, str]:
+        local_now = datetime.datetime.now().astimezone()
+        local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_end = local_start + datetime.timedelta(days=1)
+        return (
+            local_start.astimezone(datetime.UTC).isoformat(timespec='seconds'),
+            local_end.astimezone(datetime.UTC).isoformat(timespec='seconds')
+        )
+
     def _get_conn(self) -> sqlite3.Connection:
         """返回当前线程缓存的数据库连接，首次调用时创建并配置。"""
         conn = getattr(self._tls, 'conn', None)
@@ -233,6 +243,8 @@ class TransferStore:
                 ON live_transfer_watches(created_at ASC, id ASC);
             CREATE INDEX IF NOT EXISTS idx_live_watch_events_watch_order
                 ON live_watch_events(watch_id, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_live_watch_events_watch_created
+                ON live_watch_events(watch_id, created_at DESC, id DESC);
             '''
         )
 
@@ -1115,29 +1127,41 @@ class TransferStore:
             return int(cursor.lastrowid)
 
     def list_live_watch_events(
-            self, watch_id: str, limit: int = 50, offset: int = 0
+            self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False
     ) -> tuple:
         with self.connect() as conn:
+            where_sql = 'watch_id = ?'
+            params: list[Any] = [watch_id]
+            if today_only:
+                start_at, end_at = self.local_today_utc_bounds()
+                where_sql += ' AND created_at >= ? AND created_at < ?'
+                params.extend([start_at, end_at])
             total = int(conn.execute(
-                'SELECT COUNT(*) FROM live_watch_events WHERE watch_id = ?',
-                (watch_id,)
+                f'SELECT COUNT(*) FROM live_watch_events WHERE {where_sql}',
+                params
             ).fetchone()[0])
             rows = conn.execute(
-                '''
+                f'''
                 SELECT * FROM live_watch_events
-                WHERE watch_id = ?
+                WHERE {where_sql}
                 ORDER BY id DESC
                 LIMIT ? OFFSET ?
                 ''',
-                (watch_id, limit, offset)
+                [*params, limit, offset]
             ).fetchall()
             return [dict(row) for row in rows], total
 
-    def get_live_watch_event_count(self, watch_id: str) -> int:
+    def get_live_watch_event_count(self, watch_id: str, today_only: bool = False) -> int:
         with self.connect() as conn:
+            where_sql = 'watch_id = ?'
+            params: list[Any] = [watch_id]
+            if today_only:
+                start_at, end_at = self.local_today_utc_bounds()
+                where_sql += ' AND created_at >= ? AND created_at < ?'
+                params.extend([start_at, end_at])
             return int(conn.execute(
-                'SELECT COUNT(*) FROM live_watch_events WHERE watch_id = ?',
-                (watch_id,)
+                f'SELECT COUNT(*) FROM live_watch_events WHERE {where_sql}',
+                params
             ).fetchone()[0])
 
     def delete_live_watch_events(self, watch_id: str) -> int:

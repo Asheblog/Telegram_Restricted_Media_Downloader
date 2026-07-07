@@ -141,9 +141,12 @@ class LiveWatchManager:
         store = self._transfer_store
         for watch_id in watches_by_id:
             count = 0
+            today_count = 0
             if store and watches_by_id[watch_id].get('type') == 'forward':
                 count = store.get_live_watch_event_count(watch_id)
+                today_count = store.get_live_watch_event_count(watch_id, today_only=True)
             watches_by_id[watch_id]['event_count'] = count
+            watches_by_id[watch_id]['today_count'] = today_count
         return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
 
     def pending_watch_sources(self, watch_type: str) -> set:
@@ -352,16 +355,24 @@ class LiveWatchManager:
             'include_comment': new_include_comment
         })
 
-    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0) -> Optional[dict]:
+    def list_watch_events(
+            self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False
+    ) -> Optional[dict]:
         store = self._transfer_store
         if not store:
             return None
-        events, total = store.list_live_watch_events(watch_id, limit=limit, offset=offset)
+        events, total = store.list_live_watch_events(
+            watch_id,
+            limit=limit,
+            offset=offset,
+            today_only=today_only
+        )
         return {
             'watch_id': watch_id,
             'events': events,
             'total': total,
             'limit': limit,
             'offset': offset,
+            'today_only': today_only,
             'has_more': (offset + len(events)) < total
         }
