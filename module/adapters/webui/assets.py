@@ -4668,6 +4668,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     }
     showNotice('#watch-download-notice', t('watches.deleted'), true);
     await loadWatches();
+    if (typeof renderMobWatches === 'function') renderMobWatches();
+    if (typeof showToast === 'function') showToast(t('watches.deleted'));
   }
   window.deleteWatch = deleteWatch;
 
@@ -4780,6 +4782,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         await postTaskAction(taskId, action);
         showFormMessage(t('action.taskUpdated'), true);
         await loadTasks();
+        if (typeof renderMobTasks === 'function') renderMobTasks();
+        if (typeof showToast === 'function') showToast(t('action.taskUpdated'));
       } catch (payload) {
         showFormMessage(translateApiError(payload), false);
       }
@@ -4814,6 +4818,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       renderEvents();
     }
     await loadTasks();
+    if (typeof renderMobTasks === 'function') renderMobTasks();
+    if (typeof showToast === 'function') showToast(t('tasks.deleted'));
   }
   window.deleteTask = deleteTask;
 
@@ -5631,35 +5637,9 @@ function renderSheetItemPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Task actions
+// Task actions — defined in mobile_shared.js; overrides here to use
+// mobile-specific rendering (renderMobTasks/renderMobWatches/showToast)
 // ---------------------------------------------------------------------------
-async function runTaskAction(e, taskId, action) {
-  e.stopPropagation();
-  try {
-    await postJson('/api/tasks/' + taskId + '/' + action, {});
-    showToast('操作成功');
-    setTimeout(function() { renderMobTasks(); }, 500);
-  } catch (err) { showToast('操作失败: ' + (err.message || '')); }
-}
-
-async function deleteTask(e, taskId) {
-  e.stopPropagation();
-  if (!confirm('确认删除任务 #' + taskId + '？')) return;
-  try {
-    await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
-    showToast('已删除');
-    setTimeout(function() { renderMobTasks(); }, 500);
-  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
-}
-
-async function deleteWatch(watchId) {
-  if (!confirm('确认删除监听？')) return;
-  try {
-    await fetch('/api/watches/' + watchId, { method: 'DELETE' });
-    showToast('已删除');
-    setTimeout(function() { renderMobWatches(); }, 500);
-  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
-}
 
 // ---------------------------------------------------------------------------
 // Settings

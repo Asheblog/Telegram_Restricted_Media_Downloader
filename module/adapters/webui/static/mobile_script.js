@@ -572,35 +572,9 @@ function renderSheetItemPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Task actions
+// Task actions — defined in mobile_shared.js; overrides here to use
+// mobile-specific rendering (renderMobTasks/renderMobWatches/showToast)
 // ---------------------------------------------------------------------------
-async function runTaskAction(e, taskId, action) {
-  e.stopPropagation();
-  try {
-    await postJson('/api/tasks/' + taskId + '/' + action, {});
-    showToast('操作成功');
-    setTimeout(function() { renderMobTasks(); }, 500);
-  } catch (err) { showToast('操作失败: ' + (err.message || '')); }
-}
-
-async function deleteTask(e, taskId) {
-  e.stopPropagation();
-  if (!confirm('确认删除任务 #' + taskId + '？')) return;
-  try {
-    await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
-    showToast('已删除');
-    setTimeout(function() { renderMobTasks(); }, 500);
-  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
-}
-
-async function deleteWatch(watchId) {
-  if (!confirm('确认删除监听？')) return;
-  try {
-    await fetch('/api/watches/' + watchId, { method: 'DELETE' });
-    showToast('已删除');
-    setTimeout(function() { renderMobWatches(); }, 500);
-  } catch (err) { showToast('删除失败: ' + (err.message || '')); }
-}
 
 // ---------------------------------------------------------------------------
 // Settings

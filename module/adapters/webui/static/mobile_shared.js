@@ -1207,6 +1207,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
     }
     showNotice('#watch-download-notice', t('watches.deleted'), true);
     await loadWatches();
+    if (typeof renderMobWatches === 'function') renderMobWatches();
+    if (typeof showToast === 'function') showToast(t('watches.deleted'));
   }
   window.deleteWatch = deleteWatch;
 
@@ -1319,6 +1321,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         await postTaskAction(taskId, action);
         showFormMessage(t('action.taskUpdated'), true);
         await loadTasks();
+        if (typeof renderMobTasks === 'function') renderMobTasks();
+        if (typeof showToast === 'function') showToast(t('action.taskUpdated'));
       } catch (payload) {
         showFormMessage(translateApiError(payload), false);
       }
@@ -1353,6 +1357,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       renderEvents();
     }
     await loadTasks();
+    if (typeof renderMobTasks === 'function') renderMobTasks();
+    if (typeof showToast === 'function') showToast(t('tasks.deleted'));
   }
   window.deleteTask = deleteTask;
 
