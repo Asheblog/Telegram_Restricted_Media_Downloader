@@ -159,6 +159,7 @@ async function submitAuth(payload) {
 // ---------------------------------------------------------------------------
 var pollTimer = null;
 var initialLoadDone = false;
+var mobileSettingsLoadPromise = null;
 
 function hasActiveTasks() { return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) { return t.status === 'running'; })); }
 
@@ -177,9 +178,9 @@ function loadCurrentView() {
   var active = document.querySelector('.mob-view.active');
   if (!active) return;
   var id = active.id;
-  if (id === 'mob-view-transfers') { renderMobTasks(); }
-  else if (id === 'mob-view-watches') { renderMobWatches(); }
-  else if (id === 'mob-view-downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
+  if (id === 'mob-view-transfers') { loadMobileTasks(); }
+  else if (id === 'mob-view-watches') { loadMobileWatches(); }
+  else if (id === 'mob-view-downloads-uploads') { loadMobileDownloadsUploads(); }
   // profile sub-pages load on demand
   var subActive = document.querySelector('.mob-subpage.active');
   if (subActive) {
@@ -221,9 +222,9 @@ function mobSwitchView(view) {
   currentMainTab = view;
 
   // Load content
-  if (view === 'transfers') { renderMobTasks(); }
-  else if (view === 'watches') { renderMobWatches(); }
-  else if (view === 'downloads-uploads') { mobInitDownloadTypes(); loadMobileOperations(); }
+  if (view === 'transfers') { loadMobileTasks(); }
+  else if (view === 'watches') { loadMobileWatches(); }
+  else if (view === 'downloads-uploads') { loadMobileDownloadsUploads(); }
   else if (view === 'profile') { /* menu is static, sub-pages load on demand */ }
 }
 
@@ -249,7 +250,7 @@ function mobNavigateTo(subpage) {
   if (subpage === 'statistics') { loadMobileStatistics(); }
   else if (subpage === 'records') { loadMobileRecords(); }
   else if (subpage === 'media') { loadMediaMobile(); }
-  else if (subpage === 'settings') { ensureSettingsForm(); }
+  else if (subpage === 'settings') { loadMobileSettings(); }
 }
 
 function mobNavigateBack() {
@@ -318,6 +319,87 @@ function toggleCollapse(head) {
   parent.classList.toggle('open');
 }
 
+function mobEmptyHtml(message, i18nKey) {
+  var attr = i18nKey ? ' data-i18n="' + escAttr(i18nKey) + '"' : '';
+  return '<div class="mob-empty"' + attr + '>' + esc(message) + '</div>';
+}
+
+async function loadMobileTasks() {
+  var container = document.getElementById('mob-tasks-list');
+  if (!container) return;
+  if (!window.state) window.state = {};
+  if (!Array.isArray(window.state.tasks)) {
+    container.innerHTML = mobEmptyHtml('加载中...');
+  }
+  try {
+    var data = await fetchJson('/api/tasks');
+    window.state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    window.state.lastSync = new Date().toLocaleTimeString();
+    renderMobTasks();
+  } catch (e) {
+    window.state.tasks = [];
+    container.innerHTML = mobEmptyHtml('加载失败');
+  }
+}
+
+async function loadMobileWatches() {
+  var container = document.getElementById('mob-watches-list');
+  if (!container) return;
+  if (!window.state) window.state = {};
+  if (!Array.isArray(window.state.watches)) {
+    container.innerHTML = mobEmptyHtml('加载中...');
+  }
+  try {
+    var data = await fetchJson('/api/watches');
+    window.state.watches = Array.isArray(data.watches) ? data.watches : [];
+    renderMobWatches();
+  } catch (e) {
+    window.state.watches = [];
+    container.innerHTML = mobEmptyHtml('加载失败');
+  }
+}
+
+async function ensureMobileSettingsData() {
+  if (!window.state) window.state = {};
+  if (window.state.settings) return true;
+  if (!mobileSettingsLoadPromise) {
+    mobileSettingsLoadPromise = fetchJson('/api/settings').then(function(data) {
+      window.state.settings = data.settings || {};
+      window.state.schema = data.schema || {};
+      return true;
+    }).catch(function(e) {
+      mobileSettingsLoadPromise = null;
+      throw e;
+    });
+  }
+  return mobileSettingsLoadPromise;
+}
+
+async function loadMobileSettings() {
+  try {
+    await ensureMobileSettingsData();
+    settingsRendered = false;
+    ensureSettingsForm();
+  } catch (e) {
+    var notice = document.getElementById('mob-settings-notice');
+    if (notice) {
+      notice.classList.remove('hidden');
+      notice.textContent = '加载失败';
+      notice.style.color = 'var(--color-danger)';
+    }
+  }
+}
+
+async function loadMobileDownloadsUploads() {
+  try {
+    await ensureMobileSettingsData();
+  } catch (e) {
+    // Keep operations history usable even when settings cannot be loaded.
+  }
+  mobInitDownloadTypes();
+  loadMobileOperations();
+}
+
 // ---------------------------------------------------------------------------
 // Task rendering
 // ---------------------------------------------------------------------------
@@ -325,11 +407,11 @@ function renderMobTasks() {
   var container = document.getElementById('mob-tasks-list');
   if (!container) return;
   if (!window.state || !Array.isArray(window.state.tasks)) {
-    container.innerHTML = '<div class="mob-empty">加载中...</div>';
+    container.innerHTML = mobEmptyHtml('还没有转存任务。', 'tasks.empty');
     return;
   }
   if (window.state.tasks.length === 0) {
-    container.innerHTML = '<div class="mob-empty" data-i18n="tasks.empty">还没有转存任务。</div>';
+    container.innerHTML = mobEmptyHtml('还没有转存任务。', 'tasks.empty');
     return;
   }
 
@@ -352,7 +434,7 @@ function renderMobTasks() {
       '</div>' +
     '</div>';
   });
-  container.innerHTML = html || '<div class="mob-empty">还没有转存任务。</div>';
+  container.innerHTML = html || mobEmptyHtml('还没有转存任务。', 'tasks.empty');
   bindTaskCardEvents(container);
 }
 
@@ -384,11 +466,11 @@ function renderMobWatches() {
   var container = document.getElementById('mob-watches-list');
   if (!container) return;
   if (!window.state || !Array.isArray(window.state.watches)) {
-    container.innerHTML = '<div class="mob-empty">加载中...</div>';
+    container.innerHTML = mobEmptyHtml('还没有实时监听。', 'watches.empty');
     return;
   }
   if (window.state.watches.length === 0) {
-    container.innerHTML = '<div class="mob-empty" data-i18n="watches.empty">还没有实时监听。</div>';
+    container.innerHTML = mobEmptyHtml('还没有实时监听。', 'watches.empty');
     return;
   }
 
@@ -413,7 +495,7 @@ function renderMobWatches() {
       '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
     '</div>';
   });
-  container.innerHTML = html || '<div class="mob-empty">还没有实时监听。</div>';
+  container.innerHTML = html || mobEmptyHtml('还没有实时监听。', 'watches.empty');
 
   container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
     btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
@@ -756,15 +838,18 @@ async function loadMobileOperations() {
     }
     var html = '';
     data.operations.forEach(function(op) {
-      var typeLabel = op.type === 'download' ? '下载' : op.type === 'upload' ? '上传' : esc(op.type || '');
+      var payload = op.payload || {};
+      var isChannelDownload = op.type === 'channel_download';
+      var typeLabel = isChannelDownload ? '频道下载' : op.type === 'upload' ? '本地上传' : esc(op.type || '');
+      var detail = isChannelDownload ? (payload.chat_link || '-') : (payload.path || op.detail || op.file || '#' + op.id);
       var statusClass = op.status === 'success' ? 'completed' : op.status === 'failure' ? 'failure' : 'pending';
       html += '<div class="mob-card status-' + esc(op.status || 'pending') + '">' +
         '<div class="mob-card__head">' +
-          '<span class="mob-card__title">' + esc(op.detail || op.file || '#' + op.id) + '</span>' +
+          '<span class="mob-card__title">' + esc(detail) + '</span>' +
           '<span class="mob-card__badge ' + statusClass + '">' + typeLabel + '</span>' +
         '</div>' +
         '<div class="mob-card__row"><span class="label">状态</span><span>' + esc(op.status || '-') + '</span></div>' +
-        (op.error ? '<div class="mob-card__row"><span class="label">错误</span><span>' + esc(op.error) + '</span></div>' : '') +
+        (op.error_message || op.error ? '<div class="mob-card__row"><span class="label">错误</span><span>' + esc(op.error_message || op.error) + '</span></div>' : '') +
         '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(op.created_at || '') + '</span></div>' +
       '</div>';
     });
@@ -810,15 +895,22 @@ async function loadMobileStatistics() {
   if (!container) return;
   try {
     var data = await fetchJson('/api/statistics');
-    if (!data || !Array.isArray(data.tables) || data.tables.length === 0) {
+    var tables = data && data.tables ? data.tables : null;
+    if (!tables) {
       container.innerHTML = '<div class="mob-empty">暂无统计数据</div>';
       return;
     }
+    var rows = [
+      { key: 'link', label: '链接统计表' },
+      { key: 'count', label: '计数统计表' },
+      { key: 'upload', label: '上传统计表' }
+    ];
     var html = '';
-    data.tables.forEach(function(t) {
+    rows.forEach(function(row) {
+      var t = tables[row.key] || {};
       html += '<div class="mob-card">' +
-        '<div class="mob-card__head"><span class="mob-card__title">' + esc(t.name || t.table || '') + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">行数</span><span>' + (t.row_count || t.rows || '0') + '</span></div>' +
+        '<div class="mob-card__head"><span class="mob-card__title">' + esc(row.label) + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">行数</span><span>' + (t.row_count || t.rows || 0) + '</span></div>' +
         '<div class="mob-card__row"><span class="label">可用</span><span>' + (t.available ? '是' : '否') + '</span></div>' +
       '</div>';
     });
@@ -989,7 +1081,7 @@ async function loadMediaMobile() {
         await postJson('/api/tasks', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         transferForm.reset();
-        setTimeout(function() { if (notice) notice.classList.add('hidden'); renderMobTasks(); }, 1000);
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileTasks(); }, 1000);
       } catch (e) {
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }
@@ -1016,7 +1108,7 @@ async function loadMediaMobile() {
         await postJson('/api/watches', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         watchForm.reset();
-        setTimeout(function() { if (notice) notice.classList.add('hidden'); renderMobWatches(); }, 1000);
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }

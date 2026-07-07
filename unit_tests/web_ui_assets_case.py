@@ -1,9 +1,11 @@
 # coding=UTF-8
+import sys
 import unittest
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
+sys.argv = [sys.argv[0]]
 
 from module.web_ui_assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML
 
@@ -16,8 +18,7 @@ class WebUiAssetsCase(unittest.TestCase):
         # Sidebar nav items
         self.assertIn('data-nav="transfers"', WEB_UI_HTML)
         self.assertIn('data-nav="watches"', WEB_UI_HTML)
-        self.assertIn('data-nav="channel-downloads"', WEB_UI_HTML)
-        self.assertIn('data-nav="uploads"', WEB_UI_HTML)
+        self.assertIn('data-nav="downloads-uploads"', WEB_UI_HTML)
         self.assertIn('data-nav="statistics"', WEB_UI_HTML)
         self.assertIn('data-nav="settings"', WEB_UI_HTML)
         self.assertIn('data-nav="records"', WEB_UI_HTML)
@@ -71,7 +72,7 @@ class WebUiAssetsCase(unittest.TestCase):
             'new.title', 'new.source', 'new.target', 'new.create',
             'tasks.title', 'tasks.empty', 'tasks.pause', 'tasks.resume',
             'watches.title', 'watches.download', 'watches.forward',
-            'channel.title', 'uploads.title',
+            'nav.downloadsUploads', 'dl.title', 'dl.uploadTitle',
             'statistics.title', 'records.title', 'media.title',
             'settings.title', 'settings.save', 'settings.saved',
             'form.createFailed', 'form.createSuccess', 'form.creatingTransfer',
@@ -103,15 +104,13 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_mobile_login_layout_has_stable_touch_controls(self):
         self.assertIn('--safe-bottom:env(safe-area-inset-bottom,0px)', WEB_UI_MOBILE_HTML)
         self.assertIn('.mob-login-card{', WEB_UI_MOBILE_HTML)
-        self.assertIn('width:100%;max-width:520px', WEB_UI_MOBILE_HTML)
+        self.assertIn('width:100%;max-width:400px', WEB_UI_MOBILE_HTML)
         self.assertIn(
-            '.mob-login-actions{gap:calc(var(--spacing)*2.5);'
-            'grid-template-columns:repeat(auto-fit,minmax(132px,1fr));display:grid',
+            '.mob-login-actions{grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;display:grid',
             WEB_UI_MOBILE_HTML
         )
         self.assertIn(
-            '.mob-login-submit svg{height:calc(var(--spacing)*4);'
-            'width:calc(var(--spacing)*4);flex-shrink:0}',
+            '.mob-login-submit svg{flex-shrink:0;width:18px;height:18px}',
             WEB_UI_MOBILE_HTML
         )
 
@@ -121,6 +120,35 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('mob-tabbar', WEB_UI_MOBILE_HTML)
         # Blue color should be present
         self.assertIn('#2563eb', WEB_UI_MOBILE_HTML.lower())
+
+    def test_mobile_layout_has_stable_full_width_panels(self):
+        for fragment in (
+            '.mob-body{font-family:var(--font-mob);',
+            'width:100%;min-height:100svh;',
+            'display:block;overflow-x:hidden',
+            '.mob-content{box-sizing:border-box;flex-direction:column;gap:10px;width:100%;min-width:0;max-width:100%',
+            '.mob-collapse{border:1px solid var(--color-line);background:var(--color-surface);box-sizing:border-box;border-radius:10px;width:100%;min-width:0;max-width:100%',
+            '.mob-card{background:var(--color-surface);border:1px solid var(--color-line);border-left:3px solid var(--color-line);box-sizing:border-box;cursor:pointer;border-radius:10px;width:100%;max-width:100%',
+            '#mob-tasks-list,#mob-watches-list,#mob-operations-list,#mob-statistics-list,#mob-records-list,#mob-media-result,#mob-profile-menu{width:100%;min-width:0;max-width:100%',
+        ):
+            self.assertIn(fragment, WEB_UI_MOBILE_HTML)
+
+    def test_mobile_uses_api_loading_instead_of_persistent_loading_placeholders(self):
+        for fragment in (
+            'window.state = state;',
+            "if (id === 'mob-view-transfers') { loadMobileTasks(); }",
+            "else if (id === 'mob-view-watches') { loadMobileWatches(); }",
+            "else if (id === 'mob-view-downloads-uploads') { loadMobileDownloadsUploads(); }",
+            "if (view === 'transfers') { loadMobileTasks(); }",
+            "else if (view === 'watches') { loadMobileWatches(); }",
+            "else if (view === 'downloads-uploads') { loadMobileDownloadsUploads(); }",
+            "var data = await fetchJson('/api/tasks');",
+            "var data = await fetchJson('/api/watches');",
+            "mobileSettingsLoadPromise = fetchJson('/api/settings').then(function(data)",
+            "container.innerHTML = mobEmptyHtml('还没有转存任务。', 'tasks.empty');",
+            "container.innerHTML = mobEmptyHtml('还没有实时监听。', 'watches.empty');",
+        ):
+            self.assertIn(fragment, WEB_UI_MOBILE_HTML)
 
     def test_settings_view_exposes_pikpak_archive(self):
         for fragment in (

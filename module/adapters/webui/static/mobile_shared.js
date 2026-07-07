@@ -604,6 +604,7 @@
     taskPollTimer: null,
     loadingDetail: false
   };
+  window.state = state;
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => Array.from(document.querySelectorAll(selector));
@@ -660,6 +661,10 @@
 
   function showFormMessage(message, ok = true) {
     const formNotice = $('#form-error');
+    if (!formNotice) {
+      if (typeof showToast === 'function') showToast(message);
+      return;
+    }
     formNotice.textContent = message;
     formNotice.classList.toggle('ok', ok);
     formNotice.classList.add('is-visible');
@@ -1213,8 +1218,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       return;
     }
     showNotice('#watch-download-notice', t('watches.deleted'), true);
-    await loadWatches();
-    if (typeof renderMobWatches === 'function') renderMobWatches();
+    if (typeof loadMobileWatches === 'function') await loadMobileWatches();
+    else await loadWatches();
     if (typeof showToast === 'function') showToast(t('watches.deleted'));
   }
   window.deleteWatch = deleteWatch;
@@ -1332,8 +1337,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       try {
         await postTaskAction(taskId, action);
         showFormMessage(t('action.taskUpdated'), true);
-        await loadTasks();
-        if (typeof renderMobTasks === 'function') renderMobTasks();
+        if (typeof loadMobileTasks === 'function') await loadMobileTasks();
+        else await loadTasks();
         if (typeof showToast === 'function') showToast(t('action.taskUpdated'));
       } catch (payload) {
         showFormMessage(translateApiError(payload), false);
@@ -1368,8 +1373,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
       renderItems();
       renderEvents();
     }
-    await loadTasks();
-    if (typeof renderMobTasks === 'function') renderMobTasks();
+    if (typeof loadMobileTasks === 'function') await loadMobileTasks();
+    else await loadTasks();
     if (typeof showToast === 'function') showToast(t('tasks.deleted'));
   }
   window.deleteTask = deleteTask;
