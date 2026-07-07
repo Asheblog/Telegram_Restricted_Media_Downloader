@@ -2191,8 +2191,10 @@ class TelegramRestrictedMediaDownloader:
                         f'{archive_message or getattr(message, "link", None) or message_id}'
                     )
             return forwarded_message
-        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406):
+        except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
             if not download_upload:
+                if isinstance(e, MediaCaptionTooLong_400):
+                    raise
                 if (
                         getattr(getattr(message, 'chat', None), 'is_creator', False) or
                         getattr(getattr(message, 'chat', None), 'is_admin', False)

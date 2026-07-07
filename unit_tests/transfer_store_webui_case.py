@@ -3061,6 +3061,69 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual([5, 15], [call['message_id'] for call in downloader.forward_calls])
         self.assertEqual('discussion-chat', downloader.forward_calls[1]['origin_chat_id'])
 
+    def test_listen_forward_downloads_discussion_reply_when_direct_copy_fails(self):
+        from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong
+        from pyrogram.types import Message
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+
+        reply_message = Message()
+        reply_message.id = 15
+        reply_message.link = 'https://t.me/discuss/15'
+        reply_message.chat = SimpleNamespace(id='discussion-chat')
+        reply_message.video = SimpleNamespace(file_size=10, file_name='reply.mp4')
+
+        class FakeClient:
+            async def get_discussion_replies(self, chat_id, message_id):
+                if chat_id == 'source-chat' and message_id == 5:
+                    yield reply_message
+
+            async def copy_message(self, **kwargs):
+                raise MediaCaptionTooLong()
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader.gc = SimpleNamespace(
+            download_upload=True,
+            upload_delete=False,
+            message_filter={'enabled': False}
+        )
+        downloader.download_calls = []
+
+        async def fake_create_download_task(**kwargs):
+            downloader.download_calls.append(kwargs)
+            return {'status': 'success'}
+
+        downloader.check_type = lambda message: True
+        downloader.create_download_task = fake_create_download_task
+        downloader.build_download_upload_meta = lambda **kwargs: {
+            'link': kwargs.get('target_link'),
+            'with_delete': True,
+            'send_as_media_group': False,
+            'source_link': kwargs.get('source_link'),
+            'source_folder': kwargs.get('source_folder')
+        }
+        downloader.create_bot_transfer_progress = AsyncMock(return_value=None)
+        downloader.done_notice = AsyncMock()
+
+        count = asyncio.run(downloader.forward_discussion_replies(
+            client=SimpleNamespace(me=SimpleNamespace(id=123)),
+            source_chat_id='source-chat',
+            source_message_id=5,
+            target_chat_id='target-chat',
+            target_link='https://t.me/pikpak_bot',
+            done_notice=False,
+            watch_id='forward:https://t.me/source https://t.me/pikpak_bot --include-comment'
+        ))
+
+        self.assertEqual(1, count)
+        self.assertEqual(1, len(downloader.download_calls))
+        fallback = downloader.download_calls[0]
+        self.assertIs(reply_message, fallback['message_ids'])
+        self.assertEqual('https://t.me/pikpak_bot', fallback['with_upload']['link'])
+        self.assertTrue(fallback['with_upload']['with_delete'])
+        self.assertFalse(fallback['with_upload']['send_as_media_group'])
+
     def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
         with tempfile.TemporaryDirectory() as directory:
             with open(os.path.join(directory, 'media.bin'), 'wb') as file:
