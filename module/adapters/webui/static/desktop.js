@@ -40,7 +40,7 @@ function updateStats() {
     if (t.status === 'running') stats.running++;
     if (t.status === 'success') stats.success++;
     if (t.status === 'failure') stats.failed++;
-    if (t.failed_count) stats.failedItems += (t.failed_count || 0);
+    if (t.failed_items) stats.failedItems += (t.failed_items || 0);
   });
   $('#stat-total').textContent = stats.total;
   $('#stat-success').textContent = stats.success;
@@ -63,7 +63,7 @@ function renderTasks() {
   empty.style.display = 'none';
   tbody.innerHTML = state.tasks.map(task => {
     const isSelected = task.id === state.selectedTaskId;
-    const progressPct = task.total_items > 0 ? Math.round((task.completed_items / task.total_items) * 100) : 0;
+    const progressPct = taskProgressPercent(task);
     return '<tr data-task-id="' + task.id + '" class="' + (isSelected ? 'selected' : '') + '">' +
       '<td class="font-semibold text-primary">#' + task.id + '</td>' +
       '<td>' + statusBadge(task.status) + '</td>' +
@@ -75,7 +75,7 @@ function renderTasks() {
           '<span class="text-xs font-semibold">' + progressPct + '%</span>' +
           '<div class="flex-1 min-w-[60px]">' +
           '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
-          '<span class="text-[11px] text-muted">' + task.completed_items + '/' + task.total_items + '</span>' +
+          '<span class="text-[11px] text-muted">' + taskCompletedLabel(task) + '</span>' +
           '</div></div>'
         ) : '<span class="text-muted text-xs">-</span>') +
       '</td>' +
@@ -95,16 +95,16 @@ function renderTasks() {
 
 function taskActions(task) {
   let actions = '';
-  if (task.status === 'running') {
+  if (task.can_pause) {
     actions += '<button class="btn btn-sm" data-task-action="pause" data-task-id="' + task.id + '" title="' + t('tasks.pause') + '">⏸</button>';
   }
-  if (task.status === 'paused') {
+  if (task.can_resume) {
     actions += '<button class="btn btn-sm btn-primary" data-task-action="resume" data-task-id="' + task.id + '" title="' + t('tasks.resume') + '">▶</button>';
   }
-  if (task.status === 'failure' && task.failed_count > 0) {
+  if (task.can_retry) {
     actions += '<button class="btn btn-sm btn-danger" data-task-action="retry" data-task-id="' + task.id + '" title="' + t('tasks.retryFailed') + '">↻</button>';
   }
-  if (task.status === 'success' || task.status === 'failure' || task.status === 'paused') {
+  if (task.can_delete) {
     actions += '<button class="btn btn-sm btn-danger" data-task-action="delete" data-task-id="' + task.id + '" title="' + t('tasks.delete') + '">✕</button>';
   }
   return '<div class="flex gap-1">' + actions + '</div>';
@@ -165,7 +165,7 @@ function renderTaskDetail(taskId, data) {
       '<button class="panel-tab active" data-item-tab="running">' + t('items.tab.running') + ' (' + (summary.running || 0) + ')</button>' +
       '<button class="panel-tab" data-item-tab="success">' + t('items.tab.success') + ' (' + (summary.success || 0) + ')</button>' +
       '<button class="panel-tab" data-item-tab="skipped">' + t('items.tab.skipped') + ' (' + (summary.skipped || 0) + ')</button>' +
-      '<button class="panel-tab" data-item-tab="failure">' + t('items.tab.failure') + ' (' + (summary.failure || 0) + ')</button>' +
+      '<button class="panel-tab" data-item-tab="failure">' + t('items.tab.failure') + ' (' + (summary.failed || 0) + ')</button>' +
     '</div>' +
     '</div>' +
     '<div id="task-items-body" class="overflow-auto max-h-[300px]"></div>' +
@@ -192,8 +192,8 @@ async function loadTaskItems(taskId, status) {
   body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
 
   try {
-    const data = await fetchJson('/api/tasks/' + taskId + '?items_limit=50&items_offset=' + ((page - 1) * 50));
-    const items = (data.items || []).filter(i => i.status === status);
+    const data = await fetchJson('/api/tasks/' + taskId + '?items_limit=50&items_offset=' + ((page - 1) * 50) + '&item_status=' + encodeURIComponent(status));
+    const items = data.items || [];
     state.itemData[taskId] = data;
 
     if (!items.length) {
@@ -212,7 +212,9 @@ async function loadTaskItems(taskId, status) {
         '</tbody></table>';
     }
 
-    const totalItems = state.itemData[taskId] ? Object.values(state.itemData[taskId].summary || {}).reduce((a, b) => a + (b || 0), 0) : 0;
+    const statusToSummaryKey = { running: 'running', success: 'success', skipped: 'skipped', failure: 'failed' };
+    const summaryKey = statusToSummaryKey[status] || status;
+    const totalItems = state.itemData[taskId] ? (state.itemData[taskId].summary || {})[summaryKey] || 0 : 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / 50));
     pagEl.innerHTML =
       '<span class="text-xs text-muted">第 ' + page + ' / ' + totalPages + ' 页</span>' +
@@ -691,13 +693,20 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
 
 /* ====== Downloads & Uploads ====== */
 
-/* download type checkboxes — populate from global settings defaults */
-function loadDownloadTypes() {
+/* download type checkboxes — populate from the unified settings schema */
+async function loadDownloadTypes() {
   const grid = $('#dl-download-type-grid');
   if (!grid) return;
-  const types = ['video','photo','audio','voice','animation','document','video_note'];
-  const settings = (state.settings && state.settings.global && state.settings.global.download_type) || types;
-  const selected = Array.isArray(settings) ? settings : types;
+  if (!state.settings || !state.settingsSchema) {
+    try {
+      const data = await fetchJson('/api/settings');
+      state.settings = data.settings || {};
+      state.settingsSchema = data.schema || {};
+      state.settingsModel = data.settings_model || {};
+    } catch(e) {}
+  }
+  const types = optionValues((state.settingsModel.options || {}).download_type || (state.settingsSchema || {}).download_type || []);
+  const selected = (state.settings && state.settings.user && state.settings.user.download_type) || types;
   grid.innerHTML = types.map(t =>
     '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
       '<input type="checkbox" name="download_type" value="' + t + '" class="w-4 h-4"' + (selected.includes(t) ? ' checked' : '') + '>' +
@@ -833,6 +842,7 @@ async function loadSettings() {
     const data = await fetchJson('/api/settings');
     state.settings = data.settings || {};
     state.settingsSchema = data.schema || {};
+    state.settingsModel = data.settings_model || {};
     renderSettings();
   } catch(e) {}
 }
@@ -876,9 +886,9 @@ function renderSettings() {
   setSensitiveVal('user.proxy.password', su.proxy?.password);
 
   /* download types */
-  renderCheckboxGrid('download-type-grid', 'download_type', sg.download_type || []);
+  renderCheckboxGrid('download-type-grid', 'user.download_type', su.download_type || [], (state.settingsModel.options || {}).download_type || state.settingsSchema.download_type);
   /* forward types */
-  renderCheckboxGrid('forward-type-grid', 'forward_type', sg.forward_type || []);
+  renderCheckboxGrid('forward-type-grid', 'global.forward_type', sg.forward_type || [], (state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type);
   /* message filter */
   renderMessageFilter(sg.message_filter || {});
   /* exports */
@@ -908,8 +918,8 @@ function setSensitiveVal(name, val) {
   }
 }
 
-function renderCheckboxGrid(containerId, typeKey, selected) {
-  const types = ['video','photo','audio','voice','animation','document','video_note'];
+function renderCheckboxGrid(containerId, inputName, selected, options) {
+  const types = normalizeOptionList(options || ['video','photo','audio','voice','animation','document','video_note']);
   const container = document.getElementById(containerId);
   if (!container) return;
   var sel;
@@ -922,17 +932,33 @@ function renderCheckboxGrid(containerId, typeKey, selected) {
     sel = [];
   }
   container.innerHTML = types.map(function(t) {
+    const value = typeof t === 'string' ? t : t.value;
+    const label = typeof t === 'string' ? t : (t.label || t.value);
     return '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
-      '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.indexOf(t) >= 0 ? ' checked' : '') + '>' +
-      '<span>' + t + '</span>' +
+      '<input type="checkbox" name="' + inputName + '" value="' + esc(value) + '" class="w-4 h-4"' + (sel.indexOf(value) >= 0 ? ' checked' : '') + '>' +
+      '<span>' + esc(label) + '</span>' +
     '</label>';
   }).join('');
+}
+
+function normalizeOptionList(options) {
+  if (Array.isArray(options)) {
+    return options.map(function(option) {
+      if (option && typeof option === 'object') {
+        return {value: String(option.value), label: String(option.label || option.value)};
+      }
+      return {value: String(option), label: String(option)};
+    });
+  }
+  return Object.keys(options || {}).map(function(key) {
+    return {value: String(key), label: String(options[key] || key)};
+  });
 }
 
 function renderMessageFilter(mf) {
   setCheckboxVal('global.message_filter.enabled', mf.enabled);
   /* media types */
-  renderCheckboxGrid('filter-media-grid', 'message_filter.media_types', mf.media_types || []);
+  renderCheckboxGrid('filter-media-grid', 'global.message_filter.media_types', mf.media_types || [], (state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types);
   /* date range */
   setCheckboxVal('global.message_filter.date_range.enabled', mf.date_range?.enabled);
   setFieldVal('global.message_filter.date_range.start_date', mf.date_range?.start_date);
@@ -944,20 +970,6 @@ function renderMessageFilter(mf) {
 
 $('#settings-save').addEventListener('click', async function() {
   const notice = $('#settings-notice');
-  const formData = new FormData();
-  /* collect all named inputs */
-  $$('#settings-body input, #settings-body select').forEach(el => {
-    if (!el.name) return;
-    if (el.type === 'checkbox' && !el.closest('[data-checkbox-group]')) {
-      formData.append(el.name, el.checked ? '1' : '');
-    } else if (el.type === 'checkbox') {
-      /* grouped checkboxes handled below */
-    } else {
-      formData.append(el.name, el.value);
-    }
-  });
-
-  /* collect grouped checkboxes */
   const payload = buildSettingsPayload();
 
   try {
@@ -976,11 +988,11 @@ $('#settings-save').addEventListener('click', async function() {
 function buildSettingsPayload() {
   /* rebuild full settings structure from form */
   const payload = { user: {}, global: {} };
-  const raw = state.settings || {};
 
   /* user settings */
   $$('[name^="user."]').forEach(el => {
     if (!el.name) return;
+    if (el.name === 'user.download_type') return;
     const parts = el.name.split('.');
     if (parts[0] !== 'user') return;
     if (el.type === 'checkbox') {
@@ -993,6 +1005,7 @@ function buildSettingsPayload() {
   /* global settings */
   $$('[name^="global."]').forEach(el => {
     if (!el.name) return;
+    if (el.name === 'global.forward_type' || el.name === 'global.message_filter.media_types') return;
     const parts = el.name.split('.');
     if (parts[0] !== 'global') return;
     if (el.type === 'checkbox') {
@@ -1003,15 +1016,20 @@ function buildSettingsPayload() {
   });
 
   /* download types */
-  const downloadTypes = Array.from($$('input[name="global.download_type"]:checked')).map(cb => cb.value);
-  if (downloadTypes.length) setNested(payload, ['global', 'download_type'], downloadTypes);
+  const downloadTypes = Array.from($$('input[name="user.download_type"]:checked')).map(cb => cb.value);
+  setNested(payload, ['user', 'download_type'], downloadTypes);
 
   /* forward types */
   const forwardTypes = Array.from($$('input[name="global.forward_type"]:checked')).map(cb => cb.value);
-  if (forwardTypes.length) setNested(payload, ['global', 'forward_type'], forwardTypes);
+  const forwardTypeOptions = normalizeOptionList((state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type || []);
+  const allForwardTypes = forwardTypeOptions.length ? forwardTypeOptions.map(function(option) { return option.value; }) : forwardTypes;
+  const forwardTypesDict = {};
+  allForwardTypes.forEach(function(t) { forwardTypesDict[t] = forwardTypes.indexOf(t) >= 0; });
+  setNested(payload, ['global', 'forward_type'], forwardTypesDict);
 
   /* filter media types — 构建 {video: true, photo: false, ...} dict 格式与后端一致 */
-  const allMediaTypes = ['video','photo','audio','document','voice','text','animation','video_note'];
+  const mediaTypeOptions = normalizeOptionList((state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types || []);
+  const allMediaTypes = mediaTypeOptions.length ? mediaTypeOptions.map(function(option) { return option.value; }) : ['video','photo','audio','document','voice','text','animation','video_note'];
   const checkedMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(function(cb) { return cb.value; });
   const mediaTypesDict = {};
   allMediaTypes.forEach(function(t) { mediaTypesDict[t] = checkedMedia.indexOf(t) >= 0; });

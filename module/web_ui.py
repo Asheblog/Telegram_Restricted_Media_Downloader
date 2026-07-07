@@ -21,6 +21,7 @@ from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
 from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
+from module.webui_view_model import WebUiViewModel
 from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, FONTS
 
 
@@ -156,6 +157,7 @@ class WebUiServer:
             diagnostic: Optional[IDiagnosticPort] = None
     ):
         self.store = store
+        self.view_model = WebUiViewModel(store)
         self.task_submitter = task_submitter
         self.settings_provider = settings_provider
         self.settings_updater = settings_updater
@@ -169,6 +171,12 @@ class WebUiServer:
         self.thread: Optional[threading.Thread] = None
         self.auth_provider: Optional[AuthProvider] = None
         self.validate_auth_config()
+
+    def _operation(self, name: str):
+        if self.operations is None:
+            return None
+        method = getattr(self.operations, name, None)
+        return method if callable(method) else None
 
     @staticmethod
     def resolve_port(port: int) -> int:
@@ -485,12 +493,15 @@ class WebUiServer:
                         self._send_json({'step': 'none', 'error': None, 'user': None})
                     return
                 if parsed.path == '/api/tasks':
-                    self._send_json({'tasks': server.store.list_tasks()})
+                    self._send_json(server.view_model.task_list())
                     return
                 if parsed.path == '/api/settings':
+                    settings = server.get_sanitized_settings()
+                    schema = server.settings_schema()
                     self._send_json({
-                        'settings': server.get_sanitized_settings(),
-                        'schema': server.settings_schema()
+                        'settings': settings,
+                        'schema': schema,
+                        'settings_model': WebUiViewModel.settings_model(settings, schema)
                     })
                     return
                 if parsed.path == '/api/download-records':
@@ -530,12 +541,13 @@ class WebUiServer:
                     task_id = int(parts[0])
                     query = parse_qs(parsed.query)
                     if len(parts) > 1 and parts[1] == 'summary':
-                        payload = server.store.task_summary(task_id)
+                        payload = server.view_model.task_summary(task_id)
                     else:
-                        payload = server.store.task_payload(
+                        payload = server.view_model.task_detail(
                             task_id,
                             item_limit=self._query_int(query, 'items_limit', 200),
                             item_offset=self._query_int(query, 'items_offset', 0),
+                            item_status=(query.get('item_status') or [''])[0] or None,
                             event_limit=self._query_int(query, 'events_limit', 100),
                             event_offset=self._query_int(query, 'events_offset', 0),
                         )
@@ -705,9 +717,12 @@ class WebUiServer:
                 try:
                     payload = self._read_json()
                     settings = server.update_settings(payload)
+                    sanitized = sanitize_settings(settings)
+                    schema = server.settings_schema()
                     self._send_json({
-                        'settings': sanitize_settings(settings),
-                        'schema': server.settings_schema()
+                        'settings': sanitized,
+                        'schema': schema,
+                        'settings_model': WebUiViewModel.settings_model(sanitized, schema)
                     })
                 except Exception as e:
                     server.diagnostic.exception('[WebUI] 更新设置失败。')
@@ -848,16 +863,15 @@ class WebUiServer:
         return {'task_id': task_id}
 
     def detect_transfer_range(self, source_link: str) -> tuple[int, int]:
-        if not isinstance(self.operations, IWebUiOperations):
+        detect = self._operation('detect_transfer_range')
+        if not detect:
             raise WebUiApiError(
                 'transfer_range_detection_unavailable',
                 'Transfer range detection is unavailable.',
                 HTTPStatus.BAD_REQUEST
             )
         try:
-            detected = normalize_detected_transfer_range(
-                self.operations.detect_transfer_range(source_link)
-            )
+            detected = normalize_detected_transfer_range(detect(source_link))
         except WebUiApiError:
             raise
         except Exception as e:
@@ -882,8 +896,9 @@ class WebUiServer:
         return start_id, end_id
 
     def list_watches(self) -> list:
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.list_watches()
+        list_watches = self._operation('list_watches')
+        if list_watches:
+            return list_watches()
         return []
 
     def create_watch(self, payload: dict) -> dict:
@@ -921,9 +936,10 @@ class WebUiServer:
                 'target_link': target_link,
                 'include_comment': include_comment
             }
-        if isinstance(self.operations, IWebUiOperations):
+        create_watch = self._operation('create_watch')
+        if create_watch:
             try:
-                return self.operations.create_watch(payload)
+                return create_watch(payload)
             except ValueError as e:
                 if str(e) == 'watch_source_conflict':
                     raise WebUiApiError(
@@ -941,9 +957,10 @@ class WebUiServer:
         raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def update_watch(self, watch_id: str, payload: dict) -> dict:
-        if isinstance(self.operations, IWebUiOperations):
+        update_watch = self._operation('update_watch')
+        if update_watch:
             try:
-                return self.operations.update_watch(watch_id, payload)
+                return update_watch(watch_id, payload)
             except ValueError as e:
                 raise WebUiApiError(
                     'update_watch_failed',
@@ -953,18 +970,21 @@ class WebUiServer:
         raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def delete_watch(self, watch_id: str) -> bool:
-        if isinstance(self.operations, IWebUiOperations):
-            return bool(self.operations.delete_watch(watch_id))
+        delete_watch = self._operation('delete_watch')
+        if delete_watch:
+            return bool(delete_watch(watch_id))
         return False
 
     def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0):
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.list_watch_events(watch_id, limit=limit, offset=offset)
+        list_watch_events = self._operation('list_watch_events')
+        if list_watch_events:
+            return list_watch_events(watch_id, limit=limit, offset=offset)
         return None
 
     def delete_task(self, task_id: int) -> bool:
-        if isinstance(self.operations, IWebUiOperations):
-            return bool(self.operations.delete_web_task(task_id))
+        delete_web_task = self._operation('delete_web_task')
+        if delete_web_task:
+            return bool(delete_web_task(task_id))
         return self.store.delete_task(task_id)
 
     @staticmethod
@@ -984,16 +1004,18 @@ class WebUiServer:
         if not self.store.get_task(task_id):
             raise WebUiApiError('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
         if action == 'retry-failed':
-            if isinstance(self.operations, IWebUiOperations):
-                reset_items = int(self.operations.retry_failed_web_task(task_id))
+            retry_failed_web_task = self._operation('retry_failed_web_task')
+            if retry_failed_web_task:
+                reset_items = int(retry_failed_web_task(task_id))
             else:
                 reset_items = self.store.retry_failed_items(task_id)
                 if reset_items and self.task_submitter:
                     self.task_submitter(task_id)
             return {'task_id': task_id, 'action': action, 'reset_items': reset_items}
         if action == 'pause':
-            if isinstance(self.operations, IWebUiOperations):
-                ok = bool(self.operations.pause_web_task(task_id))
+            pause_web_task = self._operation('pause_web_task')
+            if pause_web_task:
+                ok = bool(pause_web_task(task_id))
             else:
                 self.store.update_task(task_id, status='paused')
                 ok = True
@@ -1001,8 +1023,9 @@ class WebUiServer:
                 raise WebUiApiError('task_action_failed', 'Task action failed.', HTTPStatus.BAD_REQUEST)
             return {'task_id': task_id, 'action': action}
         if action == 'resume':
-            if isinstance(self.operations, IWebUiOperations):
-                ok = bool(self.operations.resume_web_task(task_id))
+            resume_web_task = self._operation('resume_web_task')
+            if resume_web_task:
+                ok = bool(resume_web_task(task_id))
             else:
                 self.store.update_task(task_id, status='pending')
                 ok = True
@@ -1014,8 +1037,9 @@ class WebUiServer:
         raise WebUiApiError('invalid_task_action', 'Invalid task action.', HTTPStatus.BAD_REQUEST)
 
     def statistics(self) -> dict:
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.statistics()
+        statistics = self._operation('statistics')
+        if statistics:
+            return statistics()
         return {
             'tables': {
                 'link': {'available': False, 'rows': 0},
@@ -1024,11 +1048,18 @@ class WebUiServer:
             }
         }
 
+    def list_operations(self, limit: int = 50) -> list:
+        list_operations = self._operation('list_operations')
+        if list_operations:
+            return list_operations(limit=limit)
+        return []
+
     def export_table(self, table_type: str) -> dict:
         if table_type not in ('link', 'count', 'upload'):
             raise WebUiApiError('invalid_table_type', 'Table type must be link, count, or upload.', HTTPStatus.BAD_REQUEST)
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.export_table(table_type)
+        export_table = self._operation('export_table')
+        if export_table:
+            return export_table(table_type)
         raise WebUiApiError('table_operations_unavailable', 'Table operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def create_upload(self, payload: dict) -> dict:
@@ -1049,8 +1080,9 @@ class WebUiServer:
         if recursive and not os.path.isdir(normalized_path):
             raise WebUiApiError('upload_recursive_requires_directory', 'Recursive upload requires a directory.', HTTPStatus.BAD_REQUEST)
         payload = {**payload, 'path': normalized_path, 'target_link': target_link, 'recursive': recursive}
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.create_upload(payload)
+        create_upload = self._operation('create_upload')
+        if create_upload:
+            return create_upload(payload)
         raise WebUiApiError('upload_operations_unavailable', 'Upload operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def create_channel_download(self, payload: dict) -> dict:
@@ -1084,23 +1116,27 @@ class WebUiServer:
             'include_comment': bool(payload.get('include_comment')),
             'date_range': normalize_date_range(payload.get('date_range'))
         }
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.create_channel_download(normalized)
+        create_channel_download = self._operation('create_channel_download')
+        if create_channel_download:
+            return create_channel_download(normalized)
         raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def scan_media_for_cleanup(self, task_id: int = None) -> dict:
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.scan_media_for_cleanup(task_id=task_id)
+        scan_media_for_cleanup = self._operation('scan_media_for_cleanup')
+        if scan_media_for_cleanup:
+            return scan_media_for_cleanup(task_id=task_id)
         raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def cleanup_media_files(self, payload: dict) -> dict:
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.cleanup_media_files(payload)
+        cleanup_media_files = self._operation('cleanup_media_files')
+        if cleanup_media_files:
+            return cleanup_media_files(payload)
         raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def list_cleanup_logs(self) -> list:
-        if isinstance(self.operations, IWebUiOperations):
-            return self.operations.list_cleanup_logs()
+        list_cleanup_logs = self._operation('list_cleanup_logs')
+        if list_cleanup_logs:
+            return list_cleanup_logs()
         return []
 
     def get_sanitized_settings(self) -> dict:

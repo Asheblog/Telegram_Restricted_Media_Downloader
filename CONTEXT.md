@@ -28,6 +28,7 @@ main.py (入口)
         ├── WebUITaskManager (WebUI 任务调度, web_task_manager.py)
         ├── LiveWatchManager (实时监听管理, live_watch_manager.py)
         ├── WebUiServer (WebUI HTTP 服务, web_ui.py)
+        ├── WebUiViewModel (WebUI 统一数据契约, webui_view_model.py)
         ├── LocalStorageGuard (本地磁盘守护, local_storage_guard.py)
         ├── DynamicAsyncWindow (并发窗口控制, async_window.py)
         ├── MediaManager (媒体文件清理, media_manager.py)
@@ -149,6 +150,9 @@ _Avoid_: Random ttyd password, public WebUI
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login
 
+**WebUI ViewModel Contract** — WebUI 后端为桌面端与移动端共同输出的唯一公共数据契约。任务列表、任务详情、任务统计、设置选项均先在服务端归一化，再由前端共享脚本消费。
+_Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend state
+
 ---
 
 ## 关键外部依赖
@@ -176,6 +180,7 @@ _Avoid_: CLI login, console auth, terminal login
 - [ADR-0002](docs/adr/0002-persist-transfer-state-in-sqlite.md) — SQLite 持久化转存状态
 - [ADR-0003](docs/adr/0003-require-webui-auth-for-remote-listening.md) — 远程访问必须认证
 - [ADR-0004](docs/adr/0004-automate-local-runtime-maintenance.md) — 自动日志轮转与 SQLite 维护
+- [ADR-0005](docs/adr/0005-unify-webui-view-model-contract.md) — 统一 WebUI 桌面端与移动端数据契约
 
 ---
 

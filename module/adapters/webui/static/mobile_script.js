@@ -1,10 +1,10 @@
 // ================================================================
 // mobile_script.js v2 — 4-tab clean navigation, no FAB/Drawer
-// ($ already defined in mobile_shared.js)
+// ($ already defined in shared.js)
 // ================================================================
 
 // ---------------------------------------------------------------------------
-// Login helpers (delegates to mobile_shared.js)
+// Login helpers (delegates to shared.js utilities)
 // ---------------------------------------------------------------------------
 function showLoginStep(step) {
   var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
@@ -366,6 +366,8 @@ async function ensureMobileSettingsData() {
     mobileSettingsLoadPromise = fetchJson('/api/settings').then(function(data) {
       window.state.settings = data.settings || {};
       window.state.schema = data.schema || {};
+      window.state.settingsSchema = data.schema || {};
+      window.state.settingsModel = data.settings_model || {};
       return true;
     }).catch(function(e) {
       mobileSettingsLoadPromise = null;
@@ -417,20 +419,20 @@ function renderMobTasks() {
 
   var html = '';
   window.state.tasks.forEach(function(t) {
-    var progressPct = t.total_items > 0 ? Math.round((t.success_count || 0) / t.total_items * 100) : 0;
+    var progressPct = taskProgressPercent(t);
     html += '<div class="mob-card status-' + esc(t.status) + '" data-task-id="' + t.id + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(t.title || t.source_link || '#' + t.id) + '</span>' +
         mobBadge(t.status) +
       '</div>' +
       '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(t.source_link || '-') + '</span></div>' +
-      '<div class="mob-card__row"><span class="label">进度</span><span>' + (t.success_count || 0) + ' / ' + (t.total_items || '?') + '</span></div>' +
+      '<div class="mob-card__row"><span class="label">进度</span><span>' + taskCompletedLabel(t) + (taskFailedCount(t) ? ' · 失败 ' + taskFailedCount(t) : '') + '</span></div>' +
       '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + progressPct + '%"></div></div>' +
       '<div class="mob-card__actions">' +
-        (t.status === 'running' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-pause="' + t.id + '">暂停</button>' : '') +
-        (t.status === 'paused' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-resume="' + t.id + '">继续</button>' : '') +
-        (t.status === 'failure' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-retry="' + t.id + '">重试</button>' : '') +
-        '<button class="mob-btn mob-btn-sm mob-btn-danger" data-delete="' + t.id + '">删除</button>' +
+        (t.can_pause ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-pause="' + t.id + '">暂停</button>' : '') +
+        (t.can_resume ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-resume="' + t.id + '">继续</button>' : '') +
+        (t.can_retry ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-retry="' + t.id + '">重试</button>' : '') +
+        (t.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger" data-delete="' + t.id + '">删除</button>' : '') +
       '</div>' +
     '</div>';
   });
@@ -562,10 +564,12 @@ function renderSheetContent(data) {
   var sheet = document.getElementById('mob-sheet');
   if (!sheet) return;
 
-  var totalItems = data.total_items || sheetState.items.length || 0;
-  var successCount = data.success_count || 0;
-  var failedCount = data.failed_count || 0;
-  var skippedCount = data.skipped_count || 0;
+  var task = data.task || {};
+  var summary = data.summary || {};
+  var totalItems = summary.total || sheetState.items.length || 0;
+  var successCount = summary.success || 0;
+  var failedCount = summary.failed || 0;
+  var skippedCount = summary.skipped || 0;
 
   var tabsHtml = '';
   var tabs = [
@@ -580,10 +584,10 @@ function renderSheetContent(data) {
   });
 
   sheet.innerHTML =
-    '<div class="mob-sheet__title">任务详情 #' + data.id + '</div>' +
+    '<div class="mob-sheet__title">任务详情 #' + task.id + '</div>' +
     '<div class="mob-sheet__task-header">' +
-      '<div class="task-title">' + esc(data.title || data.source_link || '任务 #' + data.id) + '</div>' +
-      '<div class="task-meta">状态: ' + esc(data.status || '-') + ' · 进度: ' + successCount + ' / ' + totalItems + '</div>' +
+      '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
+      '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
     '</div>' +
     '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">' + tabsHtml + '</div>' +
     '<div id="mob-sheet-item-list"></div>' +
@@ -654,7 +658,7 @@ function renderSheetItemPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Task actions — defined in mobile_shared.js; overrides here to use
+// Task actions — defined in shared.js; this file only refreshes
 // mobile-specific rendering (renderMobTasks/renderMobWatches/showToast)
 // ---------------------------------------------------------------------------
 
@@ -669,6 +673,7 @@ function ensureSettingsForm() {
 function renderMobSettingsForm() {
   if (!window.state || !window.state.settings) return;
   var settings = window.state.settings;
+  var model = window.state.settingsModel || {options: {}, selections: {}};
   var glob = settings.global || {};
   var user = settings.user || {};
 
@@ -733,19 +738,19 @@ function renderMobSettingsForm() {
 
   // Download types
   var dlFields = document.getElementById('mob-settings-download-types-fields');
-  if (dlFields) dlFields.innerHTML = renderCheckCards('global.download.types', settings.downloadTypes || {}, selectedDownloadTypes(glob));
+  if (dlFields) dlFields.innerHTML = renderCheckCards('user.download_type', model.options.download_type || [], selectedDownloadTypes(user), true);
 
   // Forward types
   var fwFields = document.getElementById('mob-settings-forward-types-fields');
-  if (fwFields) fwFields.innerHTML = renderCheckCards('global.forward.types', settings.forwardTypes || {}, selectedForward(glob));
+  if (fwFields) fwFields.innerHTML = renderCheckCards('global.forward_type', model.options.forward_type || [], selectedForward(glob), false);
 
   // Message filter
   var mf = glob.message_filter || {};
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span><span style="font-size:11px;color:var(--color-muted);margin-left:4px;">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', settings.mediaTypes || {}, selectedMediaTypes(glob)) + '</div>' +
+      '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span><span style="font-size:11px;color:var(--color-muted);margin-left:4px;">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || [], selectedMediaTypes(glob), false) + '</div>' +
     '</div>' +
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
@@ -777,7 +782,7 @@ function getSettingLeafKey(obj, key) {
 }
 
 function selectedForward(glob) {
-  var types = getSettingLeafKey(glob, 'forward.types');
+  var types = getSettingLeafKey(glob, 'forward_type');
   if (!types || typeof types !== 'object') return [];
   return Object.keys(types).filter(function(k) { return types[k]; });
 }
@@ -788,22 +793,23 @@ function selectedMediaTypes(glob) {
   return Object.keys(types).filter(function(k) { return types[k]; });
 }
 
-function selectedDownloadTypes(glob) {
-  var types = getSettingLeafKey(glob, 'download.types');
-  if (!types || typeof types !== 'object') return [];
-  return Object.keys(types).filter(function(k) { return types[k]; });
+function selectedDownloadTypes(user) {
+  return Array.isArray(user && user.download_type) ? user.download_type : [];
 }
 
 function escAttr(value) { return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-function renderCheckCards(baseName, types, selected) {
+function renderCheckCards(baseName, types, selected, repeatName) {
   var html = '';
   var selSet = {};
   (selected || []).forEach(function(k) { selSet[k] = true; });
-  Object.keys(types || {}).forEach(function(key) {
+  var options = Array.isArray(types) ? types : Object.keys(types || {}).map(function(key) { return {value: key, label: types[key] || key}; });
+  options.forEach(function(option) {
+    var key = typeof option === 'string' ? option : option.value;
+    var label = typeof option === 'string' ? option : (option.label || option.value);
     html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0;">' +
-      '<input type="checkbox" name="' + baseName + '.' + key + '" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
-      '<span>' + esc(types[key] || key) + '</span></label>';
+      '<input type="checkbox" name="' + (repeatName ? baseName : baseName + '.' + key) + '" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
+      '<span>' + esc(label || key) + '</span></label>';
   });
   return html || '<span style="font-size:13px;color:var(--color-muted);">无可用选项</span>';
 }
@@ -814,15 +820,18 @@ function renderCheckCards(baseName, types, selected) {
 function mobInitDownloadTypes() {
   var grid = document.getElementById('mob-channel-download-types');
   if (!grid) return;
-  var types = (window.state && window.state.settings && window.state.settings.downloadTypes) || {};
-  var selected = (window.state && window.state.settings && window.state.settings.global && selectedDownloadTypes(window.state.settings.global)) || [];
+  var model = (window.state && window.state.settingsModel) || {options: {}};
+  var types = model.options.download_type || [];
+  var selected = (window.state && window.state.settings && window.state.settings.user && selectedDownloadTypes(window.state.settings.user)) || [];
   var selSet = {};
   selected.forEach(function(k) { selSet[k] = true; });
   var html = '';
-  Object.keys(types).forEach(function(key) {
+  types.forEach(function(option) {
+    var key = typeof option === 'string' ? option : option.value;
+    var label = typeof option === 'string' ? option : (option.label || option.value);
     html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
       '<input type="checkbox" name="download_types" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
-      '<span>' + esc(types[key] || key) + '</span></label>';
+      '<span>' + esc(label || key) + '</span></label>';
   });
   grid.innerHTML = html || '<span style="font-size:13px;color:var(--color-muted);">无可用类型</span>';
 }
@@ -1171,7 +1180,11 @@ async function loadMediaMobile() {
       // Collect form data from all inputs in settings subpage
       var inputs = settingsContainer.querySelectorAll('input[name], select[name]');
       var payload = {};
+      var downloadTypes = Array.from(settingsContainer.querySelectorAll('input[name="user.download_type"]:checked')).map(function(input) { return input.value; });
+      payload.user = payload.user || {};
+      payload.user.download_type = downloadTypes;
       inputs.forEach(function(input) {
+        if (input.name === 'user.download_type') return;
         var keys = input.name.split('.');
         var cur = payload;
         for (var i = 0; i < keys.length - 1; i++) {

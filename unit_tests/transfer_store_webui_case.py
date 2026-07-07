@@ -21,6 +21,7 @@ import module as trmd_module
 from module.live_watch_manager import LiveWatchManager
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import TransferStatus, TransferStore
+from module.webui_view_model import WebUiViewModel
 from module.web_ui import WebUiServer
 
 
@@ -475,6 +476,126 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             store.delete_task(task_id)
             self.assertIsNone(store.get_task(task_id))
+
+    def test_webui_view_model_is_the_public_task_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=1,
+                end_id=4
+            )
+            success_item = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.SUCCESS,
+                file_name='done.mp4',
+                file_size=1024
+            )
+            failed_item = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.FAILURE,
+                error_message='target rejected file'
+            )
+            skipped_item = store.add_item(
+                task_id=task_id,
+                source_message_id=3,
+                source_link='https://t.me/source/3',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.SKIPPED
+            )
+            store.add_item(
+                task_id=task_id,
+                source_message_id=4,
+                source_link='https://t.me/source/4',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.RUNNING
+            )
+            store.update_item_progress(success_item, phase='uploaded', download_current=1024, download_total=1024)
+            store.update_item_progress(failed_item, phase='failed', upload_current=3, upload_total=10)
+            store.update_item(skipped_item, phase='skipped')
+            store.refresh_task_counts(task_id, expected_total=4, assignment_completed=False)
+
+            model = WebUiViewModel(store)
+            task_list = model.task_list()['tasks']
+            detail = model.task_detail(task_id, item_limit=10, event_limit=10)
+            failed_detail = model.task_detail(task_id, item_limit=10, item_status=TransferStatus.FAILURE)
+
+            self.assertEqual(1, len(task_list))
+            task = task_list[0]
+            self.assertEqual(task_id, task['id'])
+            self.assertEqual(4, task['total_items'])
+            self.assertEqual(2, task['completed_items'])
+            self.assertEqual(1, task['failed_items'])
+            self.assertEqual(1, task['skipped_items'])
+            self.assertEqual(1, task['running_items'])
+            self.assertEqual(50, task['progress_percent'])
+            self.assertTrue(task['can_pause'])
+            self.assertFalse(task['can_resume'])
+            self.assertTrue(task['can_retry'])
+            self.assertNotIn('success_count', task)
+            self.assertNotIn('failed_count', task)
+            self.assertNotIn('skipped_count', task)
+
+            self.assertEqual(task, detail['task'])
+            self.assertEqual(
+                {
+                    'total': 4,
+                    'completed': 2,
+                    'success': 1,
+                    'skipped': 1,
+                    'failed': 1,
+                    'running': 1,
+                    'pending': 0,
+                    'terminal': 3,
+                    'progress_percent': 50,
+                },
+                detail['summary']
+            )
+            self.assertEqual(4, len(detail['items']))
+            self.assertEqual(10, detail['page']['items_limit'])
+            self.assertEqual(10, detail['page']['events_limit'])
+            self.assertEqual(1, failed_detail['page']['item_count'])
+            self.assertEqual(1, len(failed_detail['items']))
+            self.assertEqual(TransferStatus.FAILURE, failed_detail['items'][0]['status'])
+            self.assertEqual(4, failed_detail['summary']['total'])
+
+    def test_webui_settings_model_is_the_public_settings_contract(self):
+        settings = {
+            'user': {
+                'download_type': ['video', 'document'],
+            },
+            'global': {
+                'forward_type': {'video': True, 'photo': False},
+                'message_filter': {
+                    'media_types': {'video': True, 'text': False}
+                }
+            }
+        }
+        schema = {
+            'download_type': ['video', 'photo', 'document'],
+            'forward_type': ['video', 'photo'],
+            'message_filter': {
+                'media_types': ['video', 'text']
+            }
+        }
+
+        model = WebUiViewModel.settings_model(settings, schema)
+
+        self.assertEqual(
+            [{'value': 'video', 'label': 'video'}, {'value': 'photo', 'label': 'photo'}, {'value': 'document', 'label': 'document'}],
+            model['options']['download_type']
+        )
+        self.assertEqual(['video', 'document'], model['selections']['user_download_type'])
+        self.assertEqual({'video': True, 'photo': False}, model['selections']['forward_type'])
+        self.assertEqual({'video': True, 'text': False}, model['selections']['message_filter_media_types'])
 
     def test_webui_exposes_delete_settings_and_download_records_without_secret_leaks(self):
         with tempfile.TemporaryDirectory() as directory:

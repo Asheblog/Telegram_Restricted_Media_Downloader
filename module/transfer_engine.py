@@ -458,7 +458,7 @@ class TransferEngine:
     @property
     def message_filter(self) -> MessageFilter:
         """获取共享消息过滤器实例。config reload 时自动重建。"""
-        current_mf = self.gc.message_filter
+        current_mf = getattr(self.gc, 'message_filter', None)
         if not hasattr(self, '_message_filter') or self._msg_filter_config_id != id(current_mf):
             self._message_filter = MessageFilter(current_mf)
             self._msg_filter_config_id = id(current_mf)

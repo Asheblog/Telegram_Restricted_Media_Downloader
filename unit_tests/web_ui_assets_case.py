@@ -208,6 +208,20 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)
         self.assertIn('showLoginStep', WEB_UI_HTML)
 
+    def test_desktop_and_mobile_use_unified_webui_contract(self):
+        combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
+        self.assertIn('completed_items', WEB_UI_HTML)
+        self.assertIn('completed_items', WEB_UI_MOBILE_HTML)
+        self.assertIn('progress_percent', WEB_UI_HTML)
+        self.assertIn('progress_percent', WEB_UI_MOBILE_HTML)
+        self.assertIn('/api/tasks/', WEB_UI_HTML)
+        self.assertIn('/api/tasks/', WEB_UI_MOBILE_HTML)
+        for stale_field in ('success_count', 'failed_count', 'skipped_count'):
+            self.assertNotIn(stale_field, combined)
+        self.assertNotIn('global.download.types', combined)
+        self.assertNotIn('global.forward.types', combined)
+        self.assertNotIn('settings.downloadTypes ||', combined)
+
 
 if __name__ == '__main__':
     unittest.main()

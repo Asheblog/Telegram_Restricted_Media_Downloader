@@ -67,7 +67,7 @@ def build_desktop_html(tailwind_css: str, fonts_css: str) -> str:
 def build_mobile_html(tailwind_css: str, fonts_css: str) -> str:
     """Build mobile HTML — single Tailwind build for all platforms."""
     mobile_body = read_text(TEMPLATES_DIR / "mobile_body.html")
-    shared_js = read_text(STATIC_DIR / "mobile_shared.js")
+    shared_js = read_text(STATIC_DIR / "shared.js")
     mobile_script = read_text(STATIC_DIR / "mobile_script.js")
 
     return f"""<!doctype html>

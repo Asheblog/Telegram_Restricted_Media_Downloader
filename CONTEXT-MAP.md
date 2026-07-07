@@ -18,6 +18,7 @@
 | `module/transfer_store.py` | SQLite 持久化（任务/Item/事件/Watch CRUD） | ~600 |
 | `module/transfer_progress.py` | 转存进度跟踪（恢复/续传） | ~400 |
 | `module/web_ui.py` | WebUI HTTP 服务 + REST API | ~2000 |
+| `module/webui_view_model.py` | WebUI 桌面端/移动端统一 ViewModel 契约 | ~300 |
 | `module/web_task_manager.py` | WebUI 任务调度器 | ~500 |
 | `module/web_ui_assets.py` | WebUI 内嵌前端资源（兼容别名） | — |
 | `module/live_watch_manager.py` | 实时监听频道管理 | ~300 |
@@ -78,10 +79,12 @@
 | 路由 | 方法 | 作用 |
 |------|------|------|
 | `/api/settings` | GET/PATCH | 读写配置 |
-| `/api/tasks` | GET/POST | 列出/创建转存任务 |
-| `/api/tasks/<id>` | DELETE/PATCH | 删除/暂停/恢复/重试 |
-| `/api/tasks/<id>/items` | GET | 列出任务中的 Items |
-| `/api/tasks/<id>/events` | GET | 任务事件日志 |
+| `/api/tasks` | GET/POST | 列出/创建转存任务；GET 返回 WebUI ViewModel task 列表 |
+| `/api/tasks/<id>` | GET/DELETE | 获取任务详情 ViewModel / 删除任务 |
+| `/api/tasks/<id>/summary` | GET | 获取任务统计 ViewModel 与最近事件 |
+| `/api/tasks/<id>/pause` | POST | 暂停任务 |
+| `/api/tasks/<id>/resume` | POST | 恢复任务 |
+| `/api/tasks/<id>/retry-failed` | POST | 重试失败 Items |
 | `/api/watches` | GET/POST | 列出/创建监听规则 |
 | `/api/watches/<id>` | DELETE/PATCH | 删除/更新监听 |
 | `/api/statistics` | GET | 获取统计 |
@@ -105,3 +108,4 @@
 | Live Transfer Watch | `live_watch_manager.py` → `LiveWatchManager` |
 | Message Filter | `filter.py` → `MessageFilter` |
 | Download Success Record | `transfer_store.py` → `download_success` 表 |
+| WebUI ViewModel Contract | `webui_view_model.py` → `WebUiViewModel` |

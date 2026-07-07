@@ -14,6 +14,7 @@ const i18n = {
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
     'nav.media': '媒体管理',
+    'nav.profile': '我的',
     'nav.logout': '退出登录',
     'side.failed': '失败项',
     'side.status': '系统运行中',
@@ -246,6 +247,7 @@ const i18n = {
     'nav.settings': 'Settings',
     'nav.records': 'Records',
     'nav.media': 'Media Mgmt',
+    'nav.profile': 'Me',
     'nav.logout': 'Log Out',
     'side.failed': 'Failed items',
     'side.status': 'System running',
@@ -474,15 +476,33 @@ const state = {
   activeItemStatus: 'running',
   selectedTaskId: null,
   tasks: [],
+  watches: [],
+  settings: null,
+  settingsSchema: {},
+  settingsModel: {},
+  items: [],
+  events: [],
+  records: [],
+  statistics: null,
+  lastSync: null,
   itemPages: {},
   itemData: {},
   eventData: {},
   taskPollTimer: null,
   watchEventCache: {},
 };
+window.state = state;
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+function $(sel) {
+  return document.querySelector(sel);
+}
+
+function $$(sel) {
+  return document.querySelectorAll(sel);
+}
+
+window.$ = $;
+window.$$ = $$;
 
 function t(key, replacements) {
   const dict = i18n[state.lang] || i18n.zh;
@@ -514,9 +534,11 @@ function applyLanguage() {
 
 function applyLanguageAndRefresh() {
   applyLanguage();
-  if (state.activeView === 'transfers') renderTasks();
-  if (state.activeView === 'watches') renderWatches();
-  if (state.activeView === 'settings') renderSettings();
+  if (state.activeView === 'transfers' && typeof renderTasks === 'function') renderTasks();
+  if (state.activeView === 'watches' && typeof renderWatches === 'function') renderWatches();
+  if (state.activeView === 'settings' && typeof renderSettings === 'function') renderSettings();
+  if (typeof renderMobTasks === 'function') renderMobTasks();
+  if (typeof renderMobWatches === 'function') renderMobWatches();
 }
 
 async function fetchJson(url) {
@@ -530,9 +552,9 @@ async function fetchJson(url) {
   return resp.json();
 }
 
-async function postJson(url, payload) {
+async function postJson(url, payload, method) {
   const resp = await fetch(url, {
-    method: 'POST',
+    method: method || 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -573,6 +595,10 @@ function fmtSize(bytes) {
   return (bytes / 1073741824).toFixed(2) + ' GB';
 }
 
+function formatBytes(bytes) {
+  return fmtSize(bytes);
+}
+
 function fmtTime(iso) {
   if (!iso) return '-';
   try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
@@ -587,4 +613,72 @@ function statusBadge(status) {
   const labels = { pending: 'status.pending', running: 'status.running', paused: 'status.paused', success: 'status.success', failure: 'status.failure', skipped: 'status.skipped' };
   const cls = status || 'pending';
   return '<span class="badge badge-' + cls + '"><span class="status-dot ' + cls + '"></span>' + t(labels[status] || 'status.pending') + '</span>';
+}
+
+function setLang(lang) {
+  state.lang = lang || 'zh';
+  localStorage.setItem('trmd-lang', state.lang);
+  applyLanguageAndRefresh();
+}
+
+function optionValues(options) {
+  return (options || []).map(function(option) {
+    return typeof option === 'string' ? option : option.value;
+  }).filter(Boolean);
+}
+
+function selectedKeys(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    return Object.entries(value).filter(function(entry) { return Boolean(entry[1]); }).map(function(entry) { return entry[0]; });
+  }
+  return [];
+}
+
+function taskProgressPercent(task) {
+  return Number(task && task.progress_percent || 0);
+}
+
+function taskCompletedLabel(task) {
+  if (!task) return '0/0';
+  return String(Number(task.completed_items || 0)) + '/' + String(Number(task.total_items || 0));
+}
+
+function taskFailedCount(task) {
+  return Number(task && task.failed_items || 0);
+}
+
+async function runTaskAction(event, taskId, action) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  await postJson('/api/tasks/' + encodeURIComponent(taskId) + '/' + action, {});
+  if (typeof loadMobileTasks === 'function') await loadMobileTasks();
+  else if (typeof loadTasks === 'function') await loadTasks();
+}
+
+async function deleteTask(event, taskId) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  if (!confirm('确定删除任务 #' + taskId + '？')) return;
+  const resp = await fetch('/api/tasks/' + encodeURIComponent(taskId), { method: 'DELETE' });
+  if (!resp.ok) {
+    let data = {};
+    try { data = await resp.json(); } catch(e) {}
+    throw data;
+  }
+  state.tasks = (state.tasks || []).filter(function(task) { return Number(task.id) !== Number(taskId); });
+  if (state.selectedTaskId === taskId) state.selectedTaskId = null;
+  if (typeof renderMobTasks === 'function') renderMobTasks();
+  if (typeof renderTasks === 'function') renderTasks();
+}
+
+async function deleteWatch(watchId) {
+  if (!confirm(t('watches.delete'))) return;
+  const resp = await fetch('/api/watches/' + encodeURIComponent(watchId), { method: 'DELETE' });
+  if (!resp.ok) {
+    let data = {};
+    try { data = await resp.json(); } catch(e) {}
+    throw data;
+  }
+  state.watches = (state.watches || []).filter(function(watch) { return watch.id !== watchId; });
+  if (typeof loadMobileWatches === 'function') await loadMobileWatches();
+  else if (typeof loadWatches === 'function') await loadWatches();
 }

@@ -144,8 +144,14 @@ from module.comp import TransferContext
 
 class TelegramRestrictedMediaDownloader:
 
+    def _local_attr(self, name, default=None):
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            return default
+
     def __getattr__(self, name):
-        if name in ('bot', 'web_task_manager', 'watch_manager', 'pikpak_manager', 'progress_tracker', 'transfer_engine', '_te'):
+        if name in ('bot', 'web_task_manager', '_te'):
             raise AttributeError(name)
         for mgr_name, init_fn in (
             ('watch_manager', '_ensure_watch_manager'),
@@ -354,20 +360,25 @@ class TelegramRestrictedMediaDownloader:
             return self._te
 
     def _create_transfer_engine(self):
-        ctx = getattr(self, 'ctx', None)
+        ctx = self._local_attr('ctx')
         if ctx is None:
             ctx = TransferContext(
-                app=self.app,
-                gc=self.gc,
-                diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
-                loop=self.loop,
-                my_id=getattr(self, 'my_id', 0),
-                download_upload_window=getattr(self, 'download_upload_window', None),
-                local_storage_guard=getattr(self, 'local_storage_guard', None),
+                app=self._local_attr('app'),
+                gc=self._local_attr('gc'),
+                diagnostic=self._local_attr('diagnostic', RichDiagnosticAdapter(console, log)),
+                loop=self._local_attr('loop'),
+                my_id=self._local_attr('my_id', 0),
+                download_upload_window=self._local_attr('download_upload_window'),
+                local_storage_guard=self._local_attr('local_storage_guard'),
+                transfer_store=self._local_attr('transfer_store'),
+                progress_tracker=self._local_attr('progress_tracker'),
+                pikpak_manager=self._local_attr('pikpak_manager'),
+                watch_manager=self._local_attr('watch_manager'),
+                web_task_manager=self._local_attr('web_task_manager'),
             )
         return TransferEngine(
             ctx=ctx,
-            diagnostic=getattr(self, 'diagnostic', RichDiagnosticAdapter(console, log)),
+            diagnostic=self._local_attr('diagnostic', RichDiagnosticAdapter(console, log)),
             env_save_directory_getter=lambda: getattr(self, 'env_save_directory', lambda *a, **kw: ''),
             get_final_save_directory_getter=lambda: getattr(self, 'get_final_save_directory', lambda *a, **kw: ''),
             get_final_file_path_getter=lambda: getattr(self, 'get_final_file_path', lambda *a, **kw: ''),
@@ -414,8 +425,8 @@ class TelegramRestrictedMediaDownloader:
         self.watch_manager = LiveWatchManager(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             operation_submitter=getattr(self, 'submit_web_operation', lambda ot, p: {'id': f'{ot}-0', 'status': TransferStatus.PENDING}),
-            user_getter=lambda: getattr(self, 'user', None),
-            app_getter=lambda: getattr(self, 'app', None),
+            user_getter=lambda: self.__dict__.get('user'),
+            app_getter=lambda: self.__dict__.get('app'),
             diagnostic=diagnostic
         )
 
@@ -435,8 +446,11 @@ class TelegramRestrictedMediaDownloader:
                 (getattr(getattr(self, 'gc', None), 'config', {}) or {}).get('target_profiles', {}).get('pikpak', {}).get('archive')
             ),
             diagnostic=diagnostic,
-            gc_getter=lambda: getattr(self, 'gc', None),
-            refresh_counts=lambda tid: (getattr(self, 'transfer_store', None).refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+            gc_getter=lambda: self.__dict__.get('gc'),
+            refresh_counts=lambda tid: (
+                self.__dict__.get('transfer_store').refresh_task_counts(tid)
+                if self.__dict__.get('transfer_store') else None
+            ),
         )
 
     def _ensure_progress_tracker(self):
@@ -452,18 +466,21 @@ class TelegramRestrictedMediaDownloader:
         self.progress_tracker = TransferProgressTracker(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
             diagnostic=diagnostic,
-            app_getter=lambda: getattr(self, 'app', None),
-            gc_getter=lambda: getattr(self, 'gc', None),
-            loop_getter=lambda: getattr(self, 'loop', None),
-            pb_getter=lambda: getattr(self, 'pb', None),
+            app_getter=lambda: self.__dict__.get('app'),
+            gc_getter=lambda: self.__dict__.get('gc'),
+            loop_getter=lambda: self.__dict__.get('loop'),
+            pb_getter=lambda: self.__dict__.get('pb'),
             release_storage=getattr(self, 'release_transfer_local_storage', lambda wu: None),
             release_window=getattr(self, 'release_download_upload_window', lambda wu: None),
             start_download_upload=getattr(self, 'start_download_upload', lambda **kw: False),
             archive_pikpak_item=getattr(self, 'archive_pikpak_item', lambda **kw: None),
             fail_transfer_item=getattr(self, 'fail_transfer_item', lambda *a: None),
-            refresh_counts=lambda tid: (getattr(self, 'transfer_store', None).refresh_task_counts(tid) if getattr(self, 'transfer_store', None) else None),
+            refresh_counts=lambda tid: (
+                self.__dict__.get('transfer_store').refresh_task_counts(tid)
+                if self.__dict__.get('transfer_store') else None
+            ),
             cleanup_local_file=lambda item_id: (
-                getattr(getattr(self, 'media_manager', None), 'try_cleanup_item_file', lambda i: False)(item_id)
+                getattr(self.__dict__.get('media_manager'), 'try_cleanup_item_file', lambda i: False)(item_id)
             ),
         )
 
@@ -504,6 +521,18 @@ class TelegramRestrictedMediaDownloader:
         self.web_submitted_task_ids.discard(task_id)
         self.web_task_queue.put_nowait(task_id)
         self.start_next_web_transfer_task()
+
+    def _schedule_web_task_resubmission(self, task_id: int) -> None:
+        loop = self.__dict__.get('loop')
+        if loop and hasattr(loop, 'call_soon_threadsafe'):
+            loop.call_soon_threadsafe(
+                lambda tid=task_id: self._enqueue_and_process_web_task(tid)
+            )
+            return
+        try:
+            self.submit_web_task(task_id)
+        except AttributeError:
+            pass
 
     def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
         wm = getattr(self, 'web_task_manager', None)
@@ -581,9 +610,7 @@ class TelegramRestrictedMediaDownloader:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PENDING)
         self.transfer_store.add_event(task_id, 'Transfer task resumed.')
-        self.loop.call_soon_threadsafe(
-            lambda tid=task_id: self._enqueue_and_process_web_task(tid)
-        )
+        self._schedule_web_task_resubmission(task_id)
         return True
 
     def retry_failed_web_task(self, task_id: int) -> int:
@@ -606,9 +633,7 @@ class TelegramRestrictedMediaDownloader:
         ]
         reset_items = self.transfer_store.retry_failed_item_ids(task_id, retry_item_ids)
         if reset_items:
-            self.loop.call_soon_threadsafe(
-                lambda tid=task_id: self._enqueue_and_process_web_task(tid)
-            )
+            self._schedule_web_task_resubmission(task_id)
         return reset_items
 
     def list_watches(self) -> list:
@@ -954,7 +979,9 @@ class TelegramRestrictedMediaDownloader:
         if PARSE_ARGS.web is None:
             return
         self.transfer_store = TransferStore(directory=self.app.temp_directory)
-        self.ctx.transfer_store = self.transfer_store
+        ctx = self.__dict__.get('ctx')
+        if ctx is not None:
+            ctx.transfer_store = self.transfer_store
         self.web_ui = WebUiServer(
             store=self.transfer_store,
             task_submitter=self.submit_web_task,

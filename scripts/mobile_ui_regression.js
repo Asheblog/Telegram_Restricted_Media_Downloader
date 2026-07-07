@@ -36,7 +36,7 @@ function buildMobileHtml() {
   const fontsCss = readText(path.join('static', 'fonts.css'));
   const tailwindCss = readText(path.join('dist', 'tailwind.min.css'));
   const mobileBody = readText(path.join('templates', 'mobile_body.html'));
-  const sharedJs = readText(path.join('static', 'mobile_shared.js'));
+  const sharedJs = readText(path.join('static', 'shared.js'));
   const mobileScript = readText(path.join('static', 'mobile_script.js'));
   return `<!doctype html>
 <html lang="zh-CN">
@@ -122,12 +122,29 @@ function apiPayload(url) {
     return {
       settings: {
         user: {},
-        global: {download: {types: {video: true}}, forward: {types: {}}},
-        downloadTypes: {video: '视频', photo: '图片'},
-        forwardTypes: {},
-        mediaTypes: {},
+        user: {download_type: ['video']},
+        global: {
+          forward_type: {video: true},
+          message_filter: {media_types: {video: true}},
+        },
       },
-      schema: {},
+      schema: {
+        download_type: ['video', 'photo'],
+        forward_type: ['video', 'photo'],
+        message_filter: {media_types: ['video', 'photo']},
+      },
+      settings_model: {
+        options: {
+          download_type: [{value: 'video', label: '视频'}, {value: 'photo', label: '图片'}],
+          forward_type: [{value: 'video', label: '视频'}, {value: 'photo', label: '图片'}],
+          message_filter_media_types: [{value: 'video', label: '视频'}, {value: 'photo', label: '图片'}],
+        },
+        selections: {
+          user_download_type: ['video'],
+          forward_type: {video: true},
+          message_filter_media_types: {video: true},
+        },
+      },
     };
   }
   if (pathname === '/api/media/scan') {
