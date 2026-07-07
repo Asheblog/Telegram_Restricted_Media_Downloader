@@ -324,18 +324,30 @@ class LiveWatchManager:
             raise ValueError('Only forward watch can be updated.')
         parsed = parse_forward_watch_rule(value)
         old_source = parsed.get('source_link', '')
+        new_source = str(payload.get('source_link') or '').strip()
         new_target = str(payload.get('target_link') or '').strip()
         new_include_comment = bool(payload.get('include_comment'))
+        if not new_source:
+            new_source = old_source
+        if not new_source:
+            raise ValueError('Source link is required.')
+        if not new_source.startswith('https://t.me/'):
+            raise ValueError('Watch source must start with https://t.me/.')
         if not new_target:
             raise ValueError('Target link is required.')
         if not new_target.startswith('https://t.me/'):
             raise ValueError('Watch target must start with https://t.me/.')
-        if old_source == new_target:
+        if new_source == new_target:
             raise ValueError('Source and target cannot be the same.')
+        if new_source != old_source:
+            if self.has_download_watch_source(new_source):
+                raise ValueError('watch_source_conflict')
+            if self.has_forward_watch_source(new_source):
+                raise ValueError('watch_already_exists')
         self.delete_watch(watch_id)
         return self.create_watch({
             'type': 'forward',
-            'source_link': old_source,
+            'source_link': new_source,
             'target_link': new_target,
             'include_comment': new_include_comment
         })

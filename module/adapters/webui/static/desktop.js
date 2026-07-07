@@ -654,6 +654,7 @@ function openEditWatchModal(watchId) {
   const watch = (state.watches || []).find(w => w.id === watchId);
   if (!watch) return;
   $('#edit-watch-id').value = watch.id;
+  $('#edit-watch-source').value = watch.source_link || '';
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#watch-edit-overlay').classList.add('open');
@@ -676,6 +677,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        source_link: fd.get('source_link'),
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
       }),

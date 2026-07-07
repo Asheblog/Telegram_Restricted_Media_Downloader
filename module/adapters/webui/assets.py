@@ -640,6 +640,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <form id="watch-edit-form">
       <input type="hidden" name="id" id="edit-watch-id">
       <div class="form-group">
+        <label class="form-label" data-i18n="watches.source">来源频道</label>
+        <input class="form-input" name="source_link" id="edit-watch-source" type="text" required>
+      </div>
+      <div class="form-group">
         <label class="form-label" data-i18n="watches.target">目标频道</label>
         <input class="form-input" name="target_link" id="edit-watch-target" type="text" required>
       </div>
@@ -2363,6 +2367,7 @@ function openEditWatchModal(watchId) {
   const watch = (state.watches || []).find(w => w.id === watchId);
   if (!watch) return;
   $('#edit-watch-id').value = watch.id;
+  $('#edit-watch-source').value = watch.source_link || '';
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#watch-edit-overlay').classList.add('open');
@@ -2385,6 +2390,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        source_link: fd.get('source_link'),
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
       }),
@@ -4724,8 +4730,13 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
   async function submitEditWatch(event) {
     event.preventDefault();
     const button = event.submitter;
+    const source = document.getElementById('watch-edit-source').value.trim();
     const target = document.getElementById('watch-edit-target').value.trim();
     const includeComment = document.getElementById('watch-edit-include-comment').checked;
+    if (!source) {
+      showEditWatchNotice(t('watches.sourceRequired'), false);
+      return;
+    }
     if (!target) {
       showEditWatchNotice(t('watches.targetRequired'), false);
       return;
@@ -4735,7 +4746,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         await fetch(`/api/watches/${encodeURIComponent(editingWatchId)}`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({target_link: target, include_comment: includeComment})
+          body: JSON.stringify({source_link: source, target_link: target, include_comment: includeComment})
         }).then(res => res.json().then(data => res.ok ? data : Promise.reject(data)));
       } catch (payload) {
         showEditWatchNotice(translateApiError(payload), false);

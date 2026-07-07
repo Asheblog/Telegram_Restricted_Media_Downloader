@@ -1243,8 +1243,13 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
   async function submitEditWatch(event) {
     event.preventDefault();
     const button = event.submitter;
+    const source = document.getElementById('watch-edit-source').value.trim();
     const target = document.getElementById('watch-edit-target').value.trim();
     const includeComment = document.getElementById('watch-edit-include-comment').checked;
+    if (!source) {
+      showEditWatchNotice(t('watches.sourceRequired'), false);
+      return;
+    }
     if (!target) {
       showEditWatchNotice(t('watches.targetRequired'), false);
       return;
@@ -1254,7 +1259,7 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
         await fetch(`/api/watches/${encodeURIComponent(editingWatchId)}`, {
           method: 'PUT',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({target_link: target, include_comment: includeComment})
+          body: JSON.stringify({source_link: source, target_link: target, include_comment: includeComment})
         }).then(res => res.json().then(data => res.ok ? data : Promise.reject(data)));
       } catch (payload) {
         showEditWatchNotice(translateApiError(payload), false);
