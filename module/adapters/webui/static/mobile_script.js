@@ -610,10 +610,10 @@ function renderMobSettingsForm() {
   var behFields = document.getElementById('mob-settings-behavior-fields');
   if (behFields) behFields.innerHTML =
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" style="width:auto;min-height:auto;"' + (glob.notice ? ' checked' : '') + '><span>机器人通知</span></label>' +
-      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="user.is_shutdown" style="width:auto;min-height:auto;"' + (user.is_shutdown ? ' checked' : '') + '><span>退出后关机</span></label>' +
-      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload" style="width:auto;min-height:auto;"' + (getSettingLeafKey(glob, 'upload.download_upload') ? ' checked' : '') + '><span>受限转发时下载后上传</span></label>' +
-      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete" style="width:auto;min-height:auto;"' + (getSettingLeafKey(glob, 'upload.delete') ? ' checked' : '') + '><span>上传完成删除本地文件</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.notice" ' + (glob.notice ? ' checked' : '') + '><span>机器人通知</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="user.is_shutdown"' + (user.is_shutdown ? ' checked' : '') + '><span>退出后关机</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload"' + (getSettingLeafKey(glob, 'upload.download_upload') ? ' checked' : '') + '><span>受限转发时下载后上传</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete"' + (getSettingLeafKey(glob, 'upload.delete') ? ' checked' : '') + '><span>上传完成删除本地文件</span></label>' +
     '</div>' +
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>';
 
@@ -622,7 +622,7 @@ function renderMobSettingsForm() {
   if (archiveFields) {
     var arch = getSettingLeafKey(glob, 'target_profiles.pikpak.archive') || {};
     archiveFields.innerHTML =
-      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable" style="width:auto;min-height:auto;"' + (arch.enable ? ' checked' : '') + '><span>PikPak按来源频道归档</span></label>' +
+      '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable"' + (arch.enable ? ' checked' : '') + '><span>PikPak按来源频道归档</span></label>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
         '<label><span>PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote" value="' + escAttr(arch.remote || '') + '"></label>' +
         '<label><span>入库目录</span><input name="global.target_profiles.pikpak.archive.source_directory" value="' + escAttr(arch.source_directory || '') + '"></label>' +
@@ -661,16 +661,16 @@ function renderMobSettingsForm() {
   var mf = glob.message_filter || {};
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled" style="width:auto;min-height:auto;"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
     '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', settings.mediaTypes || {}, selectedMediaTypes(glob)) + '</div>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled" style="width:auto;min-height:auto;"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
       '<label><span>起始日期</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
       '<label><span>结束日期</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled" style="width:auto;min-height:auto;"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>关键词过滤</span></label>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>关键词过滤</span></label>' +
     '<label><span>关键词列表（逗号分隔）</span><input name="global.message_filter.keywords.words" value="' + escAttr(getSettingLeafKey(mf, 'keywords.words') || '') + '" placeholder="广告,推广,赞助"></label>';
 
   // Exports
@@ -679,9 +679,9 @@ function renderMobSettingsForm() {
     var et = glob.export_table || {};
     expFields.innerHTML =
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">' +
-        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link" style="width:auto;min-height:auto;"' + (et.link ? ' checked' : '') + '><span>链接统计表</span></label>' +
-        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.count" style="width:auto;min-height:auto;"' + (et.count ? ' checked' : '') + '><span>计数统计表</span></label>' +
-        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.upload" style="width:auto;min-height:auto;"' + (et.upload ? ' checked' : '') + '><span>上传统计表</span></label>' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.link"' + (et.link ? ' checked' : '') + '><span>链接统计表</span></label>' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.count"' + (et.count ? ' checked' : '') + '><span>计数统计表</span></label>' +
+        '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.export_table.upload"' + (et.upload ? ' checked' : '') + '><span>上传统计表</span></label>' +
       '</div>';
   }
 }
@@ -720,7 +720,7 @@ function renderCheckCards(baseName, types, selected) {
   (selected || []).forEach(function(k) { selSet[k] = true; });
   Object.keys(types || {}).forEach(function(key) {
     html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0;">' +
-      '<input type="checkbox" name="' + baseName + '.' + key + '" value="' + escAttr(key) + '" style="width:auto;min-height:auto;"' + (selSet[key] ? ' checked' : '') + '>' +
+      '<input type="checkbox" name="' + baseName + '.' + key + '" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
       '<span>' + esc(types[key] || key) + '</span></label>';
   });
   return html || '<span style="font-size:13px;color:var(--color-muted);">无可用选项</span>';
@@ -739,7 +739,7 @@ function mobInitDownloadTypes() {
   var html = '';
   Object.keys(types).forEach(function(key) {
     html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
-      '<input type="checkbox" name="download_types" value="' + escAttr(key) + '" style="width:auto;min-height:auto;"' + (selSet[key] ? ' checked' : '') + '>' +
+      '<input type="checkbox" name="download_types" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
       '<span>' + esc(types[key] || key) + '</span></label>';
   });
   grid.innerHTML = html || '<span style="font-size:13px;color:var(--color-muted);">无可用类型</span>';

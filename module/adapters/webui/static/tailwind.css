@@ -578,14 +578,24 @@
   .mob-body label {
     display: grid;
     gap: 6px;
+    width: 100%;
+    min-width: 0;
     color: var(--color-text-secondary);
     font-size: 13px;
     font-weight: 500;
+  }
+  .mob-body form {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
   .mob-body input,
   .mob-body select,
   .mob-body textarea {
     width: 100%;
+    min-width: 0;
     border: 1px solid var(--color-line);
     border-radius: 8px;
     padding: 12px 14px;
@@ -595,6 +605,7 @@
     font-size: 16px;
     font-family: inherit;
     transition: border-color .18s ease, box-shadow .18s ease;
+    box-sizing: border-box;
   }
   .mob-body input:focus,
   .mob-body select:focus,
@@ -602,6 +613,23 @@
     border-color: var(--color-primary);
     outline: none;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
+  /* Checkbox / radio — never stretch to 100% */
+  .mob-body input[type="checkbox"],
+  .mob-body input[type="radio"] {
+    width: auto;
+    min-height: auto;
+    min-width: auto;
+    padding: 0;
+    accent-color: var(--color-primary);
+  }
+  /* Labels that wrap checkboxes — keep row layout */
+  .mob-body label:has(input[type="checkbox"]),
+  .mob-body label:has(input[type="radio"]) {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
   }
 
   /* --- Mobile buttons --- */
@@ -736,6 +764,7 @@
     flex-direction: column;
     gap: 10px;
     animation: mobRise .25s ease both;
+    min-width: 0;
   }
   @keyframes mobRise {
     from { opacity: 0; transform: translateY(4px); }
@@ -746,6 +775,10 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    min-width: 0;
+  }
+  .mob-view.active > * {
+    min-width: 0;
   }
 
   /* --- Profile sub-page --- */
@@ -753,9 +786,13 @@
     display: none;
     flex-direction: column;
     gap: 10px;
+    min-width: 0;
   }
   .mob-subpage.active {
     display: flex;
+  }
+  .mob-subpage.active > * {
+    min-width: 0;
   }
 
   /* --- Card List --- */
@@ -854,6 +891,7 @@
     border-radius: 10px;
     overflow: hidden;
     background: var(--color-surface);
+    min-width: 0;
   }
   .mob-collapse__head {
     display: flex;
@@ -865,12 +903,14 @@
     font-size: 15px;
     user-select: none;
     color: var(--color-text);
+    min-width: 0;
   }
   .mob-collapse__head:active { background: var(--color-surface-muted); }
   .mob-collapse__arrow {
     color: var(--color-muted);
     transition: transform .2s ease;
     font-size: 12px;
+    flex-shrink: 0;
   }
   .mob-collapse.open .mob-collapse__arrow {
     transform: rotate(180deg);
@@ -880,9 +920,19 @@
     flex-direction: column;
     gap: 10px;
     padding: 0 14px 14px;
+    min-width: 0;
   }
   .mob-collapse.open .mob-collapse__body {
     display: flex;
+  }
+  .mob-collapse__body > * {
+    min-width: 0;
+    width: 100%;
+  }
+  /* Exclude full-width children from forced width to avoid double-100% issues */
+  .mob-collapse__body > .mob-btn,
+  .mob-collapse__body > .mob-empty {
+    width: 100%;
   }
 
   /* --- Profile Menu List --- */
@@ -1096,12 +1146,31 @@
   .mob-media-scan-btn { margin: 8px 0; width: 100%; }
   .mob-media-result { margin-top: 12px; font-size: 13px; }
 
+  /* --- Settings form dynamic fields --- */
+  .mob-subpage .mob-collapse__body label {
+    width: 100%;
+    min-width: 0;
+  }
+  .mob-subpage .mob-collapse__body [style*="display:grid"] {
+    width: 100%;
+    min-width: 0;
+  }
+  /* Grid containers inside mobile forms — ensure proper width */
+  .mob-body [style*="display:grid"],
+  .mob-body [style*="display: grid"] {
+    width: 100%;
+    min-width: 0;
+  }
+
   /* --- Check Group (fieldset) --- */
   .mob-check-group {
     border: 1px solid var(--color-line);
     border-radius: 8px;
     padding: 10px 14px;
     margin: 0;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .mob-check-group legend {
     font-size: 13px;
