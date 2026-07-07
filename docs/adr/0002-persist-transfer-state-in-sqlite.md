@@ -1,3 +1,37 @@
-# Persist transfer state in SQLite
+# ADR-0002: 使用 SQLite 持久化转存状态
 
-Transfer Tasks, Transfer Items, and their events are persisted in SQLite. YAML remains suitable for user configuration, but runtime transfer state needs durable querying, retry, audit, and WebUI updates without requiring an external database service.
+**决策日期**: 2025-06 | **最后更新**: 2026-07-07 | **状态**: ✅ 已采纳
+
+---
+
+## Context
+
+早期版本中，转存任务状态仅存在于内存中。程序重启后：
+
+- 所有进行中的任务丢失，无法续传
+- 已完成的任务历史不可查询
+- 无法实现暂停/恢复/重试等高级控制
+- WebUI 需要聚合任务状态，内存状态无法跨请求共享
+
+需要一个持久化方案。考虑过：
+1. YAML 文件 — 适合配置，不适合频繁读写的运行时状态
+2. SQLite — 嵌入式、零配置、支持并发读、SQL 查询
+3. 外部数据库 (PostgreSQL/MySQL) — 太重，增加部署复杂度
+
+## Decision
+
+使用 SQLite 作为运行时状态持久化存储：
+
+- 存储 Transfer Tasks、Transfer Items、事件日志、下载成功记录、Watch 规则
+- 使用 WAL 模式提高并发性能
+- 线程本地连接（`threading.local()`）保证线程安全
+- 自动维护：定期 WAL checkpoint、`PRAGMA optimize`、阈值触发 `VACUUM`（见 ADR-0004）
+
+## Consequences
+
+- ✅ 程序重启后可续传：已完成 Item 自动跳过
+- ✅ WebUI 可实时查询任务状态和历史
+- ✅ 支持暂停/恢复/重试失败 Item
+- ✅ 零部署成本：SQLite 是 Python 标准库
+- ⚠️ 不支持多进程并发写入（单机部署，影响极小）
+- ⚠️ 数据库文件可能随任务数量增长，需配合维护策略

@@ -1216,17 +1216,6 @@ class TelegramRestrictedMediaDownloader:
             media_type, file_name, final_path, file_size
         )
 
-    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
-        source_link = source_link or task.get('source_link')
-        return self.build_download_upload_meta(
-            target_link=task.get('target_link'),
-            target_profile=task.get('target_profile'),
-            source_link=source_link,
-            source_folder=source_folder_from_link(source_link),
-            task_id=task.get('id'),
-            media_type=media_type
-        )
-
     async def create_bot_transfer_progress(
             self,
             source_link: Optional[str],

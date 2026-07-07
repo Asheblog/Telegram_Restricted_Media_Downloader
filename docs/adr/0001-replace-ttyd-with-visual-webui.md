@@ -1,3 +1,35 @@
-# Replace ttyd with a visual WebUI
+# ADR-0001: 用可视化 WebUI 替代 ttyd 终端
 
-The browser entry point is now a product UI, not a ttyd terminal wrapper. This is a deliberate direct replacement: `--web` should open an operational WebUI for creating and monitoring Transfer Tasks because the main workflow is long-running transfer management, not terminal interaction.
+**决策日期**: 2025-06
+
+**最后更新**: 2026-07-07 (文档规范化)
+
+**状态**: ✅ 已采纳
+
+---
+
+## Context
+
+上游项目使用 ttyd 提供 Web 终端访问，用户通过浏览器中的终端模拟器操作 TRMD。对于长期运行的转存管理场景，终端操作体验差：
+
+- 创建转存任务需要手写命令
+- 无法直观查看任务进度
+- 移动端浏览器操作终端极不友好
+- 无法提供结构化的任务管理界面
+
+## Decision
+
+用自建的可视化 WebUI 直接替代 ttyd：
+
+- `--web` 参数启动时直接打开产品级操作界面，而非终端封装
+- WebUI 内置任务创建表单、进度监控、配置管理等功能
+- 保留 Telegram Bot 作为辅助控制通道
+- HTTP Basic Auth 保护远程访问（见 ADR-0003）
+
+## Consequences
+
+- ✅ 用户体验大幅提升：表单化任务创建、可视化进度条、移动端适配
+- ✅ 降低学习成本：不再需要记忆 CLI 命令
+- ✅ 前端独立演进：TailwindCSS + Vanilla JS，不依赖后端框架
+- ⚠️ 维护成本增加：需要同时维护 WebUI 前端和后端 API
+- ⚠️ 首次加载需下载前端资源（内嵌于 Python 包中）

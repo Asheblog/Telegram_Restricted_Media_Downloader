@@ -1,93 +1,188 @@
-# Telegram Restricted Media Transfer
+# TRMD — Telegram Restricted Media Downloader (WebUI Fork)
 
-This context describes TRMD as a tool for transferring Telegram content that the user is allowed to access, including content that cannot be forwarded natively.
+## 项目概述
 
-## Language
+TRMD 是一个长期运行的 Telegram 媒体转存工具，通过 WebUI 操作。它把用户有权访问的 Telegram 内容转存到目标会话（默认为 PikPak bot），并可自动将 PikPak 入库后的文件按来源频道归档到 PikPak 云盘。
 
-**Restricted Content Transfer**:
-A transfer that gets Telegram content from a source conversation to a target conversation even when Telegram native forwarding is blocked. It may use native forwarding when allowed, but falls back to downloading and re-sending the content.
+- **上游**: [Gentlesprite/Telegram_Restricted_Media_Downloader](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) (v2.x)
+- **本 Fork**: [Asheblog/Telegram_Restricted_Media_Downloader](https://github.com/Asheblog/Telegram_Restricted_Media_Downloader) (v0.2.x)
+- **许可证**: MIT
+- **Python**: ≥3.13.2
+- **入口**: `main.py`
+
+---
+
+## 核心架构
+
+```
+main.py (入口)
+  └── TelegramRestrictedMediaDownloader (主控制器, downloader.py, ~3700行)
+        ├── Application (Telegram 客户端 + 下载/文件名逻辑, app.py)
+        │     └── TelegramRestrictedMediaDownloaderClient (Pyrogram 扩展, client.py)
+        ├── Bot (Telegram Bot 命令处理, bot.py)
+        ├── CallbackHandler (Bot 回调处理, callback_handler.py)
+        ├── TransferEngine (转存引擎, transfer_engine.py)
+        ├── TransferStore (SQLite 持久化, transfer_store.py)
+        ├── TransferProgressTracker (转存进度跟踪, transfer_progress.py)
+        ├── PikpakIntegrationManager (PikPak 集成, pikpak_integration.py)
+        ├── WebUITaskManager (WebUI 任务调度, web_task_manager.py)
+        ├── LiveWatchManager (实时监听管理, live_watch_manager.py)
+        ├── WebUiServer (WebUI HTTP 服务, web_ui.py)
+        ├── LocalStorageGuard (本地磁盘守护, local_storage_guard.py)
+        ├── DynamicAsyncWindow (并发窗口控制, async_window.py)
+        ├── MediaManager (媒体文件清理, media_manager.py)
+        ├── UserConfig (config.yaml 用户配置, config.py)
+        └── GlobalConfig (.CONFIG.yaml 全局配置, config.py)
+```
+
+### 配置系统（双层）
+
+| 配置层 | 类 | 文件名 | 位置 | 用途 |
+|--------|-----|--------|------|------|
+| 用户层 | `UserConfig` | `config.yaml` | 工作目录 | Telegram API 凭证、下载类型、代理 |
+| 全局层 | `GlobalConfig` | `.CONFIG.yaml` | `~/.config/TRMD/` | 上传行为、目标配置、消息过滤、转发类型 |
+
+### 子包结构
+
+```
+module/
+  adapters/       # 外部系统适配器
+    bot/          # Bot 相关（待迁移）
+    pikpak/       # PikPak 相关（待迁移）
+    webui/        # WebUI HTTP + 内嵌前端资源 (assets.py, build_frontend.py)
+  core/           # 核心域对象（占位）
+  infra/          # 基础设施（占位）
+  persistence/    # 持久化层（占位）
+  transfer/       # 转存领域（占位）
+  utils/          # 工具函数（占位）
+```
+
+大部分业务逻辑仍在 `module/*.py` 顶层文件中，子包为架构升级框架。
+
+---
+
+## 数据流 — 转存流程
+
+```
+来源 Telegram 消息
+    │
+    ├──→ 尝试直接转发 (forward_messages)
+    │       │
+    │       ├── 成功 → [PikPak] 等待入库确认 → rclone 归档 → 完成
+    │       └── 失败 (ChatForwardsRestricted 等)
+    │              └──→ 回退: 下载到本地 → 上传到目标
+    │
+    └── 下载→上传流程
+            │
+            下载到 temp_directory/chat_id/
+            │
+            上传到目标会话
+            │
+            [PikPak] 等待 PikPak bot 回复确认消息
+            │
+            [PikPak archive=true] rclone 从 "My Telegram" 移动到 "Telegram/<频道名>"
+            │
+            清理本地临时文件
+```
+
+---
+
+## 领域术语表
+
+**Restricted Content Transfer** — Telegram 原生转发受限时的下载→重发回退流程。
 _Avoid_: Forward bypass, restricted forward, mirror
 
-**PikPak Target**:
-The Telegram conversation with the official PikPak bot that receives transferred media so PikPak can ingest it.
-_Avoid_: PikPak API, cloud drive target
-
-**PikPak Archive**:
-A target-side organization step that ensures the Source Channel Folder exists and places media received by the PikPak Target into that durable PikPak folder after the transfer reaches PikPak. When enabled for a PikPak Target, the archive must complete before the Transfer Item is treated as successful.
-_Avoid_: Local download folder, bot chat folder
-
-**PikPak Ingest Folder**:
-The PikPak folder where the PikPak Target initially stores media before a PikPak Archive moves it into a Source Channel Folder.
-_Avoid_: Archive root, source channel folder
-
-**PikPak Ingest Confirmation**:
-A reply from the PikPak Target showing that PikPak has accepted and saved a transferred media item. Telegram delivery to the PikPak Target is not enough to make a transfer successful.
-_Avoid_: Forward success, copy success
-
-**Transfer Task**:
-A persisted user request to move one or more source messages to a target conversation.
+**Transfer Task** — 一条持久化的转存请求（来源链接 → 目标链接，含可选 ID 范围）。存储在 SQLite 的 `transfer_tasks` 表。
 _Avoid_: Download task, forward job
 
-**Transfer Item**:
-One source message or media item inside a Transfer Task.
+**Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。
 _Avoid_: File task, message job
 
-**Transfer Progress**:
-The set of Transfer Items in a Transfer Task that have reached a final outcome and can be skipped when the same Transfer Task continues later.
+**Transfer Progress** — 已完成 Transfer Item 的集合。同名 Task 再次执行时跳过已完成的 Item，实现断点续传。
 _Avoid_: Chapter cursor, runtime offset
 
-**Live Transfer Status**:
-A user-visible progress message for an active Restricted Content Transfer, especially when a Live Transfer Watch falls back to downloading and uploading media. It shows download, upload, target-send, and failure phases while the work is still running.
-_Avoid_: Container log, final notice, PikPak confirmation
+**PikPak Target** — 与 PikPak 官方 bot 的 Telegram 会话，作为接收转存媒体的目标。
+_Avoid_: PikPak API, cloud drive target
 
-**Transfer Task Pause**:
-A user-requested stop point for a Transfer Task that prevents the next Transfer Item from starting while preserving already completed Transfer Progress.
-_Avoid_: Cancel task, delete task, kill transfer
+**PikPak Archive** — 目标侧组织步骤：确认 Source Channel Folder 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到对应 Source Channel Folder。启用时，归档必须完成才算 Transfer Item 成功。
+_Avoid_: Local download folder, bot chat folder
 
-**Failed Item Retry**:
-A user-requested continuation of a Transfer Task that makes failed Transfer Items eligible to run again while keeping successful and skipped Transfer Items as completed Transfer Progress.
-_Avoid_: Restart task, rerun all, clear history
+**PikPak Ingest Folder** — PikPak bot 入库后的默认目录（"My Telegram"），PikPak Archive 执行前文件暂存于此。
+_Avoid_: Archive root, source channel folder
 
-**Automatic Transfer Range**:
-A Transfer Task range inferred from the earliest and latest source conversation messages that the current account can access when the user provides a source conversation link without explicit message IDs.
-_Avoid_: Auto dump, guessed range
+**PikPak Ingest Confirmation** — PikPak bot 回复的确认消息，表示已接收并保存媒体。Telegram 送达不代表转存成功。
+_Avoid_: Forward success, copy success
 
-**Download Success Record**:
-A durable record that a source conversation message has already been downloaded successfully, scoped by the source conversation and message identity. Later transfer requests can use it to avoid downloading the same source media again.
-_Avoid_: Cache hit, finished file
-
-**Local Transfer Storage Budget**:
-The amount of local disk space that may be occupied or reserved by Restricted Content Transfer files while they are being downloaded and re-sent. A Transfer Item that needs a local fallback must fit within the budget before its download starts, and the budget is released only after the local file is no longer needed.
-_Avoid_: Upload concurrency, temp cache size
-
-**Downloaded Media Filename**:
-A filesystem-safe filename for downloaded media and PikPak Archive targets. When the source Telegram message has a caption, text, or web preview title, that readable Source Message Title is preferred over Telegram media IDs or generated English filenames; the source message ID remains in the filename to avoid collisions.
-_Avoid_: Temp cache name, random media ID
-
-**Source Channel Folder**:
-A filesystem-safe folder name derived from the source Telegram conversation so transferred media from the same source can be grouped together.
-_Avoid_: Target folder, chat title cache
-
-**Target Profile**:
-A named set of target-specific transfer defaults, such as sending media to PikPak as documents and deleting local files after success.
+**Target Profile** — 目标特定的配置预设（如 `pikpak`），控制：是否以文档发送、发送后是否删除本地文件、文件大小上限。
 _Avoid_: Preset, mode
 
-**Target Size Limit**:
-A target-specific maximum media size for a Transfer Item. Transfer Items above this limit are skipped before expensive transfer work for that target begins because the selected target cannot accept them; this is not a transfer failure.
-_Avoid_: Upload cap, file size check, upload failure
+**Source Channel Folder** — 从来源链接提取的文件系统安全文件夹名，同一来源频道的媒体归入同一文件夹。
+_Avoid_: Target folder, chat title cache
 
-**Live Transfer Watch**:
-A sustained rule that watches a source Telegram conversation for new messages and triggers a transfer or forwarding action when matching messages arrive.
+**Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发。
 _Avoid_: Listen job, bot listener
 
-**Discussion Reply Inclusion**:
-An optional transfer behavior that includes Telegram discussion replies attached to a source message in the same transfer or forwarding action.
+**Live Transfer Status** — 用户可见的进度消息，展示下载/上传/目标发送/失败各阶段状态。
+_Avoid_: Container log, final notice
+
+**Automatic Transfer Range** — 仅提供频道链接（无消息 ID）时，自动探测最早和最晚可访问消息来确定范围。
+_Avoid_: Auto dump, guessed range
+
+**Download Success Record** — 已成功下载消息的持久化记录（按来源会话+消息 ID），后续转存可复用，避免重复下载。
+_Avoid_: Cache hit, finished file
+
+**Local Transfer Storage Budget** — 本地磁盘空间限制，回退下载前检查，文件不再需要时释放。
+_Avoid_: Upload concurrency, temp cache size
+
+**Transfer Task Pause** — 暂停后的 Transfer Task 阻止下一条 Transfer Item 启动，已有 Progress 保留。
+_Avoid_: Cancel task, delete task, kill transfer
+
+**Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。
+_Avoid_: Restart task, rerun all, clear history
+
+**Discussion Reply Inclusion** — 可选的 `--include-comment` 行为，包含来源消息下的讨论区回复。
 _Avoid_: Comment scraping, reply mirroring
 
-**WebUI Credentials**:
-Environment-supplied Basic Auth credentials for the visual WebUI. They are required when the server listens on a non-localhost address and are never generated or logged by the application.
+**WebUI Credentials** — 环境变量提供的 HTTP Basic Auth 凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码。
 _Avoid_: Random ttyd password, public WebUI
 
-**WebUI Telegram Login**:
-A WebUI-based Telegram authentication flow that replaces the CLI console.input() interaction when the WebUI is active. It guides the user through phone-number entry, verification code, and optional two-factor authentication via a login form, with real-time status feedback.
+**WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login
+
+---
+
+## 关键外部依赖
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
+| rclone | — | PikPak 云盘归档（容器内安装） |
+| SQLite | — | 转存任务状态持久化 |
+| TailwindCSS | ^4.1.18 | WebUI 前端样式 |
+| Rich | 14.2.0 | 终端格式化输出 |
+| PyYAML | ≥6.0.3 | 配置文件读写 |
+| pymediainfo | 7.0.1 | 媒体文件元信息 |
+| qrcode | ≥8.2 | QR 码登录 |
+| tgcrypto | ≥1.2.5 | Telegram 加密加速 |
+| pygments | ≥2.19.2 | 语法高亮 |
+
+---
+
+## 技术决策记录
+
+见 `docs/adr/`:
+
+- [ADR-0001](docs/adr/0001-replace-ttyd-with-visual-webui.md) — 用 WebUI 替代 ttyd 终端
+- [ADR-0002](docs/adr/0002-persist-transfer-state-in-sqlite.md) — SQLite 持久化转存状态
+- [ADR-0003](docs/adr/0003-require-webui-auth-for-remote-listening.md) — 远程访问必须认证
+- [ADR-0004](docs/adr/0004-automate-local-runtime-maintenance.md) — 自动日志轮转与 SQLite 维护
+
+---
+
+## 开发约定
+
+- **版本号**: `pyproject.toml` 和 `module/__init__.py` 必须一致
+- **测试**: `unit_tests/`，pytest 运行
+- **Docker 构建**: GitHub Actions 在 `v*.*.*` tag push 时触发
+- **发布流程**: bump 版本 → 提交 → `git tag -a vX.Y.Z` → push main + tag
+- **提交信息** 末尾可附 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
