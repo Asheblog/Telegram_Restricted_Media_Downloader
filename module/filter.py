@@ -129,7 +129,7 @@ class MessageFilter:
         return True
 
     def _check_keywords(self, message: pyrogram.types.Message) -> bool:
-        """检查消息文本/标题是否包含任一关键词。"""
+        """排除包含关键词的消息（黑名单模式）。"""
         if not self.keywords_enabled:
             return True
         words = self.keywords
@@ -137,7 +137,7 @@ class MessageFilter:
             return True
         text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ''
         text_lower = text.lower()
-        return any(kw.lower() in text_lower for kw in words)
+        return not any(kw.lower() in text_lower for kw in words)
 
     # ── 兼容旧版 static 方法（供 download_chat 的 per-chat 过滤使用）──
 

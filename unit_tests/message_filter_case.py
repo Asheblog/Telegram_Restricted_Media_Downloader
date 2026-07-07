@@ -112,24 +112,28 @@ class MessageFilterTestCase(unittest.TestCase):
         self.assertTrue(f.should_pass(msg))
 
     def test_keywords_match_in_text(self):
+        """包含关键词的消息应被拦截（黑名单模式）。"""
         f = MessageFilter({'keywords': {'enabled': True, 'words': ['电影', 'music']}})
         msg = make_message(text="好看的电影推荐")
-        self.assertTrue(f.should_pass(msg))
+        self.assertFalse(f.should_pass(msg))
 
     def test_keywords_match_in_caption(self):
+        """标题包含关键词的消息应被拦截（黑名单模式）。"""
         f = MessageFilter({'keywords': {'enabled': True, 'words': ['music']}})
         msg = make_message(caption="best music album")
-        self.assertTrue(f.should_pass(msg))
+        self.assertFalse(f.should_pass(msg))
 
     def test_keywords_case_insensitive(self):
+        """大小写不敏感的排除匹配。"""
         f = MessageFilter({'keywords': {'enabled': True, 'words': ['MUSIC']}})
         msg = make_message(text="Music is great")
-        self.assertTrue(f.should_pass(msg))
+        self.assertFalse(f.should_pass(msg))
 
     def test_keywords_no_match(self):
+        """不包含关键词的消息应放行（黑名单模式）。"""
         f = MessageFilter({'keywords': {'enabled': True, 'words': ['电影']}})
         msg = make_message(text="today's weather")
-        self.assertFalse(f.should_pass(msg))
+        self.assertTrue(f.should_pass(msg))
 
     # ── AND 组合逻辑 ──
 
@@ -142,15 +146,15 @@ class MessageFilterTestCase(unittest.TestCase):
             'date_range': {'enabled': True, 'start_date': start_ts, 'end_date': None},
             'keywords': {'enabled': True, 'words': ['电影']}
         })
-        # 全部满足：type=video, date ok, keyword match
-        msg_pass = make_message(
+        # 关键词匹配 → 应被拦截（黑名单模式）
+        msg_blocked_by_kw = make_message(
             video=True,
             date=datetime.datetime(2024, 6, 15),
             caption="好看的电影"
         )
-        self.assertTrue(f.should_pass(msg_pass))
+        self.assertFalse(f.should_pass(msg_blocked_by_kw))
 
-        # type不满足
+        # type不满足 → 拦截
         msg_fail_type = make_message(
             photo=True,
             date=datetime.datetime(2024, 6, 15),
@@ -158,13 +162,13 @@ class MessageFilterTestCase(unittest.TestCase):
         )
         self.assertFalse(f.should_pass(msg_fail_type))
 
-        # 关键词不满足
-        msg_fail_kw = make_message(
+        # 不含关键词 + type=video + date ok → 全部通过
+        msg_pass = make_message(
             video=True,
             date=datetime.datetime(2024, 6, 15),
             text="今天天气不错"
         )
-        self.assertFalse(f.should_pass(msg_fail_kw))
+        self.assertTrue(f.should_pass(msg_pass))
 
     # ── 兼容静态方法 ──
 
