@@ -218,6 +218,13 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)
         self.assertIn('showLoginStep', WEB_UI_HTML)
 
+    def test_webui_session_expiry_redirects_to_login_page(self):
+        combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
+        self.assertIn('function redirectToLoginPage', combined)
+        self.assertIn("if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }", combined)
+        self.assertNotIn("if (e.error_code === 'auth_required') checkAuthStatus();", combined)
+        self.assertIn("if (resp.status === 401) { redirectToLoginPage(); return; }", combined)
+
     def test_desktop_and_mobile_use_unified_webui_contract(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
         self.assertIn('completed_items', WEB_UI_HTML)

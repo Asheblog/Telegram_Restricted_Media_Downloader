@@ -30,7 +30,7 @@ async function loadTasks() {
     renderTasks();
     updateStats();
   } catch(e) {
-    if (e.error_code === 'auth_required') checkAuthStatus();
+    if (e.error_code === 'auth_required') redirectToLoginPage();
   }
 }
 
@@ -339,7 +339,7 @@ function showLoginError(msg) {
 async function checkAuthStatus() {
   try {
     const resp = await fetch('/api/auth/status');
-    if (resp.status === 401) return;
+    if (resp.status === 401) { redirectToLoginPage(); return; }
     const state = await resp.json();
     if (!state || !state.step) return;
     switch (state.step) {

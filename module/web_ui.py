@@ -332,7 +332,7 @@ class WebUiServer:
 
             def _check_auth(self):
                 path = urlparse(self.path).path
-                if path in ('/api/auth/status', '/api/auth/submit', '/api/auth/login', '/api/auth/logout'):
+                if path in ('/api/auth/login', '/api/auth/logout'):
                     return True
                 if self._try_authorize():
                     return True

@@ -552,9 +552,15 @@ function applyLanguageAndRefresh() {
   if (typeof renderMobWatches === 'function') renderMobWatches();
 }
 
+function redirectToLoginPage() {
+  if (window.__trmdRedirectingToLogin) return;
+  window.__trmdRedirectingToLogin = true;
+  window.location.assign('/');
+}
+
 async function fetchJson(url) {
   const resp = await fetch(url);
-  if (resp.status === 401) { throw { error_code: 'auth_required' }; }
+  if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
   if (!resp.ok) {
     let data;
     try { data = await resp.json(); } catch(e) { data = {}; }
@@ -569,7 +575,7 @@ async function postJson(url, payload, method) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (resp.status === 401) { throw { error_code: 'auth_required' }; }
+  if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
   const data = await resp.json();
   if (!resp.ok) throw data;
   return data;
@@ -581,7 +587,7 @@ async function patchJson(url, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (resp.status === 401) { throw { error_code: 'auth_required' }; }
+  if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
   const data = await resp.json();
   if (!resp.ok) throw data;
   return data;

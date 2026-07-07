@@ -32,7 +32,7 @@ function showLoginError(msg) {
 async function checkAuthStatus() {
   try {
     var resp = await fetch('/api/auth/status');
-    if (resp.status === 401) return;
+    if (resp.status === 401) { redirectToLoginPage(); return; }
     var state = await resp.json();
     if (!state || !state.step) return;
     switch (state.step) {

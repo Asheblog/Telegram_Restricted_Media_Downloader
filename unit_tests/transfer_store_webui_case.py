@@ -672,6 +672,41 @@ class TransferStoreWebUiCase(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_telegram_auth_status_requires_webui_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            server = WebUiServer(store=store, username='admin', password='pass')
+            server.start(open_browser=False)
+            auth = base64.b64encode(b'admin:pass').decode('ascii')
+            headers = {'Authorization': f'Basic {auth}'}
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request('GET', '/api/auth/status')
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(401, response.status)
+                self.assertEqual('auth_required', body['error_code'])
+
+                conn.request(
+                    'POST',
+                    '/api/auth/submit',
+                    body=json.dumps({'phone': '+8615000000000'}),
+                    headers={'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(401, response.status)
+                self.assertEqual('auth_required', body['error_code'])
+
+                conn.request('GET', '/api/auth/status', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual('none', body['step'])
+            finally:
+                server.stop()
+
     def test_webui_api_errors_include_stable_error_codes(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
