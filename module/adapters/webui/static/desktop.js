@@ -910,13 +910,21 @@ function renderCheckboxGrid(containerId, typeKey, selected) {
   const types = ['video','photo','audio','voice','animation','document','video_note'];
   const container = document.getElementById(containerId);
   if (!container) return;
-  const sel = Array.isArray(selected) ? selected : [];
-  container.innerHTML = types.map(t =>
-    '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
-      '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.includes(t) ? ' checked' : '') + '>' +
+  var sel;
+  if (Array.isArray(selected)) {
+    sel = selected;
+  } else if (selected && typeof selected === 'object') {
+    // 兼容 dict 格式 {video: true, photo: false, ...}
+    sel = Object.entries(selected).filter(function(e) { return e[1]; }).map(function(e) { return e[0]; });
+  } else {
+    sel = [];
+  }
+  container.innerHTML = types.map(function(t) {
+    return '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
+      '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.indexOf(t) >= 0 ? ' checked' : '') + '>' +
       '<span>' + t + '</span>' +
-    '</label>'
-  ).join('');
+    '</label>';
+  }).join('');
 }
 
 function renderMessageFilter(mf) {
@@ -1000,9 +1008,12 @@ function buildSettingsPayload() {
   const forwardTypes = Array.from($$('input[name="global.forward_type"]:checked')).map(cb => cb.value);
   if (forwardTypes.length) setNested(payload, ['global', 'forward_type'], forwardTypes);
 
-  /* filter media types */
-  const filterMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(cb => cb.value);
-  if (filterMedia.length) setNested(payload, ['global', 'message_filter', 'media_types'], filterMedia);
+  /* filter media types — 构建 {video: true, photo: false, ...} dict 格式与后端一致 */
+  const allMediaTypes = ['video','photo','audio','document','voice','text','animation','video_note'];
+  const checkedMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(function(cb) { return cb.value; });
+  const mediaTypesDict = {};
+  allMediaTypes.forEach(function(t) { mediaTypesDict[t] = checkedMedia.indexOf(t) >= 0; });
+  setNested(payload, ['global', 'message_filter', 'media_types'], mediaTypesDict);
 
   /* filter keywords */
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');

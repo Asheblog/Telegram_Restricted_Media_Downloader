@@ -662,7 +662,7 @@ function renderMobSettingsForm() {
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span>' +
+    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span><span style="font-size:11px;color:var(--color-muted);margin-left:4px;">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', settings.mediaTypes || {}, selectedMediaTypes(glob)) + '</div>' +
     '</div>' +
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +

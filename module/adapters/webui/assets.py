@@ -1032,13 +1032,15 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <!-- Download Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
         <h4 class="text-base font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
-        <div class="grid grid-cols-2 gap-2" id="download-type-grid"></div>
+        <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
+        <div class="grid grid-cols-2 gap-2 mt-1" id="download-type-grid"></div>
       </div>
 
       <!-- Forward Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
         <h4 class="text-base font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
-        <div class="grid grid-cols-2 gap-2" id="forward-type-grid"></div>
+        <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
+        <div class="grid grid-cols-2 gap-2 mt-1" id="forward-type-grid"></div>
       </div>
 
       <!-- Message Filter -->
@@ -1050,6 +1052,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </label>
         <div class="mb-3">
           <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
+          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（勾选 = 允许处理，未勾选的类型将被过滤）</span>
           <div class="grid grid-cols-2 gap-2 mt-1" id="filter-media-grid"></div>
         </div>
         <div class="mb-3">
@@ -2610,13 +2613,21 @@ function renderCheckboxGrid(containerId, typeKey, selected) {
   const types = ['video','photo','audio','voice','animation','document','video_note'];
   const container = document.getElementById(containerId);
   if (!container) return;
-  const sel = Array.isArray(selected) ? selected : [];
-  container.innerHTML = types.map(t =>
-    '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
-      '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.includes(t) ? ' checked' : '') + '>' +
+  var sel;
+  if (Array.isArray(selected)) {
+    sel = selected;
+  } else if (selected && typeof selected === 'object') {
+    // 兼容 dict 格式 {video: true, photo: false, ...}
+    sel = Object.entries(selected).filter(function(e) { return e[1]; }).map(function(e) { return e[0]; });
+  } else {
+    sel = [];
+  }
+  container.innerHTML = types.map(function(t) {
+    return '<label class="flex items-center gap-2 text-sm text-text cursor-pointer">' +
+      '<input type="checkbox" name="global.' + typeKey + '" value="' + t + '" class="w-4 h-4"' + (sel.indexOf(t) >= 0 ? ' checked' : '') + '>' +
       '<span>' + t + '</span>' +
-    '</label>'
-  ).join('');
+    '</label>';
+  }).join('');
 }
 
 function renderMessageFilter(mf) {
@@ -2700,9 +2711,12 @@ function buildSettingsPayload() {
   const forwardTypes = Array.from($$('input[name="global.forward_type"]:checked')).map(cb => cb.value);
   if (forwardTypes.length) setNested(payload, ['global', 'forward_type'], forwardTypes);
 
-  /* filter media types */
-  const filterMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(cb => cb.value);
-  if (filterMedia.length) setNested(payload, ['global', 'message_filter', 'media_types'], filterMedia);
+  /* filter media types — 构建 {video: true, photo: false, ...} dict 格式与后端一致 */
+  const allMediaTypes = ['video','photo','audio','document','voice','text','animation','video_note'];
+  const checkedMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(function(cb) { return cb.value; });
+  const mediaTypesDict = {};
+  allMediaTypes.forEach(function(t) { mediaTypesDict[t] = checkedMedia.indexOf(t) >= 0; });
+  setNested(payload, ['global', 'message_filter', 'media_types'], mediaTypesDict);
 
   /* filter keywords */
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');
@@ -5728,7 +5742,7 @@ function renderMobSettingsForm() {
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span>' +
+    '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span><span style="font-size:11px;color:var(--color-muted);margin-left:4px;">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', settings.mediaTypes || {}, selectedMediaTypes(glob)) + '</div>' +
     '</div>' +
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +

@@ -613,13 +613,15 @@
       <!-- Download Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
         <h4 class="text-base font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
-        <div class="grid grid-cols-2 gap-2" id="download-type-grid"></div>
+        <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
+        <div class="grid grid-cols-2 gap-2 mt-1" id="download-type-grid"></div>
       </div>
 
       <!-- Forward Types -->
       <div class="border border-line rounded-lg p-4 mb-[14px]">
         <h4 class="text-base font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
-        <div class="grid grid-cols-2 gap-2" id="forward-type-grid"></div>
+        <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
+        <div class="grid grid-cols-2 gap-2 mt-1" id="forward-type-grid"></div>
       </div>
 
       <!-- Message Filter -->
@@ -631,6 +633,7 @@
         </label>
         <div class="mb-3">
           <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
+          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（勾选 = 允许处理，未勾选的类型将被过滤）</span>
           <div class="grid grid-cols-2 gap-2 mt-1" id="filter-media-grid"></div>
         </div>
         <div class="mb-3">
