@@ -5059,12 +5059,8 @@ $('#metric-failed').textContent = tasks.filter(task => task.status === 'failure'
 </script>
 <script>// ================================================================
 // mobile_script.js v2 — 4-tab clean navigation, no FAB/Drawer
+// ($ already defined in mobile_shared.js)
 // ================================================================
-
-// ---------------------------------------------------------------------------
-// Shortcuts
-// ---------------------------------------------------------------------------
-function $(sel) { return document.querySelector(sel); }
 
 // ---------------------------------------------------------------------------
 // Login helpers (delegates to mobile_shared.js)
