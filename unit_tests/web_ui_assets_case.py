@@ -165,6 +165,12 @@ class WebUiAssetsCase(unittest.TestCase):
         count = WEB_UI_HTML.count('name="include_comment"')
         self.assertGreaterEqual(count, 3)
 
+    def test_watch_create_buttons_are_default_aligned(self):
+        self.assertIn('form-input watch-download-sources', WEB_UI_HTML)
+        self.assertIn('.watch-download-sources{', WEB_UI_HTML)
+        self.assertIn('min-height:124px', WEB_UI_HTML)
+        self.assertIn('resize:vertical', WEB_UI_HTML)
+
     def test_message_filter_settings_present(self):
         for fragment in (
             'global.message_filter.enabled',
