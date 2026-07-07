@@ -4137,9 +4137,10 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
     return data;
   }
 
-  async function postJson(path, payload) {
+  async function postJson(path, payload, method) {
+    method = method || 'POST';
     const res = await fetch(path, {
-      method: 'POST',
+      method: method,
       headers: {'content-type': 'application/json'},
       body: JSON.stringify(payload)
     });
@@ -6171,7 +6172,7 @@ async function loadMediaMobile() {
       clean(payload);
 
       try {
-        await postJson('/api/settings', payload);
+        await postJson('/api/settings', payload, 'PATCH');
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存成功'; notice.style.color = 'var(--color-success)'; }
         setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 2000);
       } catch (e) {

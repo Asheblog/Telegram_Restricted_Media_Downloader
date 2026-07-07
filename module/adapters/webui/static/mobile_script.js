@@ -1106,7 +1106,7 @@ async function loadMediaMobile() {
       clean(payload);
 
       try {
-        await postJson('/api/settings', payload);
+        await postJson('/api/settings', payload, 'PATCH');
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存成功'; notice.style.color = 'var(--color-success)'; }
         setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 2000);
       } catch (e) {

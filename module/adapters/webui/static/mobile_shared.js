@@ -676,9 +676,10 @@
     return data;
   }
 
-  async function postJson(path, payload) {
+  async function postJson(path, payload, method) {
+    method = method || 'POST';
     const res = await fetch(path, {
-      method: 'POST',
+      method: method,
       headers: {'content-type': 'application/json'},
       body: JSON.stringify(payload)
     });
