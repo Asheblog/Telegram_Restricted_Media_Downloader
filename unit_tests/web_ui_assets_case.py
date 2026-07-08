@@ -173,7 +173,10 @@ class WebUiAssetsCase(unittest.TestCase):
 
     def test_download_upload_create_buttons_are_default_aligned(self):
         self.assertIn('download-upload-align-spacer', WEB_UI_HTML)
-        self.assertIn('@media (min-width:64rem){.download-upload-align-spacer{min-height:110px}', WEB_UI_HTML)
+        self.assertIn('data-i18n="dl.uploadPlaceholder"', WEB_UI_HTML)
+        self.assertIn('占位区，待后续开发', WEB_UI_HTML)
+        self.assertIn('--tw-border-style:dashed;border-style:dashed', WEB_UI_HTML)
+        self.assertIn('@media (min-width:64rem){.download-upload-align-spacer{min-height:184px}', WEB_UI_HTML)
 
     def test_message_filter_settings_present(self):
         for fragment in (

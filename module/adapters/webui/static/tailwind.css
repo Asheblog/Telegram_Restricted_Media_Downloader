@@ -290,12 +290,14 @@
   }
 
   .download-upload-align-spacer {
-    min-height: 0;
+    @apply mb-3.5 flex min-h-[88px] items-center justify-center rounded-[8px]
+           border border-dashed border-line bg-surface-alt px-4 text-center
+           text-sm font-semibold text-muted;
   }
 
   @media (min-width: 64rem) {
     .download-upload-align-spacer {
-      min-height: 110px;
+      min-height: 184px;
     }
   }
 
