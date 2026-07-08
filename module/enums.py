@@ -1404,13 +1404,13 @@ class GetStdioParams:
 
 
 class BotCommandText:
-    HELP: tuple = ('help', '展示可用命令。')
+    HELP: tuple = ('help', '查看帮助、WebUI入口和快速部署说明。')
     DOWNLOAD: tuple = (
-        'download', '分配新的下载任务(多种使用方式见使用说明)。\n`/download https://t.me/x/x 起始ID 结束ID`')
+        'download', '从消息链接或频道范围创建转存任务。\n`/download https://t.me/x/x 起始ID 结束ID`')
     TABLE: tuple = ('table', '在终端输出当前下载情况的统计信息。')
     FORWARD: tuple = (
         'forward',
-        '从频道A转发至频道B 起始ID 结束ID，可追加 --include-comment 包含评论区。\n'
+        '从频道A转发至频道B，可带起止ID和 --include-comment 评论区。\n'
         '`/forward https://t.me/A https://t.me/B 1 100 --include-comment`'
     )
     EXIT: tuple = ('exit', '退出软件。')
@@ -1424,6 +1424,7 @@ class BotCommandText:
     UPLOAD: tuple = ('upload', '上传本地的文件到指定频道。`/upload 本地文件 目标频道`')
     UPLOAD_R: tuple = ('upload_r', '递归上传文件夹(包含子文件夹)到指定频道。`/upload_r 本地文件夹 目标频道`')
     DOWNLOAD_CHAT: tuple = ('download_chat', '下载指定频道并支持通过内联键盘自定义内容过滤。`/download_chat 频道链接`')
+    CLEANUP: tuple = ('cleanup', '扫描可清理媒体文件，清理确认请到 WebUI 媒体管理。')
 
     @staticmethod
     def with_description(text: tuple) -> str:
@@ -1508,9 +1509,8 @@ class BotMessage:
 
 
 class BotButton:
-    GITHUB: str = '📦GitHub'
-    SUBSCRIBE_CHANNEL: str = '📌订阅频道'
-    VIDEO_TUTORIAL: str = '🎬视频教程'
+    GITHUB: str = '📦项目主页'
+    QUICK_START: str = '🚀快速部署'
     OPEN_NOTICE: str = '📢启用通知'
     CLOSE_NOTICE: str = '🔕禁用通知'
     LINK_TABLE: str = '🔗链接统计表'

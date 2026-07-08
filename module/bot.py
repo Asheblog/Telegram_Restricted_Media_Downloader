@@ -77,7 +77,8 @@ class Bot:
         BotCommand(BotCommandText.LISTEN_INFO[0], BotCommandText.LISTEN_INFO[1]),
         BotCommand(BotCommandText.UPLOAD[0], BotCommandText.UPLOAD[1].replace('`', '')),
         BotCommand(BotCommandText.UPLOAD_R[0], BotCommandText.UPLOAD_R[1].replace('`', '')),
-        BotCommand(BotCommandText.DOWNLOAD_CHAT[0], BotCommandText.DOWNLOAD_CHAT[1].replace('`', ''))
+        BotCommand(BotCommandText.DOWNLOAD_CHAT[0], BotCommandText.DOWNLOAD_CHAT[1].replace('`', '')),
+        BotCommand(BotCommandText.CLEANUP[0], BotCommandText.CLEANUP[1])
     ]
 
     def __init__(self, downloader=None, handler_overrides: Optional[Dict[str, Callable]] = None, gc=None):
@@ -455,17 +456,11 @@ class Bot:
                 [
                     InlineKeyboardButton(
                         BotButton.GITHUB,
-                        url='https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader/releases'
+                        url='https://github.com/Asheblog/Telegram_Restricted_Media_Downloader'
                     ),
                     InlineKeyboardButton(
-                        BotButton.SUBSCRIBE_CHANNEL,
-                        url='https://t.me/RestrictedMediaDownloader'
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        BotButton.VIDEO_TUTORIAL,
-                        url='https://www.youtube.com/watch?v=ucwKJu-MrBw'
+                        BotButton.QUICK_START,
+                        url='https://github.com/Asheblog/Telegram_Restricted_Media_Downloader#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B'
                     )
                 ],
                 [
@@ -478,23 +473,38 @@ class Bot:
         )
 
         text = (
-            f'`\n💎 {SOFTWARE_FULL_NAME} v{__version__} 💎\n'
-            f'©️ {__copyright__.replace(" <https://github.com/Gentlesprite>", ".")}\n'
+            f'`\n💎 {SOFTWARE_FULL_NAME} WebUI Fork v{__version__} 💎\n'
+            f'上游作者: Gentlesprite\n'
+            f'魔改作者: Asheblog\n'
+            f'©️ 上游版权: {__copyright__.replace(" <https://github.com/Gentlesprite>", ".")}\n'
             f'📖 Licensed under the terms of the {__license__}.`\n\n'
-            f'🎮️ 可用命令:\n'
+            f'🌐 WebUI 入口:\n'
+            f'本 Fork 推荐通过 WebUI 管理长期转存任务。\n'
+            f'Docker 默认访问: `http://服务器IP:2921`\n'
+            f'本地或自定义端口请以启动日志中的 `WebUI已启动: ...` 为准。\n'
+            f'快速部署: 点击下方「{BotButton.QUICK_START}」查看 README 的快速开始章节。\n\n'
+            f'🧭 WebUI 能力:\n'
+            f'• 新建转存: 单条消息、频道范围、频道自动探测、评论区、PikPak/通用 Telegram 目标。\n'
+            f'• 任务管理: 进度详情、事件日志、暂停、继续、重试失败项、删除任务。\n'
+            f'• 实时监听: 监听下载、监听转发、评论区开关、监听历史记录。\n'
+            f'• 下载上传: 频道下载筛选、本地文件上传、递归上传文件夹。\n'
+            f'• 数据维护: 下载记录、统计表导出、媒体扫描与清理、系统设置、PikPak rclone 归档。\n\n'
+            f'🎮️ TG Bot 辅助命令:\n'
             f'🛎️ {BotCommandText.with_description(BotCommandText.HELP)}\n'
             f'📁 {BotCommandText.with_description(BotCommandText.DOWNLOAD)}\n'
-            f'📝 {BotCommandText.with_description(BotCommandText.TABLE)}\n'
             f'↗️ {BotCommandText.with_description(BotCommandText.FORWARD)}\n'
-            f'❌ {BotCommandText.with_description(BotCommandText.EXIT)}\n'
             f'🕵️ {BotCommandText.with_description(BotCommandText.LISTEN_DOWNLOAD)}\n'
             f'📲 {BotCommandText.with_description(BotCommandText.LISTEN_FORWARD)}\n'
             f'🔍 {BotCommandText.with_description(BotCommandText.LISTEN_INFO)}\n'
+            f'💬 {BotCommandText.with_description(BotCommandText.DOWNLOAD_CHAT)}\n'
             f'📤 {BotCommandText.with_description(BotCommandText.UPLOAD)}\n'
             f'🌳 {BotCommandText.with_description(BotCommandText.UPLOAD_R)}\n'
-            f'💬 {BotCommandText.with_description(BotCommandText.DOWNLOAD_CHAT)}\n\n'
+            f'🧹 {BotCommandText.with_description(BotCommandText.CLEANUP)}\n'
+            f'📝 {BotCommandText.with_description(BotCommandText.TABLE)}\n'
+            f'❌ {BotCommandText.with_description(BotCommandText.EXIT)}\n\n'
             f'✨ 其他功能:\n'
-            f'📨 转发`视频`、`图片`、`音频`、`语音`、`GIF`、`文档`、`视频笔记`类型的消息给我,即可创建下载任务。\n'
+            f'📨 将`视频`、`图片`、`音频`、`语音`、`GIF`、`文档`、`视频笔记`类型的消息转发给我,即可创建下载/转存任务。\n'
+            f'⚠️ 请只处理你有权访问、保存和转存的内容。\n'
         )
         if not all([client, message]):
             return {
