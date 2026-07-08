@@ -275,6 +275,7 @@ class TransferEngine:
             file_name=file_name,
             file_size=file_size,
             local_path=final_path,
+            temp_path=final_path,
             source_folder=source_folder,
             archive_status='pending' if task_with_upload.get('target_profile') == 'pikpak' else None,
             phase='downloading',

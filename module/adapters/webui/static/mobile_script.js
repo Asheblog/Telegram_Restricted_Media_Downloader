@@ -420,6 +420,7 @@ function renderMobTasks() {
   var html = '';
   window.state.tasks.forEach(function(t) {
     var progressPct = taskProgressPercent(t);
+    var activeSummary = activeTransferSummary(t);
     html += '<div class="mob-card status-' + esc(t.status) + '" data-task-id="' + t.id + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(t.title || t.source_link || '#' + t.id) + '</span>' +
@@ -427,6 +428,7 @@ function renderMobTasks() {
       '</div>' +
       '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(t.source_link || '-') + '</span></div>' +
       '<div class="mob-card__row"><span class="label">进度</span><span>' + taskCompletedLabel(t) + (taskFailedCount(t) ? ' · 失败 ' + taskFailedCount(t) : '') + '</span></div>' +
+      (activeSummary ? '<div class="mob-card__row"><span class="label">当前</span><span>' + esc(activeSummary) + '</span></div>' : '') +
       '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + progressPct + '%"></div></div>' +
       '<div class="mob-card__actions">' +
         (t.can_pause ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-pause="' + t.id + '">暂停</button>' : '') +
@@ -653,6 +655,7 @@ function renderSheetContent(data) {
     '<div class="mob-sheet__task-header">' +
       '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
       '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
+      (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '') +
     '</div>' +
     '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">' + tabsHtml + '</div>' +
     '<div id="mob-sheet-item-list"></div>' +
@@ -701,8 +704,11 @@ function renderSheetItemPage() {
 
   var html = '';
   page.forEach(function(item) {
+    var summary = itemTransferSummary(item);
     html += '<div class="mob-item-row">' +
-      '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) + '</span>' +
+      '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
+        '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
+      '</span>' +
       '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
     '</div>';
   });
@@ -1004,24 +1010,40 @@ async function loadMediaMobile() {
   try {
     var data = await fetchJson('/api/media/scan');
     if (!data) { container.innerHTML = '<div class="mob-empty">扫描失败</div>'; return; }
+    var transferItems = ((data.transfer_items || {}).items || []);
+    var orphanFiles = ((data.orphan_files || {}).files || []);
 
     var html = '<div style="font-size:13px;">' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
-        '<div><strong>总文件</strong><br>' + (data.total_files || 0) + '</div>' +
+        '<div><strong>总文件</strong><br>' + (data.total_count || 0) + '</div>' +
         '<div><strong>总大小</strong><br>' + formatBytes(data.total_size || 0) + '</div>' +
-        '<div><strong>可清理</strong><br>' + (data.orphan_count || 0) + ' 个</div>' +
+        '<div><strong>遗留文件</strong><br>' + orphanFiles.length + ' 个</div>' +
       '</div></div>';
 
-    if (data.orphans && data.orphans.length > 0) {
-      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">可清理文件</strong></div>';
-      data.orphans.forEach(function(f) {
+    if (transferItems.length > 0) {
+      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">转存任务文件</strong></div>';
+      transferItems.forEach(function(item) {
         html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--color-line);">' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(f.path || f.file || '') + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(item.file_name || item.local_path || '') + '</span>' +
+          '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(item.file_size || 0) + '</span>' +
+        '</div>';
+      });
+    }
+
+    if (orphanFiles.length > 0) {
+      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">遗留文件</strong></div>';
+      orphanFiles.forEach(function(f) {
+        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--color-line);">' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(f.path || '') + '</span>' +
           '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(f.size || 0) + '</span>' +
         '</div>';
       });
-    } else {
+    }
+
+    if (!transferItems.length && !orphanFiles.length) {
       html += '<div class="mob-empty">没有可清理文件</div>';
+    } else {
+      html += '<div class="mob-empty">请在桌面端选择并执行清理</div>';
     }
 
     container.innerHTML = html;

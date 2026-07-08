@@ -64,6 +64,7 @@ function renderTasks() {
   tbody.innerHTML = state.tasks.map(task => {
     const isSelected = task.id === state.selectedTaskId;
     const progressPct = taskProgressPercent(task);
+    const activeSummary = activeTransferSummary(task);
     return '<tr data-task-id="' + task.id + '" class="' + (isSelected ? 'selected' : '') + '">' +
       '<td class="font-semibold text-primary">#' + task.id + '</td>' +
       '<td>' + statusBadge(task.status) + '</td>' +
@@ -76,6 +77,7 @@ function renderTasks() {
           '<div class="flex-1 min-w-[60px]">' +
           '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
           '<span class="text-[11px] text-muted">' + taskCompletedLabel(task) + '</span>' +
+          (activeSummary ? '<span class="block text-[11px] text-muted max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(activeSummary) + '">' + esc(activeSummary) + '</span>' : '') +
           '</div></div>'
         ) : '<span class="text-muted text-xs">-</span>') +
       '</td>' +
@@ -200,11 +202,12 @@ async function loadTaskItems(taskId, status) {
       body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + status) + '</div>';
     } else {
       body.innerHTML = '<table class="data-table"><thead><tr>' +
-        '<th>文件</th><th>大小</th><th>来源</th><th>目标</th><th>状态</th>' +
+        '<th>文件</th><th>大小</th><th>进度/速度</th><th>来源</th><th>目标</th><th>状态</th>' +
         '</tr></thead><tbody>' +
         items.map(item => '<tr>' +
           '<td class="text-xs">' + esc(item.file_name || item.local_path || '-') + '</td>' +
           '<td class="text-xs">' + fmtSize(item.file_size) + '</td>' +
+          '<td class="text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
           '<td class="text-xs">' + esc(item.source_link || '-') + '</td>' +
           '<td class="text-xs">' + esc(item.target_path || '-') + '</td>' +
           '<td>' + statusBadge(item.status) + '</td>' +
@@ -1169,10 +1172,10 @@ function renderMediaResult(data) {
     itemsSection.style.display = '';
     $('#media-items-tbody').innerHTML = items.map(item => '<tr>' +
       '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '"></td>' +
-      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc((item.paths || []).join('\\n') || item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
       '<td class="text-xs text-right">' + fmtSize(item.file_size) + '</td>' +
       '<td class="text-center">' + statusBadge(item.status || '') + '</td>' +
-      '<td class="text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(item.source_link || '-') + '</td>' +
+      '<td class="text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
       '</tr>').join('');
   } else {
     itemsSection.style.display = 'none';

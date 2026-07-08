@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import os
+import time
 from typing import Callable, Optional
 
 from pyrogram.errors import (
@@ -54,6 +55,7 @@ class TransferProgressTracker:
         self._notify_status_override = notify_status_override
         self._notify_progress_override = notify_progress_override
         self._cleanup_local_file = cleanup_local_file
+        self._speed_samples = {}
 
     @property
     def transfer_store(self):
@@ -82,11 +84,13 @@ class TransferProgressTracker:
             return
         item_id = with_upload.get('item_id')
         if item_id:
+            speed_bps = self._sample_speed(('download', int(item_id)), current)
             store.update_item_progress(
                 item_id=int(item_id),
                 phase='downloading',
                 download_current=current,
-                download_total=total
+                download_total=total,
+                download_speed_bps=speed_bps
             )
 
     @staticmethod
@@ -280,7 +284,8 @@ class TransferProgressTracker:
                 int(item_id),
                 phase='downloaded',
                 download_current=file_size or 0,
-                download_total=file_size or 0
+                download_total=file_size or 0,
+                download_speed_bps=0
             )
         source_chat_id = with_upload.get('source_chat_id')
         source_message_id = with_upload.get('message_id') or getattr(message, 'id', None)
@@ -330,7 +335,8 @@ class TransferProgressTracker:
                 int(item_id),
                 phase='downloaded',
                 download_current=expected_size,
-                download_total=expected_size
+                download_total=expected_size,
+                download_speed_bps=0
             )
             store.add_event(
                 int(task_with_upload.get('task_id')),
@@ -355,12 +361,28 @@ class TransferProgressTracker:
         item_id = meta.get('item_id')
         if not item_id:
             return
+        speed_bps = self._sample_speed(('upload', int(item_id)), current)
         store.update_item_progress(
             item_id=int(item_id),
             phase='uploading',
             upload_current=current,
-            upload_total=total
+            upload_total=total,
+            upload_speed_bps=speed_bps
         )
+
+    def _sample_speed(self, key, current: int) -> int:
+        now = time.monotonic()
+        current = int(current or 0)
+        previous = self._speed_samples.get(key)
+        self._speed_samples[key] = (now, current)
+        if not previous:
+            return 0
+        previous_at, previous_current = previous
+        elapsed = max(now - previous_at, 0)
+        if elapsed <= 0:
+            return 0
+        delta = max(0, current - int(previous_current or 0))
+        return int(delta / elapsed)
 
     def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
         store = self.transfer_store
@@ -377,6 +399,7 @@ class TransferProgressTracker:
             file_name=with_upload.get('file_name') or os.path.basename(file_path),
             file_size=with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None),
             local_path=file_path,
+            temp_path=with_upload.get('temp_path'),
             source_folder=with_upload.get('source_folder'),
             archive_status='pending' if with_upload.get('target_profile') == 'pikpak' else None,
             archive_match_original_name=True if with_upload.get('target_profile') == 'pikpak' else None,

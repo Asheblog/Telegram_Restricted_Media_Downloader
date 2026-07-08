@@ -240,6 +240,9 @@ class TelegramRestrictedMediaDownloader:
             diagnostic=self.diagnostic,
             gc_getter=lambda: self.gc,
             refresh_counts=self.refresh_transfer_task_counts,
+            cleanup_item_file=lambda item_id: (
+                self._ensure_media_manager().try_cleanup_item_file(item_id)
+            ),
         )
         self.progress_tracker = TransferProgressTracker(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
@@ -293,6 +296,9 @@ class TelegramRestrictedMediaDownloader:
             refresh_transfer_task_counts_getter=self.refresh_transfer_task_counts,
             process_web_transfer_task_getter=self.process_web_transfer_task,
             process_web_task_queue_getter=self.process_web_task_queue,
+            cleanup_task_files_getter=lambda task_id: (
+                self._ensure_media_manager().cleanup_task_files(task_id)
+            ),
         )
         self.ctx = TransferContext(
             app=self.app,
@@ -451,6 +457,9 @@ class TelegramRestrictedMediaDownloader:
                 self.__dict__.get('transfer_store').refresh_task_counts(tid)
                 if self.__dict__.get('transfer_store') else None
             ),
+            cleanup_item_file=lambda item_id: (
+                self._ensure_media_manager().try_cleanup_item_file(item_id)
+            ),
         )
 
     def _ensure_progress_tracker(self):
@@ -582,6 +591,9 @@ class TelegramRestrictedMediaDownloader:
         if wm is not None:
             return wm.delete_web_task(task_id)
         if not self.transfer_store:
+            return False
+        cleanup_result = self._ensure_media_manager().cleanup_task_files(task_id)
+        if cleanup_result.get('failed'):
             return False
         deleted = self.transfer_store.delete_task(task_id)
         if deleted:
@@ -879,11 +891,14 @@ class TelegramRestrictedMediaDownloader:
     # --- 媒体管理 (Media Manager) ---
 
     def _ensure_media_manager(self) -> MediaManager:
-        if self.media_manager is None:
+        if self.__dict__.get('media_manager') is None:
+            app = self.__dict__.get('app')
+            store = self.__dict__.get('transfer_store')
+            fallback_directory = getattr(store, 'directory', '') if store else ''
             self.media_manager = MediaManager(
-                transfer_store=self.transfer_store,
-                save_directory=self.app.save_directory or '',
-                temp_directory=self.app.temp_directory or '',
+                transfer_store=store,
+                save_directory=getattr(app, 'save_directory', None) or fallback_directory,
+                temp_directory=getattr(app, 'temp_directory', None) or fallback_directory,
                 diagnostic=getattr(self, 'diagnostic', None)
             )
         return self.media_manager
@@ -2870,7 +2885,9 @@ class TelegramRestrictedMediaDownloader:
             progress: Callable = None,
             progress_args: tuple = (),
             chunk_size: int = 1024 * 1024,
-            compare_size: Union[int, None] = None  # 不为None时,将通过大小比对判断是否为完整文件。
+            compare_size: Union[int, None] = None,  # 不为None时,将通过大小比对判断是否为完整文件。
+            progress_timeout_seconds: Optional[float] = 120,
+            max_stall_retries: int = 3
     ) -> str:
         temp_path = f'{file_name}.temp'
         if os.path.exists(file_name) and compare_size:
@@ -2903,6 +2920,16 @@ class TelegramRestrictedMediaDownloader:
                     f'错误的缓存文件"{temp_path}",'
                     f'已清除({_t(KeyWord.ERROR_SIZE)}:{local_file_size} > {_t(KeyWord.ACTUAL_SIZE)}:{compare_size})。')
         downloaded = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0  # 获取已下载的字节数。
+        if downloaded > 0:
+            safe_downloaded = (downloaded // chunk_size) * chunk_size
+            if safe_downloaded != downloaded:
+                with open(file=temp_path, mode='r+b') as cache_file:
+                    cache_file.truncate(safe_downloaded)
+                log.warning(
+                    f'缓存文件"{temp_path}"大小未对齐,'
+                    f'已截断到安全断点:{downloaded} -> {safe_downloaded}。'
+                )
+                downloaded = safe_downloaded
         if downloaded == 0:
             mode = 'wb'
         else:
@@ -2914,13 +2941,38 @@ class TelegramRestrictedMediaDownloader:
         with open(file=temp_path, mode=mode) as f:
             skip_chunks: int = downloaded // chunk_size  # 计算要跳过的块数。
             f.seek(downloaded)
+            stall_retries = 0
             while True:
+                stream = None
                 try:
-                    async for chunk in self.app.client.stream_media(message=message, offset=skip_chunks):
+                    stream = self.app.client.stream_media(message=message, offset=skip_chunks)
+                    while True:
+                        if progress_timeout_seconds and progress_timeout_seconds > 0:
+                            chunk = await asyncio.wait_for(
+                                anext(stream),
+                                timeout=float(progress_timeout_seconds)
+                            )
+                        else:
+                            chunk = await anext(stream)
                         f.write(chunk)
                         downloaded += len(chunk)
-                        progress(downloaded, *progress_args)
+                        stall_retries = 0
+                        if callable(progress):
+                            progress(downloaded, *progress_args)
                     break
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    stall_retries += 1
+                    log.warning(
+                        f'下载流超过{progress_timeout_seconds}秒无进展,'
+                        f'正在重建连接继续断点续传:{stall_retries}/{max_stall_retries}。'
+                    )
+                    if stall_retries > max_stall_retries:
+                        break
+                    skip_chunks = downloaded // chunk_size
+                    f.seek(downloaded)
+                    await asyncio.sleep(min(stall_retries, 5))
                 except FileReferenceExpired as e:
                     log.warning(
                         f'文件引用已过期,正在重新获取消息以刷新引用,{_t(KeyWord.REASON)}:"{e}"')
@@ -2940,6 +2992,13 @@ class TelegramRestrictedMediaDownloader:
                         style='#FF4689'
                     )
                     await asyncio.sleep(amount)
+                finally:
+                    close_stream = getattr(stream, 'aclose', None)
+                    if callable(close_stream):
+                        try:
+                            await close_stream()
+                        except Exception:
+                            pass
         if compare_size is None or compare_file_size(a_size=downloaded, b_size=compare_size):
             result: str = safe_replace(origin_file=temp_path, overwrite_file=file_name).get('e_code')
             log.warning(result) if result is not None else None
@@ -3032,6 +3091,15 @@ class TelegramRestrictedMediaDownloader:
                 )
                 if isinstance(task_with_upload, dict) and task_with_upload.get('source_folder'):
                     save_directory = self.get_final_file_path(message, file_name, task_with_upload)
+                if isinstance(task_with_upload, dict):
+                    task_with_upload['temp_path'] = temp_file_path
+                    item_id_for_temp = task_with_upload.get('item_id')
+                    if self.transfer_store and item_id_for_temp:
+                        self.transfer_store.update_item(
+                            int(item_id_for_temp),
+                            local_path=save_directory,
+                            temp_path=temp_file_path
+                        )
                 limit_error = self.get_download_upload_size_limit_error(task_with_upload, sever_file_size)
                 if limit_error:
                     self.skip_download_before_transfer_upload(

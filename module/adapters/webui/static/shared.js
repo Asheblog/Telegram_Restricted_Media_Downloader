@@ -667,6 +667,59 @@ function taskFailedCount(task) {
   return Number(task && task.failed_items || 0);
 }
 
+function formatSpeed(bytesPerSecond) {
+  const value = Number(bytesPerSecond || 0);
+  if (!value || value < 0) return '-';
+  return fmtSize(value) + '/s';
+}
+
+function transferPhaseLabel(phase) {
+  const labels = {
+    downloading: '下载',
+    downloaded: '下载完成',
+    uploading: '上传',
+    uploaded: '上传完成',
+    sent: '已发送',
+    forwarded: '已转发',
+    failure: '失败',
+    failed: '失败',
+    skipped: '跳过',
+    pending: '等待'
+  };
+  return labels[phase] || phase || '-';
+}
+
+function transferProgressLabel(current, total) {
+  current = Number(current || 0);
+  total = Number(total || 0);
+  if (!total) return current ? fmtSize(current) : '-';
+  const percent = Math.min(100, Math.round((current / total) * 100));
+  return fmtSize(current) + '/' + fmtSize(total) + ' · ' + percent + '%';
+}
+
+function activeTransferSummary(task) {
+  if (!task || !task.active_item_id) return '';
+  const phase = transferPhaseLabel(task.active_phase);
+  const name = task.active_file_name || ('#' + task.active_item_id);
+  const progress = transferProgressLabel(task.active_progress_current, task.active_progress_total);
+  const speed = formatSpeed(task.active_speed_bps);
+  return phase + ' · ' + name + ' · ' + progress + (speed !== '-' ? ' · ' + speed : '');
+}
+
+function itemTransferSummary(item) {
+  if (!item) return '-';
+  const phase = transferPhaseLabel(item.phase || item.status);
+  if (item.phase === 'uploading' || Number(item.upload_current || 0) > 0) {
+    return phase + ' · ' + transferProgressLabel(item.upload_current, item.upload_total) +
+      (Number(item.upload_speed_bps || 0) ? ' · ' + formatSpeed(item.upload_speed_bps) : '');
+  }
+  if (Number(item.download_total || 0) || Number(item.download_current || 0)) {
+    return phase + ' · ' + transferProgressLabel(item.download_current, item.download_total) +
+      (Number(item.download_speed_bps || 0) ? ' · ' + formatSpeed(item.download_speed_bps) : '');
+  }
+  return phase;
+}
+
 async function runTaskAction(event, taskId, action) {
   if (event && event.stopPropagation) event.stopPropagation();
   await postJson('/api/tasks/' + encodeURIComponent(taskId) + '/' + action, {});

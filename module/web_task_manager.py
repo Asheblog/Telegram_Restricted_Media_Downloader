@@ -34,6 +34,7 @@ class WebUITaskManager:
         refresh_transfer_task_counts_getter=None,
         process_web_transfer_task_getter=None,
         process_web_task_queue_getter=None,
+        cleanup_task_files_getter=None,
     ):
         self._transfer_store = transfer_store_getter
         self.diagnostic = diagnostic
@@ -59,6 +60,7 @@ class WebUITaskManager:
         self._refresh_transfer_task_counts = refresh_transfer_task_counts_getter
         self._process_web_transfer_task = process_web_transfer_task_getter
         self._process_web_task_queue = process_web_task_queue_getter
+        self._cleanup_task_files = cleanup_task_files_getter
         self.web_operation_counter: int = 0
 
     @property
@@ -145,6 +147,10 @@ class WebUITaskManager:
     def delete_web_task(self, task_id: int) -> bool:
         if not self.transfer_store:
             return False
+        if self._cleanup_task_files:
+            cleanup_result = self._cleanup_task_files(task_id)
+            if cleanup_result.get('failed'):
+                return False
         deleted = self.transfer_store.delete_task(task_id)
         if deleted:
             self.discard_web_task_submission(task_id, cancel_running=True)

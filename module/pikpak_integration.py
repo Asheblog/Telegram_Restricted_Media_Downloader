@@ -19,12 +19,14 @@ class PikpakIntegrationManager:
             diagnostic: RichDiagnosticAdapter,
             gc_getter: Callable,
             refresh_counts: Callable[[int], None],
+            cleanup_item_file: Callable[[int], bool] = None,
     ):
         self._transfer_store_getter = transfer_store_getter
         self._pikpak_archive_client_getter = pikpak_archive_client_getter
         self.diagnostic = diagnostic
         self._gc_getter = gc_getter
         self._refresh_counts = refresh_counts
+        self._cleanup_item_file = cleanup_item_file
         self._pikpak_archive_client = None
 
     @property
@@ -180,6 +182,11 @@ class PikpakIntegrationManager:
             item_id=item_id
         )
         self._refresh_counts(task_id)
+        if callable(self._cleanup_item_file):
+            try:
+                self._cleanup_item_file(int(item_id))
+            except Exception as e:
+                self.diagnostic.warning(f'PikPak failure cleanup failed: {e}')
 
     def skip_empty_transfer_source_message(
             self,

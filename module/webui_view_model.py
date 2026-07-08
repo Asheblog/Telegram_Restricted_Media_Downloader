@@ -24,10 +24,16 @@ class WebUiViewModel:
 
     def task_list(self, limit: int = 100) -> dict[str, Any]:
         tasks = self.store.list_tasks(limit=limit)
-        counts_by_task = self._status_counts_by_task([int(task['id']) for task in tasks])
+        task_ids = [int(task['id']) for task in tasks]
+        counts_by_task = self._status_counts_by_task(task_ids)
+        active_items_by_task = self._active_items_by_task(task_ids)
         return {
             'tasks': [
-                self.task_model(task, counts_by_task.get(int(task['id']), {}))
+                self.task_model(
+                    task,
+                    counts_by_task.get(int(task['id']), {}),
+                    active_items_by_task.get(int(task['id']))
+                )
                 for task in tasks
             ]
         }
@@ -50,7 +56,7 @@ class WebUiViewModel:
         items = self._list_items(task_id, item_limit, item_offset, item_status=item_status)
         events = self._list_events(task_id, event_limit, event_offset)
         return {
-            'task': self.task_model(task, counts),
+            'task': self.task_model(task, counts, self._active_item(task_id)),
             'summary': self.summary_model(task, counts),
             'items': [self.item_model(item) for item in items],
             'events': [self.event_model(event) for event in events],
@@ -75,7 +81,7 @@ class WebUiViewModel:
         event_count = self._event_count(task_id)
         events = self._list_events(task_id, recent_event_limit, 0)
         return {
-            'task': self.task_model(task, counts),
+            'task': self.task_model(task, counts, self._active_item(task_id)),
             'summary': self.summary_model(task, counts),
             'recent_events': [self.event_model(event) for event in events],
             'page': {
@@ -111,11 +117,17 @@ class WebUiViewModel:
     def _option_list(values: list[str]) -> list[dict[str, str]]:
         return [{'value': str(value), 'label': str(value)} for value in values]
 
-    def task_model(self, task: dict[str, Any], counts: dict[str, int] = None) -> dict[str, Any]:
+    def task_model(
+            self,
+            task: dict[str, Any],
+            counts: dict[str, int] = None,
+            active_item: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
         counts = counts or {}
         summary = self.summary_model(task, counts)
         status = str(task.get('status') or TransferStatus.PENDING)
         task_id = int(task.get('id') or 0)
+        active = self.active_transfer_model(active_item)
         return {
             'id': task_id,
             'title': task.get('title') or f'#{task_id}',
@@ -145,6 +157,7 @@ class WebUiViewModel:
             'can_resume': status == TransferStatus.PAUSED,
             'can_retry': summary['failed'] > 0,
             'can_delete': status in TASK_TERMINAL_STATUSES or status == TransferStatus.PAUSED,
+            **active,
         }
 
     @staticmethod
@@ -175,6 +188,7 @@ class WebUiViewModel:
 
     @staticmethod
     def item_model(item: dict[str, Any]) -> dict[str, Any]:
+        active = WebUiViewModel.active_transfer_model(item)
         return {
             'id': int(item.get('id') or 0),
             'task_id': int(item.get('task_id') or 0),
@@ -187,15 +201,70 @@ class WebUiViewModel:
             'file_name': item.get('file_name') or '',
             'file_size': item.get('file_size'),
             'local_path': item.get('local_path') or '',
+            'temp_path': item.get('temp_path') or '',
             'phase': item.get('phase') or TransferStatus.PENDING,
             'status': item.get('status') or TransferStatus.PENDING,
             'download_current': int(item.get('download_current') or 0),
             'download_total': int(item.get('download_total') or 0),
+            'download_speed_bps': int(item.get('download_speed_bps') or 0),
             'upload_current': int(item.get('upload_current') or 0),
             'upload_total': int(item.get('upload_total') or 0),
+            'upload_speed_bps': int(item.get('upload_speed_bps') or 0),
             'error_message': item.get('error_message') or '',
             'created_at': item.get('created_at'),
             'updated_at': item.get('updated_at'),
+            **active,
+        }
+
+    @staticmethod
+    def active_transfer_model(item: Optional[dict[str, Any]]) -> dict[str, Any]:
+        empty = {
+            'active_item_id': None,
+            'active_phase': '',
+            'active_file_name': '',
+            'active_progress_current': 0,
+            'active_progress_total': 0,
+            'active_progress_percent': 0,
+            'active_speed_bps': 0,
+            'download_current': 0,
+            'download_total': 0,
+            'download_speed_bps': 0,
+            'upload_current': 0,
+            'upload_total': 0,
+            'upload_speed_bps': 0,
+        }
+        if not item:
+            return empty
+        phase = str(item.get('phase') or item.get('status') or '')
+        download_current = int(item.get('download_current') or 0)
+        download_total = int(item.get('download_total') or 0)
+        download_speed = int(item.get('download_speed_bps') or 0)
+        upload_current = int(item.get('upload_current') or 0)
+        upload_total = int(item.get('upload_total') or 0)
+        upload_speed = int(item.get('upload_speed_bps') or 0)
+        if phase == 'uploading' or upload_current > 0:
+            current = upload_current
+            total = upload_total or int(item.get('file_size') or 0)
+            speed = upload_speed
+        else:
+            current = download_current
+            total = download_total or int(item.get('file_size') or 0)
+            speed = download_speed
+        percent = min(100, round((current / total) * 100)) if total > 0 else 0
+        return {
+            'active_item_id': int(item.get('id') or 0) or None,
+            'active_phase': phase,
+            'active_file_name': item.get('file_name') or '',
+            'active_progress_current': current,
+            'active_progress_total': total,
+            'active_progress_percent': percent,
+            'active_speed_bps': speed,
+            'download_current': download_current,
+            'download_total': download_total,
+            'download_speed_bps': download_speed,
+            'upload_current': upload_current,
+            'upload_total': upload_total,
+            'upload_speed_bps': upload_speed,
         }
 
     @staticmethod
@@ -231,6 +300,30 @@ class WebUiViewModel:
 
     def _status_counts(self, task_id: int) -> dict[str, int]:
         return self._status_counts_by_task([int(task_id)]).get(int(task_id), {})
+
+    def _active_item(self, task_id: int) -> Optional[dict[str, Any]]:
+        return self._active_items_by_task([int(task_id)]).get(int(task_id))
+
+    def _active_items_by_task(self, task_ids: list[int]) -> dict[int, dict[str, Any]]:
+        if not task_ids:
+            return {}
+        placeholders = ','.join(['?'] * len(task_ids))
+        with self.store.connect() as conn:
+            rows = conn.execute(
+                f'''
+                SELECT *
+                FROM transfer_items
+                WHERE task_id IN ({placeholders})
+                  AND status = ?
+                ORDER BY updated_at DESC, id ASC
+                ''',
+                (*task_ids, TransferStatus.RUNNING)
+            ).fetchall()
+        result: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            task_id = int(row['task_id'])
+            result.setdefault(task_id, dict(row))
+        return result
 
     def _item_count(self, task_id: int, item_status: Optional[str] = None) -> int:
         with self.store.connect() as conn:

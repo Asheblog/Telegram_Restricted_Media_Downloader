@@ -1175,6 +1175,16 @@
     white-space: nowrap;
     word-break: break-all;
   }
+  .mob-item-row__progress {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-muted);
+    font-size: 12px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .mob-event-row {
     padding: 6px 0;
     font-size: 12px;

@@ -3566,6 +3566,82 @@ class TransferStoreWebUiCase(unittest.TestCase):
             all_events = manager.list_watch_events(watch_id, limit=50, offset=0)
             self.assertEqual(2, all_events['total'])
 
+    def test_webui_task_model_exposes_active_transfer_progress_and_speed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/7',
+                target_link='https://t.me/pikpak_bot'
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=7,
+                source_link='https://t.me/source/7',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='movie.mp4',
+                file_size=100,
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+            item_id = store.list_items(task_id)[0]['id']
+            store.update_item_progress(
+                item_id=item_id,
+                phase='downloading',
+                download_current=40,
+                download_total=100,
+                download_speed_bps=2048,
+                upload_current=0,
+                upload_total=100,
+                upload_speed_bps=0
+            )
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
+
+            task = WebUiViewModel(store).task_list()['tasks'][0]
+
+            self.assertEqual('downloading', task['active_phase'])
+            self.assertEqual('movie.mp4', task['active_file_name'])
+            self.assertEqual(40, task['download_current'])
+            self.assertEqual(100, task['download_total'])
+            self.assertEqual(2048, task['download_speed_bps'])
+            self.assertEqual(40, task['active_progress_percent'])
+
+    def test_webui_item_model_exposes_upload_and_download_speed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/8',
+                target_link='https://t.me/pikpak_bot'
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=8,
+                source_link='https://t.me/source/8',
+                target_link='https://t.me/pikpak_bot',
+                file_name='movie.mp4',
+                phase='uploading',
+                status=TransferStatus.RUNNING
+            )
+            store.update_item_progress(
+                item_id=item_id,
+                phase='uploading',
+                download_current=100,
+                download_total=100,
+                download_speed_bps=0,
+                upload_current=64,
+                upload_total=100,
+                upload_speed_bps=4096
+            )
+
+            detail = WebUiViewModel(store).task_detail(task_id, item_status=TransferStatus.RUNNING)
+            item = detail['items'][0]
+
+            self.assertEqual(0, item['download_speed_bps'])
+            self.assertEqual(4096, item['upload_speed_bps'])
+            self.assertEqual(64, item['active_progress_percent'])
+
 
 if __name__ == '__main__':
     unittest.main()

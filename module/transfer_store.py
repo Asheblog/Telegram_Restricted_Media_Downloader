@@ -104,11 +104,14 @@ class TransferStore:
                     file_name TEXT,
                     file_size INTEGER,
                     local_path TEXT,
+                    temp_path TEXT,
                     phase TEXT NOT NULL DEFAULT 'pending',
                     download_current INTEGER NOT NULL DEFAULT 0,
                     download_total INTEGER NOT NULL DEFAULT 0,
+                    download_speed_bps INTEGER NOT NULL DEFAULT 0,
                     upload_current INTEGER NOT NULL DEFAULT 0,
                     upload_total INTEGER NOT NULL DEFAULT 0,
+                    upload_speed_bps INTEGER NOT NULL DEFAULT 0,
                     source_folder TEXT,
                     archive_path TEXT,
                     archive_status TEXT,
@@ -171,11 +174,14 @@ class TransferStore:
                     'source_chat_id': 'TEXT',
                     'file_name': 'TEXT',
                     'file_size': 'INTEGER',
+                    'temp_path': 'TEXT',
                     'phase': "TEXT NOT NULL DEFAULT 'pending'",
                     'download_current': 'INTEGER NOT NULL DEFAULT 0',
                     'download_total': 'INTEGER NOT NULL DEFAULT 0',
+                    'download_speed_bps': 'INTEGER NOT NULL DEFAULT 0',
                     'upload_current': 'INTEGER NOT NULL DEFAULT 0',
                     'upload_total': 'INTEGER NOT NULL DEFAULT 0',
+                    'upload_speed_bps': 'INTEGER NOT NULL DEFAULT 0',
                     'source_folder': 'TEXT',
                     'archive_path': 'TEXT',
                     'archive_status': 'TEXT',
@@ -418,6 +424,7 @@ class TransferStore:
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             local_path: Optional[str] = None,
+            temp_path: Optional[str] = None,
             source_folder: Optional[str] = None,
             archive_path: Optional[str] = None,
             archive_status: Optional[str] = None,
@@ -450,6 +457,7 @@ class TransferStore:
                         source_chat_id=source_chat_id,
                         media_type=media_type,
                         local_path=local_path,
+                        temp_path=temp_path,
                         file_name=file_name,
                         file_size=file_size,
                         source_folder=source_folder,
@@ -466,14 +474,14 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_items (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
-                    media_type, file_name, file_size, local_path, source_folder,
+                    media_type, file_name, file_size, local_path, temp_path, source_folder,
                     archive_path, archive_status, archive_error, archive_match_original_name, phase, status,
                     error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     task_id, source_chat_id, source_message_id, source_link, target_link,
-                    media_type, file_name, file_size, local_path, source_folder,
+                    media_type, file_name, file_size, local_path, temp_path, source_folder,
                     archive_path, archive_status, archive_error,
                     self._normalize_optional_bool(archive_match_original_name), phase, status,
                     error_message, now, now
@@ -488,6 +496,7 @@ class TransferStore:
             source_chat_id: Optional[str] = None,
             media_type: Optional[str] = None,
             local_path: Optional[str] = None,
+            temp_path: Optional[str] = None,
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             phase: Optional[str] = None,
@@ -507,6 +516,7 @@ class TransferStore:
                 source_chat_id=source_chat_id,
                 media_type=media_type,
                 local_path=local_path,
+                temp_path=temp_path,
                 file_name=file_name,
                 file_size=file_size,
                 source_folder=source_folder,
@@ -528,6 +538,7 @@ class TransferStore:
             source_chat_id: Optional[str] = None,
             media_type: Optional[str] = None,
             local_path: Optional[str] = None,
+            temp_path: Optional[str] = None,
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             source_folder: Optional[str] = None,
@@ -544,6 +555,7 @@ class TransferStore:
             'source_chat_id': source_chat_id,
             'media_type': media_type,
             'local_path': local_path,
+            'temp_path': temp_path,
             'file_name': file_name,
             'file_size': file_size,
             'source_folder': source_folder,
@@ -575,20 +587,24 @@ class TransferStore:
             phase: Optional[str] = None,
             download_current: Optional[int] = None,
             download_total: Optional[int] = None,
+            download_speed_bps: Optional[int] = None,
             upload_current: Optional[int] = None,
-            upload_total: Optional[int] = None
+            upload_total: Optional[int] = None,
+            upload_speed_bps: Optional[int] = None
     ) -> None:
         fields = {'updated_at': self.utc_now()}
         values = {
             'phase': phase,
             'download_current': download_current,
             'download_total': download_total,
+            'download_speed_bps': download_speed_bps,
             'upload_current': upload_current,
-            'upload_total': upload_total
+            'upload_total': upload_total,
+            'upload_speed_bps': upload_speed_bps
         }
         for key, value in values.items():
             if value is not None:
-                fields[key] = int(value) if key.endswith(('_current', '_total')) else value
+                fields[key] = int(value) if key.endswith(('_current', '_total', '_bps')) else value
         set_clause = ', '.join([f'{key} = :{key}' for key in fields])
         with self.connect() as conn:
             conn.execute(

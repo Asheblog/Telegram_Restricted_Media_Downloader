@@ -132,10 +132,10 @@ _Avoid_: Auto dump, guessed range
 **Download Success Record** — 已成功下载消息的持久化记录（按来源会话+消息 ID），后续转存可复用，避免重复下载。
 _Avoid_: Cache hit, finished file
 
-**Local Transfer Storage Budget** — 本地磁盘空间限制，回退下载前检查，文件不再需要时释放。
+**Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
 _Avoid_: Upload concurrency, temp cache size
 
-**Transfer Task Pause** — 暂停后的 Transfer Task 阻止下一条 Transfer Item 启动，已有 Progress 保留。
+**Transfer Task Pause** — 暂停后的 Transfer Task 阻止下一条 Transfer Item 启动；正在下载的 Transfer Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。
 _Avoid_: Cancel task, delete task, kill transfer
 
 **Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。

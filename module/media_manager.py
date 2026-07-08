@@ -3,21 +3,26 @@
 
 清理策略：
   A) 基于 TransferStore transfer_items 状态 — status ∈ {success,failure,skipped} 且 local_path 存在
-  B) 基于文件时间 — save_directory 下超过保留天数的文件，不在任何活跃 transfer_item 中
+  B) 基于文件时间 — save_directory/temp_directory 下超过保留天数的文件，不在任何活跃 transfer_item 中
 """
 
 import os
 import time
 from typing import Optional, List, Dict, Any
 
-from module import log
 from module.path_tool import safe_delete
+from module.transfer_store import TransferStore, TransferStatus
 
 
 class MediaManager:
     """扫描 save_directory 中的可清理媒体文件并提供安全删除。"""
 
     DEFAULT_RETENTION_DAYS = 7  # 遗留文件默认保留天数
+    INTERNAL_FILE_NAMES = {
+        TransferStore.FILE_NAME,
+        f'{TransferStore.FILE_NAME}-wal',
+        f'{TransferStore.FILE_NAME}-shm',
+    }
 
     def __init__(
             self,
@@ -64,6 +69,82 @@ class MediaManager:
         except OSError:
             return False, 0
 
+    @staticmethod
+    def _candidate_temp_paths(temp_path: str) -> list:
+        if not temp_path:
+            return []
+        paths = [temp_path]
+        paths.append(f'{temp_path}.temp')
+        return paths
+
+    def _item_cleanup_paths(self, item: dict) -> List[str]:
+        seen = set()
+        paths = []
+        candidates = [
+            (item.get('local_path') or '').strip(),
+            *self._candidate_temp_paths((item.get('temp_path') or '').strip())
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            abs_path = os.path.abspath(candidate)
+            if abs_path in seen:
+                continue
+            seen.add(abs_path)
+            paths.append(abs_path)
+        return paths
+
+    def _cleanup_item_paths(self, item: dict, reason: str) -> Dict[str, Any]:
+        item_id = int(item.get('id') or 0)
+        cleanup_paths = self._item_cleanup_paths(item)
+        if not cleanup_paths:
+            return {
+                'deleted': None,
+                'failed': {'item_id': item_id, 'file_path': '', 'error': 'No local_path'},
+            }
+        if any(not self._is_within_allowed_path(path) for path in cleanup_paths):
+            return {
+                'deleted': None,
+                'failed': {
+                    'item_id': item_id,
+                    'file_path': ';'.join(cleanup_paths),
+                    'error': 'Path outside allowed directories',
+                },
+            }
+
+        deleted_size = 0
+        for local_path in cleanup_paths:
+            file_exists, file_size = self._get_file_info(local_path)
+            if not file_exists:
+                continue
+            if not safe_delete(local_path):
+                return {
+                    'deleted': None,
+                    'failed': {
+                        'item_id': item_id,
+                        'file_path': local_path,
+                        'error': 'safe_delete returned False',
+                    },
+                }
+            deleted_size += file_size
+
+        self._store.mark_item_local_file_deleted(item_id)
+        self._store.insert_cleanup_log(
+            file_path=';'.join(cleanup_paths),
+            file_size=deleted_size,
+            source_task_id=item.get('task_id'),
+            source_item_id=item_id,
+            reason=reason,
+        )
+        return {
+            'deleted': {
+                'item_id': item_id,
+                'file_path': ';'.join(cleanup_paths),
+                'file_size': deleted_size,
+            },
+            'failed': None,
+        }
+
     # --- 扫描 A: 基于 transfer_items 状态 ---
 
     def scan_transfer_items(self, task_id: int = None) -> Dict[str, Any]:
@@ -83,24 +164,32 @@ class MediaManager:
         cleanable = self._store.list_cleanable_items(task_id=task_id)
 
         for item in cleanable:
-            local_path = item.get('local_path', '') or ''
-            if not self._is_within_allowed_path(local_path):
+            cleanup_paths = self._item_cleanup_paths(item)
+            allowed_paths = [path for path in cleanup_paths if self._is_within_allowed_path(path)]
+            if not allowed_paths:
                 continue
-            file_exists, file_size = self._get_file_info(local_path)
+            existing_paths = []
+            item_size = 0
+            for path in allowed_paths:
+                file_exists, file_size = self._get_file_info(path)
+                if file_exists:
+                    existing_paths.append(path)
+                    item_size += file_size
 
             items.append({
                 'item_id': item.get('id'),
                 'task_id': item.get('task_id'),
                 'file_name': item.get('file_name'),
-                'file_size': item.get('file_size') or file_size,
-                'local_path': local_path,
+                'file_size': item_size or item.get('file_size') or 0,
+                'local_path': item.get('local_path') or '',
+                'temp_path': item.get('temp_path') or '',
+                'paths': allowed_paths,
                 'status': item.get('status'),
                 'source_link': item.get('task_source_link') or item.get('source_link'),
                 'target_link': item.get('task_target_link') or item.get('target_link'),
-                'file_exists': file_exists,
+                'file_exists': bool(existing_paths),
             })
-            if file_exists:
-                total_size += file_size
+            total_size += item_size
 
         return {
             'items': items,
@@ -124,9 +213,6 @@ class MediaManager:
                 'total_size': int,
             }
         """
-        if not self._save_directory or not os.path.isdir(self._save_directory):
-            return {'files': [], 'total_count': 0, 'total_size': 0}
-
         # 收集所有活跃 item 的 local_path
         active_paths = self._get_active_local_paths()
 
@@ -134,24 +220,27 @@ class MediaManager:
         orphan_files = []
         total_size = 0
 
-        for root, _dirs, files in os.walk(self._save_directory):
-            for filename in files:
-                file_path = os.path.join(root, filename)
-                try:
-                    stat = os.stat(file_path)
-                except OSError:
-                    continue
-                if stat.st_mtime > cutoff:
-                    continue
-                if file_path in active_paths:
-                    continue
-                file_size = stat.st_size
-                orphan_files.append({
-                    'path': file_path,
-                    'size': file_size,
-                    'mtime': stat.st_mtime,
-                })
-                total_size += file_size
+        for directory in self._scan_directories():
+            for root, _dirs, files in os.walk(directory):
+                for filename in files:
+                    if self._is_internal_file(filename):
+                        continue
+                    file_path = os.path.abspath(os.path.join(root, filename))
+                    try:
+                        stat = os.stat(file_path)
+                    except OSError:
+                        continue
+                    if stat.st_mtime > cutoff:
+                        continue
+                    if file_path in active_paths:
+                        continue
+                    file_size = stat.st_size
+                    orphan_files.append({
+                        'path': file_path,
+                        'size': file_size,
+                        'mtime': stat.st_mtime,
+                    })
+                    total_size += file_size
 
         return {
             'files': orphan_files,
@@ -159,8 +248,22 @@ class MediaManager:
             'total_size': total_size,
         }
 
+    def _scan_directories(self) -> List[str]:
+        directories = []
+        seen = set()
+        for directory in (self._save_directory, self._temp_directory):
+            if not directory or directory in seen or not os.path.isdir(directory):
+                continue
+            seen.add(directory)
+            directories.append(directory)
+        return directories
+
+    @classmethod
+    def _is_internal_file(cls, filename: str) -> bool:
+        return filename in cls.INTERNAL_FILE_NAMES
+
     def _get_active_local_paths(self) -> set:
-        """收集所有活跃（pending/running）transfer_item 的 local_path。"""
+        """收集所有活跃（pending/running/paused）transfer_item 的 local_path。"""
         active = set()
         if self._store is None:
             return active
@@ -169,13 +272,12 @@ class MediaManager:
             active_task_ids = {
                 int(t.get('id'))
                 for t in tasks
-                if t.get('status') in ('pending', 'running')
+                if t.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.PAUSED)
             }
             for task_id in active_task_ids:
                 for item in self._store.list_items(task_id):
-                    local_path = (item.get('local_path') or '').strip()
-                    if local_path:
-                        active.add(os.path.abspath(local_path))
+                    for path in self._item_cleanup_paths(item):
+                        active.add(os.path.abspath(path))
         except Exception:
             pass
         return active
@@ -217,26 +319,8 @@ class MediaManager:
         item = self._store.get_item(item_id)
         if not item:
             return False
-        local_path = (item.get('local_path') or '').strip()
-        if not local_path:
-            return False
-        if not self._is_within_allowed_path(local_path):
-            return False
-
-        file_exists, file_size = self._get_file_info(local_path)
-        if file_exists:
-            if not safe_delete(local_path):
-                return False
-
-        self._store.mark_item_local_file_deleted(item_id)
-        self._store.insert_cleanup_log(
-            file_path=local_path,
-            file_size=file_size if file_exists else (item.get('file_size') or 0),
-            source_task_id=item.get('task_id'),
-            source_item_id=item_id,
-            reason='auto_cleanup_on_transfer_complete'
-        )
-        return True
+        result = self._cleanup_item_paths(item, reason='auto_cleanup_on_transfer_complete')
+        return result['deleted'] is not None and result['failed'] is None
 
     # --- 清理操作 ---
 
@@ -260,47 +344,41 @@ class MediaManager:
                 })
                 continue
 
-            local_path = (item.get('local_path') or '').strip()
-            if not local_path:
-                failed.append({
-                    'item_id': item_id, 'file_path': '', 'error': 'No local_path'
-                })
+            result = self._cleanup_item_paths(item, reason='transfer_item_cleanup')
+            if result['failed']:
+                failed.append(result['failed'])
                 continue
+            deleted.append(result['deleted'])
+            total_deleted_size += result['deleted']['file_size']
 
-            if not self._is_within_allowed_path(local_path):
-                failed.append({
-                    'item_id': item_id, 'file_path': local_path,
-                    'error': 'Path outside allowed directories'
-                })
+        return {
+            'deleted': deleted,
+            'failed': failed,
+            'total_deleted_count': len(deleted),
+            'total_deleted_size': total_deleted_size,
+        }
+
+    def cleanup_task_files(self, task_id: int) -> Dict[str, Any]:
+        """删除任务下所有 item 的本地文件和下载缓存，供任务删除前调用。"""
+        if not self._store:
+            return {
+                'deleted': [],
+                'failed': [{'item_id': 0, 'file_path': '', 'error': 'No transfer store'}],
+                'total_deleted_count': 0,
+                'total_deleted_size': 0,
+            }
+        deleted = []
+        failed = []
+        total_deleted_size = 0
+        for item in self._store.list_items(int(task_id)):
+            if not self._item_cleanup_paths(item):
                 continue
-
-            file_exists, file_size = self._get_file_info(local_path)
-
-            if file_exists:
-                if safe_delete(local_path):
-                    total_deleted_size += file_size
-                else:
-                    failed.append({
-                        'item_id': item_id, 'file_path': local_path,
-                        'error': 'safe_delete returned False'
-                    })
-                    continue
-
-            # 标记 item 的本地文件已删除
-            self._store.mark_item_local_file_deleted(item_id)
-            self._store.insert_cleanup_log(
-                file_path=local_path,
-                file_size=file_size,
-                source_task_id=item.get('task_id'),
-                source_item_id=item_id,
-                reason='transfer_item_cleanup'
-            )
-            deleted.append({
-                'item_id': item_id,
-                'file_path': local_path,
-                'file_size': file_size,
-            })
-
+            result = self._cleanup_item_paths(item, reason='transfer_task_delete_cleanup')
+            if result['failed']:
+                failed.append(result['failed'])
+                continue
+            deleted.append(result['deleted'])
+            total_deleted_size += result['deleted']['file_size']
         return {
             'deleted': deleted,
             'failed': failed,

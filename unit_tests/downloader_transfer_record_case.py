@@ -609,6 +609,257 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertEqual(0, task['failed_items'])
         self.assertTrue(any(event['level'] == 'warning' and 'PikPak' in event['message'] for event in events))
 
+    def test_resume_download_truncates_partial_chunk_before_resuming(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                final_path = os.path.join(directory, 'video.mp4')
+                cache_path = f'{final_path}.temp'
+                chunk_size = 4
+                with open(cache_path, 'wb') as file:
+                    file.write(b'AAAABB')
+                offsets = []
+                progress_values = []
+
+                class FakeClient:
+                    async def stream_media(self, message, offset=0):
+                        offsets.append(offset)
+                        yield b'CCCC'
+
+                downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+                downloader.app = SimpleNamespace(client=FakeClient())
+                message = SimpleNamespace(chat=SimpleNamespace(id=1), id=1)
+
+                await downloader.resume_download(
+                    message=message,
+                    file_name=final_path,
+                    progress=lambda current, total: progress_values.append((current, total)),
+                    progress_args=(8,),
+                    chunk_size=chunk_size,
+                    compare_size=8
+                )
+
+                with open(final_path, 'rb') as file:
+                    data = file.read()
+                return offsets, progress_values, data, os.path.exists(cache_path)
+
+        offsets, progress_values, data, cache_exists = asyncio.run(run_case())
+
+        self.assertEqual([1], offsets)
+        self.assertEqual([(8, 8)], progress_values)
+        self.assertEqual(b'AAAACCCC', data)
+        self.assertFalse(cache_exists)
+
+    def test_resume_download_reopens_stream_after_stall(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                final_path = os.path.join(directory, 'video.mp4')
+                offsets = []
+                progress_values = []
+
+                class HangingStream:
+                    async def __anext__(self):
+                        await asyncio.sleep(1)
+
+                    async def aclose(self):
+                        pass
+
+                class ChunkStream:
+                    def __init__(self):
+                        self.chunks = [b'AAAA', b'BBBB']
+
+                    async def __anext__(self):
+                        if not self.chunks:
+                            raise StopAsyncIteration
+                        return self.chunks.pop(0)
+
+                    async def aclose(self):
+                        pass
+
+                class FakeClient:
+                    def __init__(self):
+                        self.calls = 0
+
+                    def stream_media(self, message, offset=0):
+                        offsets.append(offset)
+                        self.calls += 1
+                        return HangingStream() if self.calls == 1 else ChunkStream()
+
+                downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+                downloader.app = SimpleNamespace(client=FakeClient())
+                message = SimpleNamespace(chat=SimpleNamespace(id=1), id=1)
+
+                await downloader.resume_download(
+                    message=message,
+                    file_name=final_path,
+                    progress=lambda current, total: progress_values.append((current, total)),
+                    progress_args=(8,),
+                    chunk_size=4,
+                    compare_size=8,
+                    progress_timeout_seconds=0.01,
+                    max_stall_retries=1,
+                )
+
+                with open(final_path, 'rb') as file:
+                    data = file.read()
+                return offsets, progress_values, data
+
+        offsets, progress_values, data = asyncio.run(run_case())
+
+        self.assertEqual([0, 0], offsets)
+        self.assertEqual([(4, 8), (8, 8)], progress_values)
+        self.assertEqual(b'AAAABBBB', data)
+
+    def test_transfer_failure_cleans_final_and_temp_files(self):
+        from module.media_manager import MediaManager
+        from module.transfer_progress import TransferProgressTracker
+
+        with tempfile.TemporaryDirectory() as directory:
+            final_path = os.path.join(directory, 'media.bin')
+            temp_path = os.path.join(directory, 'media.bin.temp')
+            active_cache_path = f'{temp_path}.temp'
+            for path in (final_path, active_cache_path):
+                with open(path, 'wb') as file:
+                    file.write(b'12345')
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/7',
+                target_link='https://t.me/pikpak_bot'
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=7,
+                source_link='https://t.me/source/7',
+                target_link='https://t.me/pikpak_bot',
+                file_name='media.bin',
+                file_size=5,
+                local_path=final_path,
+                temp_path=temp_path,
+                phase='uploading',
+                status='running'
+            )
+            manager = MediaManager(
+                transfer_store=store,
+                save_directory=directory,
+                temp_directory=directory
+            )
+            tracker = TransferProgressTracker(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
+                app_getter=lambda: None,
+                gc_getter=lambda: None,
+                loop_getter=lambda: None,
+                pb_getter=lambda: None,
+                release_storage=lambda wu: None,
+                release_window=lambda wu: None,
+                start_download_upload=lambda **kw: False,
+                archive_pikpak_item=lambda **kw: None,
+                fail_transfer_item=lambda task_id, item_id, msg: store.update_item(
+                    item_id,
+                    status='failure',
+                    phase='failure',
+                    error_message=msg
+                ),
+                refresh_counts=lambda tid: store.refresh_task_counts(tid, expected_total=1, assignment_completed=True),
+                cleanup_local_file=manager.try_cleanup_item_file,
+            )
+            upload_task = SimpleNamespace(
+                status=UploadStatus.FAILURE,
+                error_msg='upload failed',
+                transfer_meta={'task_id': task_id, 'item_id': item_id}
+            )
+
+            tracker.on_transfer_upload_status(upload_task)
+
+            self.assertFalse(os.path.exists(final_path))
+            self.assertFalse(os.path.exists(active_cache_path))
+            self.assertEqual(1, store.get_item(item_id)['local_file_deleted'])
+            reasons = [row['reason'] for row in store.list_cleanup_logs()]
+            self.assertIn('auto_cleanup_on_transfer_complete', reasons)
+
+    def test_delete_web_task_cleans_final_and_temp_files_before_deleting_record(self):
+        from module.media_manager import MediaManager
+
+        with tempfile.TemporaryDirectory() as directory:
+            final_path = os.path.join(directory, 'delete-me.bin')
+            temp_path = os.path.join(directory, 'delete-me.bin.cache')
+            active_cache_path = f'{temp_path}.temp'
+            for path in (final_path, active_cache_path):
+                with open(path, 'wb') as file:
+                    file.write(b'12345')
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/8', 'https://t.me/pikpak_bot')
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=8,
+                source_link='https://t.me/source/8',
+                target_link='https://t.me/pikpak_bot',
+                file_name='delete-me.bin',
+                local_path=final_path,
+                temp_path=temp_path,
+                phase='downloading',
+                status='running',
+            )
+            downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+            downloader.transfer_store = store
+            downloader.media_manager = MediaManager(store, save_directory=directory, temp_directory=directory)
+            downloader.web_task_manager = None
+            downloader.web_submitted_task_ids = set()
+            downloader.web_task_queue = asyncio.Queue()
+            downloader.web_running_task = None
+            downloader.web_running_task_id = None
+            downloader.loop = asyncio.new_event_loop()
+            try:
+                self.assertTrue(downloader.delete_web_task(task_id))
+            finally:
+                downloader.loop.close()
+
+            self.assertIsNone(store.get_task(task_id))
+            self.assertFalse(os.path.exists(final_path))
+            self.assertFalse(os.path.exists(active_cache_path))
+
+    def test_pikpak_archive_failure_cleans_downloaded_transfer_file(self):
+        from module.media_manager import MediaManager
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        with tempfile.TemporaryDirectory() as directory:
+            final_path = os.path.join(directory, 'archive-failed.bin')
+            temp_path = os.path.join(directory, 'archive-failed.bin.cache')
+            active_cache_path = f'{temp_path}.temp'
+            for path in (final_path, active_cache_path):
+                with open(path, 'wb') as file:
+                    file.write(b'12345')
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/9', 'https://t.me/pikpak_bot')
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=9,
+                source_link='https://t.me/source/9',
+                target_link='https://t.me/pikpak_bot',
+                file_name='archive-failed.bin',
+                local_path=final_path,
+                temp_path=temp_path,
+                phase='sent',
+                status='running',
+            )
+            manager = MediaManager(store, save_directory=directory, temp_directory=directory)
+            pikpak = PikpakIntegrationManager(
+                transfer_store_getter=lambda: store,
+                pikpak_archive_client_getter=lambda: None,
+                diagnostic=SimpleNamespace(warning=lambda m: None),
+                gc_getter=lambda: None,
+                refresh_counts=lambda tid: store.refresh_task_counts(tid, expected_total=1, assignment_completed=True),
+                cleanup_item_file=manager.try_cleanup_item_file,
+            )
+
+            pikpak.fail_transfer_item(task_id, item_id, 'archive failed')
+
+            self.assertFalse(os.path.exists(final_path))
+            self.assertFalse(os.path.exists(active_cache_path))
+            self.assertEqual(1, store.get_item(item_id)['local_file_deleted'])
+
 
 if __name__ == '__main__':
     unittest.main()
