@@ -1,6 +1,6 @@
 # ADR-0003: 远程监听时强制 WebUI 认证
 
-**决策日期**: 2025-06 | **最后更新**: 2026-07-07 | **状态**: ✅ 已采纳
+**决策日期**: 2025-06 | **最后更新**: 2026-07-09 | **状态**: ✅ 已采纳
 
 ---
 
@@ -14,15 +14,18 @@ WebUI 可以创建 Telegram 转存任务、修改配置、管理监听规则。�
 
 ## Decision
 
-- 使用 HTTP Basic Auth 保护 WebUI
-- 凭据通过环境变量 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD` 注入
+- 使用 WebUI 站内登录页保护 WebUI，登录成功后签发 HttpOnly session cookie
+- 站内登录凭据通过环境变量 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD` 注入
 - 当 `TRMD_WEB_HOST` 非 localhost 时，**强制要求**两个凭据都设置，缺少则拒绝启动
 - 凭据是部署配置的一部分，由运维人员显式设置，程序绝不生成或日志输出
+- 401 API 响应返回 JSON `auth_required`，不得发送 `WWW-Authenticate` challenge，避免浏览器弹出原生登录框
+- 遗留 `Authorization: Basic ...` 请求头不再被视为有效登录
 
 ## Consequences
 
 - ✅ WebUI 远程访问有基础安全保护
 - ✅ 明确的安全门禁：不设置密码 = 无法远程启动
-- ✅ 部署简单：环境变量即可，无需额外证书或 OAuth 配置
-- ⚠️ Basic Auth 通过 HTTP 传输时凭据为 Base64 编码（非加密），建议配合反向代理启用 HTTPS
+- ✅ 登录体验统一到 WebUI 页面，不再出现浏览器原生登录弹窗
+- ✅ 部署简单：环境变量即可，无需额外 OAuth 配置
+- ⚠️ 通过 HTTP 传输时登录凭据仍可能被窃听，建议配合反向代理启用 HTTPS
 - ⚠️ 用户名/密码在 docker-compose.yml 中明文存储，需控制文件权限

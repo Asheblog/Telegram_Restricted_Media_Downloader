@@ -1,7 +1,6 @@
 # coding=UTF-8
 import base64
 import datetime
-import hmac
 import json
 import os
 import re
@@ -260,28 +259,13 @@ class WebUiServer:
                 return part[len(prefix):]
         return None
 
-    def is_authorized(self, authorization: Optional[str]) -> bool:
-        if not self.auth_enabled:
-            return True
-        if not authorization or not authorization.startswith('Basic '):
-            return False
-        try:
-            raw = base64.b64decode(authorization[6:].strip()).decode('utf-8')
-        except Exception:
-            return False
-        username, separator, password = raw.partition(':')
-        if not separator:
-            return False
-        return (
-            hmac.compare_digest(username, self.username)
-            and hmac.compare_digest(password, self.password)
-        )
-
     def validate_credentials(self, username: str, password: str) -> bool:
         if not self.auth_enabled:
             return True
-        auth_header = 'Basic ' + base64.b64encode(f'{username}:{password}'.encode()).decode()
-        return self.is_authorized(auth_header)
+        return (
+            secrets.compare_digest(username, self.username)
+            and secrets.compare_digest(password, self.password)
+        )
 
     def set_auth_provider(self, provider: "AuthProvider") -> None:
         self.auth_provider = provider
@@ -302,7 +286,6 @@ class WebUiServer:
                     ensure_ascii=False
                 ).encode('utf-8')
                 self.send_response(HTTPStatus.UNAUTHORIZED)
-                self.send_header('www-authenticate', 'Basic realm="TRMD WebUI"')
                 self.send_header('content-type', 'application/json; charset=utf-8')
                 self.send_header('cache-control', 'no-store')
                 self.send_header('content-length', str(len(data)))
@@ -322,11 +305,6 @@ class WebUiServer:
                 session_token = server._get_request_cookie(self, server.SESSION_COOKIE_NAME)
                 if session_token and server.validate_session_token(session_token):
                     self._pending_cookie = server._create_session_cookie(session_token)
-                    return True
-                if server.is_authorized(self.headers.get('authorization')):
-                    token = server._generate_session_token()
-                    server._store_session(token)
-                    self._pending_cookie = server._create_session_cookie(token)
                     return True
                 return False
 

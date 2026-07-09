@@ -1,5 +1,4 @@
 # coding=UTF-8
-import base64
 import asyncio
 import datetime
 import http.client
@@ -208,6 +207,35 @@ def import_downloader_class():
 
 
 class TransferStoreWebUiCase(unittest.TestCase):
+    def _login_headers(self, conn, content_type: str | None = None) -> dict:
+        conn.request(
+            'POST',
+            '/api/auth/login',
+            body=json.dumps({
+                'username': 'admin',
+                'password': 'pass',
+                'remember_me': True
+            }),
+            headers={'Content-Type': 'application/json'}
+        )
+        response = conn.getresponse()
+        body = json.loads(response.read().decode('utf-8'))
+        self.assertEqual(200, response.status)
+        self.assertTrue(body['success'])
+        cookie = response.getheader('Set-Cookie')
+        self.assertIsNotNone(cookie)
+        headers = {'Cookie': cookie.split(';', 1)[0]}
+        if content_type:
+            headers['Content-Type'] = content_type
+        return headers
+
+    def _authenticated_headers(self, server, content_type: str | None = None) -> dict:
+        conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+        try:
+            return self._login_headers(conn, content_type=content_type)
+        finally:
+            conn.close()
+
     def test_log_cleanup_removes_rotated_files_older_than_three_days(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = os.path.join(directory, 'TRMD_LOG.log')
@@ -634,8 +662,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 password='pass'
             )
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -677,8 +704,6 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -687,6 +712,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(401, response.status)
                 self.assertEqual('auth_required', body['error_code'])
+                self.assertIsNone(response.getheader('WWW-Authenticate'))
 
                 conn.request(
                     'POST',
@@ -698,7 +724,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(401, response.status)
                 self.assertEqual('auth_required', body['error_code'])
+                self.assertIsNone(response.getheader('WWW-Authenticate'))
 
+                headers = self._login_headers(conn)
                 conn.request('GET', '/api/auth/status', headers=headers)
                 response = conn.getresponse()
                 body = json.loads(response.read().decode('utf-8'))
@@ -707,13 +735,33 @@ class TransferStoreWebUiCase(unittest.TestCase):
             finally:
                 server.stop()
 
+    def test_webui_rejects_legacy_basic_authorization_header(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            server = WebUiServer(store=store, username='admin', password='pass')
+            server.start(open_browser=False)
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn.request(
+                    'GET',
+                    '/api/auth/status',
+                    headers={'Authorization': 'Basic YWRtaW46cGFzcw=='}
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(401, response.status)
+                self.assertEqual('auth_required', body['error_code'])
+                self.assertIsNone(response.getheader('WWW-Authenticate'))
+                self.assertIsNone(response.getheader('Set-Cookie'))
+            finally:
+                server.stop()
+
     def test_webui_api_errors_include_stable_error_codes(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -781,8 +829,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 password='pass'
             )
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -813,8 +860,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations.transfer_range = {'start_id': 1, 'end_id': 9}
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -844,8 +890,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations.transfer_range = None
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -901,8 +946,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 password='pass'
             )
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request('POST', f'/api/tasks/{task_id}/retry-failed', headers=headers)
@@ -1219,8 +1263,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = TaskControlOperations(store)
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request('POST', f'/api/tasks/{task_id}/pause', headers=headers)
@@ -1246,8 +1289,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -1283,8 +1325,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -1321,8 +1362,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -1357,8 +1397,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
 
@@ -1402,8 +1441,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -1431,8 +1469,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -1460,8 +1497,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}', 'Content-Type': 'application/json'}
+            headers = self._authenticated_headers(server, content_type='application/json')
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -3289,8 +3325,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(
@@ -3318,8 +3353,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
             server.start(open_browser=False)
-            auth = base64.b64encode(b'admin:pass').decode('ascii')
-            headers = {'Authorization': f'Basic {auth}'}
+            headers = self._authenticated_headers(server)
             try:
                 conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
                 conn.request(

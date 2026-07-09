@@ -144,8 +144,8 @@ _Avoid_: Restart task, rerun all, clear history
 **Discussion Reply Inclusion** — 可选的 `--include-comment` 行为，包含来源消息下的讨论区回复。
 _Avoid_: Comment scraping, reply mirroring
 
-**WebUI Credentials** — 环境变量提供的 HTTP Basic Auth 凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码。
-_Avoid_: Random ttyd password, public WebUI
+**WebUI Credentials** — 环境变量提供的站内登录凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码；用户通过 WebUI 登录页换取 HttpOnly session cookie。
+_Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI
 
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login

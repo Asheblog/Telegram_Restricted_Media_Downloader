@@ -24,7 +24,7 @@
 - `--web` 参数启动时直接打开产品级操作界面，而非终端封装
 - WebUI 内置任务创建表单、进度监控、配置管理等功能
 - 保留 Telegram Bot 作为辅助控制通道
-- HTTP Basic Auth 保护远程访问（见 ADR-0003）
+- WebUI 站内登录保护远程访问（见 ADR-0003）
 
 ## Consequences
 
