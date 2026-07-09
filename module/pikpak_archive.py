@@ -137,39 +137,87 @@ class RclonePikPakArchiveClient:
     def find_candidates(
             self,
             root: str,
-            file_name: str,
+            file_name: Optional[str],
             file_size: Optional[int],
             transferred_at: Optional[float]
     ) -> list[dict]:
         deadline = self.now() + max(float(self.config.get('poll_seconds') or 0), 0)
         interval = max(float(self.config.get('poll_interval_seconds') or 0), 0)
+        name_fallback_candidates = []
         while True:
-            candidates = self._list_matching_candidates(root, file_name, file_size, transferred_at)
-            if candidates or self.now() >= deadline:
+            candidates, fallback_candidates = self._list_matching_candidate_groups(
+                root,
+                file_name,
+                file_size,
+                transferred_at
+            )
+            if candidates:
                 return candidates
+            if fallback_candidates:
+                name_fallback_candidates = fallback_candidates
+            if self.now() >= deadline:
+                return name_fallback_candidates
             time.sleep(interval)
 
     def _list_matching_candidates(
             self,
             root: str,
-            file_name: str,
+            file_name: Optional[str],
             file_size: Optional[int],
             transferred_at: Optional[float]
     ) -> list[dict]:
+        candidates, fallback_candidates = self._list_matching_candidate_groups(
+            root,
+            file_name,
+            file_size,
+            transferred_at
+        )
+        return candidates or fallback_candidates
+
+    def _list_matching_candidate_groups(
+            self,
+            root: str,
+            file_name: Optional[str],
+            file_size: Optional[int],
+            transferred_at: Optional[float]
+    ) -> tuple[list[dict], list[dict]]:
         result = self._run(['lsjson', self.remote(root), '--recursive', '--files-only'])
         try:
             items = json.loads(result.stdout or '[]')
         except json.JSONDecodeError as e:
             raise RuntimeError(f'Unable to parse rclone lsjson output: {e}')
+        return self._matching_candidate_groups(items, file_name, file_size, transferred_at)
+
+    def _matching_candidate_groups(
+            self,
+            items: list[dict],
+            file_name: Optional[str],
+            file_size: Optional[int],
+            transferred_at: Optional[float]
+    ) -> tuple[list[dict], list[dict]]:
+        files = [item for item in items if not item.get('IsDir')]
+        if file_name:
+            name_matches = [
+                item for item in files
+                if candidate_name_matches(
+                    item.get('Name'),
+                    file_name,
+                    has_disambiguator=file_size is not None or transferred_at is not None
+                )
+            ]
+            return [
+                item for item in name_matches
+                if self._candidate_metadata_matches(item, file_size, transferred_at)
+            ], name_matches
         return [
-            item for item in items
-            if self._candidate_matches(item, file_name, file_size, transferred_at)
-        ]
+            item for item in files
+            if self._candidate_metadata_matches(item, file_size, transferred_at)
+        ], []
 
     def _candidate_matches(
             self,
             item: dict,
-            file_name: str,
+            file_name: Optional[str],
             file_size: Optional[int],
             transferred_at: Optional[float]
     ) -> bool:
@@ -181,6 +229,14 @@ class RclonePikPakArchiveClient:
                 has_disambiguator=file_size is not None or transferred_at is not None
         ):
             return False
+        return self._candidate_metadata_matches(item, file_size, transferred_at)
+
+    def _candidate_metadata_matches(
+            self,
+            item: dict,
+            file_size: Optional[int],
+            transferred_at: Optional[float]
+    ) -> bool:
         if file_size is not None and item.get('Size') is not None and int(item.get('Size')) != int(file_size):
             return False
         if transferred_at is None:

@@ -347,6 +347,71 @@ class SourceFolderArchiveCase(unittest.TestCase):
             calls
         )
 
+    def test_rclone_archive_moves_unique_name_match_when_pikpak_size_differs(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+        pikpak_name = (
+            '6_意大利古典四级_拳王的私生活_#剧情_#意大利四级_#古典四级_'
+            '#复古_#大屌_#女友_#颜射_#打屁股_拳王在拳场得意，情场更得意..._'
+            '身体保养超好，性能力极强，很多女人投.mp4'
+        )
+        target_name = (
+            '6 - 意大利古典四级- 拳王的私生活 #剧情 #意大利四级 #古典四级 '
+            '#复古 #大屌 #女友 #颜射 #打屁股 拳王在拳场得意，情场更得意... '
+            '身体保养超好，性能力极强，很多女人投.mp4'
+        )
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': pikpak_name,
+                            'Size': 1200000000,
+                            'Path': pikpak_name,
+                            'IsDir': False,
+                            'ModTime': '2026-07-09T05:48:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner
+        )
+
+        result = client.archive_file(
+            source_folder='xxxshare123',
+            file_name=target_name,
+            file_size=1390000000,
+            transferred_at=1783576080.0,
+            match_original_name=True
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(f'Telegram/xxxshare123/{target_name}', result.archive_path)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                f'pikpak:My Telegram/{pikpak_name}',
+                f'pikpak:Telegram/xxxshare123/{target_name}'
+            ],
+            calls
+        )
+
     def test_rclone_archive_treats_existing_target_file_as_already_archived(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 
