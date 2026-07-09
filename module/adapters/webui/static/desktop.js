@@ -140,6 +140,10 @@ document.addEventListener('click', async function(e) {
 });
 
 /* ====== Task Detail ====== */
+function selectedTaskStillVisible(taskId) {
+  return state.activeView === 'transfers' && Number(state.selectedTaskId) === Number(taskId);
+}
+
 async function loadTaskDetail(taskId) {
   const container = $('#task-detail');
   container.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
@@ -200,22 +204,24 @@ async function loadTaskItems(taskId, status, options) {
 
   try {
     const data = await fetchJson('/api/tasks/' + taskId + '?items_limit=50&items_offset=' + ((page - 1) * 50) + '&item_status=' + encodeURIComponent(status));
+    if (silent && !selectedTaskStillVisible(taskId)) return;
     const items = data.items || [];
     state.itemData[taskId] = data;
 
     if (!items.length) {
       body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + status) + '</div>';
     } else {
-      body.innerHTML = '<table class="data-table"><thead><tr>' +
-        '<th>文件</th><th>大小</th><th>进度/速度</th><th>来源</th><th>目标</th><th>状态</th>' +
+      body.innerHTML = '<table class="data-table task-items-table"><colgroup>' +
+        '<col class="task-item-col-file"><col class="task-item-col-size"><col class="task-item-col-progress"><col class="task-item-col-source"><col class="task-item-col-status">' +
+        '</colgroup><thead><tr>' +
+        '<th class="task-item-file">文件</th><th class="task-item-size">大小</th><th class="task-item-progress">进度/速度</th><th class="task-item-source">来源</th><th class="task-item-status">状态</th>' +
         '</tr></thead><tbody>' +
         items.map(item => '<tr>' +
-          '<td class="text-xs">' + esc(item.file_name || item.local_path || '-') + '</td>' +
-          '<td class="text-xs">' + fmtSize(item.file_size) + '</td>' +
-          '<td class="text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
-          '<td class="text-xs">' + esc(item.source_link || '-') + '</td>' +
-          '<td class="text-xs">' + esc(item.target_path || '-') + '</td>' +
-          '<td>' + statusBadge(item.status) + '</td>' +
+          '<td class="task-item-file text-xs" title="' + esc(item.file_name || item.local_path || '-') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+          '<td class="task-item-size text-xs">' + fmtSize(item.file_size) + '</td>' +
+          '<td class="task-item-progress text-xs" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
+          '<td class="task-item-source text-xs" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
+          '<td class="task-item-status">' + statusBadge(item.status) + '</td>' +
           '</tr>').join('') +
         '</tbody></table>';
     }
@@ -256,6 +262,7 @@ async function refreshSelectedTaskDetail() {
   if (!detailEl || !body) return;
   try {
     const data = await fetchJson('/api/tasks/' + taskId + '/summary');
+    if (!selectedTaskStillVisible(taskId)) return;
     state.itemData[taskId] = data;
     renderTaskDetailTabs(data.summary || {});
     await loadTaskItems(taskId, state.activeItemStatus || 'running', { silent: true });
@@ -320,6 +327,11 @@ function hasActiveTasks() {
   return state.tasks.some(t => t.status === 'pending' || t.status === 'running');
 }
 
+async function refreshTransferData() {
+  await loadTasks();
+  await refreshSelectedTaskDetail();
+}
+
 function startPolling() {
   if (state.taskPollTimer) return;
   const fast = 3000, slow = 15000;
@@ -331,8 +343,7 @@ function startPolling() {
     if (now - lastPoll < interval - 500) { state.taskPollTimer = setTimeout(poll, interval); return; }
     lastPoll = now;
     try {
-      await loadTasks();
-      await refreshSelectedTaskDetail();
+      await refreshTransferData();
     } catch(e) {}
     interval = hasActiveTasks() ? fast : slow;
     state.taskPollTimer = setTimeout(poll, interval);
@@ -344,6 +355,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.taskPollTimer) {
     clearTimeout(state.taskPollTimer);
     state.taskPollTimer = null;
+    refreshTransferData().catch(() => {});
     startPolling();
   }
 });
@@ -384,10 +396,14 @@ async function checkAuthStatus() {
     const state = await resp.json();
     if (!state || !state.step) return;
     switch (state.step) {
-      case 'pending': hideLogin(); return;
+      case 'pending':
+        hideLogin();
+        await refreshTransferData();
+        startPolling();
+        return;
       case 'done': case 'none':
         hideLogin();
-        loadTasks();
+        await refreshTransferData();
         startPolling();
         return;
       case 'phone': showLoginStep('phone'); if (state.error) showLoginError(state.error); break;

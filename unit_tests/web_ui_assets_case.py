@@ -221,10 +221,30 @@ class WebUiAssetsCase(unittest.TestCase):
 
     def test_task_detail_progress_refreshes_without_manual_page_reload(self):
         self.assertIn('function refreshSelectedTaskDetail', WEB_UI_HTML)
+        self.assertIn('function refreshTransferData', WEB_UI_HTML)
+        self.assertIn('refreshTransferData();', WEB_UI_HTML)
+        self.assertIn('case \'pending\':', WEB_UI_HTML)
+        self.assertIn('startPolling();', WEB_UI_HTML)
         self.assertIn('refreshSelectedTaskDetail();', WEB_UI_HTML)
         self.assertIn("{ silent: true })", WEB_UI_HTML)
+        self.assertIn("return t.status === 'pending' || t.status === 'running';", WEB_UI_MOBILE_HTML)
         self.assertIn('function refreshOpenTaskSheet', WEB_UI_MOBILE_HTML)
         self.assertIn('refreshOpenTaskSheet();', WEB_UI_MOBILE_HTML)
+
+    def test_task_items_table_uses_single_line_columns_except_file(self):
+        header = (
+            '<th class="task-item-file">文件</th><th class="task-item-size">大小</th>'
+            '<th class="task-item-progress">进度/速度</th><th class="task-item-source">来源</th>'
+            '<th class="task-item-status">状态</th>'
+        )
+        self.assertIn(header, WEB_UI_HTML)
+        self.assertNotIn('<th>文件</th><th>大小</th><th>进度/速度</th><th>来源</th><th>目标</th><th>状态</th>', WEB_UI_HTML)
+        self.assertIn('.task-items-table{', WEB_UI_HTML)
+        self.assertIn('min-width:840px', WEB_UI_HTML)
+        self.assertIn('table-layout:fixed', WEB_UI_HTML)
+        self.assertIn('.task-items-table .task-item-col-size{width:112px}', WEB_UI_HTML)
+        self.assertIn('.task-items-table .task-item-col-status{width:118px}', WEB_UI_HTML)
+        self.assertIn('overflow-wrap:anywhere', WEB_UI_HTML)
 
     def test_auth_flow_js(self):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)

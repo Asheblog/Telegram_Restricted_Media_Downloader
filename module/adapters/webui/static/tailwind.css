@@ -345,6 +345,41 @@
     @apply bg-primary-soft;
   }
 
+  .task-items-table {
+    min-width: 840px;
+    table-layout: fixed;
+  }
+
+  .task-items-table .task-item-col-file { width: 34%; }
+  .task-items-table .task-item-col-size { width: 112px; }
+  .task-items-table .task-item-col-progress { width: 220px; }
+  .task-items-table .task-item-col-source { width: 220px; }
+  .task-items-table .task-item-col-status { width: 118px; }
+
+  .task-items-table th,
+  .task-items-table td {
+    white-space: nowrap;
+  }
+
+  .task-items-table .task-item-file {
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.45;
+  }
+
+  .task-items-table .task-item-size,
+  .task-items-table .task-item-status {
+    min-width: 112px;
+  }
+
+  .task-items-table .task-item-progress,
+  .task-items-table .task-item-source {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* Badges */
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;

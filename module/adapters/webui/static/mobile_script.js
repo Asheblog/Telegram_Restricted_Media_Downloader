@@ -39,6 +39,8 @@ async function checkAuthStatus() {
       case 'pending':
         var container = document.getElementById('login-container');
         if (container) container.classList.remove('active');
+        await loadCurrentView();
+        startPolling();
         return;
       case 'done': case 'none':
         hideLogin();
@@ -161,19 +163,33 @@ var pollTimer = null;
 var initialLoadDone = false;
 var mobileSettingsLoadPromise = null;
 
-function hasActiveTasks() { return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) { return t.status === 'running'; })); }
+function hasActiveTasks() {
+  return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) {
+    return t.status === 'pending' || t.status === 'running';
+  }));
+}
 
 function startPolling() {
   stopPolling();
   initialLoadDone = true;
 
   async function poll() {
+    if (document.hidden) {
+      pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+      return;
+    }
     await loadCurrentView();
     pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
   }
 
   poll();
 }
+
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) return;
+  loadCurrentView();
+  startPolling();
+});
 
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
