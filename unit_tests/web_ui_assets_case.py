@@ -257,6 +257,14 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("renderMediaError", WEB_UI_HTML)
         self.assertIn("t('media.scanning')", WEB_UI_HTML)
 
+    def test_media_cleanup_button_stays_in_header(self):
+        self.assertIn('id="media-actions"', WEB_UI_HTML)
+        self.assertIn('id="media-cleanup-btn"', WEB_UI_HTML)
+        self.assertIn('disabled data-i18n="media.cleanup"', WEB_UI_HTML)
+        self.assertIn("function updateMediaCleanupButton", WEB_UI_HTML)
+        self.assertIn("document.addEventListener('change', function(e) {", WEB_UI_HTML)
+        self.assertNotIn('id="media-cleanup-actions"', WEB_UI_HTML)
+
     def test_webui_session_expiry_redirects_to_login_page(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
         self.assertIn('function redirectToLoginPage', combined)

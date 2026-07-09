@@ -1211,14 +1211,22 @@ function setMediaScanButtonLoading(isLoading) {
   if (label) label.textContent = isLoading ? t('media.scanning') : t('media.scan');
 }
 
+function updateMediaCleanupButton() {
+  const btn = $('#media-cleanup-btn');
+  if (!btn) return;
+  btn.disabled = $$('.media-cb:checked').length === 0;
+}
+
 async function loadMedia() {
   const container = $('#media-result');
   try {
     setMediaScanButtonLoading(true);
+    updateMediaCleanupButton();
     if (container) {
       container.classList.remove('hidden');
       container.style.display = '';
       container.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div><div class="text-xs text-muted mt-2">' + t('media.scanning') + '</div></div>';
+      updateMediaCleanupButton();
     }
     const data = await fetchJson('/api/media/scan');
     mediaScanResult = data;
@@ -1266,9 +1274,6 @@ function renderMediaResult(data) {
           '<th>' + t('media.mtime') + '</th>' +
         '</tr></thead><tbody id="media-orphans-tbody"></tbody></table>' +
       '</div>' +
-    '</div>' +
-    '<div class="flex items-center gap-3 pt-3 border-t border-line hidden" id="media-cleanup-actions">' +
-      '<button class="btn btn-danger btn-sm" id="media-cleanup-btn">' + t('media.cleanup') + '</button>' +
     '</div>';
 
   const ti = data.transfer_items || {};
@@ -1314,16 +1319,17 @@ function renderMediaResult(data) {
   if (!items.length && !files.length) {
     container.insertAdjacentHTML('beforeend', '<div class="p-6 text-center text-muted text-sm">' + t('media.empty') + '</div>');
   }
-  showMediaElement($('#media-cleanup-actions'), Boolean(items.length || files.length));
 
   /* select-all */
   $('#media-select-all-items').onclick = function() {
     $$('#media-items-tbody .media-cb').forEach(cb => cb.checked = this.checked);
+    updateMediaCleanupButton();
   };
   $('#media-select-all-orphans').onclick = function() {
     $$('#media-orphans-tbody .media-cb').forEach(cb => cb.checked = this.checked);
+    updateMediaCleanupButton();
   };
-  $('#media-cleanup-btn')?.addEventListener('click', doMediaCleanup);
+  updateMediaCleanupButton();
 }
 
 function renderMediaError(error) {
@@ -1335,6 +1341,7 @@ function renderMediaError(error) {
     '<div class="p-6 rounded-lg border border-line bg-danger-bg text-danger text-sm">' +
       esc(translateApiError(error, 'form.requestFailed')) +
     '</div>';
+  updateMediaCleanupButton();
 }
 
 async function doMediaCleanup() {
@@ -1378,6 +1385,11 @@ async function loadCleanupLogs() {
 
 $('#media-scan-btn')?.addEventListener('click', loadMedia);
 $('#media-cleanup-btn')?.addEventListener('click', doMediaCleanup);
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.classList && e.target.classList.contains('media-cb')) {
+    updateMediaCleanupButton();
+  }
+});
 
 /* ====== Init ====== */
 (function init() {
