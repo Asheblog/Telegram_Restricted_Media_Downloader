@@ -1244,6 +1244,7 @@ def save_runtime_settings(payload: dict) -> dict:
         },
         gc=global_config
     )
+    user_config = UserConfig.normalize_runtime_numbers(user_config)
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},

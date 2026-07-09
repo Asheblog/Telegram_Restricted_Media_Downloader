@@ -422,6 +422,84 @@ class TransferStoreWebUiCase(unittest.TestCase):
             GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']
         )
 
+    def test_user_config_normalizes_runtime_numeric_settings(self):
+        UserConfig = import_with_clean_argv(
+            lambda: __import__('module.config', fromlist=['UserConfig'])
+        ).UserConfig
+
+        config = UserConfig.normalize_runtime_numbers({
+            'max_tasks': {
+                'download': '2',
+                'upload': '0'
+            },
+            'max_retries': {
+                'download': '7',
+                'upload': None
+            }
+        })
+
+        self.assertEqual(2, config['max_tasks']['download'])
+        self.assertEqual(1, config['max_tasks']['upload'])
+        self.assertEqual(7, config['max_retries']['download'])
+        self.assertEqual(3, config['max_retries']['upload'])
+        self.assertIs(int, type(config['max_tasks']['download']))
+        self.assertIs(int, type(config['max_retries']['download']))
+
+    def test_update_web_settings_keeps_runtime_task_limits_numeric_from_string_config(self):
+        from module.downloader import TelegramRestrictedMediaDownloader
+
+        saved_user_configs = []
+        saved_global_configs = []
+
+        def save_global_config(config):
+            saved_global_configs.append(config)
+            downloader.gc.config = config
+
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.app = SimpleNamespace(
+            config={
+                'api_id': '123',
+                'api_hash': 'hash',
+                'bot_token': '',
+                'session_directory': '/tmp/session',
+                'save_directory': '/tmp/downloads',
+                'temp_directory': '/tmp/temp',
+                'download_type': ['video'],
+                'is_shutdown': False,
+                'proxy': {},
+                'max_tasks': {
+                    'download': '1',
+                    'upload': '1'
+                },
+                'max_retries': {
+                    'download': '5',
+                    'upload': '3'
+                }
+            },
+            config_path='/tmp/config.yaml',
+            save_config=saved_user_configs.append,
+            TEMP_DIRECTORY='/tmp/temp-default',
+            WORK_DIRECTORY='/tmp/session-default'
+        )
+        downloader.gc = SimpleNamespace(
+            config={'notice': True},
+            save_config=save_global_config
+        )
+        downloader.download_upload_window = SimpleNamespace(notify_limit_changed=lambda: None)
+        downloader.local_storage_guard = None
+
+        settings = downloader.update_web_settings({'global': {'notice': False}})
+
+        self.assertFalse(settings['global']['notice'])
+        self.assertEqual(1, downloader.app.max_download_task)
+        self.assertEqual(1, downloader.app.max_upload_task)
+        self.assertEqual(5, downloader.app.max_download_retries)
+        self.assertEqual(3, downloader.app.max_upload_retries)
+        self.assertIs(int, type(downloader.app.max_download_task))
+        self.assertIs(int, type(downloader.app.max_upload_task))
+        self.assertEqual(1, saved_user_configs[0]['max_tasks']['download'])
+        self.assertEqual(5, saved_user_configs[0]['max_retries']['download'])
+
     def test_global_target_profile_archive_config_is_completed_recursively(self):
         GlobalConfig = import_with_clean_argv(
             lambda: __import__('module.config', fromlist=['GlobalConfig'])

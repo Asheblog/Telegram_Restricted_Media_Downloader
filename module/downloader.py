@@ -62,7 +62,7 @@ from module import (
 from module.filter import Filter, MessageFilter
 from module.app import Application
 from module.app import DownloadFileName
-from module.config import GlobalConfig
+from module.config import GlobalConfig, UserConfig
 from module.parser import PARSE_ARGS
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
@@ -977,14 +977,15 @@ class TelegramRestrictedMediaDownloader:
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
             allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter'}
         )
+        user_config = UserConfig.normalize_runtime_numbers(user_config)
         self.app.save_config(user_config)
         self.app.config = user_config
         self.app.download_type = user_config.get('download_type')
         self.app.is_shutdown = user_config.get('is_shutdown')
-        self.app.max_download_task = (user_config.get('max_tasks') or {}).get('download', 1) or 1
-        self.app.max_upload_task = (user_config.get('max_tasks') or {}).get('upload', 1) or 1
-        self.app.max_download_retries = user_config.get('max_retries', {'download': 5}).get('download')
-        self.app.max_upload_retries = (user_config.get('max_retries') or {}).get('upload', 3) or 3
+        self.app.max_download_task = user_config['max_tasks']['download']
+        self.app.max_upload_task = user_config['max_tasks']['upload']
+        self.app.max_download_retries = user_config['max_retries']['download']
+        self.app.max_upload_retries = user_config['max_retries']['upload']
         self.app.save_directory = user_config.get('save_directory')
         self.app.temp_directory = PARSE_ARGS.temp or (user_config.get('temp_directory') or self.app.TEMP_DIRECTORY)
         self.app.work_directory = PARSE_ARGS.session or (

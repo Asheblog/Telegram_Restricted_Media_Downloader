@@ -169,6 +169,32 @@ class UserConfig(BaseConfig):
     ABSOLUTE_BACKUP_DIRECTORY: str = os.path.join(DIRECTORY_NAME, BACKUP_DIRECTORY)
     WORK_DIRECTORY: str = os.path.join(os.getcwd(), 'sessions')
 
+    @staticmethod
+    def _positive_int(value, default: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed > 0 else default
+
+    @classmethod
+    def normalize_runtime_numbers(cls, config: dict) -> dict:
+        if not isinstance(config, dict):
+            return config
+        max_tasks = config.get('max_tasks')
+        if not isinstance(max_tasks, dict):
+            max_tasks = {}
+            config['max_tasks'] = max_tasks
+        max_retries = config.get('max_retries')
+        if not isinstance(max_retries, dict):
+            max_retries = {}
+            config['max_retries'] = max_retries
+        max_tasks['download'] = cls._positive_int(max_tasks.get('download'), 1)
+        max_tasks['upload'] = cls._positive_int(max_tasks.get('upload'), 1)
+        max_retries['download'] = cls._positive_int(max_retries.get('download'), 5)
+        max_retries['upload'] = cls._positive_int(max_retries.get('upload'), 3)
+        return config
+
     def __init__(self):
         super().__init__()
         self.config_path: str = PARSE_ARGS.config if PARSE_ARGS.config.endswith('.yaml') else UserConfig.PATH
@@ -186,16 +212,17 @@ class UserConfig(BaseConfig):
         self.re_config: bool = False
         self.config_guide()
         self.config: dict = self.load_config()  # v1.3.0 修复重复询问重新配置文件。
+        self.config = self.normalize_runtime_numbers(self.config)
         self.api_hash = self.config.get('api_hash')
         self.api_id = self.config.get('api_id')
         self.bot_token = self.config.get('bot_token')
         self.download_type: list = self.config.get('download_type')
         self.is_shutdown: bool = self.config.get('is_shutdown')
         self.links: str = self.config.get('links')
-        self.max_download_task: int = int((self.config.get('max_tasks') or {}).get('download', 1) or 1)
-        self.max_download_retries: int = int(self.config.get('max_retries', {'download': 5}).get('download', 5) or 5)
-        self.max_upload_task: int = int((self.config.get('max_tasks') or {}).get('upload', 1) or 1)
-        self.max_upload_retries: int = int((self.config.get('max_retries') or {}).get('upload', 3) or 3)
+        self.max_download_task: int = (self.config.get('max_tasks') or {}).get('download', 1)
+        self.max_download_retries: int = (self.config.get('max_retries') or {}).get('download', 5)
+        self.max_upload_task: int = (self.config.get('max_tasks') or {}).get('upload', 1)
+        self.max_upload_retries: int = (self.config.get('max_retries') or {}).get('upload', 3)
         self.proxy: dict = self.config.get('proxy', {})
         self.enable_proxy: bool = self.proxy.get('enable_proxy', False)
         self.save_directory: str = self.config.get('save_directory')
@@ -557,6 +584,7 @@ class UserConfig(BaseConfig):
                 'download': _max_download_retries,
                 'upload': 3}
         )['upload'] = (pre_load_config.get('max_retries') or {}).get('upload', 3) or 3
+        pre_load_config = self.normalize_runtime_numbers(pre_load_config)
         if not PARSE_ARGS.session:
             _session_directory = pre_load_config.get(
                 'session_directory',
