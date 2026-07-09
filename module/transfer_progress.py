@@ -16,6 +16,7 @@ from module.diagnostics import RichDiagnosticAdapter
 from module.enums import UploadStatus, KeyWord
 from module.language import _t
 from module.stdio import MetaData
+from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import TransferStatus
 
 
@@ -402,7 +403,7 @@ class TransferProgressTracker:
             temp_path=with_upload.get('temp_path'),
             source_folder=with_upload.get('source_folder'),
             archive_status='pending' if with_upload.get('target_profile') == 'pikpak' else None,
-            archive_match_original_name=True if with_upload.get('target_profile') == 'pikpak' else None,
+            archive_match_original_name=False if with_upload.get('target_profile') == 'pikpak' else None,
             phase='uploading',
             status=TransferStatus.RUNNING
         )
@@ -475,6 +476,14 @@ class TransferProgressTracker:
         task_id = meta.get('task_id')
         item_id = meta.get('item_id')
         if upload_task.status == UploadStatus.SENT:
+            match_original_name = False
+            store = self.transfer_store
+            if store and item_id:
+                item = store.get_item(int(item_id))
+                if item is not None:
+                    stored = PikpakIntegrationManager.transfer_item_archive_match_original_name(item)
+                    if stored is not None:
+                        match_original_name = stored
             archive_result = self._archive_pikpak_item(
                 target_profile=meta.get('target_profile'),
                 item_id=item_id,
@@ -485,7 +494,7 @@ class TransferProgressTracker:
                 file_name=upload_task.file_name,
                 file_size=getattr(upload_task, 'file_size', None),
                 transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
-                match_original_name=False
+                match_original_name=match_original_name
             )
             if (
                     archive_result is not None
