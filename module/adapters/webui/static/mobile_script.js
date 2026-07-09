@@ -1006,30 +1006,80 @@ async function loadMobileOperations() {
 // ---------------------------------------------------------------------------
 // Records
 // ---------------------------------------------------------------------------
-async function loadMobileRecords() {
+const MOBILE_RECORDS_PAGE_SIZE = 50;
+
+async function loadMobileRecords(page) {
+  if (page !== undefined) state.recordsPage = page;
+  var currentPage = state.recordsPage || 1;
   var container = document.getElementById('mob-records-list');
+  var pagEl = document.getElementById('mob-records-pagination');
+  var clearBtn = document.getElementById('mob-records-clear-btn');
   if (!container) return;
   try {
-    var data = await fetchJson('/api/download-records?limit=50');
-    if (!data || !Array.isArray(data.records) || data.records.length === 0) {
+    var offset = (currentPage - 1) * MOBILE_RECORDS_PAGE_SIZE;
+    var data = await fetchJson('/api/download-records?limit=' + MOBILE_RECORDS_PAGE_SIZE + '&offset=' + offset);
+    var records = data && Array.isArray(data.records) ? data.records : [];
+    var total = Number(data && data.total || 0);
+    var totalPages = Math.max(1, Math.ceil(total / MOBILE_RECORDS_PAGE_SIZE) || 1);
+    state.recordsTotal = total;
+
+    if (currentPage > totalPages && total > 0) {
+      state.recordsPage = totalPages;
+      return loadMobileRecords(totalPages);
+    }
+
+    if (clearBtn) clearBtn.disabled = total === 0;
+
+    if (!records.length) {
       container.innerHTML = '<div class="mob-empty" data-i18n="records.empty">还没有下载成功记录。</div>';
+      if (pagEl) pagEl.innerHTML = '';
       return;
     }
     var html = '';
-    data.records.forEach(function(r) {
+    records.forEach(function(r) {
       html += '<div class="mob-card">' +
-        '<div class="mob-card__row"><span class="label">频道</span><span>' + esc(r.chat_id || r.chat_title || '-') + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">消息</span><span>' + esc(r.message_id || '-') + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">文件</span><span>' + esc(r.file_name || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">频道</span><span>' + esc(r.source_chat_id || r.chat_id || r.chat_title || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">消息</span><span>' + esc(r.source_message_id || r.message_id || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">文件</span><span>' + esc(r.file_name || r.file_path || '-') + '</span></div>' +
         '<div class="mob-card__row"><span class="label">大小</span><span>' + (r.file_size ? formatBytes(r.file_size) : '-') + '</span></div>' +
         '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(r.updated_at || '') + '</span></div>' +
       '</div>';
     });
     container.innerHTML = html;
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'mob-records',
+        page: currentPage,
+        pageSize: MOBILE_RECORDS_PAGE_SIZE,
+        total: total,
+        variant: 'mobile'
+      });
+      bindPaginationBar('mob-records', currentPage, totalPages, function(newPage) {
+        loadMobileRecords(newPage);
+      });
+    }
   } catch (e) {
     container.innerHTML = '<div class="mob-empty">加载失败</div>';
+    if (pagEl) pagEl.innerHTML = '';
   }
 }
+
+document.getElementById('mob-records-clear-btn')?.addEventListener('click', async function() {
+  if (!confirm(t('records.confirmClear'))) return;
+  try {
+    var resp = await fetch('/api/download-records', { method: 'DELETE' });
+    if (resp.status === 401) { redirectToLoginPage(); return; }
+    if (!resp.ok) {
+      var data = {};
+      try { data = await resp.json(); } catch (e) {}
+      throw data;
+    }
+    state.recordsPage = 1;
+    await loadMobileRecords();
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Statistics

@@ -108,7 +108,7 @@ function apiPayload(url) {
       ],
     };
   }
-  if (pathname === '/api/download-records') return {records: []};
+  if (pathname === '/api/download-records') return {records: [], total: 0, limit: 50, offset: 0};
   if (pathname === '/api/statistics') {
     return {
       tables: {

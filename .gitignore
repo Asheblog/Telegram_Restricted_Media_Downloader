@@ -34,3 +34,4 @@ AGENTS.md
 !rar.exe
 !requirements.txt
 .venv
+.cursor/

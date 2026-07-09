@@ -483,7 +483,20 @@ class WebUiServer:
                     })
                     return
                 if parsed.path == '/api/download-records':
-                    self._send_json({'records': server.store.list_download_success_records()})
+                    query = parse_qs(parsed.query)
+                    limit = self._query_int(query, 'limit', 50)
+                    offset = self._query_int(query, 'offset', 0)
+                    total = server.store.count_download_success_records()
+                    records = server.store.list_download_success_records(
+                        limit=limit,
+                        offset=offset
+                    )
+                    self._send_json({
+                        'records': records,
+                        'total': total,
+                        'limit': limit,
+                        'offset': offset
+                    })
                     return
                 if parsed.path == '/api/statistics':
                     self._send_json(server.statistics())
@@ -761,6 +774,10 @@ class WebUiServer:
                 if not self._check_auth():
                     return
                 parsed = urlparse(self.path)
+                if parsed.path == '/api/download-records':
+                    cleared_count = server.store.clear_download_success_records()
+                    self._send_json({'cleared': True, 'count': cleared_count})
+                    return
                 if parsed.path.startswith('/api/watches/'):
                     watch_id = unquote(parsed.path[len('/api/watches/'):])
                     if not watch_id:

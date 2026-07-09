@@ -937,17 +937,36 @@ class TransferStore:
             return None
         return record
 
-    def list_download_success_records(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def count_download_success_records(self) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                'SELECT COUNT(*) AS total FROM download_success_records'
+            ).fetchone()
+            return int(row['total'] if row else 0)
+
+    def list_download_success_records(
+            self,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
         with self.connect() as conn:
             rows = conn.execute(
                 '''
                 SELECT * FROM download_success_records
                 ORDER BY updated_at DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 ''',
-                (limit,)
+                (limit, offset)
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def clear_download_success_records(self) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute('DELETE FROM download_success_records')
+            conn.commit()
+            return int(cursor.rowcount or 0)
 
     # --- cleanup_log ---
 

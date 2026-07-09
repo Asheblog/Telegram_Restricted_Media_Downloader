@@ -821,6 +821,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <div class="panel">
     <div class="panel-header">
       <h3 data-i18n="records.title">下载记录</h3>
+      <button class="btn btn-danger btn-sm" id="records-clear-btn" disabled data-i18n="records.clear">清空记录</button>
     </div>
     <div class="overflow-auto">
       <table class="data-table">
@@ -837,6 +838,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </table>
       <div id="records-empty" class="p-8 text-center text-muted text-sm" data-i18n="records.empty">还没有下载成功记录。</div>
     </div>
+    <div id="records-pagination"></div>
   </div>
 </div>
 
@@ -1259,6 +1261,7 @@ const i18n = {
     'items.retryFailed': '重试失败项',
     'items.page.previous': '上一页',
     'items.page.next': '下一页',
+    'pagination.pageInfo': '第 {page} / {pages} 页 · 共 {total} 条',
     'events.title': '最近事件',
     'events.empty': '没有事件记录。',
     'events.loadMore': '加载更多',
@@ -1317,6 +1320,9 @@ const i18n = {
     'records.size': '大小',
     'records.updated': '更新时间',
     'records.empty': '还没有下载成功记录。',
+    'records.clear': '清空记录',
+    'records.confirmClear': '确定清空全部下载记录？此操作不可撤销。',
+    'records.cleared': '下载记录已清空。',
     'form.createFailed': '创建失败。',
     'form.requestFailed': '请求失败。',
     'form.creatingTransfer': '正在分析来源消息范围…',
@@ -1499,6 +1505,7 @@ const i18n = {
     'items.retryFailed': 'Retry failed',
     'items.page.previous': 'Prev',
     'items.page.next': 'Next',
+    'pagination.pageInfo': 'Page {page} / {pages} · {total} total',
     'events.title': 'Recent Events',
     'events.empty': 'No events.',
     'events.loadMore': 'Load more',
@@ -1557,6 +1564,9 @@ const i18n = {
     'records.size': 'Size',
     'records.updated': 'Updated',
     'records.empty': 'No download records yet.',
+    'records.clear': 'Clear All',
+    'records.confirmClear': 'Clear all download records? This cannot be undone.',
+    'records.cleared': 'Download records cleared.',
     'form.createFailed': 'Creation failed.',
     'form.requestFailed': 'Request failed.',
     'form.creatingTransfer': 'Analyzing source message range…',
@@ -1630,6 +1640,9 @@ const state = {
   taskPollTimer: null,
   watchEventCache: {},
   watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
+  recordsPage: 1,
+  recordsPageSize: 50,
+  recordsTotal: 0,
 };
 window.state = state;
 
@@ -1664,6 +1677,63 @@ function esc(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+
+function paginationMeta(total, pageSize, page) {
+  const safePageSize = Math.max(1, Number(pageSize || DEFAULT_PAGE_SIZE));
+  const safeTotal = Math.max(0, Number(total || 0));
+  const totalPages = Math.max(1, Math.ceil(safeTotal / safePageSize) || 1);
+  const safePage = Math.min(Math.max(1, Number(page || 1)), totalPages);
+  return {
+    page: safePage,
+    pageSize: safePageSize,
+    total: safeTotal,
+    totalPages: totalPages
+  };
+}
+
+function renderPaginationBar(options) {
+  options = options || {};
+  const meta = paginationMeta(options.total, options.pageSize, options.page);
+  if (meta.totalPages <= 1 && !options.alwaysShow) return '';
+  const prefix = options.prefix || 'pagination';
+  const variant = options.variant || 'desktop';
+  const pageInfoKey = options.pageInfoKey || 'pagination.pageInfo';
+  const pageInfo = t(pageInfoKey)
+    .replace('{page}', meta.page)
+    .replace('{pages}', meta.totalPages)
+    .replace('{total}', meta.total);
+  if (variant === 'mobile') {
+    return '<div class="mob-sheet-pagination">' +
+      '<span class="mob-pagination-info">' + esc(pageInfo) + '</span>' +
+      '<div class="mob-pagination-actions flex gap-2">' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="' + prefix + '-prev" ' + (meta.page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="' + prefix + '-next" ' + (meta.page >= meta.totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+      '</div></div>';
+  }
+  return '<div class="pagination-bar flex items-center justify-between px-[18px] py-2 pb-[14px] gap-3 flex-wrap">' +
+    '<span class="text-xs text-muted">' + esc(pageInfo) + '</span>' +
+    '<div class="flex gap-2">' +
+      '<button class="btn btn-sm" id="' + prefix + '-prev" ' + (meta.page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+      '<button class="btn btn-sm" id="' + prefix + '-next" ' + (meta.page >= meta.totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+    '</div></div>';
+}
+
+function bindPaginationBar(prefix, page, totalPages, onPageChange) {
+  const prevBtn = $('#' + prefix + '-prev');
+  const nextBtn = $('#' + prefix + '-next');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', function() {
+      if (page > 1) onPageChange(page - 1);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', function() {
+      if (page < totalPages) onPageChange(page + 1);
+    });
+  }
+}
+
 function applyLanguage() {
   $$('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
@@ -1677,6 +1747,7 @@ function applyLanguageAndRefresh() {
   if (state.activeView === 'transfers' && typeof renderTasks === 'function') renderTasks();
   if (state.activeView === 'watches' && typeof renderWatches === 'function') renderWatches();
   if (state.activeView === 'settings' && typeof renderSettings === 'function') renderSettings();
+  if (state.activeView === 'records' && typeof loadRecords === 'function') loadRecords();
   if (typeof renderMobTasks === 'function') renderMobTasks();
   if (typeof renderMobWatches === 'function') renderMobWatches();
 }
@@ -2114,21 +2185,14 @@ async function loadTaskItems(taskId, status, options) {
     const summaryKey = statusToSummaryKey[status] || status;
     const totalItems = state.itemData[taskId] ? (state.itemData[taskId].summary || {})[summaryKey] || 0 : 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / 50));
-    pagEl.innerHTML =
-      '<span class="text-xs text-muted">第 ' + page + ' / ' + totalPages + ' 页</span>' +
-      '<div class="flex gap-2">' +
-        '<button class="btn btn-sm" ' + (page <= 1 ? 'disabled' : '') + ' id="items-prev-page">' + t('items.page.previous') + '</button>' +
-        '<button class="btn btn-sm" ' + (page >= totalPages ? 'disabled' : '') + ' id="items-next-page">' + t('items.page.next') + '</button>' +
-      '</div>';
-
-    const prevBtn = $('#items-prev-page');
-    const nextBtn = $('#items-next-page');
-    if (prevBtn) prevBtn.addEventListener('click', () => {
-      state.itemPages[state.activeItemStatus] = Math.max(1, page - 1);
-      loadTaskItems(taskId, state.activeItemStatus);
+    pagEl.innerHTML = renderPaginationBar({
+      prefix: 'items',
+      page: page,
+      pageSize: 50,
+      total: totalItems
     });
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-      state.itemPages[state.activeItemStatus] = page + 1;
+    bindPaginationBar('items', page, totalPages, function(newPage) {
+      state.itemPages[state.activeItemStatus] = newPage;
       loadTaskItems(taskId, state.activeItemStatus);
     });
   } catch(e) {
@@ -2408,15 +2472,35 @@ $('#btn-logout').addEventListener('click', async () => {
 });
 
 /* ====== Records ====== */
-async function loadRecords() {
+const RECORDS_PAGE_SIZE = 50;
+
+async function loadRecords(page) {
+  if (page !== undefined) state.recordsPage = page;
+  const currentPage = state.recordsPage || 1;
   const tbody = $('#records-tbody');
   const empty = $('#records-empty');
+  const pagEl = $('#records-pagination');
+  const clearBtn = $('#records-clear-btn');
   try {
-    const data = await fetchJson('/api/download-records');
+    const offset = (currentPage - 1) * RECORDS_PAGE_SIZE;
+    const data = await fetchJson('/api/download-records?limit=' + RECORDS_PAGE_SIZE + '&offset=' + offset);
     const records = data.records || [];
+    const total = Number(data.total || 0);
+    state.records = records;
+    state.recordsTotal = total;
+    const totalPages = Math.max(1, Math.ceil(total / RECORDS_PAGE_SIZE) || 1);
+
+    if (currentPage > totalPages && total > 0) {
+      state.recordsPage = totalPages;
+      return loadRecords(totalPages);
+    }
+
+    if (clearBtn) clearBtn.disabled = total === 0;
+
     if (!records.length) {
       tbody.innerHTML = '';
       empty.style.display = '';
+      if (pagEl) pagEl.innerHTML = '';
       return;
     }
     empty.style.display = 'none';
@@ -2427,8 +2511,37 @@ async function loadRecords() {
       '<td class="text-xs">' + fmtSize(r.file_size) + '</td>' +
       '<td class="text-xs text-muted">' + fmtTime(r.updated_at) + '</td>' +
       '</tr>').join('');
+
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'records',
+        page: currentPage,
+        pageSize: RECORDS_PAGE_SIZE,
+        total: total
+      });
+      bindPaginationBar('records', currentPage, totalPages, function(newPage) {
+        loadRecords(newPage);
+      });
+    }
   } catch(e) {}
 }
+
+$('#records-clear-btn')?.addEventListener('click', async function() {
+  if (!confirm(t('records.confirmClear'))) return;
+  try {
+    const resp = await fetch('/api/download-records', { method: 'DELETE' });
+    if (resp.status === 401) { redirectToLoginPage(); return; }
+    if (!resp.ok) {
+      let data = {};
+      try { data = await resp.json(); } catch(e) {}
+      throw data;
+    }
+    state.recordsPage = 1;
+    await loadRecords();
+  } catch(e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  }
+});
 
 /* ====== Watches ====== */
 async function loadWatches() {
@@ -2599,18 +2712,15 @@ async function loadWatchHistoryPage() {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     state.watchHistory.total = total;
     body.innerHTML = renderWatchEventRows(items);
-    pagination.innerHTML =
-      '<span class="text-xs text-muted">' + esc(t('watches.pageInfo').replace('{page}', page).replace('{pages}', totalPages).replace('{total}', total)) + '</span>' +
-      '<div class="table-actions flex gap-2">' +
-        '<button class="btn btn-sm" id="watch-history-prev" ' + (page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
-        '<button class="btn btn-sm" id="watch-history-next" ' + (page >= totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
-      '</div>';
-    $('#watch-history-prev')?.addEventListener('click', function() {
-      state.watchHistory.page = Math.max(1, page - 1);
-      loadWatchHistoryPage();
+    pagination.innerHTML = renderPaginationBar({
+      prefix: 'watch-history',
+      page: page,
+      pageSize: pageSize,
+      total: total,
+      pageInfoKey: 'watches.pageInfo'
     });
-    $('#watch-history-next')?.addEventListener('click', function() {
-      state.watchHistory.page = page + 1;
+    bindPaginationBar('watch-history', page, totalPages, function(newPage) {
+      state.watchHistory.page = newPage;
       loadWatchHistoryPage();
     });
   } catch(e) {
@@ -3132,14 +3242,20 @@ async function loadMedia() {
   }
 }
 
-function renderMediaPagination(prefix, page, totalPages, onChange) {
+function renderMediaPagination(prefix, page, totalPages, totalCount) {
   if (totalPages <= 1) return '';
-  return '<div class="flex items-center justify-between px-0 py-2 gap-3 flex-wrap">' +
-    '<span class="text-xs text-muted">第 ' + (page + 1) + ' / ' + totalPages + ' 页</span>' +
-    '<div class="flex gap-2">' +
-      '<button class="btn btn-sm" ' + (page <= 0 ? 'disabled' : '') + ' id="' + prefix + '-prev">' + t('items.page.previous') + '</button>' +
-      '<button class="btn btn-sm" ' + (page >= totalPages - 1 ? 'disabled' : '') + ' id="' + prefix + '-next">' + t('items.page.next') + '</button>' +
-    '</div></div>';
+  return renderPaginationBar({
+    prefix: prefix,
+    page: page + 1,
+    pageSize: MEDIA_PAGE_SIZE,
+    total: totalCount
+  });
+}
+
+function bindMediaPagination(prefix, currentPage, totalPages, onChange) {
+  bindPaginationBar(prefix, currentPage + 1, totalPages, function(newPage) {
+    onChange(newPage - 1);
+  });
 }
 
 function renderMediaResult(data) {
@@ -3207,7 +3323,7 @@ function renderMediaResult(data) {
     } else {
       $('#media-items-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
     }
-    $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, null);
+    $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, ti.total_count || 0);
     bindMediaPagination('media-items', mediaItemsPage, totalItemsPages, function(newPage) {
       mediaItemsPage = newPage;
       loadMedia();
@@ -3232,7 +3348,7 @@ function renderMediaResult(data) {
     } else {
       $('#media-orphans-tbody').innerHTML = '<tr><td colspan="4" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
     }
-    $('#media-orphans-pagination').innerHTML = renderMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, null);
+    $('#media-orphans-pagination').innerHTML = renderMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, orph.total_count || 0);
     bindMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, function(newPage) {
       mediaOrphansPage = newPage;
       loadMedia();
@@ -3259,16 +3375,6 @@ function renderMediaResult(data) {
   updateMediaCleanupButton();
 }
 
-function bindMediaPagination(prefix, currentPage, totalPages, onChange) {
-  var prevBtn = $('#' + prefix + '-prev');
-  var nextBtn = $('#' + prefix + '-next');
-  if (prevBtn) prevBtn.addEventListener('click', function() {
-    if (currentPage > 0) onChange(currentPage - 1);
-  });
-  if (nextBtn) nextBtn.addEventListener('click', function() {
-    if (currentPage < totalPages - 1) onChange(currentPage + 1);
-  });
-}
 
 function renderMediaError(error) {
   const container = $('#media-result');
@@ -3873,7 +3979,11 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-statistics-list"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-records">
+      <div class="flex items-center justify-end gap-2 mb-3">
+        <button class="mob-btn mob-btn-sm mob-btn-danger" id="mob-records-clear-btn" disabled data-i18n="records.clear">清空记录</button>
+      </div>
       <div id="mob-records-list"></div>
+      <div id="mob-records-pagination"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-media">
       <button id="mob-media-scan-btn" class="mob-btn mob-btn-sm" style="width:100%;" data-i18n="media.scan">扫描可清理文件</button>
@@ -4081,6 +4191,7 @@ const i18n = {
     'items.retryFailed': '重试失败项',
     'items.page.previous': '上一页',
     'items.page.next': '下一页',
+    'pagination.pageInfo': '第 {page} / {pages} 页 · 共 {total} 条',
     'events.title': '最近事件',
     'events.empty': '没有事件记录。',
     'events.loadMore': '加载更多',
@@ -4139,6 +4250,9 @@ const i18n = {
     'records.size': '大小',
     'records.updated': '更新时间',
     'records.empty': '还没有下载成功记录。',
+    'records.clear': '清空记录',
+    'records.confirmClear': '确定清空全部下载记录？此操作不可撤销。',
+    'records.cleared': '下载记录已清空。',
     'form.createFailed': '创建失败。',
     'form.requestFailed': '请求失败。',
     'form.creatingTransfer': '正在分析来源消息范围…',
@@ -4321,6 +4435,7 @@ const i18n = {
     'items.retryFailed': 'Retry failed',
     'items.page.previous': 'Prev',
     'items.page.next': 'Next',
+    'pagination.pageInfo': 'Page {page} / {pages} · {total} total',
     'events.title': 'Recent Events',
     'events.empty': 'No events.',
     'events.loadMore': 'Load more',
@@ -4379,6 +4494,9 @@ const i18n = {
     'records.size': 'Size',
     'records.updated': 'Updated',
     'records.empty': 'No download records yet.',
+    'records.clear': 'Clear All',
+    'records.confirmClear': 'Clear all download records? This cannot be undone.',
+    'records.cleared': 'Download records cleared.',
     'form.createFailed': 'Creation failed.',
     'form.requestFailed': 'Request failed.',
     'form.creatingTransfer': 'Analyzing source message range…',
@@ -4452,6 +4570,9 @@ const state = {
   taskPollTimer: null,
   watchEventCache: {},
   watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
+  recordsPage: 1,
+  recordsPageSize: 50,
+  recordsTotal: 0,
 };
 window.state = state;
 
@@ -4486,6 +4607,63 @@ function esc(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+
+function paginationMeta(total, pageSize, page) {
+  const safePageSize = Math.max(1, Number(pageSize || DEFAULT_PAGE_SIZE));
+  const safeTotal = Math.max(0, Number(total || 0));
+  const totalPages = Math.max(1, Math.ceil(safeTotal / safePageSize) || 1);
+  const safePage = Math.min(Math.max(1, Number(page || 1)), totalPages);
+  return {
+    page: safePage,
+    pageSize: safePageSize,
+    total: safeTotal,
+    totalPages: totalPages
+  };
+}
+
+function renderPaginationBar(options) {
+  options = options || {};
+  const meta = paginationMeta(options.total, options.pageSize, options.page);
+  if (meta.totalPages <= 1 && !options.alwaysShow) return '';
+  const prefix = options.prefix || 'pagination';
+  const variant = options.variant || 'desktop';
+  const pageInfoKey = options.pageInfoKey || 'pagination.pageInfo';
+  const pageInfo = t(pageInfoKey)
+    .replace('{page}', meta.page)
+    .replace('{pages}', meta.totalPages)
+    .replace('{total}', meta.total);
+  if (variant === 'mobile') {
+    return '<div class="mob-sheet-pagination">' +
+      '<span class="mob-pagination-info">' + esc(pageInfo) + '</span>' +
+      '<div class="mob-pagination-actions flex gap-2">' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="' + prefix + '-prev" ' + (meta.page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="' + prefix + '-next" ' + (meta.page >= meta.totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+      '</div></div>';
+  }
+  return '<div class="pagination-bar flex items-center justify-between px-[18px] py-2 pb-[14px] gap-3 flex-wrap">' +
+    '<span class="text-xs text-muted">' + esc(pageInfo) + '</span>' +
+    '<div class="flex gap-2">' +
+      '<button class="btn btn-sm" id="' + prefix + '-prev" ' + (meta.page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
+      '<button class="btn btn-sm" id="' + prefix + '-next" ' + (meta.page >= meta.totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
+    '</div></div>';
+}
+
+function bindPaginationBar(prefix, page, totalPages, onPageChange) {
+  const prevBtn = $('#' + prefix + '-prev');
+  const nextBtn = $('#' + prefix + '-next');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', function() {
+      if (page > 1) onPageChange(page - 1);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', function() {
+      if (page < totalPages) onPageChange(page + 1);
+    });
+  }
+}
+
 function applyLanguage() {
   $$('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
@@ -4499,6 +4677,7 @@ function applyLanguageAndRefresh() {
   if (state.activeView === 'transfers' && typeof renderTasks === 'function') renderTasks();
   if (state.activeView === 'watches' && typeof renderWatches === 'function') renderWatches();
   if (state.activeView === 'settings' && typeof renderSettings === 'function') renderSettings();
+  if (state.activeView === 'records' && typeof loadRecords === 'function') loadRecords();
   if (typeof renderMobTasks === 'function') renderMobTasks();
   if (typeof renderMobWatches === 'function') renderMobWatches();
 }
@@ -5712,30 +5891,80 @@ async function loadMobileOperations() {
 // ---------------------------------------------------------------------------
 // Records
 // ---------------------------------------------------------------------------
-async function loadMobileRecords() {
+const MOBILE_RECORDS_PAGE_SIZE = 50;
+
+async function loadMobileRecords(page) {
+  if (page !== undefined) state.recordsPage = page;
+  var currentPage = state.recordsPage || 1;
   var container = document.getElementById('mob-records-list');
+  var pagEl = document.getElementById('mob-records-pagination');
+  var clearBtn = document.getElementById('mob-records-clear-btn');
   if (!container) return;
   try {
-    var data = await fetchJson('/api/download-records?limit=50');
-    if (!data || !Array.isArray(data.records) || data.records.length === 0) {
+    var offset = (currentPage - 1) * MOBILE_RECORDS_PAGE_SIZE;
+    var data = await fetchJson('/api/download-records?limit=' + MOBILE_RECORDS_PAGE_SIZE + '&offset=' + offset);
+    var records = data && Array.isArray(data.records) ? data.records : [];
+    var total = Number(data && data.total || 0);
+    var totalPages = Math.max(1, Math.ceil(total / MOBILE_RECORDS_PAGE_SIZE) || 1);
+    state.recordsTotal = total;
+
+    if (currentPage > totalPages && total > 0) {
+      state.recordsPage = totalPages;
+      return loadMobileRecords(totalPages);
+    }
+
+    if (clearBtn) clearBtn.disabled = total === 0;
+
+    if (!records.length) {
       container.innerHTML = '<div class="mob-empty" data-i18n="records.empty">还没有下载成功记录。</div>';
+      if (pagEl) pagEl.innerHTML = '';
       return;
     }
     var html = '';
-    data.records.forEach(function(r) {
+    records.forEach(function(r) {
       html += '<div class="mob-card">' +
-        '<div class="mob-card__row"><span class="label">频道</span><span>' + esc(r.chat_id || r.chat_title || '-') + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">消息</span><span>' + esc(r.message_id || '-') + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">文件</span><span>' + esc(r.file_name || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">频道</span><span>' + esc(r.source_chat_id || r.chat_id || r.chat_title || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">消息</span><span>' + esc(r.source_message_id || r.message_id || '-') + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">文件</span><span>' + esc(r.file_name || r.file_path || '-') + '</span></div>' +
         '<div class="mob-card__row"><span class="label">大小</span><span>' + (r.file_size ? formatBytes(r.file_size) : '-') + '</span></div>' +
         '<div class="mob-card__row"><span class="label">时间</span><span>' + esc(r.updated_at || '') + '</span></div>' +
       '</div>';
     });
     container.innerHTML = html;
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'mob-records',
+        page: currentPage,
+        pageSize: MOBILE_RECORDS_PAGE_SIZE,
+        total: total,
+        variant: 'mobile'
+      });
+      bindPaginationBar('mob-records', currentPage, totalPages, function(newPage) {
+        loadMobileRecords(newPage);
+      });
+    }
   } catch (e) {
     container.innerHTML = '<div class="mob-empty">加载失败</div>';
+    if (pagEl) pagEl.innerHTML = '';
   }
 }
+
+document.getElementById('mob-records-clear-btn')?.addEventListener('click', async function() {
+  if (!confirm(t('records.confirmClear'))) return;
+  try {
+    var resp = await fetch('/api/download-records', { method: 'DELETE' });
+    if (resp.status === 401) { redirectToLoginPage(); return; }
+    if (!resp.ok) {
+      var data = {};
+      try { data = await resp.json(); } catch (e) {}
+      throw data;
+    }
+    state.recordsPage = 1;
+    await loadMobileRecords();
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Statistics

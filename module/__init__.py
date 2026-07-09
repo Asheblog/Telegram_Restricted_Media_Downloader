@@ -52,7 +52,7 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.72'
+__version__ = '0.2.73'
 __license__ = 'MIT License'
 __update_date__ = '2026/07/09 12:35:40'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'

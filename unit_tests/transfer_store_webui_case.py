@@ -767,6 +767,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(200, response.status)
                 self.assertEqual(1, len(body['records']))
+                self.assertEqual(1, body['total'])
 
                 conn.request('DELETE', f'/api/tasks/{task_id}', headers=headers)
                 response = conn.getresponse()
@@ -775,6 +776,51 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.assertTrue(body['deleted'])
                 self.assertIsNone(store.get_task(task_id))
                 self.assertEqual(1, len(store.list_download_success_records()))
+            finally:
+                server.stop()
+
+    def test_webui_download_records_support_pagination_and_clear(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            for index in range(3):
+                store.upsert_download_success_record(
+                    source_chat_id='source',
+                    source_message_id=index + 1,
+                    source_link=f'https://t.me/source/{index + 1}',
+                    media_type='document',
+                    local_path=os.path.join(directory, f'file-{index + 1}.bin'),
+                    file_size=index + 1,
+                    file_name=f'file-{index + 1}.bin'
+                )
+            server = WebUiServer(store=store, username='admin', password='pass')
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(server)
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request('GET', '/api/download-records?limit=2&offset=0', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(2, len(body['records']))
+                self.assertEqual(3, body['total'])
+                self.assertEqual(2, body['limit'])
+                self.assertEqual(0, body['offset'])
+
+                conn.request('GET', '/api/download-records?limit=2&offset=2', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(1, len(body['records']))
+                self.assertEqual(3, body['total'])
+
+                conn.request('DELETE', '/api/download-records', headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertTrue(body['cleared'])
+                self.assertEqual(3, body['count'])
+                self.assertEqual(0, store.count_download_success_records())
             finally:
                 server.stop()
 

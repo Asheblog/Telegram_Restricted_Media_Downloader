@@ -230,21 +230,14 @@ async function loadTaskItems(taskId, status, options) {
     const summaryKey = statusToSummaryKey[status] || status;
     const totalItems = state.itemData[taskId] ? (state.itemData[taskId].summary || {})[summaryKey] || 0 : 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / 50));
-    pagEl.innerHTML =
-      '<span class="text-xs text-muted">第 ' + page + ' / ' + totalPages + ' 页</span>' +
-      '<div class="flex gap-2">' +
-        '<button class="btn btn-sm" ' + (page <= 1 ? 'disabled' : '') + ' id="items-prev-page">' + t('items.page.previous') + '</button>' +
-        '<button class="btn btn-sm" ' + (page >= totalPages ? 'disabled' : '') + ' id="items-next-page">' + t('items.page.next') + '</button>' +
-      '</div>';
-
-    const prevBtn = $('#items-prev-page');
-    const nextBtn = $('#items-next-page');
-    if (prevBtn) prevBtn.addEventListener('click', () => {
-      state.itemPages[state.activeItemStatus] = Math.max(1, page - 1);
-      loadTaskItems(taskId, state.activeItemStatus);
+    pagEl.innerHTML = renderPaginationBar({
+      prefix: 'items',
+      page: page,
+      pageSize: 50,
+      total: totalItems
     });
-    if (nextBtn) nextBtn.addEventListener('click', () => {
-      state.itemPages[state.activeItemStatus] = page + 1;
+    bindPaginationBar('items', page, totalPages, function(newPage) {
+      state.itemPages[state.activeItemStatus] = newPage;
       loadTaskItems(taskId, state.activeItemStatus);
     });
   } catch(e) {
@@ -524,15 +517,35 @@ $('#btn-logout').addEventListener('click', async () => {
 });
 
 /* ====== Records ====== */
-async function loadRecords() {
+const RECORDS_PAGE_SIZE = 50;
+
+async function loadRecords(page) {
+  if (page !== undefined) state.recordsPage = page;
+  const currentPage = state.recordsPage || 1;
   const tbody = $('#records-tbody');
   const empty = $('#records-empty');
+  const pagEl = $('#records-pagination');
+  const clearBtn = $('#records-clear-btn');
   try {
-    const data = await fetchJson('/api/download-records');
+    const offset = (currentPage - 1) * RECORDS_PAGE_SIZE;
+    const data = await fetchJson('/api/download-records?limit=' + RECORDS_PAGE_SIZE + '&offset=' + offset);
     const records = data.records || [];
+    const total = Number(data.total || 0);
+    state.records = records;
+    state.recordsTotal = total;
+    const totalPages = Math.max(1, Math.ceil(total / RECORDS_PAGE_SIZE) || 1);
+
+    if (currentPage > totalPages && total > 0) {
+      state.recordsPage = totalPages;
+      return loadRecords(totalPages);
+    }
+
+    if (clearBtn) clearBtn.disabled = total === 0;
+
     if (!records.length) {
       tbody.innerHTML = '';
       empty.style.display = '';
+      if (pagEl) pagEl.innerHTML = '';
       return;
     }
     empty.style.display = 'none';
@@ -543,8 +556,37 @@ async function loadRecords() {
       '<td class="text-xs">' + fmtSize(r.file_size) + '</td>' +
       '<td class="text-xs text-muted">' + fmtTime(r.updated_at) + '</td>' +
       '</tr>').join('');
+
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'records',
+        page: currentPage,
+        pageSize: RECORDS_PAGE_SIZE,
+        total: total
+      });
+      bindPaginationBar('records', currentPage, totalPages, function(newPage) {
+        loadRecords(newPage);
+      });
+    }
   } catch(e) {}
 }
+
+$('#records-clear-btn')?.addEventListener('click', async function() {
+  if (!confirm(t('records.confirmClear'))) return;
+  try {
+    const resp = await fetch('/api/download-records', { method: 'DELETE' });
+    if (resp.status === 401) { redirectToLoginPage(); return; }
+    if (!resp.ok) {
+      let data = {};
+      try { data = await resp.json(); } catch(e) {}
+      throw data;
+    }
+    state.recordsPage = 1;
+    await loadRecords();
+  } catch(e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  }
+});
 
 /* ====== Watches ====== */
 async function loadWatches() {
@@ -715,18 +757,15 @@ async function loadWatchHistoryPage() {
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     state.watchHistory.total = total;
     body.innerHTML = renderWatchEventRows(items);
-    pagination.innerHTML =
-      '<span class="text-xs text-muted">' + esc(t('watches.pageInfo').replace('{page}', page).replace('{pages}', totalPages).replace('{total}', total)) + '</span>' +
-      '<div class="table-actions flex gap-2">' +
-        '<button class="btn btn-sm" id="watch-history-prev" ' + (page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
-        '<button class="btn btn-sm" id="watch-history-next" ' + (page >= totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
-      '</div>';
-    $('#watch-history-prev')?.addEventListener('click', function() {
-      state.watchHistory.page = Math.max(1, page - 1);
-      loadWatchHistoryPage();
+    pagination.innerHTML = renderPaginationBar({
+      prefix: 'watch-history',
+      page: page,
+      pageSize: pageSize,
+      total: total,
+      pageInfoKey: 'watches.pageInfo'
     });
-    $('#watch-history-next')?.addEventListener('click', function() {
-      state.watchHistory.page = page + 1;
+    bindPaginationBar('watch-history', page, totalPages, function(newPage) {
+      state.watchHistory.page = newPage;
       loadWatchHistoryPage();
     });
   } catch(e) {
@@ -1248,14 +1287,20 @@ async function loadMedia() {
   }
 }
 
-function renderMediaPagination(prefix, page, totalPages, onChange) {
+function renderMediaPagination(prefix, page, totalPages, totalCount) {
   if (totalPages <= 1) return '';
-  return '<div class="flex items-center justify-between px-0 py-2 gap-3 flex-wrap">' +
-    '<span class="text-xs text-muted">第 ' + (page + 1) + ' / ' + totalPages + ' 页</span>' +
-    '<div class="flex gap-2">' +
-      '<button class="btn btn-sm" ' + (page <= 0 ? 'disabled' : '') + ' id="' + prefix + '-prev">' + t('items.page.previous') + '</button>' +
-      '<button class="btn btn-sm" ' + (page >= totalPages - 1 ? 'disabled' : '') + ' id="' + prefix + '-next">' + t('items.page.next') + '</button>' +
-    '</div></div>';
+  return renderPaginationBar({
+    prefix: prefix,
+    page: page + 1,
+    pageSize: MEDIA_PAGE_SIZE,
+    total: totalCount
+  });
+}
+
+function bindMediaPagination(prefix, currentPage, totalPages, onChange) {
+  bindPaginationBar(prefix, currentPage + 1, totalPages, function(newPage) {
+    onChange(newPage - 1);
+  });
 }
 
 function renderMediaResult(data) {
@@ -1323,7 +1368,7 @@ function renderMediaResult(data) {
     } else {
       $('#media-items-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
     }
-    $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, null);
+    $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, ti.total_count || 0);
     bindMediaPagination('media-items', mediaItemsPage, totalItemsPages, function(newPage) {
       mediaItemsPage = newPage;
       loadMedia();
@@ -1348,7 +1393,7 @@ function renderMediaResult(data) {
     } else {
       $('#media-orphans-tbody').innerHTML = '<tr><td colspan="4" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
     }
-    $('#media-orphans-pagination').innerHTML = renderMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, null);
+    $('#media-orphans-pagination').innerHTML = renderMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, orph.total_count || 0);
     bindMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, function(newPage) {
       mediaOrphansPage = newPage;
       loadMedia();
@@ -1375,16 +1420,6 @@ function renderMediaResult(data) {
   updateMediaCleanupButton();
 }
 
-function bindMediaPagination(prefix, currentPage, totalPages, onChange) {
-  var prevBtn = $('#' + prefix + '-prev');
-  var nextBtn = $('#' + prefix + '-next');
-  if (prevBtn) prevBtn.addEventListener('click', function() {
-    if (currentPage > 0) onChange(currentPage - 1);
-  });
-  if (nextBtn) nextBtn.addEventListener('click', function() {
-    if (currentPage < totalPages - 1) onChange(currentPage + 1);
-  });
-}
 
 function renderMediaError(error) {
   const container = $('#media-result');
