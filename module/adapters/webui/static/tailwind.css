@@ -24,9 +24,9 @@
   --color-danger-bg: #FEF2F2;
   --color-cta: #F97316;
   --color-cta-hover: #EA580C;
-  --font-heading: 'Poppins', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Open Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mob: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: 'Poppins', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Open Sans', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
+  --font-mob: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --radius-panel: 12px;
   --radius-sm: 8px;
   --radius-xs: 6px;
@@ -42,7 +42,8 @@
 
   html {
     font-family: var(--font-body);
-    font-size: 14px;
+    font-size: 16px;
+    line-height: 1.5;
     color: var(--color-text);
     background: var(--color-bg);
   }
@@ -90,11 +91,11 @@
   }
 
   .sidebar-nav-label {
-    @apply text-[11px] uppercase tracking-[0.08em] text-muted font-semibold pt-4 pb-2 px-2.5;
+    @apply text-xs uppercase tracking-[0.08em] text-muted font-semibold pt-4 pb-2 px-2.5;
   }
 
   .sidebar-nav-item {
-    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-sm font-medium text-text-secondary
+    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-base font-medium text-text-secondary
            transition-all duration-150 w-full text-left border-0 bg-transparent cursor-pointer;
     font-family: inherit;
   }
@@ -120,7 +121,7 @@
   }
 
   .sidebar-footer-info {
-    @apply flex items-center gap-2 px-2 py-1 text-xs text-text-secondary;
+    @apply flex items-center gap-2 px-2 py-1 text-sm text-text-secondary;
   }
 
   .sidebar-status-dot {
@@ -130,7 +131,7 @@
   }
 
   .sidebar-version {
-    @apply text-[11px] text-muted px-2 opacity-70;
+    @apply text-xs text-muted px-2 opacity-70;
   }
 
   /* Main content */
@@ -149,12 +150,12 @@
   }
 
   .topbar p {
-    @apply text-sm text-muted mt-1;
+    @apply text-base text-muted mt-1 leading-relaxed;
   }
 
   /* Buttons */
   .btn {
-    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-sm font-medium
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-base font-medium
            border border-line bg-surface text-text cursor-pointer
            transition-all duration-150 whitespace-nowrap;
     font-family: inherit;
@@ -225,7 +226,7 @@
   }
 
   .stat-card-label {
-    @apply text-xs text-muted mt-1 font-medium;
+    @apply text-sm text-muted mt-1 font-medium;
   }
 
   /* Panels */
@@ -251,7 +252,7 @@
   }
 
   .panel-tab {
-    @apply px-2.5 py-1 rounded text-xs font-medium text-text-secondary
+    @apply px-2.5 py-1 rounded text-sm font-medium text-text-secondary
            cursor-pointer border-0 bg-transparent transition-all duration-100;
     font-family: inherit;
   }
@@ -270,11 +271,11 @@
   }
 
   .form-label {
-    @apply block text-xs font-semibold text-muted mb-1.5 uppercase tracking-[0.04em];
+    @apply block text-sm font-semibold text-muted mb-1.5 uppercase tracking-[0.04em];
   }
 
   .form-input, .form-select {
-    @apply w-full h-10 border border-line rounded-[6px] px-3 text-sm text-text bg-surface
+    @apply w-full h-10 border border-line rounded-[6px] px-3 text-base text-text bg-surface
            outline-none transition-all duration-150;
     font-family: inherit;
   }
@@ -292,7 +293,7 @@
   .download-upload-align-spacer {
     @apply mb-3.5 flex min-h-[88px] items-center justify-center rounded-[8px]
            border border-dashed border-line bg-surface-alt px-4 text-center
-           text-sm font-semibold text-muted;
+           text-base font-semibold text-muted;
   }
 
   @media (min-width: 64rem) {
@@ -306,7 +307,7 @@
   }
 
   .form-submit {
-    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-sm font-semibold
+    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-base font-semibold
            cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 transition-colors duration-150;
     font-family: inherit;
   }
@@ -317,16 +318,16 @@
 
   /* Tables */
   .data-table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse text-base;
   }
 
   .data-table thead th {
-    @apply text-center py-2.5 px-3 text-xs font-semibold text-muted uppercase tracking-[0.05em]
+    @apply text-center py-2.5 px-3 text-sm font-semibold text-muted uppercase tracking-[0.05em]
            border-b-2 border-line bg-surface-alt sticky top-0 whitespace-nowrap;
   }
 
   .data-table tbody td {
-    @apply py-2.5 px-3 border-b border-line-light text-sm align-middle text-center;
+    @apply py-2.5 px-3 border-b border-line-light text-base align-middle text-center;
   }
 
   .table-actions {
@@ -417,7 +418,7 @@
 
   /* Activity feed */
   .activity-item {
-    @apply flex gap-2 py-1.5 border-b border-line-light text-xs leading-[1.4];
+    @apply flex gap-2 py-1.5 border-b border-line-light text-sm leading-relaxed;
   }
 
   .activity-item:last-child {
@@ -425,12 +426,12 @@
   }
 
   .activity-time {
-    @apply text-muted whitespace-nowrap text-[11px] min-w-[44px];
+    @apply text-muted whitespace-nowrap text-xs min-w-[44px];
     font-family: ui-monospace, monospace;
   }
 
   .activity-badge {
-    @apply text-[11px] font-semibold whitespace-nowrap;
+    @apply text-xs font-semibold whitespace-nowrap;
   }
 
   .activity-badge.ok { @apply text-success; }
@@ -476,7 +477,7 @@
   }
 
   .login-brand p {
-    @apply text-sm text-muted mt-1 max-sm:px-2 max-sm:leading-5;
+    @apply text-base text-muted mt-1 max-sm:px-2 max-sm:leading-relaxed;
   }
 
   .login-overlay {
@@ -506,11 +507,11 @@
   }
 
   .login-field label {
-    @apply block text-sm font-medium text-text mb-2;
+    @apply block text-base font-medium text-text mb-2;
   }
 
   .login-field input {
-    @apply w-full h-12 border border-line rounded-[8px] px-3.5 text-sm bg-surface text-text
+    @apply w-full h-12 border border-line rounded-[8px] px-3.5 text-base bg-surface text-text
            outline-none transition-colors duration-150;
     font-family: inherit;
   }
@@ -525,11 +526,11 @@
   }
 
   .login-checkbox {
-    @apply flex items-center gap-2 cursor-pointer text-sm text-muted select-none;
+    @apply flex items-center gap-2 cursor-pointer text-base text-muted select-none;
   }
 
   .login-submit {
-    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-sm font-semibold
+    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-base font-semibold
            cursor-pointer flex items-center justify-center gap-2 transition-colors duration-150;
     font-family: inherit;
   }
@@ -597,7 +598,7 @@
   }
   .watch-events-panel {
     padding: 12px 16px;
-    font-size: 14px;
+    font-size: 16px;
     max-height: 300px;
     overflow-y: auto;
   }
@@ -607,14 +608,14 @@
     gap: 8px;
     padding: 4px 0;
     border-bottom: 1px solid var(--color-line);
-    font-size: 12px;
+    font-size: 14px;
   }
   .watch-event-item:last-child { border-bottom: 0; }
   .watch-event-time { color: var(--color-muted); white-space: nowrap; min-width: 90px; }
   .watch-event-badge { flex-shrink: 0; }
   .watch-event-info { flex: 1; word-break: break-all; }
   .watch-events-load-more {
-    display: block; margin: 8px auto 0; font-size: 12px; cursor: pointer;
+    display: block; margin: 8px auto 0; font-size: 14px; cursor: pointer;
   }
 
   /* Responsive */
@@ -640,7 +641,7 @@
   /* --- Mobile body defaults --- */
   .mob-body {
     font-family: var(--font-mob);
-    font-size: 15px;
+    font-size: 16px;
     display: block;
     width: 100%;
     min-height: 100svh;
@@ -661,7 +662,7 @@
     width: 100%;
     min-width: 0;
     color: var(--color-text-secondary);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
   }
   .mob-body form {
@@ -724,7 +725,7 @@
     background: var(--color-primary);
     color: #fff;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 16px;
     cursor: pointer;
     transition: opacity .15s, background .15s;
     min-height: 44px;
@@ -746,7 +747,7 @@
   .mob-btn-danger:active { background: var(--color-danger-bg); }
   .mob-btn-sm {
     padding: 0 12px;
-    font-size: 13px;
+    font-size: 14px;
     min-height: 36px;
     min-width: auto;
   }
@@ -815,7 +816,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--color-muted);
     min-width: 44px;
     cursor: pointer;
@@ -911,7 +912,7 @@
   }
   .mob-card__title {
     font-weight: 650;
-    font-size: 15px;
+    font-size: 16px;
     word-break: break-all;
     line-height: 1.35;
     flex: 1;
@@ -921,7 +922,7 @@
     display: inline-block;
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
     flex-shrink: 0;
