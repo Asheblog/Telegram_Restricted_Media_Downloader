@@ -337,6 +337,7 @@ function startPolling() {
     lastPoll = now;
     try {
       await refreshTransferData();
+      if (state.activeView === 'watches') await loadWatches();
     } catch(e) {}
     interval = hasActiveTasks() ? fast : slow;
     state.taskPollTimer = setTimeout(poll, interval);
@@ -591,7 +592,7 @@ $('#records-clear-btn')?.addEventListener('click', async function() {
 /* ====== Watches ====== */
 async function loadWatches() {
   try {
-    const data = await fetchJson('/api/watches');
+    const data = await fetchJson(withClientTzQuery('/api/watches'));
     state.watches = data.watches || [];
     renderWatches();
     updateWatchBadge();
@@ -675,7 +676,7 @@ async function loadWatchEvents(watchId, offset, todayOnly) {
   if (offset === 0) panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
   try {
     const todayQuery = todayOnly ? '&today=1' : '';
-    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset + todayQuery);
+    const res = await fetch(withClientTzQuery('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset + todayQuery));
     const data = await res.json();
     if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>'; return; }
     const items = data.events || [];

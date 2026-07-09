@@ -37,13 +37,25 @@ class TransferStore:
         return datetime.datetime.now(datetime.UTC).isoformat(timespec='seconds')
 
     @staticmethod
-    def local_today_utc_bounds() -> tuple[str, str]:
-        local_now = datetime.datetime.now().astimezone()
+    def local_today_utc_bounds(tz_offset_minutes: int | None = None) -> tuple[str, str]:
+        utc_now = datetime.datetime.now(datetime.UTC)
+        if tz_offset_minutes is None:
+            local_now = utc_now.astimezone()
+            local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            local_end = local_start + datetime.timedelta(days=1)
+            return (
+                local_start.astimezone(datetime.UTC).isoformat(timespec='seconds'),
+                local_end.astimezone(datetime.UTC).isoformat(timespec='seconds')
+            )
+        # JavaScript Date.getTimezoneOffset(): UTC - local, in minutes.
+        local_now = utc_now - datetime.timedelta(minutes=tz_offset_minutes)
         local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         local_end = local_start + datetime.timedelta(days=1)
+        start_utc = (local_start + datetime.timedelta(minutes=tz_offset_minutes)).replace(tzinfo=datetime.UTC)
+        end_utc = (local_end + datetime.timedelta(minutes=tz_offset_minutes)).replace(tzinfo=datetime.UTC)
         return (
-            local_start.astimezone(datetime.UTC).isoformat(timespec='seconds'),
-            local_end.astimezone(datetime.UTC).isoformat(timespec='seconds')
+            start_utc.isoformat(timespec='seconds'),
+            end_utc.isoformat(timespec='seconds')
         )
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -1162,13 +1174,18 @@ class TransferStore:
             return int(cursor.lastrowid)
 
     def list_live_watch_events(
-            self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False
+            self,
+            watch_id: str,
+            limit: int = 50,
+            offset: int = 0,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
     ) -> tuple:
         with self.connect() as conn:
             where_sql = 'watch_id = ?'
             params: list[Any] = [watch_id]
             if today_only:
-                start_at, end_at = self.local_today_utc_bounds()
+                start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
                 where_sql += ' AND created_at >= ? AND created_at < ?'
                 params.extend([start_at, end_at])
             total = int(conn.execute(
@@ -1186,12 +1203,17 @@ class TransferStore:
             ).fetchall()
             return [dict(row) for row in rows], total
 
-    def get_live_watch_event_count(self, watch_id: str, today_only: bool = False) -> int:
+    def get_live_watch_event_count(
+            self,
+            watch_id: str,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> int:
         with self.connect() as conn:
             where_sql = 'watch_id = ?'
             params: list[Any] = [watch_id]
             if today_only:
-                start_at, end_at = self.local_today_utc_bounds()
+                start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
                 where_sql += ' AND created_at >= ? AND created_at < ?'
                 params.extend([start_at, end_at])
             return int(conn.execute(

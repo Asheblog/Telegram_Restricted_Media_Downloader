@@ -44,7 +44,7 @@ class FakeWebUiOperations:
         self.transfer_range_error = None
         self.detected_transfer_ranges = []
 
-    def list_watches(self):
+    def list_watches(self, tz_offset_minutes=None):
         return list(self.watches.values())
 
     def create_watch(self, payload):
@@ -146,7 +146,7 @@ class TaskDeletingOperations:
         self.deleted_task_ids.append(task_id)
         return self.store.delete_task(task_id)
 
-    def list_watches(self) -> list:
+    def list_watches(self, tz_offset_minutes=None) -> list:
         return []
 
     def create_watch(self, payload: dict) -> dict:
@@ -1349,7 +1349,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.store.update_task(task_id, status=TransferStatus.PENDING)
                 return True
 
-            def list_watches(self) -> list:
+            def list_watches(self, tz_offset_minutes=None) -> list:
                 return []
 
             def create_watch(self, payload: dict) -> dict:
@@ -3790,6 +3790,56 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             all_events = manager.list_watch_events(watch_id, limit=50, offset=0)
             self.assertEqual(2, all_events['total'])
+
+    def test_live_watch_today_count_respects_client_timezone_offset(self):
+        fixed_now = datetime.datetime(2026, 7, 10, 2, 0, 0, tzinfo=datetime.UTC)
+        with patch('module.transfer_store.datetime.datetime') as dt_mock:
+            dt_mock.now.return_value = fixed_now
+            dt_mock.UTC = datetime.UTC
+            dt_mock.timedelta = datetime.timedelta
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                watch_id = 'forward:https://t.me/source -> https://t.me/target'
+                store.upsert_live_transfer_watch(
+                    watch_id=watch_id,
+                    watch_type='forward',
+                    source_link='https://t.me/source',
+                    target_link='https://t.me/target',
+                    include_comment=False,
+                    status=TransferStatus.RUNNING,
+                    error_message=None
+                )
+                # Jul 10 04:00 CST = Jul 9 20:00 UTC; local day for UTC+8, not for UTC server day.
+                event_at = '2026-07-09T20:00:00+00:00'
+                store.add_live_watch_event(
+                    watch_id=watch_id,
+                    source_chat_id='source',
+                    source_message_id=9,
+                    target_chat_id='target',
+                    target_link='https://t.me/target',
+                    status=TransferStatus.SUCCESS,
+                    message='client-local today event'
+                )
+                with store.connect() as conn:
+                    conn.execute(
+                        'UPDATE live_watch_events SET created_at = ? WHERE watch_id = ?',
+                        (event_at, watch_id)
+                    )
+
+                self.assertEqual(0, store.get_live_watch_event_count(
+                    watch_id,
+                    today_only=True,
+                    tz_offset_minutes=0
+                ))
+                self.assertEqual(1, store.get_live_watch_event_count(
+                    watch_id,
+                    today_only=True,
+                    tz_offset_minutes=-480
+                ))
+
+                manager = LiveWatchManager(transfer_store_getter=lambda: store)
+                server_watch = manager.list_watches(tz_offset_minutes=-480)[0]
+                self.assertEqual(1, server_watch['today_count'])
 
     def test_webui_task_model_exposes_active_transfer_progress_and_speed(self):
         with tempfile.TemporaryDirectory() as directory:

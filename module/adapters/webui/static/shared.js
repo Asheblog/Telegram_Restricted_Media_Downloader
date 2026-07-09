@@ -631,6 +631,15 @@ function redirectToLoginPage() {
   window.location.assign('/');
 }
 
+function clientTzOffsetMinutes() {
+  return new Date().getTimezoneOffset();
+}
+
+function withClientTzQuery(url) {
+  var separator = url.indexOf('?') >= 0 ? '&' : '?';
+  return url + separator + 'tz_offset=' + encodeURIComponent(String(clientTzOffsetMinutes()));
+}
+
 async function fetchJson(url) {
   const resp = await fetch(url);
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }

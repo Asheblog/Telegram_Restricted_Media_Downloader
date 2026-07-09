@@ -648,8 +648,8 @@ class TelegramRestrictedMediaDownloader:
             self._schedule_web_task_resubmission(task_id)
         return reset_items
 
-    def list_watches(self) -> list:
-        return self.watch_manager.list_watches()
+    def list_watches(self, tz_offset_minutes: int | None = None) -> list:
+        return self.watch_manager.list_watches(tz_offset_minutes=tz_offset_minutes)
 
     def create_watch(self, payload: dict) -> dict:
         return self.watch_manager.create_watch(payload)
@@ -660,12 +660,20 @@ class TelegramRestrictedMediaDownloader:
     def update_watch(self, watch_id: str, payload: dict) -> dict:
         return self.watch_manager.update_watch(watch_id, payload)
 
-    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False):
+    def list_watch_events(
+            self,
+            watch_id: str,
+            limit: int = 50,
+            offset: int = 0,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ):
         return self.watch_manager.list_watch_events(
             watch_id,
             limit=limit,
             offset=offset,
-            today_only=today_only
+            today_only=today_only,
+            tz_offset_minutes=tz_offset_minutes
         )
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:

@@ -395,6 +395,16 @@ class WebUiServer:
                 except (ValueError, TypeError):
                     return default
 
+            @staticmethod
+            def _query_optional_int(query: dict, key: str) -> int | None:
+                raw = (query.get(key) or [''])[0]
+                if raw in ('', None):
+                    return None
+                try:
+                    return int(raw)
+                except (ValueError, TypeError):
+                    return None
+
             def _task_id_from_path(self):
                 task_path = urlparse(self.path).path
                 task_id = task_path.rsplit('/', 1)[-1]
@@ -505,7 +515,9 @@ class WebUiServer:
                     self._send_json({'operations': server.list_operations()})
                     return
                 if parsed.path == '/api/watches':
-                    self._send_json({'watches': server.list_watches()})
+                    query = parse_qs(parsed.query)
+                    tz_offset = self._query_optional_int(query, 'tz_offset')
+                    self._send_json({'watches': server.list_watches(tz_offset_minutes=tz_offset)})
                     return
                 if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/events'):
                     watch_path = parsed.path[len('/api/watches/'):][:-len('/events')]
@@ -517,11 +529,13 @@ class WebUiServer:
                     limit = self._query_int(query, 'limit', 50)
                     offset = self._query_int(query, 'offset', 0)
                     today_only = str((query.get('today') or [''])[0]).lower() in ('1', 'true', 'yes')
+                    tz_offset = self._query_optional_int(query, 'tz_offset')
                     result = server.list_watch_events(
                         watch_id,
                         limit=limit,
                         offset=offset,
-                        today_only=today_only
+                        today_only=today_only,
+                        tz_offset_minutes=tz_offset
                     )
                     if not result:
                         self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
@@ -906,10 +920,10 @@ class WebUiServer:
             )
         return start_id, end_id
 
-    def list_watches(self) -> list:
+    def list_watches(self, tz_offset_minutes: int | None = None) -> list:
         list_watches = self._operation('list_watches')
         if list_watches:
-            return list_watches()
+            return list_watches(tz_offset_minutes=tz_offset_minutes)
         return []
 
     def create_watch(self, payload: dict) -> dict:
@@ -986,10 +1000,23 @@ class WebUiServer:
             return bool(delete_watch(watch_id))
         return False
 
-    def list_watch_events(self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False):
+    def list_watch_events(
+            self,
+            watch_id: str,
+            limit: int = 50,
+            offset: int = 0,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ):
         list_watch_events = self._operation('list_watch_events')
         if list_watch_events:
-            return list_watch_events(watch_id, limit=limit, offset=offset, today_only=today_only)
+            return list_watch_events(
+                watch_id,
+                limit=limit,
+                offset=offset,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
         return None
 
     def delete_task(self, task_id: int) -> bool:

@@ -105,7 +105,7 @@ class LiveWatchManager:
                 error_message=error_message
             )
 
-    def list_watches(self) -> list:
+    def list_watches(self, tz_offset_minutes: int | None = None) -> list:
         watches_by_id = {
             watch.get('id'): watch
             for watch in self.persisted_watches()
@@ -144,7 +144,11 @@ class LiveWatchManager:
             today_count = 0
             if store and watches_by_id[watch_id].get('type') == 'forward':
                 count = store.get_live_watch_event_count(watch_id)
-                today_count = store.get_live_watch_event_count(watch_id, today_only=True)
+                today_count = store.get_live_watch_event_count(
+                    watch_id,
+                    today_only=True,
+                    tz_offset_minutes=tz_offset_minutes
+                )
             watches_by_id[watch_id]['event_count'] = count
             watches_by_id[watch_id]['today_count'] = today_count
         return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
@@ -356,7 +360,12 @@ class LiveWatchManager:
         })
 
     def list_watch_events(
-            self, watch_id: str, limit: int = 50, offset: int = 0, today_only: bool = False
+            self,
+            watch_id: str,
+            limit: int = 50,
+            offset: int = 0,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
     ) -> Optional[dict]:
         store = self._transfer_store
         if not store:
@@ -365,7 +374,8 @@ class LiveWatchManager:
             watch_id,
             limit=limit,
             offset=offset,
-            today_only=today_only
+            today_only=today_only,
+            tz_offset_minutes=tz_offset_minutes
         )
         return {
             'watch_id': watch_id,

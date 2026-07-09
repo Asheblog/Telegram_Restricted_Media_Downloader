@@ -374,7 +374,7 @@ async function loadMobileWatches() {
     container.innerHTML = mobEmptyHtml('加载中...');
   }
   try {
-    var data = await fetchJson('/api/watches');
+    var data = await fetchJson(withClientTzQuery('/api/watches'));
     window.state.watches = Array.isArray(data.watches) ? data.watches : [];
     renderMobWatches();
   } catch (e) {
@@ -551,7 +551,7 @@ async function loadMobileWatchEvents(watchId, sanitized) {
   if (!panel) return;
   panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
   try {
-    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=20&today=1');
+    var data = await fetchJson(withClientTzQuery('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=20&today=1'));
     if (!data || !data.events || data.events.length === 0) {
       panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无事件</div>';
       return;
