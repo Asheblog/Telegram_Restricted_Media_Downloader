@@ -65,6 +65,7 @@ from module.util import (
 class TelegramUploader:
     FILE_PART_MISSING_REPAIR_RETRIES = 5
     PART_UPLOAD_DELAY: float = 0.1
+    UPLOAD_PART_SLEEP_THRESHOLD: int = 60
 
     def __init__(
             self,
@@ -103,6 +104,48 @@ class TelegramUploader:
 
     def file_part_missing_repair_retries(self) -> int:
         return max(1, int(getattr(self, 'FILE_PART_MISSING_REPAIR_RETRIES', 5) or 5))
+
+    async def _invoke_upload_file_part(self, upload_task: UploadTask, file_part: int) -> None:
+        part_size = UploadTask.PART_SIZE
+        with open(upload_task.file_path, 'rb') as file:
+            file.seek(part_size * file_part)
+            chunk = file.read(part_size)
+        if not chunk:
+            raise ValueError(f'上传分片为空:{file_part}')
+
+        if upload_task.file_size > 10 * 1024 * 1024:
+            rpc = raw.functions.upload.SaveBigFilePart(
+                file_id=upload_task.file_id,
+                file_part=file_part,
+                file_total_parts=upload_task.file_total_parts,
+                bytes=chunk
+            )
+        else:
+            rpc = raw.functions.upload.SaveFilePart(
+                file_id=upload_task.file_id,
+                file_part=file_part,
+                bytes=chunk
+            )
+        storage = getattr(self.client, 'storage', None)
+        get_session = getattr(self.client, 'get_session', None)
+        if storage is not None and callable(getattr(storage, 'dc_id', None)) and callable(get_session):
+            session = await get_session(await storage.dc_id(), is_media=True)
+            await session.invoke(rpc, sleep_threshold=self.UPLOAD_PART_SLEEP_THRESHOLD)
+            return
+        await self.client.invoke(rpc)
+
+    async def upload_file_part(self, upload_task: UploadTask, file_part: int) -> None:
+        while True:
+            try:
+                async with self._save_file_lock:
+                    await self._invoke_upload_file_part(upload_task, file_part)
+                return
+            except (FloodWait, FloodPremiumWait) as flood_error:
+                await self.wait_for_telegram_flood(
+                    flood_error,
+                    upload_task,
+                    action='upload file part'
+                )
 
     async def wait_for_telegram_flood(self, error, upload_task: UploadTask, action: str) -> None:
         task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
@@ -155,14 +198,8 @@ class TelegramUploader:
         # 上传缺失的分片。
         for part_index in missing_parts:
             try:
-                # 上传单个分片（加锁序列化，避免并发 save_file 导致 Session 协议状态竞争）。
                 part_size = 512 * 1024
-                async with self._save_file_lock:
-                    await self.client.save_file(
-                        path=path,
-                        file_id=file_id,
-                        file_part=part_index
-                    )
+                await self.upload_file_part(upload_task, part_index)
                 if self.PART_UPLOAD_DELAY > 0:
                     await asyncio.sleep(self.PART_UPLOAD_DELAY)
                 # 更新上传记录。
@@ -427,12 +464,7 @@ class TelegramUploader:
                                         )
                                         for task in UploadTask.TASKS:
                                             if task.message_id in message_ids and task.status in (UploadStatus.SUCCESS, UploadStatus.UPLOADING):
-                                                async with self._save_file_lock:
-                                                    await self.client.save_file(
-                                                        path=task.file_path,
-                                                        file_id=task.file_id,
-                                                        file_part=missing_part
-                                                    )
+                                                await self.upload_file_part(task, missing_part)
                                     except (FloodWait, FloodPremiumWait) as flood_error:
                                         group_task = next(
                                             (
@@ -524,12 +556,7 @@ class TelegramUploader:
                         f're-uploading part and retrying ({file_part_missing_attempts}/'
                         f'{self.file_part_missing_repair_retries()}).'
                     )
-                    async with self._save_file_lock:
-                        await self.client.save_file(
-                            path=upload_task.file_path,
-                            file_id=file_id,
-                            file_part=missing_part
-                        )
+                    await self.upload_file_part(upload_task, missing_part)
                 except (FloodWait, FloodPremiumWait) as flood_error:
                     await self.wait_for_telegram_flood(flood_error, upload_task, action='send media')
         except Exception as e:

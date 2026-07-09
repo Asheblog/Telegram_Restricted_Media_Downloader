@@ -399,6 +399,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         from module.web_ui import merge_allowed_settings
 
         self.assertEqual(1, UserConfig.TEMPLATE['max_tasks']['download'])
+        self.assertEqual(1, UserConfig.TEMPLATE['max_tasks']['upload'])
         self.assertEqual(
             4 * 1024 ** 3,
             GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']

@@ -141,6 +141,7 @@ def install_pyrogram_stub() -> None:
     raw.types = DummyModule('pyrogram.raw.types')
     raw.functions = DummyModule('pyrogram.raw.functions')
     raw.functions.messages = DummyModule('pyrogram.raw.functions.messages')
+    raw.functions.upload = DummyModule('pyrogram.raw.functions.upload')
     raw.core = DummyModule('pyrogram.raw.core')
     raw.core.TLObject = type('TLObject', (Dummy,), {})
     utils = DummyModule('pyrogram.utils')
@@ -178,6 +179,7 @@ def install_pyrogram_stub() -> None:
     sys.modules['pyrogram.raw.types'] = raw.types
     sys.modules['pyrogram.raw.functions'] = raw.functions
     sys.modules['pyrogram.raw.functions.messages'] = raw.functions.messages
+    sys.modules['pyrogram.raw.functions.upload'] = raw.functions.upload
     sys.modules['pyrogram.raw.core'] = raw.core
     sys.modules['pyrogram.utils'] = utils
     sys.modules['pyrogram.crypto'] = crypto

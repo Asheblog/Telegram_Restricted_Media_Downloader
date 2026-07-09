@@ -52,9 +52,9 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.63'
+__version__ = '0.2.64'
 __license__ = 'MIT License'
-__update_date__ = '2026/07/09 10:37:00'
+__update_date__ = '2026/07/09 12:05:00'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
 SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
 SOFTWARE_SHORT_NAME = 'TRMD'
@@ -169,7 +169,7 @@ max_retries:
   upload: 3 # 最大的上传任务的重试次数。
 max_tasks:
   download: 1 # 最大同时下载的任务数。
-  upload: 3 # 最大同时上传的任务数。
+  upload: 1 # 最大同时上传的任务数。
 target_profiles:
   pikpak:
     max_file_size: 4294967296 # PikPak目标允许的最大文件大小,默认4GiB。

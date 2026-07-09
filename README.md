@@ -91,7 +91,7 @@ download_type:
 is_shutdown: false
 max_tasks:
   download: 1
-  upload: 3
+  upload: 1
 max_retries:
   download: 5
   upload: 3

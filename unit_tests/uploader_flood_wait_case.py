@@ -133,6 +133,71 @@ class UploaderFloodWaitCase(unittest.TestCase):
             finally:
                 UploadTask.DIRECTORY_NAME = original_directory
 
+    def test_resume_upload_waits_and_retries_flooded_part_before_recording_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original_directory = UploadTask.DIRECTORY_NAME
+            UploadTask.DIRECTORY_NAME = os.path.join(directory, 'upload-cache')
+            file_path = os.path.join(directory, 'media.bin')
+            part_size = UploadTask.PART_SIZE
+            try:
+                with open(file_path, 'wb') as file:
+                    file.write(b'a' * part_size)
+
+                invoke_payloads = []
+
+                class FakeClient:
+                    def __init__(self):
+                        self.me = SimpleNamespace(is_premium=True)
+
+                    def guess_mime_type(self, _file_path):
+                        return 'application/octet-stream'
+
+                    async def invoke(self, payload):
+                        invoke_payloads.append(payload)
+                        if len(invoke_payloads) == 1:
+                            raise FloodWait(11)
+                        return True
+
+                uploader = object.__new__(TelegramUploader)
+                uploader.client = FakeClient()
+                uploader.loop = asyncio.new_event_loop()
+                uploader.upload_context = SimpleNamespace(diagnostic=default_diagnostic)
+                uploader._save_file_lock = asyncio.Lock()
+                uploader.upload_queue = SimpleNamespace(put_nowait=lambda item: None)
+                uploader.PART_UPLOAD_DELAY = 0
+
+                async def fake_get_input_media_document(**_kwargs):
+                    return SimpleNamespace()
+
+                uploader.get_input_media_document = fake_get_input_media_document
+
+                upload_task = UploadTask(
+                    chat_id=None,
+                    file_path=file_path,
+                    file_id=321,
+                    file_size=os.path.getsize(file_path),
+                    file_part=[],
+                    status=UploadStatus.PENDING
+                )
+                upload_task.chat_id = 'target-chat'
+
+                async def run_case():
+                    with patch('module.uploader.asyncio.sleep') as sleep_mock, \
+                            patch('module.uploader.random.uniform', return_value=0):
+                        await uploader.resume_upload(upload_task)
+                        sleep_mock.assert_awaited_once_with(11)
+
+                asyncio.run(run_case())
+
+                self.assertEqual(2, len(invoke_payloads))
+                self.assertEqual([0], upload_task.file_part)
+                with open(upload_task.upload_manager_path, encoding='UTF-8') as file:
+                    payload = __import__('json').load(file)
+                self.assertEqual([0], payload['file_part'])
+            finally:
+                uploader.loop.close()
+                UploadTask.DIRECTORY_NAME = original_directory
+
     def test_create_upload_task_aborts_after_repeated_file_part_missing(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'media.bin')

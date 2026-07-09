@@ -155,7 +155,7 @@ class UserConfig(BaseConfig):
         'temp_directory': None,
         'max_tasks': {
             'download': 1,
-            'upload': 3
+            'upload': 1
         },
         'is_shutdown': None,
         'download_type': None,
@@ -541,7 +541,7 @@ class UserConfig(BaseConfig):
             'max_tasks',
             {
                 'download': _max_download_task,
-                'upload': 3
+                'upload': 1
             }
         )['download'] = (pre_load_config.get('max_tasks') or {}).get('download', 1) or 1
         pre_load_config.get(
