@@ -147,7 +147,7 @@ class MediaManager:
 
     # --- 扫描 A: 基于 transfer_items 状态 ---
 
-    def scan_transfer_items(self, task_id: int = None) -> Dict[str, Any]:
+    def scan_transfer_items(self, task_id: int = None, limit: int = None, offset: int = 0) -> Dict[str, Any]:
         """扫描 TransferStore 中已终结但本地文件仍未删除的 item。
 
         Returns:
@@ -191,15 +191,19 @@ class MediaManager:
             })
             total_size += item_size
 
+        total_count = len(items)
+        if limit is not None and limit > 0:
+            items = items[offset:offset + limit]
+
         return {
             'items': items,
-            'total_count': len(items),
+            'total_count': total_count,
             'total_size': total_size,
         }
 
     # --- 扫描 B: 基于文件时间的遗留文件 ---
 
-    def scan_orphan_files(self) -> Dict[str, Any]:
+    def scan_orphan_files(self, limit: int = None, offset: int = 0) -> Dict[str, Any]:
         """扫描 save_directory 下可能被遗留的孤立文件。
 
         孤立文件判定：
@@ -242,9 +246,13 @@ class MediaManager:
                     })
                     total_size += file_size
 
+        total_count = len(orphan_files)
+        if limit is not None and limit > 0:
+            orphan_files = orphan_files[offset:offset + limit]
+
         return {
             'files': orphan_files,
-            'total_count': len(orphan_files),
+            'total_count': total_count,
             'total_size': total_size,
         }
 
@@ -284,7 +292,14 @@ class MediaManager:
 
     # --- 综合扫描 ---
 
-    def scan_all(self, task_id: int = None) -> Dict[str, Any]:
+    def scan_all(
+            self,
+            task_id: int = None,
+            items_limit: int = None,
+            items_offset: int = 0,
+            orphans_limit: int = None,
+            orphans_offset: int = 0,
+    ) -> Dict[str, Any]:
         """综合扫描：transfer_items + 孤儿文件。
 
         Returns:
@@ -296,8 +311,12 @@ class MediaManager:
                 'retention_days': int,
             }
         """
-        ti_result = self.scan_transfer_items(task_id=task_id)
-        orphan_result = self.scan_orphan_files()
+        ti_result = self.scan_transfer_items(
+            task_id=task_id, limit=items_limit, offset=items_offset
+        )
+        orphan_result = self.scan_orphan_files(
+            limit=orphans_limit, offset=orphans_offset
+        )
         return {
             'transfer_items': ti_result,
             'orphan_files': orphan_result,

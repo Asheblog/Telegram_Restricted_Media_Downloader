@@ -903,10 +903,23 @@ class TelegramRestrictedMediaDownloader:
             )
         return self.media_manager
 
-    def scan_media_for_cleanup(self, task_id: int = None) -> dict:
+    def scan_media_for_cleanup(
+            self,
+            task_id: int = None,
+            items_limit: int = None,
+            items_offset: int = 0,
+            orphans_limit: int = None,
+            orphans_offset: int = 0,
+    ) -> dict:
         """扫描可清理的媒体文件。"""
         mm = self._ensure_media_manager()
-        return mm.scan_all(task_id=task_id)
+        return mm.scan_all(
+            task_id=task_id,
+            items_limit=items_limit,
+            items_offset=items_offset,
+            orphans_limit=orphans_limit,
+            orphans_offset=orphans_offset,
+        )
 
     def cleanup_media_files(self, payload: dict) -> dict:
         """执行媒体文件清理。

@@ -543,7 +543,17 @@ class WebUiServer:
                 if parsed.path == '/api/media/scan':
                     query = parse_qs(parsed.query)
                     task_id = self._query_int(query, 'task_id', 0) or None
-                    self._send_json(server.scan_media_for_cleanup(task_id=task_id))
+                    items_limit = self._query_int(query, 'items_limit', 0) or None
+                    items_offset = self._query_int(query, 'items_offset', 0)
+                    orphans_limit = self._query_int(query, 'orphans_limit', 0) or None
+                    orphans_offset = self._query_int(query, 'orphans_offset', 0)
+                    self._send_json(server.scan_media_for_cleanup(
+                        task_id=task_id,
+                        items_limit=items_limit,
+                        items_offset=items_offset,
+                        orphans_limit=orphans_limit,
+                        orphans_offset=orphans_offset,
+                    ))
                     return
                 if parsed.path == '/api/media/cleanup-logs':
                     self._send_json({'logs': server.list_cleanup_logs()})
@@ -1105,10 +1115,23 @@ class WebUiServer:
             return create_channel_download(normalized)
         raise WebUiApiError('channel_download_operations_unavailable', 'Channel download operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
-    def scan_media_for_cleanup(self, task_id: int = None) -> dict:
+    def scan_media_for_cleanup(
+            self,
+            task_id: int = None,
+            items_limit: int = None,
+            items_offset: int = 0,
+            orphans_limit: int = None,
+            orphans_offset: int = 0,
+    ) -> dict:
         scan_media_for_cleanup = self._operation('scan_media_for_cleanup')
         if scan_media_for_cleanup:
-            return scan_media_for_cleanup(task_id=task_id)
+            return scan_media_for_cleanup(
+                task_id=task_id,
+                items_limit=items_limit,
+                items_offset=items_offset,
+                orphans_limit=orphans_limit,
+                orphans_offset=orphans_offset,
+            )
         raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def cleanup_media_files(self, payload: dict) -> dict:
