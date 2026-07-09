@@ -2477,7 +2477,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
         self.assertEqual('video.mp4', archive_calls[0]['file_name'])
         self.assertEqual(5, archive_calls[0]['file_size'])
-        self.assertTrue(archive_calls[0]['match_original_name'])
+        self.assertFalse(archive_calls[0]['match_original_name'])
 
     def test_pikpak_upload_archive_failure_records_transfer_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
@@ -2537,7 +2537,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             downloader.on_transfer_upload_status(upload_task)
 
             self.assertEqual(1, len(archive_calls))
-            self.assertTrue(archive_calls[0]['match_original_name'])
+            self.assertFalse(archive_calls[0]['match_original_name'])
             item = store.list_items(task_id)[0]
             self.assertEqual(TransferStatus.FAILURE, item['status'])
             self.assertEqual('failure', item['phase'])

@@ -485,7 +485,7 @@ class TransferProgressTracker:
                 file_name=upload_task.file_name,
                 file_size=getattr(upload_task, 'file_size', None),
                 transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
-                match_original_name=True
+                match_original_name=False
             )
             if (
                     archive_result is not None
