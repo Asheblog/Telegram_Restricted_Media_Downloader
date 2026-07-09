@@ -885,7 +885,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           </div>
         </div>
 
-        <div class="flex items-center gap-3 pt-3 border-t border-line">
+        <div class="flex items-center gap-3 pt-3 border-t border-line hidden" id="media-cleanup-actions">
           <button class="btn btn-danger btn-sm" id="media-cleanup-btn" data-i18n="media.cleanup">清理选中文件</button>
         </div>
       </div>
@@ -1359,6 +1359,7 @@ const i18n = {
     'media.confirmCleanup': '确定要删除选中的文件吗？此操作不可撤销。',
     'media.cleanupDone': '清理完成：已删除 {count} 个文件 ({size})。',
     'media.cleanupHistory': '清理历史',
+    'media.empty': '没有可清理文件',
     'media.reason': '原因',
     'media.time': '时间',
     'media.filterByTask': '按任务筛选：',
@@ -1598,6 +1599,7 @@ const i18n = {
     'media.confirmCleanup': 'Delete selected files? This cannot be undone.',
     'media.cleanupDone': 'Cleanup done: {count} files deleted ({size}).',
     'media.cleanupHistory': 'Cleanup history',
+    'media.empty': 'No cleanable files',
     'media.reason': 'Reason',
     'media.time': 'Time',
     'media.filterByTask': 'Filter by task:',
@@ -3093,19 +3095,80 @@ function setNested(obj, parts, value) {
 /* ====== Media Management ====== */
 let mediaScanResult = null;
 
+function showMediaElement(el, visible) {
+  if (!el) return;
+  el.classList.toggle('hidden', !visible);
+  el.style.display = visible ? '' : 'none';
+}
+
+function setMediaScanButtonLoading(isLoading) {
+  const btn = $('#media-scan-btn');
+  if (!btn) return;
+  const label = btn.querySelector('[data-i18n]');
+  btn.disabled = Boolean(isLoading);
+  btn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  if (label) label.textContent = isLoading ? t('media.scanning') : t('media.scan');
+}
+
 async function loadMedia() {
+  const container = $('#media-result');
   try {
+    setMediaScanButtonLoading(true);
+    if (container) {
+      container.classList.remove('hidden');
+      container.style.display = '';
+      container.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div><div class="text-xs text-muted mt-2">' + t('media.scanning') + '</div></div>';
+    }
     const data = await fetchJson('/api/media/scan');
     mediaScanResult = data;
     renderMediaResult(data);
     loadCleanupLogs();
-  } catch(e) {}
+  } catch(e) {
+    renderMediaError(e);
+  } finally {
+    setMediaScanButtonLoading(false);
+  }
 }
 
 function renderMediaResult(data) {
   const container = $('#media-result');
-  if (!data) { container.style.display = 'none'; return; }
+  if (!container) return;
+  if (!data) {
+    container.classList.add('hidden');
+    container.style.display = 'none';
+    return;
+  }
+
+  container.classList.remove('hidden');
   container.style.display = '';
+  container.innerHTML =
+    '<div id="media-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>' +
+    '<div id="media-items-section" class="mb-4 hidden">' +
+      '<h4 class="text-base font-semibold mb-2">' + t('media.transferItems') + '</h4>' +
+      '<div class="overflow-x-auto rounded-lg border border-line">' +
+        '<table class="data-table min-w-[600px]"><thead><tr>' +
+          '<th class="w-10"><input type="checkbox" id="media-select-all-items"></th>' +
+          '<th>' + t('media.file') + '</th>' +
+          '<th class="text-right">' + t('media.size') + '</th>' +
+          '<th class="text-center">' + t('media.status') + '</th>' +
+          '<th>' + t('media.source') + '</th>' +
+        '</tr></thead><tbody id="media-items-tbody"></tbody></table>' +
+      '</div>' +
+    '</div>' +
+    '<div id="media-orphans-section" class="mb-4 hidden">' +
+      '<h4 class="text-base font-semibold mb-2">' + t('media.orphanFiles') + '</h4>' +
+      '<div class="overflow-x-auto rounded-lg border border-line">' +
+        '<table class="data-table min-w-[600px]"><thead><tr>' +
+          '<th class="w-10"><input type="checkbox" id="media-select-all-orphans"></th>' +
+          '<th>' + t('media.path') + '</th>' +
+          '<th class="text-right">' + t('media.size') + '</th>' +
+          '<th>' + t('media.mtime') + '</th>' +
+        '</tr></thead><tbody id="media-orphans-tbody"></tbody></table>' +
+      '</div>' +
+    '</div>' +
+    '<div class="flex items-center gap-3 pt-3 border-t border-line hidden" id="media-cleanup-actions">' +
+      '<button class="btn btn-danger btn-sm" id="media-cleanup-btn">' + t('media.cleanup') + '</button>' +
+    '</div>';
 
   const ti = data.transfer_items || {};
   const orph = data.orphan_files || {};
@@ -3120,7 +3183,7 @@ function renderMediaResult(data) {
   const items = ti.items || [];
   const itemsSection = $('#media-items-section');
   if (items.length) {
-    itemsSection.style.display = '';
+    showMediaElement(itemsSection, true);
     $('#media-items-tbody').innerHTML = items.map(item => '<tr>' +
       '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '"></td>' +
       '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc((item.paths || []).join('\\n') || item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
@@ -3129,14 +3192,14 @@ function renderMediaResult(data) {
       '<td class="text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
       '</tr>').join('');
   } else {
-    itemsSection.style.display = 'none';
+    showMediaElement(itemsSection, false);
   }
 
   /* orphans */
   const files = orph.files || [];
   const orphansSection = $('#media-orphans-section');
   if (files.length) {
-    orphansSection.style.display = '';
+    showMediaElement(orphansSection, true);
     $('#media-orphans-tbody').innerHTML = files.map(f => '<tr>' +
       '<td><input type="checkbox" class="media-cb" data-type="orphan" data-path="' + esc(f.path) + '"></td>' +
       '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
@@ -3144,8 +3207,13 @@ function renderMediaResult(data) {
       '<td class="text-xs text-muted">' + fmtTimestamp(f.mtime) + '</td>' +
       '</tr>').join('');
   } else {
-    orphansSection.style.display = 'none';
+    showMediaElement(orphansSection, false);
   }
+
+  if (!items.length && !files.length) {
+    container.insertAdjacentHTML('beforeend', '<div class="p-6 text-center text-muted text-sm">' + t('media.empty') + '</div>');
+  }
+  showMediaElement($('#media-cleanup-actions'), Boolean(items.length || files.length));
 
   /* select-all */
   $('#media-select-all-items').onclick = function() {
@@ -3154,6 +3222,18 @@ function renderMediaResult(data) {
   $('#media-select-all-orphans').onclick = function() {
     $$('#media-orphans-tbody .media-cb').forEach(cb => cb.checked = this.checked);
   };
+  $('#media-cleanup-btn')?.addEventListener('click', doMediaCleanup);
+}
+
+function renderMediaError(error) {
+  const container = $('#media-result');
+  if (!container) return;
+  container.classList.remove('hidden');
+  container.style.display = '';
+  container.innerHTML =
+    '<div class="p-6 rounded-lg border border-line bg-danger-bg text-danger text-sm">' +
+      esc(translateApiError(error, 'form.requestFailed')) +
+    '</div>';
 }
 
 async function doMediaCleanup() {
@@ -3182,7 +3262,7 @@ async function loadCleanupLogs() {
     const logs = (data && data.logs) || [];
     const section = $('#media-logs-section');
     if (logs.length) {
-      section.style.display = '';
+      showMediaElement(section, true);
       $('#media-logs-tbody').innerHTML = logs.map(log => '<tr>' +
         '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(log.file_path || '-') + '</td>' +
         '<td class="text-xs text-right">' + fmtSize(log.file_size) + '</td>' +
@@ -3190,7 +3270,7 @@ async function loadCleanupLogs() {
         '<td class="text-xs text-muted">' + fmtTime(log.created_at) + '</td>' +
         '</tr>').join('');
     } else {
-      section.style.display = 'none';
+      showMediaElement(section, false);
     }
   } catch(e) {}
 }
@@ -4048,6 +4128,7 @@ const i18n = {
     'media.confirmCleanup': '确定要删除选中的文件吗？此操作不可撤销。',
     'media.cleanupDone': '清理完成：已删除 {count} 个文件 ({size})。',
     'media.cleanupHistory': '清理历史',
+    'media.empty': '没有可清理文件',
     'media.reason': '原因',
     'media.time': '时间',
     'media.filterByTask': '按任务筛选：',
@@ -4287,6 +4368,7 @@ const i18n = {
     'media.confirmCleanup': 'Delete selected files? This cannot be undone.',
     'media.cleanupDone': 'Cleanup done: {count} files deleted ({size}).',
     'media.cleanupHistory': 'Cleanup history',
+    'media.empty': 'No cleanable files',
     'media.reason': 'Reason',
     'media.time': 'Time',
     'media.filterByTask': 'Filter by task:',

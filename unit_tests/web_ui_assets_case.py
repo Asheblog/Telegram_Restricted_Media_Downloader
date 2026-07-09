@@ -250,6 +250,13 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)
         self.assertIn('showLoginStep', WEB_UI_HTML)
 
+    def test_media_scan_has_visible_feedback(self):
+        self.assertIn("setMediaScanButtonLoading(true);", WEB_UI_HTML)
+        self.assertIn("container.classList.remove('hidden');", WEB_UI_HTML)
+        self.assertIn("container.classList.add('hidden');", WEB_UI_HTML)
+        self.assertIn("renderMediaError", WEB_UI_HTML)
+        self.assertIn("t('media.scanning')", WEB_UI_HTML)
+
     def test_webui_session_expiry_redirects_to_login_page(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
         self.assertIn('function redirectToLoginPage', combined)
