@@ -42,7 +42,7 @@
 
   html {
     font-family: var(--font-body);
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.5;
     color: var(--color-text);
     background: var(--color-bg);
@@ -95,7 +95,7 @@
   }
 
   .sidebar-nav-item {
-    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-base font-medium text-text-secondary
+    @apply flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] text-sm font-medium text-text-secondary
            transition-all duration-150 w-full text-left border-0 bg-transparent cursor-pointer;
     font-family: inherit;
   }
@@ -150,12 +150,12 @@
   }
 
   .topbar p {
-    @apply text-base text-muted mt-1 leading-relaxed;
+    @apply text-sm text-muted mt-1;
   }
 
   /* Buttons */
   .btn {
-    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-base font-medium
+    @apply inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-sm font-medium
            border border-line bg-surface text-text cursor-pointer
            transition-all duration-150 whitespace-nowrap;
     font-family: inherit;
@@ -221,12 +221,12 @@
   }
 
   .stat-card-value {
-    @apply text-2xl font-bold text-text leading-tight text-right;
+    @apply text-xl font-bold text-text leading-tight text-right;
     font-family: var(--font-heading);
   }
 
   .stat-card-label {
-    @apply text-sm text-muted mt-1 font-medium;
+    @apply text-xs text-muted mt-1 font-medium;
   }
 
   /* Panels */
@@ -252,7 +252,7 @@
   }
 
   .panel-tab {
-    @apply px-2.5 py-1 rounded text-sm font-medium text-text-secondary
+    @apply px-2.5 py-1 rounded text-xs font-medium text-text-secondary
            cursor-pointer border-0 bg-transparent transition-all duration-100;
     font-family: inherit;
   }
@@ -271,11 +271,11 @@
   }
 
   .form-label {
-    @apply block text-sm font-semibold text-muted mb-1.5 uppercase tracking-[0.04em];
+    @apply block text-xs font-semibold text-muted mb-1.5 uppercase tracking-[0.04em];
   }
 
   .form-input, .form-select {
-    @apply w-full h-10 border border-line rounded-[6px] px-3 text-base text-text bg-surface
+    @apply w-full h-10 border border-line rounded-[6px] px-3 text-sm text-text bg-surface
            outline-none transition-all duration-150;
     font-family: inherit;
   }
@@ -293,7 +293,7 @@
   .download-upload-align-spacer {
     @apply mb-3.5 flex min-h-[88px] items-center justify-center rounded-[8px]
            border border-dashed border-line bg-surface-alt px-4 text-center
-           text-base font-semibold text-muted;
+           text-sm font-semibold text-muted;
   }
 
   @media (min-width: 64rem) {
@@ -307,7 +307,7 @@
   }
 
   .form-submit {
-    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-base font-semibold
+    @apply w-full h-10 bg-primary text-white border-0 rounded-[6px] text-sm font-semibold
            cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 transition-colors duration-150;
     font-family: inherit;
   }
@@ -318,16 +318,16 @@
 
   /* Tables */
   .data-table {
-    @apply w-full border-collapse text-base;
+    @apply w-full border-collapse text-sm;
   }
 
   .data-table thead th {
-    @apply text-center py-2.5 px-3 text-sm font-semibold text-muted uppercase tracking-[0.05em]
+    @apply text-center py-2.5 px-3 text-xs font-semibold text-muted uppercase tracking-[0.05em]
            border-b-2 border-line bg-surface-alt sticky top-0 whitespace-nowrap;
   }
 
   .data-table tbody td {
-    @apply py-2.5 px-3 border-b border-line-light text-base align-middle text-center;
+    @apply py-2.5 px-3 border-b border-line-light text-sm align-middle text-center;
   }
 
   .table-actions {
@@ -418,7 +418,7 @@
 
   /* Activity feed */
   .activity-item {
-    @apply flex gap-2 py-1.5 border-b border-line-light text-sm leading-relaxed;
+    @apply flex gap-2 py-1.5 border-b border-line-light text-xs leading-[1.5];
   }
 
   .activity-item:last-child {
@@ -477,7 +477,7 @@
   }
 
   .login-brand p {
-    @apply text-base text-muted mt-1 max-sm:px-2 max-sm:leading-relaxed;
+    @apply text-sm text-muted mt-1 max-sm:px-2 max-sm:leading-5;
   }
 
   .login-overlay {
@@ -507,11 +507,11 @@
   }
 
   .login-field label {
-    @apply block text-base font-medium text-text mb-2;
+    @apply block text-sm font-medium text-text mb-2;
   }
 
   .login-field input {
-    @apply w-full h-12 border border-line rounded-[8px] px-3.5 text-base bg-surface text-text
+    @apply w-full h-12 border border-line rounded-[8px] px-3.5 text-sm bg-surface text-text
            outline-none transition-colors duration-150;
     font-family: inherit;
   }
@@ -526,11 +526,11 @@
   }
 
   .login-checkbox {
-    @apply flex items-center gap-2 cursor-pointer text-base text-muted select-none;
+    @apply flex items-center gap-2 cursor-pointer text-sm text-muted select-none;
   }
 
   .login-submit {
-    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-base font-semibold
+    @apply w-full h-12 border-0 rounded-[8px] bg-primary text-white text-sm font-semibold
            cursor-pointer flex items-center justify-center gap-2 transition-colors duration-150;
     font-family: inherit;
   }
@@ -598,7 +598,7 @@
   }
   .watch-events-panel {
     padding: 12px 16px;
-    font-size: 16px;
+    font-size: 15px;
     max-height: 300px;
     overflow-y: auto;
   }
@@ -608,14 +608,14 @@
     gap: 8px;
     padding: 4px 0;
     border-bottom: 1px solid var(--color-line);
-    font-size: 14px;
+    font-size: 13px;
   }
   .watch-event-item:last-child { border-bottom: 0; }
   .watch-event-time { color: var(--color-muted); white-space: nowrap; min-width: 90px; }
   .watch-event-badge { flex-shrink: 0; }
   .watch-event-info { flex: 1; word-break: break-all; }
   .watch-events-load-more {
-    display: block; margin: 8px auto 0; font-size: 14px; cursor: pointer;
+    display: block; margin: 8px auto 0; font-size: 13px; cursor: pointer;
   }
 
   /* Responsive */
@@ -641,7 +641,7 @@
   /* --- Mobile body defaults --- */
   .mob-body {
     font-family: var(--font-mob);
-    font-size: 16px;
+    font-size: 15px;
     display: block;
     width: 100%;
     min-height: 100svh;
@@ -725,7 +725,7 @@
     background: var(--color-primary);
     color: #fff;
     font-weight: 600;
-    font-size: 16px;
+    font-size: 15px;
     cursor: pointer;
     transition: opacity .15s, background .15s;
     min-height: 44px;
@@ -912,7 +912,7 @@
   }
   .mob-card__title {
     font-weight: 650;
-    font-size: 16px;
+    font-size: 15px;
     word-break: break-all;
     line-height: 1.35;
     flex: 1;
@@ -1121,7 +1121,7 @@
     to { transform: translateY(0); }
   }
   .mob-sheet__title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     margin: 0;
     font-family: var(--font-heading);
@@ -1423,7 +1423,7 @@
     border: 1px solid var(--color-line);
     border-radius: 8px;
     padding: 0 14px;
-    font-size: 16px;
+    font-size: 15px;
     background: var(--color-surface);
     color: var(--color-text);
     font-family: inherit;
@@ -1479,7 +1479,7 @@
     margin-bottom: 12px;
   }
   .mob-login-success__text {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--color-success);
     margin: 0;
