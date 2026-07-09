@@ -187,11 +187,16 @@ function renderTaskDetail(taskId, data) {
   });
 }
 
-async function loadTaskItems(taskId, status) {
+async function loadTaskItems(taskId, status, options) {
+  options = options || {};
+  const silent = Boolean(options.silent);
   const page = state.itemPages[status] || 1;
   const body = $('#task-items-body');
   const pagEl = $('#task-items-pagination');
-  body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
+  if (!body || !pagEl) return;
+  if (!silent) {
+    body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
+  }
 
   try {
     const data = await fetchJson('/api/tasks/' + taskId + '?items_limit=50&items_offset=' + ((page - 1) * 50) + '&item_status=' + encodeURIComponent(status));
@@ -237,8 +242,38 @@ async function loadTaskItems(taskId, status) {
       loadTaskItems(taskId, state.activeItemStatus);
     });
   } catch(e) {
-    body.innerHTML = '<div class="p-8 text-center text-muted text-sm">加载失败</div>';
+    if (!silent) {
+      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">加载失败</div>';
+    }
   }
+}
+
+async function refreshSelectedTaskDetail() {
+  if (state.activeView !== 'transfers' || !state.selectedTaskId) return;
+  const taskId = state.selectedTaskId;
+  const detailEl = $('#task-detail');
+  const body = $('#task-items-body');
+  if (!detailEl || !body) return;
+  try {
+    const data = await fetchJson('/api/tasks/' + taskId + '/summary');
+    state.itemData[taskId] = data;
+    renderTaskDetailTabs(data.summary || {});
+    await loadTaskItems(taskId, state.activeItemStatus || 'running', { silent: true });
+  } catch(e) {}
+}
+
+function renderTaskDetailTabs(summary) {
+  const tabs = {
+    running: summary.running || 0,
+    success: summary.success || 0,
+    skipped: summary.skipped || 0,
+    failure: summary.failed || 0,
+  };
+  Object.keys(tabs).forEach(status => {
+    const btn = $('#task-detail [data-item-tab="' + status + '"]');
+    if (!btn) return;
+    btn.textContent = t('items.tab.' + status) + ' (' + tabs[status] + ')';
+  });
 }
 
 /* ====== Transfer Form ====== */
@@ -295,7 +330,10 @@ function startPolling() {
     const now = Date.now();
     if (now - lastPoll < interval - 500) { state.taskPollTimer = setTimeout(poll, interval); return; }
     lastPoll = now;
-    try { await loadTasks(); } catch(e) {}
+    try {
+      await loadTasks();
+      await refreshSelectedTaskDetail();
+    } catch(e) {}
     interval = hasActiveTasks() ? fast : slow;
     state.taskPollTimer = setTimeout(poll, interval);
   }

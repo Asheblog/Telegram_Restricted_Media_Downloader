@@ -166,26 +166,34 @@ function hasActiveTasks() { return (window.state && Array.isArray(window.state.t
 function startPolling() {
   stopPolling();
   initialLoadDone = true;
-  loadCurrentView();
-  pollTimer = setInterval(function() { loadCurrentView(); }, hasActiveTasks() ? 3000 : 10000);
+
+  async function poll() {
+    await loadCurrentView();
+    pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+  }
+
+  poll();
 }
 
 function stopPolling() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
 }
 
-function loadCurrentView() {
+async function loadCurrentView() {
   var active = document.querySelector('.mob-view.active');
   if (!active) return;
   var id = active.id;
-  if (id === 'mob-view-transfers') { loadMobileTasks(); }
-  else if (id === 'mob-view-watches') { loadMobileWatches(); }
-  else if (id === 'mob-view-downloads-uploads') { loadMobileDownloadsUploads(); }
+  if (id === 'mob-view-transfers') {
+    await loadMobileTasks();
+    await refreshOpenTaskSheet();
+  }
+  else if (id === 'mob-view-watches') { await loadMobileWatches(); }
+  else if (id === 'mob-view-downloads-uploads') { await loadMobileDownloadsUploads(); }
   // profile sub-pages load on demand
   var subActive = document.querySelector('.mob-subpage.active');
   if (subActive) {
-    if (subActive.id === 'mob-subpage-statistics') { loadMobileStatistics(); }
-    else if (subActive.id === 'mob-subpage-records') { loadMobileRecords(); }
+    if (subActive.id === 'mob-subpage-statistics') { await loadMobileStatistics(); }
+    else if (subActive.id === 'mob-subpage-records') { await loadMobileRecords(); }
   }
 }
 
@@ -548,6 +556,7 @@ async function loadMobileWatchEvents(watchId, sanitized) {
 }
 
 async function openMobileWatchHistory(watchId, page) {
+  sheetState.sheetType = 'watch-history';
   state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
   var overlay = document.getElementById('mob-sheet-overlay');
   var sheet = document.getElementById('mob-sheet');
@@ -607,10 +616,10 @@ async function loadMobileWatchHistoryPage() {
 // ---------------------------------------------------------------------------
 // Task detail sheet
 // ---------------------------------------------------------------------------
-var sheetState = { taskId: null, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
+var sheetState = { sheetType: '', taskId: null, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
 
 async function openTaskDetail(taskId) {
-  sheetState = { taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
+  sheetState = { sheetType: 'task-detail', taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
   var overlay = document.getElementById('mob-sheet-overlay');
   var sheet = document.getElementById('mob-sheet');
   if (!overlay || !sheet) return;
@@ -625,6 +634,19 @@ async function openTaskDetail(taskId) {
   } catch (e) {
     sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
   }
+}
+
+async function refreshOpenTaskSheet() {
+  var overlay = document.getElementById('mob-sheet-overlay');
+  if (!overlay || !overlay.classList.contains('open') || sheetState.sheetType !== 'task-detail' || !sheetState.taskId) return;
+  var sheet = document.getElementById('mob-sheet');
+  if (!sheet) return;
+  try {
+    var data = await fetchJson('/api/tasks/' + sheetState.taskId);
+    sheetState.items = data.items || [];
+    sheetState.events = data.events || [];
+    updateSheetContent(data);
+  } catch (e) {}
 }
 
 function renderSheetContent(data) {
@@ -652,7 +674,7 @@ function renderSheetContent(data) {
 
   sheet.innerHTML =
     '<div class="mob-sheet__title">任务详情 #' + task.id + '</div>' +
-    '<div class="mob-sheet__task-header">' +
+    '<div class="mob-sheet__task-header" id="mob-sheet-task-header">' +
       '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
       '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
       (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '') +
@@ -666,9 +688,35 @@ function renderSheetContent(data) {
   document.getElementById('mob-sheet-close').addEventListener('click', closeSheet);
 }
 
+function updateSheetContent(data) {
+  var task = data.task || {};
+  var summary = data.summary || {};
+  var header = document.getElementById('mob-sheet-task-header');
+  if (header) {
+    header.innerHTML =
+      '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
+      '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
+      (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '');
+  }
+  var counts = {
+    all: summary.total || sheetState.items.length || 0,
+    success: summary.success || 0,
+    failure: summary.failed || 0,
+    skipped: summary.skipped || 0
+  };
+  document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab').forEach(function(tab) {
+    var key = tab.dataset.sheetTab;
+    var count = counts[key] || 0;
+    var label = key === 'all' ? '全部' : key === 'success' ? '成功' : key === 'failure' ? '失败' : '跳过';
+    tab.innerHTML = label + '<span class="count">' + count + '</span>';
+  });
+  renderSheetItemPage();
+}
+
 function closeSheet() {
   var overlay = document.getElementById('mob-sheet-overlay');
   if (overlay) overlay.classList.remove('open');
+  sheetState.sheetType = '';
 }
 
 function bindSheetTabClicks() {

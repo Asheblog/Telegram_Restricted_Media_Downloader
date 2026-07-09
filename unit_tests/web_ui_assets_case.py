@@ -136,9 +136,11 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_mobile_uses_api_loading_instead_of_persistent_loading_placeholders(self):
         for fragment in (
             'window.state = state;',
-            "if (id === 'mob-view-transfers') { loadMobileTasks(); }",
-            "else if (id === 'mob-view-watches') { loadMobileWatches(); }",
-            "else if (id === 'mob-view-downloads-uploads') { loadMobileDownloadsUploads(); }",
+            "if (id === 'mob-view-transfers') {",
+            "await loadMobileTasks();",
+            "await refreshOpenTaskSheet();",
+            "else if (id === 'mob-view-watches') { await loadMobileWatches(); }",
+            "else if (id === 'mob-view-downloads-uploads') { await loadMobileDownloadsUploads(); }",
             "if (view === 'transfers') { loadMobileTasks(); }",
             "else if (view === 'watches') { loadMobileWatches(); }",
             "else if (view === 'downloads-uploads') { loadMobileDownloadsUploads(); }",
@@ -216,6 +218,13 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_polling_js(self):
         self.assertIn('function startPolling', WEB_UI_HTML)
         self.assertIn('hasActiveTasks', WEB_UI_HTML)
+
+    def test_task_detail_progress_refreshes_without_manual_page_reload(self):
+        self.assertIn('function refreshSelectedTaskDetail', WEB_UI_HTML)
+        self.assertIn('refreshSelectedTaskDetail();', WEB_UI_HTML)
+        self.assertIn("{ silent: true })", WEB_UI_HTML)
+        self.assertIn('function refreshOpenTaskSheet', WEB_UI_MOBILE_HTML)
+        self.assertIn('refreshOpenTaskSheet();', WEB_UI_MOBILE_HTML)
 
     def test_auth_flow_js(self):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)
