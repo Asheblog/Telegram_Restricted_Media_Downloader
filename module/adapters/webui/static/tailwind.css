@@ -1116,6 +1116,29 @@
     max-height: 85vh;
     animation: mobSlideUp .25s ease;
   }
+  .mob-sheet--task-detail {
+    overflow: hidden;
+    gap: 10px;
+    padding-bottom: max(16px, var(--safe-bottom));
+  }
+  .mob-sheet--task-detail .mob-sheet__sticky {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mob-sheet--task-detail .mob-sheet__scroll-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mob-sheet--task-detail .mob-sheet__footer {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
   @keyframes mobSlideUp {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }

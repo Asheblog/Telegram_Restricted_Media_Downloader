@@ -632,13 +632,14 @@ async function loadMobileWatchHistoryPage() {
 // ---------------------------------------------------------------------------
 // Task detail sheet
 // ---------------------------------------------------------------------------
-var sheetState = { sheetType: '', taskId: null, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
+var sheetState = { sheetType: '', taskId: null, items: [], events: [], currentTab: 'all', currentPage: 1, pageSize: 20 };
 
 async function openTaskDetail(taskId) {
-  sheetState = { sheetType: 'task-detail', taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 0, pageSize: 30, loading: false, hasMore: false };
+  sheetState = { sheetType: 'task-detail', taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 1, pageSize: 20 };
   var overlay = document.getElementById('mob-sheet-overlay');
   var sheet = document.getElementById('mob-sheet');
   if (!overlay || !sheet) return;
+  sheet.className = 'mob-sheet mob-sheet--task-detail';
   sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
   overlay.classList.add('open');
 
@@ -690,14 +691,19 @@ function renderSheetContent(data) {
 
   sheet.innerHTML =
     '<div class="mob-sheet__title">任务详情 #' + task.id + '</div>' +
-    '<div class="mob-sheet__task-header" id="mob-sheet-task-header">' +
-      '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
-      '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
-      (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '') +
+    '<div class="mob-sheet__sticky">' +
+      '<div class="mob-sheet__task-header" id="mob-sheet-task-header">' +
+        '<div class="task-title">' + esc(task.title || task.source_link || '任务 #' + task.id) + '</div>' +
+        '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
+        (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '') +
+      '</div>' +
+      '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">' + tabsHtml + '</div>' +
     '</div>' +
-    '<div class="mob-sheet-tabs" id="mob-sheet-item-tabs">' + tabsHtml + '</div>' +
-    '<div id="mob-sheet-item-list"></div>' +
-    '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:4px;" id="mob-sheet-close">关闭</button>';
+    '<div class="mob-sheet__scroll-body" id="mob-sheet-item-list"></div>' +
+    '<div class="mob-sheet__footer">' +
+      '<div id="mob-sheet-item-pagination"></div>' +
+      '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;" id="mob-sheet-close">关闭</button>' +
+    '</div>';
 
   bindSheetTabClicks();
   renderSheetItemPage();
@@ -732,6 +738,8 @@ function updateSheetContent(data) {
 function closeSheet() {
   var overlay = document.getElementById('mob-sheet-overlay');
   if (overlay) overlay.classList.remove('open');
+  var sheet = document.getElementById('mob-sheet');
+  if (sheet) sheet.className = 'mob-sheet';
   sheetState.sheetType = '';
 }
 
@@ -742,7 +750,7 @@ function bindSheetTabClicks() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
       sheetState.currentTab = tab.dataset.sheetTab;
-      sheetState.currentPage = 0;
+      sheetState.currentPage = 1;
       renderSheetItemPage();
     });
   });
@@ -750,6 +758,7 @@ function bindSheetTabClicks() {
 
 function renderSheetItemPage() {
   var container = document.getElementById('mob-sheet-item-list');
+  var pagination = document.getElementById('mob-sheet-item-pagination');
   if (!container) return;
 
   var filtered = sheetState.items;
@@ -757,37 +766,48 @@ function renderSheetItemPage() {
     filtered = sheetState.items.filter(function(item) { return item.status === sheetState.currentTab; });
   }
 
-  var start = sheetState.currentPage * sheetState.pageSize;
-  var page = filtered.slice(start, start + sheetState.pageSize);
-  sheetState.hasMore = start + sheetState.pageSize < filtered.length;
+  var meta = paginationMeta(filtered.length, sheetState.pageSize, sheetState.currentPage);
+  sheetState.currentPage = meta.page;
+  var start = (meta.page - 1) * meta.pageSize;
+  var page = filtered.slice(start, start + meta.pageSize);
 
   if (page.length === 0) {
     container.innerHTML = '<div class="mob-empty">暂无数据</div>';
-    return;
+  } else {
+    var html = '';
+    page.forEach(function(item) {
+      var summary = itemTransferSummary(item);
+      html += '<div class="mob-item-row">' +
+        '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
+          '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
+        '</span>' +
+        '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
+      '</div>';
+    });
+    container.innerHTML = html;
   }
 
-  var html = '';
-  page.forEach(function(item) {
-    var summary = itemTransferSummary(item);
-    html += '<div class="mob-item-row">' +
-      '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
-        '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
-      '</span>' +
-      '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
-    '</div>';
+  if (pagination) {
+    pagination.innerHTML = renderPaginationBar({
+      total: filtered.length,
+      pageSize: sheetState.pageSize,
+      page: meta.page,
+      prefix: 'mob-sheet-items',
+      variant: 'mobile'
+    });
+    bindSheetItemPagination(meta.page, meta.totalPages);
+  }
+
+  container.scrollTop = 0;
+}
+
+function bindSheetItemPagination(currentPage, totalPages) {
+  document.getElementById('mob-sheet-items-prev')?.addEventListener('click', function() {
+    sheetState.currentPage = Math.max(1, currentPage - 1);
+    renderSheetItemPage();
   });
-
-  if (sheetState.hasMore) {
-    html += '<div style="text-align:center;padding:8px;">' +
-      '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-sheet-load-more">加载更多</button>' +
-    '</div>';
-  }
-
-  container.innerHTML = html;
-
-  var loadMoreBtn = document.getElementById('mob-sheet-load-more');
-  if (loadMoreBtn) loadMoreBtn.addEventListener('click', function() {
-    sheetState.currentPage++;
+  document.getElementById('mob-sheet-items-next')?.addEventListener('click', function() {
+    sheetState.currentPage = Math.min(totalPages, currentPage + 1);
     renderSheetItemPage();
   });
 }
