@@ -208,6 +208,16 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('stat-running', WEB_UI_HTML)
         self.assertIn('stat-failed', WEB_UI_HTML)
 
+    def test_statistics_dashboard_present(self):
+        for fragment in (
+            'stats-kpi-grid',
+            'stats-chart-grid',
+            'statistics-tabs',
+            'statistics-export-btn',
+            'renderStatisticsDashboard',
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+
     def test_refresh_and_language_controls(self):
         self.assertIn('id="refresh"', WEB_UI_HTML)
         self.assertIn('id="language-select"', WEB_UI_HTML)

@@ -1110,6 +1110,7 @@ async function loadMobileStatistics() {
   try {
     var data = await fetchJson('/api/statistics');
     var tables = data && data.tables ? data.tables : null;
+    var summary = data && data.summary ? data.summary : {};
     if (!tables) {
       container.innerHTML = '<div class="mob-empty">暂无统计数据</div>';
       return;
@@ -1120,12 +1121,22 @@ async function loadMobileStatistics() {
       { key: 'upload', label: '上传统计表' }
     ];
     var html = '';
+    if (summary.links || summary.downloads_total || summary.upload_tasks) {
+      html += '<div class="mob-card">' +
+        '<div class="mob-card__head"><span class="mob-card__title">数据概览</span></div>' +
+        '<div class="mob-card__row"><span class="label">监控链接</span><span>' + (summary.links || 0) + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">下载总量</span><span>' + (summary.downloads_total || 0) + '</span></div>' +
+        '<div class="mob-card__row"><span class="label">成功率</span><span>' + (summary.success_rate || 0) + '%</span></div>' +
+        '<div class="mob-card__row"><span class="label">上传任务</span><span>' + (summary.upload_tasks || 0) + '</span></div>' +
+      '</div>';
+    }
     rows.forEach(function(row) {
       var t = tables[row.key] || {};
       html += '<div class="mob-card">' +
         '<div class="mob-card__head"><span class="mob-card__title">' + esc(row.label) + '</span></div>' +
         '<div class="mob-card__row"><span class="label">行数</span><span>' + (t.row_count || t.rows || 0) + '</span></div>' +
         '<div class="mob-card__row"><span class="label">可用</span><span>' + (t.available ? '是' : '否') + '</span></div>' +
+        (t.available ? '<button class="mob-btn mob-btn--primary" type="button" data-export="' + row.key + '">导出</button>' : '') +
       '</div>';
     });
     container.innerHTML = html || '<div class="mob-empty">暂无统计数据</div>';

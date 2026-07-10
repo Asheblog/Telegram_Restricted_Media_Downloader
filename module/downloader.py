@@ -840,23 +840,15 @@ class TelegramRestrictedMediaDownloader:
             offset_id = next_offset_id
 
     def statistics(self) -> dict:
-        return {
-            'tables': {
-                'link': {
-                    'available': bool(DownloadTask.LINK_INFO),
-                    'rows': len(DownloadTask.LINK_INFO)
-                },
-                'count': {
-                    'available': bool(DownloadTask.LINK_INFO),
-                    'rows': len(DownloadTask.LINK_INFO)
-                },
-                'upload': {
-                    'available': bool(UploadTask.TASKS),
-                    'rows': len(UploadTask.TASKS)
-                }
-            },
-            'operations': list(self.web_operations.values())[-50:]
-        }
+        from module.statistics_payload import build_statistics_payload
+
+        payload = build_statistics_payload(
+            link_info=DownloadTask.LINK_INFO,
+            app=self.app,
+            upload_tasks=UploadTask.TASKS,
+        )
+        payload['operations'] = list(self.web_operations.values())[-50:]
+        return payload
 
     def export_table(self, table_type: str) -> dict:
         if table_type == 'link':

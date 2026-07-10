@@ -1088,13 +1088,9 @@ class WebUiServer:
         statistics = self._operation('statistics')
         if statistics:
             return statistics()
-        return {
-            'tables': {
-                'link': {'available': False, 'rows': 0},
-                'count': {'available': False, 'rows': 0},
-                'upload': {'available': False, 'rows': 0}
-            }
-        }
+        from module.statistics_payload import build_statistics_payload, empty_statistics_app
+
+        return build_statistics_payload(link_info={}, app=empty_statistics_app(), upload_tasks=set())
 
     def list_operations(self, limit: int = 50) -> list:
         list_operations = self._operation('list_operations')

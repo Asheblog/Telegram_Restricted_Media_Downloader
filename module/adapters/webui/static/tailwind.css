@@ -535,6 +535,99 @@
   .badge-warning { @apply bg-warning-bg text-warning; }
   .badge-muted { @apply bg-slate-100 text-slate-500; }
 
+  /* Statistics dashboard */
+  .stats-kpi-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .stats-chart-grid {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+
+  .stats-bar-chart {
+    @apply flex items-end gap-2.5 min-h-[180px] pt-2;
+  }
+
+  .stats-bar-group {
+    @apply flex flex-1 flex-col items-center justify-end gap-1.5 h-full min-w-0;
+  }
+
+  .stats-bar-stack {
+    @apply w-full max-w-12 flex flex-col-reverse overflow-hidden rounded-t;
+  }
+
+  .stats-bar-seg-success { @apply bg-success; }
+  .stats-bar-seg-failure { @apply bg-danger; }
+  .stats-bar-seg-skip { @apply bg-slate-400; }
+
+  .stats-bar-label {
+    @apply text-[10px] text-muted text-center truncate w-full;
+  }
+
+  .stats-chart-legend {
+    @apply flex flex-wrap gap-3 mt-3 text-xs text-text-secondary;
+  }
+
+  .stats-legend-item {
+    @apply inline-flex items-center gap-1.5;
+  }
+
+  .stats-legend-dot {
+    @apply w-2.5 h-2.5 rounded-sm flex-shrink-0;
+  }
+
+  .stats-legend-success { @apply bg-success; }
+  .stats-legend-failure { @apply bg-danger; }
+  .stats-legend-skip { @apply bg-slate-400; }
+
+  .stats-donut-wrap {
+    @apply flex items-center justify-center gap-6 flex-wrap py-2;
+  }
+
+  .stats-donut-legend {
+    @apply flex flex-col gap-2.5 text-sm;
+  }
+
+  .stats-donut-legend-item {
+    @apply flex items-center gap-2;
+  }
+
+  .stats-donut-legend-val {
+    @apply font-bold ml-auto;
+  }
+
+  .stats-inline-progress {
+    @apply h-1.5 bg-slate-100 rounded-full overflow-hidden;
+  }
+
+  .stats-inline-progress-fill {
+    @apply h-full rounded-full;
+  }
+
+  .stats-inline-progress-fill.complete {
+    background: linear-gradient(90deg, #34d399, var(--color-success));
+  }
+
+  .stats-inline-progress-fill.progress {
+    background: linear-gradient(90deg, #60a5fa, var(--color-primary));
+  }
+
+  .stats-inline-progress-fill.error {
+    background: linear-gradient(90deg, #fb923c, var(--color-cta));
+  }
+
+  @media (max-width: 1100px) {
+    .stats-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stats-chart-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* Progress */
   .progress-bar {
     @apply h-1.5 bg-slate-100 rounded-full overflow-hidden;

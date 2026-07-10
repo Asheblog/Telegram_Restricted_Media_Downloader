@@ -398,22 +398,90 @@
 
 <!-- ====== Statistics View ====== -->
 <div class="view" id="view-statistics">
+  <div class="stats-kpi-grid">
+    <div class="stat-card">
+      <div class="stat-card-icon blue">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stats-kpi-links">0</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiLinks">监控链接</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon green">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stats-kpi-downloads">0</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiDownloads">下载总量</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon orange">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stats-kpi-issues">0</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiIssues">失败 / 跳过</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon purple">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M7 10l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stats-kpi-uploads">0</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiUploads">上传任务</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-chart-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <h3 data-i18n="statistics.mediaChartTitle">媒体下载分布</h3>
+        <span class="text-xs text-muted" data-i18n="statistics.mediaChartMeta">按类型 · 成功 / 失败 / 跳过</span>
+      </div>
+      <div class="panel-body">
+        <div id="stats-media-chart" class="stats-bar-chart"></div>
+        <div class="stats-chart-legend">
+          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-success"></span><span data-i18n="statistics.legendSuccess">成功</span></span>
+          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-failure"></span><span data-i18n="statistics.legendFailure">失败</span></span>
+          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-skip"></span><span data-i18n="statistics.legendSkip">跳过</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <h3 data-i18n="statistics.linkChartTitle">链接完成率</h3>
+        <span class="text-xs text-muted" data-i18n="statistics.linkChartMeta">按来源链接</span>
+      </div>
+      <div class="panel-body">
+        <div id="stats-link-donut" class="stats-donut-wrap"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel">
     <div class="panel-header">
-      <h3 data-i18n="statistics.title">统计与导出</h3>
+      <div class="panel-tabs" id="statistics-tabs">
+        <button type="button" class="panel-tab active" data-stats-tab="link" data-i18n="statistics.tabLink">链接统计</button>
+        <button type="button" class="panel-tab" data-stats-tab="count" data-i18n="statistics.tabCount">计数统计</button>
+        <button type="button" class="panel-tab" data-stats-tab="upload" data-i18n="statistics.tabUpload">上传统计</button>
+      </div>
+      <button class="btn btn-sm btn-primary" id="statistics-export-btn" data-export="link">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="statistics-export-label" data-i18n="statistics.exportCurrent">导出当前报表</span>
+      </button>
     </div>
     <div class="overflow-auto">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th data-i18n="statistics.table">表格</th>
-            <th data-i18n="statistics.available">可用</th>
-            <th data-i18n="statistics.rows">行数</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="statistics-tbody"></tbody>
+      <table class="data-table" id="statistics-detail-table">
+        <thead id="statistics-detail-thead"></thead>
+        <tbody id="statistics-detail-tbody"></tbody>
       </table>
+      <div id="statistics-empty" class="p-8 text-center text-muted text-sm hidden" data-i18n="statistics.empty">暂无统计数据。</div>
     </div>
   </div>
 </div>
