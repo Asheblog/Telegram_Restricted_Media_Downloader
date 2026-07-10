@@ -45,6 +45,7 @@ class WebTransferHost(Protocol):
     def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict: ...
     def skip_transfer_item_for_target_limit(self, task: dict, message, source_link: str, origin_chat_id, limit_error: dict) -> int: ...
     def refresh_transfer_task_counts(self, task_id: int) -> None: ...
+    def find_resumable_transfer_item(self, task_id: int, source_message_id: int, source_chat_id=None): ...
     def skip_missing_web_transfer_range_message(self, task: dict, origin_chat_id, source_link: str, message_id: int) -> None: ...
     async def parse_web_transfer_link(self, client, link: str) -> dict: ...
 
@@ -133,6 +134,33 @@ class WebTransferRunner:
                         return
                     if message_id in completed_message_ids:
                         continue
+                    if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
+                        try:
+                            await self._resolve_method('wait_between_transfer_messages')()
+                            message = await self._resolve_method('get_web_transfer_range_message')(
+                                origin_chat_id, message_id, task_id
+                            )
+                            if message:
+                                message_link = f'{source_prefix}/{getattr(message, "id", "")}'
+                                await self.create_web_transfer_fallback_download(
+                                    task=task,
+                                    source_link=message_link,
+                                    message=message
+                                )
+                                fallback_count += 1
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            log.error(
+                                f'Web transfer resume download failed: task={task_id}, message={message_id}, reason="{e}"',
+                                exc_info=True
+                            )
+                            host.transfer_store.add_event(
+                                task_id,
+                                f'Resume download failed: {message_id}: {e}',
+                                level='error'
+                            )
+                        continue
                     try:
                         await self._resolve_method('wait_between_transfer_messages')()
                         message = await self._resolve_method('get_web_transfer_range_message')(
@@ -209,13 +237,34 @@ class WebTransferRunner:
                 if message_id not in completed_message_ids:
                     if not self.should_continue_web_transfer_task(task_id):
                         return
-                    fallback_count = 1 if await self._resolve_method('transfer_message_to_web_target')(
-                        task=task,
-                        message=message,
-                        origin_chat_id=origin_chat_id,
-                        target_chat_id=target_chat_id,
-                        source_link=source_link
-                    ) else 0
+                    if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
+                        try:
+                            await self.create_web_transfer_fallback_download(
+                                task=task,
+                                source_link=source_link,
+                                message=message
+                            )
+                            fallback_count = 1
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            log.error(
+                                f'Web transfer resume download failed: task={task_id}, message={message_id}, reason="{e}"',
+                                exc_info=True
+                            )
+                            host.transfer_store.add_event(
+                                task_id,
+                                f'Resume download failed: {message_id}: {e}',
+                                level='error'
+                            )
+                    else:
+                        fallback_count = 1 if await self._resolve_method('transfer_message_to_web_target')(
+                            task=task,
+                            message=message,
+                            origin_chat_id=origin_chat_id,
+                            target_chat_id=target_chat_id,
+                            source_link=source_link
+                        ) else 0
                     if include_comment:
                         reply_count, reply_fallback_count = await self._resolve_method(
                             'transfer_web_discussion_replies_to_target'

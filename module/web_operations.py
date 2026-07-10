@@ -61,6 +61,43 @@ class WebOperationsMixin:
             return int(uploader.cancel_uploads_for_task(task_id) or 0)
         return 0
 
+    def _transfer_download_registry(self) -> dict:
+        return self.__dict__.setdefault('_transfer_download_tasks', {})
+
+    def _register_transfer_download_task(self, with_upload: Optional[dict], download_task: asyncio.Task) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        raw_task_id = with_upload.get('task_id')
+        if raw_task_id is None or download_task is None:
+            return
+        task_id = int(raw_task_id)
+        self._transfer_download_registry().setdefault(task_id, set()).add(download_task)
+
+    def _unregister_transfer_download_task(self, with_upload: Optional[dict], download_task: asyncio.Task) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        raw_task_id = with_upload.get('task_id')
+        if raw_task_id is None:
+            return
+        task_id = int(raw_task_id)
+        registry = self._transfer_download_registry()
+        tasks = registry.get(task_id)
+        if not tasks:
+            return
+        tasks.discard(download_task)
+        if not tasks:
+            registry.pop(task_id, None)
+
+    def cancel_task_downloads(self, task_id: int) -> int:
+        registry = self._transfer_download_registry()
+        tasks = list(registry.pop(int(task_id), set()))
+        cancelled = 0
+        for download_task in tasks:
+            if download_task and not download_task.done():
+                download_task.cancel()
+                cancelled += 1
+        return cancelled
+
     def submit_web_task(self, task_id: int) -> None:
         wm = getattr(self, 'web_task_manager', None)
         if wm is not None:
@@ -144,6 +181,7 @@ class WebOperationsMixin:
             return False
         self.discard_web_task_submission(task_id, cancel_running=True)
         self.cancel_task_uploads(task_id)
+        self.cancel_task_downloads(task_id)
         running_task = self.web_running_task
         if self.web_running_task_id == task_id and running_task and not running_task.done():
             if self.loop.is_running():
@@ -170,6 +208,7 @@ class WebOperationsMixin:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
+        self.cancel_task_downloads(task_id)
         self.discard_web_task_submission(task_id, cancel_running=True)
         return True
 
@@ -852,7 +891,7 @@ class WebOperationsMixin:
 
 
 _WEB_UI_DELEGATE_METHODS = (
-    'should_continue_web_transfer_task', 'cancel_task_uploads', 'submit_web_task',
+    'should_continue_web_transfer_task', 'cancel_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
     'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',

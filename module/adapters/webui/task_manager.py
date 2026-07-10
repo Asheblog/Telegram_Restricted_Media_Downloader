@@ -36,6 +36,7 @@ class WebUITaskManager:
         process_web_task_queue_getter=None,
         cleanup_task_files_getter=None,
         cancel_task_uploads_getter=None,
+        cancel_task_downloads_getter=None,
         should_continue_web_transfer_task_getter=None,
     ):
         self._transfer_store = transfer_store_getter
@@ -64,6 +65,7 @@ class WebUITaskManager:
         self._process_web_task_queue = process_web_task_queue_getter
         self._cleanup_task_files = cleanup_task_files_getter
         self._cancel_task_uploads = cancel_task_uploads_getter
+        self._cancel_task_downloads = cancel_task_downloads_getter
         self._should_continue_web_transfer_task = should_continue_web_transfer_task_getter
         self.web_operation_counter: int = 0
         self._delete_wait_timeout_seconds: float = 10.0
@@ -186,6 +188,8 @@ class WebUITaskManager:
         self.discard_web_task_submission(task_id, cancel_running=True)
         if self._cancel_task_uploads:
             self._cancel_task_uploads(task_id)
+        if self._cancel_task_downloads:
+            self._cancel_task_downloads(task_id)
         self._wait_for_running_transfer_task_stop(task_id)
         if self._cleanup_task_files:
             cleanup_result = self._cleanup_task_files(task_id)
@@ -203,6 +207,8 @@ class WebUITaskManager:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
+        if self._cancel_task_downloads:
+            self._cancel_task_downloads(task_id)
         self.discard_web_task_submission(task_id, cancel_running=True)
         return True
 

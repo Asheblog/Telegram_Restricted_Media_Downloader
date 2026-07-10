@@ -103,6 +103,7 @@ class TrmdCompositionRoot:
         self.web_submitted_task_ids: Set[int] = set()
         self.web_running_task: Optional[asyncio.Task] = None
         self.web_running_task_id: Optional[int] = None
+        self._transfer_download_tasks: dict[int, set] = {}
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operations: dict = {}
         self.watch_manager = LiveWatchManager(
@@ -189,6 +190,7 @@ class TrmdCompositionRoot:
                 self._ensure_media_manager().cleanup_task_files(task_id)
             ),
             cancel_task_uploads_getter=self.cancel_task_uploads,
+            cancel_task_downloads_getter=self.cancel_task_downloads,
             should_continue_web_transfer_task_getter=None,
         )
         self.ctx = TransferContext(

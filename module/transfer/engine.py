@@ -219,15 +219,50 @@ class TransferEngine:
             phase='downloading',
             status=TransferStatus.RUNNING
         )
+        partial_bytes = self.partial_download_bytes(final_path)
         self.transfer_store.update_item_progress(
             item_id=item_id,
             phase='downloading',
-            download_current=0,
+            download_current=partial_bytes,
             download_total=file_size
         )
         task_with_upload['item_id'] = item_id
         self.refresh_transfer_task_counts(task_id)
         return task_with_upload
+
+    @staticmethod
+    def partial_download_bytes(base_path: Optional[str]) -> int:
+        if not base_path:
+            return 0
+        candidates = [base_path]
+        if not str(base_path).endswith('.temp'):
+            candidates.append(f'{base_path}.temp')
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                return int(os.path.getsize(candidate))
+        return 0
+
+    def find_resumable_transfer_item(
+            self,
+            task_id: int,
+            source_message_id: int,
+            source_chat_id=None
+    ) -> Optional[dict]:
+        if not self.transfer_store:
+            return None
+        normalized_chat_id = str(source_chat_id) if source_chat_id is not None else None
+        for item in self.transfer_store.list_items(int(task_id)):
+            if int(item.get('source_message_id') or -1) != int(source_message_id):
+                continue
+            item_chat_id = item.get('source_chat_id')
+            if normalized_chat_id is not None and str(item_chat_id or '') != normalized_chat_id:
+                continue
+            if item.get('phase') != 'downloading':
+                continue
+            if item.get('status') not in (TransferStatus.RUNNING, TransferStatus.PENDING):
+                continue
+            return item
+        return None
 
     def build_download_upload_meta(
         self,
@@ -480,6 +515,33 @@ class TransferEngine:
         _future
     ):
         if task_id is not None and callable(getattr(_future, 'cancelled', None)) and _future.cancelled():
+            paused_transfer = False
+            if isinstance(with_upload, dict) and self.transfer_store:
+                transfer_task_id = with_upload.get('task_id')
+                if transfer_task_id is not None:
+                    transfer_task = self.transfer_store.get_task(int(transfer_task_id))
+                    if transfer_task and transfer_task.get('status') == TransferStatus.PAUSED:
+                        paused_transfer = True
+                        item_id = with_upload.get('item_id')
+                        downloaded = self.partial_download_bytes(temp_file_path)
+                        if item_id:
+                            self.transfer_store.update_item_progress(
+                                item_id=int(item_id),
+                                phase='downloading',
+                                download_current=downloaded,
+                                download_total=int(sever_file_size or 0),
+                                download_speed_bps=0
+                            )
+                        self.transfer_store.add_event(
+                            int(transfer_task_id),
+                            (
+                                f'Download paused with {MetaData.suitable_units_display(downloaded)} cached.'
+                                if downloaded
+                                else 'Download paused before any data was cached.'
+                            ),
+                            level='warning',
+                            item_id=int(item_id) if item_id else None
+                        )
             self.app.current_task_num -= 1
             self.ports.event().set()
             self.ports.release_transfer_local_storage(with_upload)

@@ -363,6 +363,13 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     def refresh_transfer_task_counts(self, task_id: int) -> None:
         return self.transfer_engine.refresh_transfer_task_counts(task_id)
 
+    def find_resumable_transfer_item(self, task_id: int, source_message_id: int, source_chat_id=None):
+        return self.transfer_engine.find_resumable_transfer_item(
+            task_id,
+            source_message_id,
+            source_chat_id=source_chat_id
+        )
+
     def create_transfer_item_for_download(
             self,
             task_with_upload: Optional[dict],
@@ -1448,8 +1455,11 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             chunk_size: int = 1024 * 1024,
             compare_size: Union[int, None] = None,  # 不为None时,将通过大小比对判断是否为完整文件。
             progress_timeout_seconds: Optional[float] = 120,
-            max_stall_retries: int = 3
+            max_stall_retries: int = 3,
+            transfer_task_id: Optional[int] = None
     ) -> str:
+        if transfer_task_id and not self.should_continue_web_transfer_task(int(transfer_task_id)):
+            raise asyncio.CancelledError()
         temp_path = f'{file_name}.temp'
         if os.path.exists(file_name) and compare_size:
             local_file_size: int = get_file_size(file_path=file_name)
@@ -1508,6 +1518,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 try:
                     stream = self.app.client.stream_media(message=message, offset=skip_chunks)
                     while True:
+                        if transfer_task_id and not self.should_continue_web_transfer_task(int(transfer_task_id)):
+                            raise asyncio.CancelledError()
                         if progress_timeout_seconds and progress_timeout_seconds > 0:
                             chunk = await asyncio.wait_for(
                                 anext(stream),
@@ -1731,12 +1743,20 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 task_id,
                                 task_with_upload
                             ),
-                            compare_size=sever_file_size
+                            compare_size=sever_file_size,
+                            transfer_task_id=(
+                                int(task_with_upload.get('task_id'))
+                                if isinstance(task_with_upload, dict) and task_with_upload.get('task_id') is not None
+                                else None
+                            )
                         )
                     )
-                    MetaData.print_current_task_num(
-                        prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
-                        num=self.app.current_task_num
+                    self._register_transfer_download_task(task_with_upload, _task)
+                    _task.add_done_callback(
+                        partial(
+                            self._unregister_transfer_download_task,
+                            task_with_upload
+                        )
                     )
                     _task.add_done_callback(
                         partial(
@@ -1753,6 +1773,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             task_with_upload,
                             diy_download_type
                         )
+                    )
+                    MetaData.print_current_task_num(
+                        prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
+                        num=self.app.current_task_num
                     )
             else:
                 _error = '不支持或被忽略的类型(已取消)。'
