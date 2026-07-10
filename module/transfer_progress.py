@@ -57,6 +57,222 @@ class TransferProgressTracker:
         self._notify_progress_override = notify_progress_override
         self._cleanup_local_file = cleanup_local_file
         self._speed_samples = {}
+        self._pending_archive_tasks: set[tuple[int, int]] = set()
+
+    def _pikpak_archive_config(self) -> dict:
+        gc = self._gc_getter()
+        config = getattr(gc, 'config', {}) or {}
+        profile = (config.get('target_profiles') or {}).get('pikpak') or {}
+        archive = profile.get('archive') or {}
+        return archive if isinstance(archive, dict) else {}
+
+    def _pikpak_archive_enabled(self) -> bool:
+        archive = self._pikpak_archive_config()
+        return bool(archive.get('enable') and archive.get('remote'))
+
+    def _pikpak_archive_delay_seconds(self, file_size: Optional[int] = None) -> float:
+        archive = self._pikpak_archive_config()
+        return max(float(archive.get('archive_delay_seconds') or 600), 0)
+
+    def recover_pending_upload_archives(self) -> int:
+        store = self.transfer_store
+        if not store or not self._pikpak_archive_enabled():
+            return 0
+        recovered = 0
+        for task in store.list_tasks():
+            if task.get('target_profile') != 'pikpak':
+                continue
+            task_id = int(task['id'])
+            for item in store.list_items(task_id):
+                if (
+                        item.get('status') != TransferStatus.SUCCESS
+                        or item.get('archive_status') != 'pending'
+                ):
+                    continue
+                transferred_at = PikpakIntegrationManager.transfer_item_archive_timestamp(item)
+                delay_seconds = self._pikpak_archive_delay_seconds(item.get('file_size'))
+                elapsed = max(time.time() - transferred_at, 0)
+                remaining = max(delay_seconds - elapsed, 0)
+                if self._schedule_deferred_upload_archive(
+                        task_id=task_id,
+                        item_id=int(item['id']),
+                        target_profile='pikpak',
+                        source_link=item.get('source_link'),
+                        source_folder=item.get('source_folder'),
+                        file_name=item.get('file_name'),
+                        file_size=item.get('file_size'),
+                        transferred_at=transferred_at,
+                        match_original_name=PikpakIntegrationManager.transfer_item_archive_match_original_name(item),
+                        delay_seconds=remaining
+                ):
+                    recovered += 1
+        return recovered
+
+    def _schedule_deferred_upload_archive(
+            self,
+            *,
+            task_id: Optional[int],
+            item_id: Optional[int],
+            target_profile: Optional[str],
+            source_link: Optional[str],
+            source_folder: Optional[str],
+            file_name: Optional[str],
+            file_size: Optional[int],
+            transferred_at: float,
+            match_original_name: bool,
+            delay_seconds: Optional[float] = None
+    ) -> bool:
+        if target_profile != 'pikpak' or not self._pikpak_archive_enabled():
+            return False
+        key = (int(task_id), int(item_id)) if task_id and item_id else None
+        if key is not None:
+            if key in self._pending_archive_tasks:
+                return False
+            self._pending_archive_tasks.add(key)
+        delay = self._pikpak_archive_delay_seconds(file_size) if delay_seconds is None else max(float(delay_seconds), 0)
+        loop = self.loop
+        if loop is not None and loop.is_running():
+            loop.create_task(self._deferred_pikpak_upload_archive(
+                task_id=task_id,
+                item_id=item_id,
+                target_profile=target_profile,
+                source_link=source_link,
+                source_folder=source_folder,
+                file_name=file_name,
+                file_size=file_size,
+                transferred_at=transferred_at,
+                match_original_name=match_original_name,
+                delay_seconds=delay,
+                pending_key=key
+            ))
+            return True
+        self._run_upload_archive_now(
+            task_id=task_id,
+            item_id=item_id,
+            target_profile=target_profile,
+            source_link=source_link,
+            source_folder=source_folder,
+            file_name=file_name,
+            file_size=file_size,
+            transferred_at=transferred_at,
+            match_original_name=match_original_name,
+            pending_key=key
+        )
+        return True
+
+    async def _deferred_pikpak_upload_archive(
+            self,
+            *,
+            task_id: Optional[int],
+            item_id: Optional[int],
+            target_profile: Optional[str],
+            source_link: Optional[str],
+            source_folder: Optional[str],
+            file_name: Optional[str],
+            file_size: Optional[int],
+            transferred_at: float,
+            match_original_name: bool,
+            delay_seconds: float,
+            pending_key: Optional[tuple[int, int]]
+    ) -> None:
+        try:
+            # region agent log
+            from module.pikpak_archive import _agent_debug_log
+            _agent_debug_log(
+                'H4',
+                'transfer_progress.py:_deferred_pikpak_upload_archive',
+                'deferred archive scheduled',
+                {
+                    'task_id': task_id,
+                    'item_id': item_id,
+                    'file_name': file_name,
+                    'file_size': file_size,
+                    'delay_seconds': delay_seconds,
+                    'transferred_at': transferred_at
+                },
+                run_id='post-fix'
+            )
+            # endregion
+            if delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+            await asyncio.to_thread(
+                self._run_upload_archive_now,
+                task_id=task_id,
+                item_id=item_id,
+                target_profile=target_profile,
+                source_link=source_link,
+                source_folder=source_folder,
+                file_name=file_name,
+                file_size=file_size,
+                transferred_at=transferred_at,
+                match_original_name=match_original_name,
+                pending_key=None
+            )
+        finally:
+            if pending_key is not None:
+                self._pending_archive_tasks.discard(pending_key)
+
+    def _run_upload_archive_now(
+            self,
+            *,
+            task_id: Optional[int],
+            item_id: Optional[int],
+            target_profile: Optional[str],
+            source_link: Optional[str],
+            source_folder: Optional[str],
+            file_name: Optional[str],
+            file_size: Optional[int],
+            transferred_at: float,
+            match_original_name: bool,
+            pending_key: Optional[tuple[int, int]]
+    ) -> None:
+        try:
+            archive_result = self._archive_pikpak_item(
+                target_profile=target_profile,
+                item_id=item_id,
+                task_id=task_id,
+                message=None,
+                source_link=source_link,
+                source_folder=source_folder,
+                file_name=file_name,
+                file_size=file_size,
+                transferred_at=transferred_at,
+                match_original_name=match_original_name
+            )
+            if (
+                    archive_result is not None
+                    and getattr(archive_result, 'status', None) != 'disabled'
+                    and not bool(getattr(archive_result, 'ok', False))
+            ):
+                archive_status = getattr(archive_result, 'status', 'error')
+                archive_message = getattr(archive_result, 'message', '')
+                error_message = (
+                    f'PikPak archive {archive_status}: '
+                    f'{archive_message or source_link or file_name}'
+                )
+                store = self.transfer_store
+                if store and task_id and item_id:
+                    store.update_item(
+                        int(item_id),
+                        archive_status=archive_status,
+                        archive_error=archive_message or archive_status,
+                        error_message=error_message
+                    )
+                    store.add_event(
+                        int(task_id),
+                        error_message,
+                        level='warning',
+                        item_id=int(item_id)
+                    )
+                    self._refresh_counts(int(task_id))
+                else:
+                    self.diagnostic.warning(error_message)
+                return
+            if task_id:
+                self._refresh_counts(int(task_id))
+        finally:
+            if pending_key is not None:
+                self._pending_archive_tasks.discard(pending_key)
 
     @property
     def transfer_store(self):
@@ -476,48 +692,77 @@ class TransferProgressTracker:
         task_id = meta.get('task_id')
         item_id = meta.get('item_id')
         if upload_task.status == UploadStatus.SENT:
-            match_original_name = False
             store = self.transfer_store
+            transferred_at = datetime.datetime.now(datetime.UTC).timestamp()
+            match_original_name = False
             if store and item_id:
                 item = store.get_item(int(item_id))
                 if item is not None:
                     stored = PikpakIntegrationManager.transfer_item_archive_match_original_name(item)
                     if stored is not None:
                         match_original_name = stored
-            archive_result = self._archive_pikpak_item(
-                target_profile=meta.get('target_profile'),
-                item_id=item_id,
-                task_id=task_id,
-                message=None,
-                source_link=meta.get('source_link'),
-                source_folder=meta.get('source_folder'),
-                file_name=upload_task.file_name,
-                file_size=getattr(upload_task, 'file_size', None),
-                transferred_at=datetime.datetime.now(datetime.UTC).timestamp(),
-                match_original_name=match_original_name
-            )
             if (
-                    archive_result is not None
-                    and getattr(archive_result, 'status', None) != 'disabled'
-                    and not bool(getattr(archive_result, 'ok', False))
+                    meta.get('target_profile') == 'pikpak'
+                    and self._pikpak_archive_enabled()
             ):
-                archive_status = getattr(archive_result, 'status', 'error')
-                archive_message = getattr(archive_result, 'message', '')
-                error_message = (
-                    f'PikPak archive {archive_status}: '
-                    f'{archive_message or meta.get("source_link") or upload_task.file_name}'
-                )
-                store = self.transfer_store
                 if store and task_id and item_id:
-                    self._fail_transfer_item(int(task_id), int(item_id), error_message)
-                else:
-                    self.diagnostic.warning(error_message)
-                return
-            store = self.transfer_store
-            if store and task_id and item_id:
-                store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent', error_message='')
-                store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
-                self._try_cleanup(int(item_id))
+                    store.update_item(
+                        int(item_id),
+                        status=TransferStatus.SUCCESS,
+                        phase='sent',
+                        archive_status='pending',
+                        error_message=''
+                    )
+                    store.add_event(
+                        int(task_id),
+                        f'Sent to target, PikPak archive scheduled: {upload_task.file_name}',
+                        item_id=int(item_id)
+                    )
+                    self._try_cleanup(int(item_id))
+                self._schedule_deferred_upload_archive(
+                    task_id=task_id,
+                    item_id=item_id,
+                    target_profile=meta.get('target_profile'),
+                    source_link=meta.get('source_link'),
+                    source_folder=meta.get('source_folder'),
+                    file_name=upload_task.file_name,
+                    file_size=getattr(upload_task, 'file_size', None),
+                    transferred_at=transferred_at,
+                    match_original_name=match_original_name
+                )
+            else:
+                archive_result = self._archive_pikpak_item(
+                    target_profile=meta.get('target_profile'),
+                    item_id=item_id,
+                    task_id=task_id,
+                    message=None,
+                    source_link=meta.get('source_link'),
+                    source_folder=meta.get('source_folder'),
+                    file_name=upload_task.file_name,
+                    file_size=getattr(upload_task, 'file_size', None),
+                    transferred_at=transferred_at,
+                    match_original_name=match_original_name
+                )
+                if (
+                        archive_result is not None
+                        and getattr(archive_result, 'status', None) != 'disabled'
+                        and not bool(getattr(archive_result, 'ok', False))
+                ):
+                    archive_status = getattr(archive_result, 'status', 'error')
+                    archive_message = getattr(archive_result, 'message', '')
+                    error_message = (
+                        f'PikPak archive {archive_status}: '
+                        f'{archive_message or meta.get("source_link") or upload_task.file_name}'
+                    )
+                    if store and task_id and item_id:
+                        self._fail_transfer_item(int(task_id), int(item_id), error_message)
+                    else:
+                        self.diagnostic.warning(error_message)
+                    return
+                if store and task_id and item_id:
+                    store.update_item(item_id, status=TransferStatus.SUCCESS, phase='sent', error_message='')
+                    store.add_event(task_id, f'Sent to target: {upload_task.file_name}', item_id=item_id)
+                    self._try_cleanup(int(item_id))
         elif upload_task.status == UploadStatus.FAILURE:
             store = self.transfer_store
             if store and task_id and item_id:

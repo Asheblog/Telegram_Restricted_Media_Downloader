@@ -162,6 +162,15 @@ class PikpakIntegrationManager:
             return 'mp4'
         return 'unknown'
 
+    @staticmethod
+    def is_pikpak_archive_recoverable_item(item: dict) -> bool:
+        if item.get('status') == TransferStatus.SUCCESS:
+            return item.get('archive_status') in ('pending', 'not_found', 'error')
+        if item.get('status') != TransferStatus.FAILURE:
+            return False
+        error_message = str(item.get('error_message') or '')
+        return 'PikPak ingest confirmation' in error_message or 'PikPak archive' in error_message
+
     def fail_transfer_item(
             self,
             task_id: int,

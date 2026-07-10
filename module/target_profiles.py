@@ -16,7 +16,8 @@ DEFAULT_TARGET_PROFILES = {
             'poll_seconds': 60,
             'poll_interval_seconds': 5,
             'match_window_seconds': 3600,
-            'poll_cap_seconds': 1800
+            'poll_cap_seconds': 1800,
+            'archive_delay_seconds': 600
         }
     }
 }

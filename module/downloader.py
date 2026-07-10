@@ -636,7 +636,8 @@ class TelegramRestrictedMediaDownloader:
             return 0
         failed_items = [
             item for item in self.transfer_store.list_items(task_id)
-            if item.get('status') == TransferStatus.FAILURE
+            if PikpakIntegrationManager.is_pikpak_archive_recoverable_item(item)
+            or item.get('status') == TransferStatus.FAILURE
         ]
         retry_item_ids = [
             int(item['id'])
@@ -682,8 +683,7 @@ class TelegramRestrictedMediaDownloader:
             return wm.recover_pikpak_failed_item_before_retry(task, item)
         if not self.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):
             return False
-        error_message = str(item.get('error_message') or '')
-        if 'PikPak ingest confirmation' not in error_message and 'PikPak archive' not in error_message:
+        if not PikpakIntegrationManager.is_pikpak_archive_recoverable_item(item):
             return False
         if not item.get('file_name') and item.get('file_size') is None:
             return False
@@ -706,9 +706,10 @@ class TelegramRestrictedMediaDownloader:
         )
         if not bool(getattr(result, 'ok', False)):
             return False
+        phase = 'forwarded' if item.get('media_type') == 'forward' else 'sent'
         self.transfer_store.update_item(
             item_id,
-            phase='forwarded',
+            phase=phase,
             status=TransferStatus.SUCCESS,
             error_message=''
         )
@@ -1044,6 +1045,12 @@ class TelegramRestrictedMediaDownloader:
         for task in self.transfer_store.list_tasks():
             if task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
                 self.submit_web_task(int(task.get('id')))
+        recovered_archives = 0
+        progress_tracker = getattr(self, 'progress_tracker', None)
+        if progress_tracker is not None:
+            recovered_archives = progress_tracker.recover_pending_upload_archives()
+        if recovered_archives:
+            self.diagnostic.info(f'Recovered {recovered_archives} pending PikPak upload archive job(s).')
         console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
 
     def env_save_directory(

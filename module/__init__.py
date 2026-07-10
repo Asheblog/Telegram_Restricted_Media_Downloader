@@ -52,7 +52,7 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.75'
+__version__ = '0.2.76'
 __license__ = 'MIT License'
 __update_date__ = '2026/07/09 12:35:40'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
@@ -181,6 +181,8 @@ target_profiles:
       poll_seconds: 60 # 等待PikPak入库的最长轮询秒数。
       poll_interval_seconds: 5 # 轮询间隔秒数。
       match_window_seconds: 3600 # 按时间匹配入库文件的窗口秒数。
+      poll_cap_seconds: 1800 # 大文件入库轮询上限秒数。
+      archive_delay_seconds: 600 # 上传完成后延迟多久再执行PikPak归档（秒）。
 proxy: # 代理部分，如不使用请全部填null注意冒号后面有空格，否则不生效导致报错。
   enable_proxy: true # 是否开启代理。支持的参数：true,false。
   hostname: 127.0.0.1 # 代理的ip地址。
