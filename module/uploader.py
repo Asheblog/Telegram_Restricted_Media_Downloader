@@ -159,7 +159,76 @@ class TelegramUploader:
         message = f'Telegram flood wait during {action}: waiting {amount} seconds before retry.'
         self.diagnostic.console_log(message, style='#FF4689')
         self.diagnostic.warning(message)
-        await asyncio.sleep(amount + jitter)
+        if not await self._wait_for_interruptible(amount + jitter, task_id):
+            raise asyncio.CancelledError()
+
+    @staticmethod
+    def _upload_task_matches_task_id(upload_task: UploadTask, task_id: int) -> bool:
+        return int((getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id') or 0) == int(task_id)
+
+    def _should_continue_upload_for_task(self, task_id: int) -> bool:
+        checker = getattr(self.upload_context, 'should_continue_web_transfer_task', None)
+        if callable(checker):
+            return bool(checker(task_id))
+        return True
+
+    async def _wait_for_interruptible(self, seconds: float, task_id: int = None) -> bool:
+        if not task_id:
+            await asyncio.sleep(max(0.0, float(seconds)))
+            return True
+        loop = self.loop
+        deadline = loop.time() + max(0.0, float(seconds))
+        while True:
+            if not self._should_continue_upload_for_task(task_id):
+                return False
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return True
+            await asyncio.sleep(min(remaining, 1.0))
+
+    def _skip_upload_task(self, upload_task: UploadTask, error_message: str, delete_file: bool = False) -> None:
+        upload_task.error_msg = error_message
+        upload_task.status = UploadStatus.FAILURE
+        self.release_transfer_local_storage(upload_task)
+        upload_task.release_window()
+        self.notify_transfer_status(upload_task)
+        if delete_file and upload_task.with_delete:
+            safe_delete(upload_task.file_path)
+
+    def cancel_uploads_for_task(self, task_id: int) -> int:
+        cancelled = self._drop_uploads_for_task_from_queue(task_id)
+        cancelled += self._cancel_active_uploads_for_task(task_id)
+        return cancelled
+
+    def _drop_uploads_for_task_from_queue(self, task_id: int) -> int:
+        kept = []
+        dropped = 0
+        while True:
+            try:
+                item = self.upload_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            media, upload_task = item
+            if self._upload_task_matches_task_id(upload_task, task_id):
+                self._skip_upload_task(upload_task, 'Transfer task deleted')
+                dropped += 1
+            else:
+                kept.append(item)
+            self.upload_queue.task_done()
+        for item in kept:
+            self.upload_queue.put_nowait(item)
+        return dropped
+
+    def _cancel_active_uploads_for_task(self, task_id: int) -> int:
+        cancelled = 0
+        for upload_task in list(UploadTask.TASKS):
+            if not self._upload_task_matches_task_id(upload_task, task_id):
+                continue
+            if upload_task.status in (UploadStatus.SUCCESS, UploadStatus.SENT, UploadStatus.FAILURE):
+                continue
+            self._skip_upload_task(upload_task, 'Transfer task deleted')
+            cancelled += 1
+        return cancelled
 
     @staticmethod
     def release_transfer_local_storage(upload_task: UploadTask) -> None:
@@ -329,6 +398,11 @@ class TelegramUploader:
         while self.upload_context.is_running or self.upload_context.is_bot_running or getattr(self.upload_context, 'web_ui', None):
             try:
                 media, upload_task = await self.upload_queue.get()
+
+                task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+                if task_id and not self._should_continue_upload_for_task(int(task_id)):
+                    self._skip_upload_task(upload_task, 'Transfer task deleted or stopped')
+                    continue
 
                 self.diagnostic.info(
                     f'[Upload Worker]获取到上传任务,'

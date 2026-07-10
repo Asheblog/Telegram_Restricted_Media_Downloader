@@ -35,6 +35,8 @@ class WebUITaskManager:
         process_web_transfer_task_getter=None,
         process_web_task_queue_getter=None,
         cleanup_task_files_getter=None,
+        cancel_task_uploads_getter=None,
+        should_continue_web_transfer_task_getter=None,
     ):
         self._transfer_store = transfer_store_getter
         self.diagnostic = diagnostic
@@ -61,7 +63,10 @@ class WebUITaskManager:
         self._process_web_transfer_task = process_web_transfer_task_getter
         self._process_web_task_queue = process_web_task_queue_getter
         self._cleanup_task_files = cleanup_task_files_getter
+        self._cancel_task_uploads = cancel_task_uploads_getter
+        self._should_continue_web_transfer_task = should_continue_web_transfer_task_getter
         self.web_operation_counter: int = 0
+        self._delete_wait_timeout_seconds: float = 10.0
 
     @property
     def transfer_store(self):
@@ -144,17 +149,49 @@ class WebUITaskManager:
         for queued_task_id in kept_task_ids:
             self.web_task_queue.put_nowait(queued_task_id)
 
+    def should_continue_web_transfer_task(self, task_id: int) -> bool:
+        checker = self._should_continue_web_transfer_task
+        if callable(checker):
+            return bool(checker(task_id))
+        if not self.transfer_store or not task_id:
+            return False
+        task = self.transfer_store.get_task(int(task_id))
+        return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def _wait_for_running_transfer_task_stop(self, task_id: int) -> None:
+        running_task_id = self.web_running_task_id
+        running_task = self.web_running_task
+        if running_task_id != task_id or not running_task or running_task.done():
+            return
+        if not self.loop or not self.loop.is_running():
+            return
+
+        async def _wait_for_stop() -> None:
+            try:
+                await asyncio.wait_for(running_task, timeout=self._delete_wait_timeout_seconds)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(_wait_for_stop(), self.loop)
+            future.result(timeout=self._delete_wait_timeout_seconds + 2)
+        except Exception:
+            pass
+
     def delete_web_task(self, task_id: int) -> bool:
         if not self.transfer_store:
             return False
+        if not self.transfer_store.get_task(task_id):
+            return False
+        self.discard_web_task_submission(task_id, cancel_running=True)
+        if self._cancel_task_uploads:
+            self._cancel_task_uploads(task_id)
+        self._wait_for_running_transfer_task_stop(task_id)
         if self._cleanup_task_files:
             cleanup_result = self._cleanup_task_files(task_id)
             if cleanup_result.get('failed'):
                 return False
-        deleted = self.transfer_store.delete_task(task_id)
-        if deleted:
-            self.discard_web_task_submission(task_id, cancel_running=True)
-        return deleted
+        return self.transfer_store.delete_task(task_id)
 
     def pause_web_task(self, task_id: int) -> bool:
         if not self.transfer_store:

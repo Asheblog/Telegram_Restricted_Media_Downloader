@@ -299,6 +299,8 @@ class TelegramRestrictedMediaDownloader:
             cleanup_task_files_getter=lambda task_id: (
                 self._ensure_media_manager().cleanup_task_files(task_id)
             ),
+            cancel_task_uploads_getter=self.cancel_task_uploads,
+            should_continue_web_transfer_task_getter=self.should_continue_web_transfer_task,
         )
         self.ctx = TransferContext(
             app=self.app,
@@ -500,6 +502,25 @@ class TelegramRestrictedMediaDownloader:
     async def wait_between_transfer_messages(self) -> None:
         await asyncio.sleep(self.transfer_send_interval())
 
+    def should_continue_web_transfer_task(self, task_id: int) -> bool:
+        wm = getattr(self, 'web_task_manager', None)
+        if wm is not None:
+            return wm.should_continue_web_transfer_task(task_id)
+        if not self.transfer_store or not task_id:
+            return False
+        task = self.transfer_store.get_task(int(task_id))
+        return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    async def wait_for_interruptible(self, seconds: float, task_id: Optional[int] = None) -> bool:
+        deadline = self.loop.time() + max(0.0, float(seconds))
+        while True:
+            if task_id and not self.should_continue_web_transfer_task(task_id):
+                return False
+            remaining = deadline - self.loop.time()
+            if remaining <= 0:
+                return True
+            await asyncio.sleep(min(remaining, 1.0))
+
     async def wait_for_telegram_flood(self, error, task_id: Optional[int] = None, action: str = 'request') -> None:
         amount = max(0, int(getattr(error, 'value', 0) or 0))
         jitter = random.uniform(0.5, 2.0) if amount > 0 else 0
@@ -509,7 +530,14 @@ class TelegramRestrictedMediaDownloader:
         log.warning(message)
         if self.transfer_store and task_id:
             self.transfer_store.add_event(task_id, message, level='warning')
-        await asyncio.sleep(wait_seconds)
+        if not await self.wait_for_interruptible(wait_seconds, task_id=task_id):
+            raise asyncio.CancelledError()
+
+    def cancel_task_uploads(self, task_id: int) -> int:
+        uploader = getattr(self, 'uploader', None)
+        if uploader and hasattr(uploader, 'cancel_uploads_for_task'):
+            return int(uploader.cancel_uploads_for_task(task_id) or 0)
+        return 0
 
     def submit_web_task(self, task_id: int) -> None:
         wm = getattr(self, 'web_task_manager', None)
@@ -590,15 +618,27 @@ class TelegramRestrictedMediaDownloader:
         wm = getattr(self, 'web_task_manager', None)
         if wm is not None:
             return wm.delete_web_task(task_id)
-        if not self.transfer_store:
+        if not self.transfer_store or not self.transfer_store.get_task(task_id):
             return False
+        self.discard_web_task_submission(task_id, cancel_running=True)
+        self.cancel_task_uploads(task_id)
+        running_task = self.web_running_task
+        if self.web_running_task_id == task_id and running_task and not running_task.done():
+            if self.loop.is_running():
+                try:
+                    future = asyncio.run_coroutine_threadsafe(
+                        asyncio.wait_for(running_task, timeout=10.0),
+                        self.loop
+                    )
+                    future.result(timeout=12)
+                except Exception:
+                    pass
+            else:
+                running_task.cancel()
         cleanup_result = self._ensure_media_manager().cleanup_task_files(task_id)
         if cleanup_result.get('failed'):
             return False
-        deleted = self.transfer_store.delete_task(task_id)
-        if deleted:
-            self.discard_web_task_submission(task_id, cancel_running=True)
-        return deleted
+        return self.transfer_store.delete_task(task_id)
 
     def pause_web_task(self, task_id: int) -> bool:
         wm = getattr(self, 'web_task_manager', None)
@@ -1738,9 +1778,13 @@ class TelegramRestrictedMediaDownloader:
                     assignment_completed=False
                 )
                 for message_id in range(int(start_id), int(end_id) + 1):
-                    latest_task = self.transfer_store.get_task(task_id)
-                    if latest_task and latest_task.get('status') == TransferStatus.PAUSED:
-                        self.transfer_store.add_event(task_id, f'Transfer task paused before message: {message_id}.')
+                    if not self.should_continue_web_transfer_task(task_id):
+                        latest_task = self.transfer_store.get_task(task_id)
+                        if latest_task and latest_task.get('status') == TransferStatus.PAUSED:
+                            self.transfer_store.add_event(
+                                task_id,
+                                f'Transfer task paused before message: {message_id}.'
+                            )
                         return
                     if message_id in completed_message_ids:
                         continue
@@ -1800,6 +1844,8 @@ class TelegramRestrictedMediaDownloader:
                 fallback_count = 0
                 expected_total = single_expected
                 if message_id not in completed_message_ids:
+                    if not self.should_continue_web_transfer_task(task_id):
+                        return
                     fallback_count = 1 if await self.transfer_message_to_web_target(
                         task=task,
                         message=message,
@@ -1831,14 +1877,17 @@ class TelegramRestrictedMediaDownloader:
                     expected_total=expected_total,
                     assignment_completed=True
                 )
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
-            self.transfer_store.update_task(
-                task_id,
-                status=TransferStatus.FAILURE,
-                error_message=str(e),
-                finished=True
-            )
-            self.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
+            if self.transfer_store.get_task(task_id):
+                self.transfer_store.update_task(
+                    task_id,
+                    status=TransferStatus.FAILURE,
+                    error_message=str(e),
+                    finished=True
+                )
+                self.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
 
     async def process_web_operation(self, operation_id: str) -> None:
         operation = self.web_operations.get(operation_id)

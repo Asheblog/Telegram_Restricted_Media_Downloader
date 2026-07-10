@@ -154,12 +154,20 @@ document.addEventListener('click', async function(e) {
   if (action === 'delete') {
     if (!confirm('确定删除任务 #' + taskId + '？')) return;
     try {
-      await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+      const resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+      if (!resp.ok) {
+        let data = {};
+        try { data = await resp.json(); } catch(e) {}
+        alert(data.detail || data.error || data.message || '删除失败');
+        return;
+      }
       state.tasks = state.tasks.filter(t => t.id !== taskId);
       if (state.selectedTaskId === taskId) state.selectedTaskId = null;
       renderTasks();
       $('#task-detail').innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.selectTask') + '</div>';
-    } catch(e) { /* ignore */ }
+    } catch(e) {
+      alert('删除失败');
+    }
     return;
   }
 
