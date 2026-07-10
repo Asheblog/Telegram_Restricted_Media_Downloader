@@ -179,6 +179,33 @@ class WebTaskDeleteCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_should_continue_web_transfer_task_no_recursion_with_task_manager(self):
+        from module.web_task_manager import WebUITaskManager
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+            downloader = object.__new__(TelegramRestrictedMediaDownloader)
+            downloader.transfer_store = store
+            downloader.web_task_manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: asyncio.new_event_loop(),
+                web_task_queue=asyncio.Queue(),
+                web_submitted_task_ids=set(),
+                web_running_task_getter=lambda: None,
+                web_running_task_setter=lambda _value: None,
+                web_running_task_id_getter=lambda: None,
+                web_running_task_id_setter=lambda _value: None,
+                web_operation_queue=asyncio.Queue(),
+                web_operations={},
+                should_continue_web_transfer_task_getter=None,
+            )
+            self.assertTrue(downloader.should_continue_web_transfer_task(task_id))
+            store.update_task(task_id, status=TransferStatus.PAUSED)
+            self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
+
     def test_cancel_uploads_for_task_drops_queue_and_marks_active_uploads(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'queued.bin')

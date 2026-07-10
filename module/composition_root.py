@@ -189,7 +189,7 @@ class TrmdCompositionRoot:
                 self._ensure_media_manager().cleanup_task_files(task_id)
             ),
             cancel_task_uploads_getter=self.cancel_task_uploads,
-            should_continue_web_transfer_task_getter=self.should_continue_web_transfer_task,
+            should_continue_web_transfer_task_getter=None,
         )
         self.ctx = TransferContext(
             app=self.app,
