@@ -1056,6 +1056,40 @@ class TransferStore:
                 ).fetchall()
             return [dict(row) for row in rows]
 
+    def list_ghost_items(self, task_id: int = None) -> List[Dict[str, Any]]:
+        """返回已标记 local_file_deleted 但 local_path 仍非空的终结态 item（磁盘可能仍有残留）。"""
+        with self.connect() as conn:
+            if task_id:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.task_id = ?
+                      AND ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 1
+                      AND ti.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (int(task_id), TransferStatus.SUCCESS, TransferStatus.FAILURE, TransferStatus.SKIPPED)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 1
+                      AND ti.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (TransferStatus.SUCCESS, TransferStatus.FAILURE, TransferStatus.SKIPPED)
+                ).fetchall()
+            return [dict(row) for row in rows]
+
     @staticmethod
     def _live_transfer_watch_row(row: sqlite3.Row) -> Dict[str, Any]:
         watch = dict(row)

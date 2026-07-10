@@ -932,16 +932,31 @@ class TelegramRestrictedMediaDownloader:
     # --- 媒体管理 (Media Manager) ---
 
     def _ensure_media_manager(self) -> MediaManager:
-        if self.__dict__.get('media_manager') is None:
-            app = self.__dict__.get('app')
-            store = self.__dict__.get('transfer_store')
-            fallback_directory = getattr(store, 'directory', '') if store else ''
-            self.media_manager = MediaManager(
-                transfer_store=store,
-                save_directory=getattr(app, 'save_directory', None) or fallback_directory,
-                temp_directory=getattr(app, 'temp_directory', None) or fallback_directory,
-                diagnostic=getattr(self, 'diagnostic', None)
-            )
+        app = self.__dict__.get('app')
+        store = self.__dict__.get('transfer_store')
+        fallback_directory = getattr(store, 'directory', '') if store else ''
+        save_directory = getattr(app, 'save_directory', None) or fallback_directory
+        temp_directory = getattr(app, 'temp_directory', None) or fallback_directory
+        media_manager = self.__dict__.get('media_manager')
+        if media_manager is not None:
+            current_roots = {
+                media_manager._save_directory,
+                media_manager._temp_directory,
+                media_manager._store_directory,
+            }
+            next_roots = {
+                os.path.abspath(save_directory) if save_directory else '',
+                os.path.abspath(temp_directory) if temp_directory else '',
+                os.path.abspath(getattr(store, 'directory', '') or '') if store else '',
+            }
+            if current_roots == next_roots:
+                return media_manager
+        self.media_manager = MediaManager(
+            transfer_store=store,
+            save_directory=save_directory,
+            temp_directory=temp_directory,
+            diagnostic=getattr(self, 'diagnostic', None)
+        )
         return self.media_manager
 
     def scan_media_for_cleanup(

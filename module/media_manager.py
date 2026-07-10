@@ -3,7 +3,8 @@
 
 清理策略：
   A) 基于 TransferStore transfer_items 状态 — status ∈ {success,failure,skipped} 且 local_path 存在
-  B) 基于文件时间 — save_directory/temp_directory 下超过保留天数的文件，不在任何活跃 transfer_item 中
+  A2) 幽灵 item — 已标记 local_file_deleted 但磁盘仍有对应文件
+  B) 基于文件时间 — save/temp/TransferStore 目录下超过保留天数的文件，不在任何活跃 transfer_item 中
 """
 
 import os
@@ -35,6 +36,8 @@ class MediaManager:
         self._store = transfer_store
         self._save_directory = os.path.abspath(save_directory) if save_directory else ''
         self._temp_directory = os.path.abspath(temp_directory) if temp_directory else ''
+        store_directory = getattr(transfer_store, 'directory', None) if transfer_store else None
+        self._store_directory = os.path.abspath(store_directory) if store_directory else ''
         self._retention_days = max(1, retention_days)
         self._diagnostic = diagnostic
 
@@ -42,17 +45,23 @@ class MediaManager:
     def retention_days(self) -> int:
         return self._retention_days
 
+    def _allowed_directories(self) -> List[str]:
+        """扫描与安全删除允许的根目录（含 TransferStore 实际所在目录）。"""
+        directories = []
+        seen = set()
+        for directory in (self._save_directory, self._temp_directory, self._store_directory):
+            if not directory or directory in seen:
+                continue
+            seen.add(directory)
+            directories.append(directory)
+        return directories
+
     def _is_within_allowed_path(self, file_path: str) -> bool:
-        """安全检查：文件路径必须在 save_directory 或 temp_directory 下。"""
+        """安全检查：文件路径必须在允许的根目录下。"""
         if not file_path:
             return False
         abs_path = os.path.abspath(file_path)
-        allowed = []
-        if self._save_directory:
-            allowed.append(self._save_directory)
-        if self._temp_directory:
-            allowed.append(self._temp_directory)
-        for base in allowed:
+        for base in self._allowed_directories():
             if abs_path == base or abs_path.startswith(base + os.sep):
                 return True
         return False
@@ -80,10 +89,14 @@ class MediaManager:
     def _item_cleanup_paths(self, item: dict) -> List[str]:
         seen = set()
         paths = []
+        local_path = (item.get('local_path') or '').strip()
+        temp_path = (item.get('temp_path') or '').strip()
         candidates = [
-            (item.get('local_path') or '').strip(),
-            *self._candidate_temp_paths((item.get('temp_path') or '').strip())
+            local_path,
+            *self._candidate_temp_paths(temp_path)
         ]
+        if local_path:
+            candidates.append(f'{local_path}.temp')
         for candidate in candidates:
             if not candidate:
                 continue
@@ -147,23 +160,10 @@ class MediaManager:
 
     # --- 扫描 A: 基于 transfer_items 状态 ---
 
-    def scan_transfer_items(self, task_id: int = None, limit: int = None, offset: int = 0) -> Dict[str, Any]:
-        """扫描 TransferStore 中已终结但本地文件仍未删除的 item。
-
-        Returns:
-            {
-                'items': [{'item_id', 'task_id', 'file_name', 'file_size',
-                           'local_path', 'status', 'source_link', 'target_link',
-                           'file_exists': bool}, ...],
-                'total_count': int,
-                'total_size': int,
-            }
-        """
+    def _scan_transfer_item_rows(self, rows: List[dict], include_missing_files: bool) -> Dict[str, Any]:
         items = []
         total_size = 0
-        cleanable = self._store.list_cleanable_items(task_id=task_id)
-
-        for item in cleanable:
+        for item in rows:
             cleanup_paths = self._item_cleanup_paths(item)
             allowed_paths = [path for path in cleanup_paths if self._is_within_allowed_path(path)]
             if not allowed_paths:
@@ -175,6 +175,8 @@ class MediaManager:
                 if file_exists:
                     existing_paths.append(path)
                     item_size += file_size
+            if not include_missing_files and not existing_paths:
+                continue
 
             items.append({
                 'item_id': item.get('id'),
@@ -188,9 +190,44 @@ class MediaManager:
                 'source_link': item.get('task_source_link') or item.get('source_link'),
                 'target_link': item.get('task_target_link') or item.get('target_link'),
                 'file_exists': bool(existing_paths),
+                'ghost': bool(item.get('local_file_deleted')),
             })
             total_size += item_size
+        return {'items': items, 'total_size': total_size}
 
+    def scan_transfer_items(self, task_id: int = None, limit: int = None, offset: int = 0) -> Dict[str, Any]:
+        """扫描 TransferStore 中已终结但本地文件仍未删除的 item。
+
+        Returns:
+            {
+                'items': [{'item_id', 'task_id', 'file_name', 'file_size',
+                           'local_path', 'status', 'source_link', 'target_link',
+                           'file_exists': bool, 'ghost': bool}, ...],
+                'total_count': int,
+                'total_size': int,
+            }
+        """
+        if self._store is None:
+            return {'items': [], 'total_count': 0, 'total_size': 0}
+
+        seen_ids = set()
+        rows = []
+        for item in self._store.list_cleanable_items(task_id=task_id):
+            item_id = item.get('id')
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            rows.append(item)
+        for item in self._store.list_ghost_items(task_id=task_id):
+            item_id = item.get('id')
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            rows.append(item)
+
+        scanned = self._scan_transfer_item_rows(rows, include_missing_files=False)
+        items = scanned['items']
+        total_size = scanned['total_size']
         total_count = len(items)
         if limit is not None and limit > 0:
             items = items[offset:offset + limit]
@@ -258,12 +295,9 @@ class MediaManager:
 
     def _scan_directories(self) -> List[str]:
         directories = []
-        seen = set()
-        for directory in (self._save_directory, self._temp_directory):
-            if not directory or directory in seen or not os.path.isdir(directory):
-                continue
-            seen.add(directory)
-            directories.append(directory)
+        for directory in self._allowed_directories():
+            if os.path.isdir(directory):
+                directories.append(directory)
         return directories
 
     @classmethod

@@ -47,7 +47,7 @@ class MediaManagerCase(unittest.TestCase):
 
             self.assertEqual(1, result['total_count'])
             self.assertEqual(9, result['total_size'])
-            self.assertEqual(3, len(result['items'][0]['paths']))
+            self.assertEqual(4, len(result['items'][0]['paths']))
 
     def test_scan_orphan_files_includes_temp_directory_but_keeps_paused_cache(self):
         with tempfile.TemporaryDirectory() as save_directory, tempfile.TemporaryDirectory() as temp_directory:
@@ -117,6 +117,55 @@ class MediaManagerCase(unittest.TestCase):
             self.assertEqual(1, result['total_deleted_count'])
             self.assertFalse(os.path.exists(final_path))
             self.assertFalse(os.path.exists(active_cache_path))
+
+    def test_scan_transfer_items_includes_ghost_files_marked_deleted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            final_path = os.path.join(directory, 'ghost.mp4')
+            with open(final_path, 'wb') as file:
+                file.write(b'12345')
+
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/4', 'https://t.me/pikpak_bot')
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=4,
+                source_link='https://t.me/source/4',
+                target_link='https://t.me/pikpak_bot',
+                file_name='ghost.mp4',
+                local_path=final_path,
+                status=TransferStatus.SUCCESS,
+                phase='sent',
+            )
+            store.mark_item_local_file_deleted(item_id)
+            manager = MediaManager(store, save_directory=directory, temp_directory=directory)
+
+            result = manager.scan_transfer_items()
+
+            self.assertEqual(1, result['total_count'])
+            self.assertTrue(result['items'][0]['ghost'])
+            self.assertTrue(result['items'][0]['file_exists'])
+
+    def test_scan_orphan_files_includes_store_directory_when_temp_directory_changed(self):
+        with tempfile.TemporaryDirectory() as save_directory, tempfile.TemporaryDirectory() as old_temp_directory:
+            orphan_path = os.path.join(old_temp_directory, 'leftover.bin')
+            with open(orphan_path, 'wb') as file:
+                file.write(b'12345')
+            old = time.time() - 3 * 86400
+            os.utime(orphan_path, (old, old))
+
+            store = TransferStore(directory=old_temp_directory)
+            manager = MediaManager(
+                store,
+                save_directory=save_directory,
+                temp_directory=os.path.join(save_directory, 'new-temp'),
+                retention_days=1,
+            )
+
+            result = manager.scan_orphan_files()
+            paths = {item['path'] for item in result['files']}
+
+            self.assertIn(orphan_path, paths)
 
 
 if __name__ == '__main__':
