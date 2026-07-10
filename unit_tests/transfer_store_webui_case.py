@@ -3228,6 +3228,62 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual(100, result.id)
         self.assertTrue(any('PikPak archive not_found' in message for message in logs.output))
 
+    def test_forward_media_group_archives_each_member_to_pikpak(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        archive_calls = []
+
+        def fake_archive_pikpak_item(**kwargs):
+            archive_calls.append(kwargs)
+            return SimpleNamespace(ok=True, status='success')
+
+        video_message = SimpleNamespace(
+            id=1,
+            link='https://t.me/source/1',
+            chat=SimpleNamespace(id='source-chat', username='chengdudiyi8'),
+            video=SimpleNamespace(file_size=500, file_name='video.mp4'),
+            caption='共同标题'
+        )
+        photo_message = SimpleNamespace(
+            id=2,
+            link='https://t.me/source/2',
+            chat=SimpleNamespace(id='source-chat', username='chengdudiyi8'),
+            photo=SimpleNamespace(file_size=100, file_id='photo-file-id'),
+            caption=None
+        )
+
+        async def get_media_group():
+            return [video_message, photo_message]
+
+        video_message.get_media_group = get_media_group
+
+        class FakeClient:
+            async def copy_media_group(self, **_kwargs):
+                return [SimpleNamespace(id=101), SimpleNamespace(id=102)]
+
+        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader.transfer_store = None
+        downloader.archive_pikpak_item = fake_archive_pikpak_item
+
+        result = asyncio.run(downloader.forward(
+            client=downloader.app.client,
+            message=video_message,
+            message_id=1,
+            origin_chat_id='source-chat',
+            target_chat_id='target-chat',
+            target_link='https://t.me/pikpak_bot',
+            media_group=[1, 2],
+            done_notice=False,
+            ignore_type_filter=True
+        ))
+
+        self.assertEqual([101, 102], [item.id for item in result])
+        self.assertEqual(2, len(archive_calls))
+        self.assertEqual({1, 2}, {call['message'].id for call in archive_calls})
+        self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
+        self.assertEqual('chengdudiyi8', archive_calls[1]['source_folder'])
+        self.assertEqual('2 - 共同标题.jpg', PikpakIntegrationManager.get_message_media_archive_filename(photo_message))
+
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)

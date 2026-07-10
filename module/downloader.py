@@ -605,6 +605,51 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         except Exception as e:
             log.debug(f'记录实时监听事件失败(watch_id={watch_id}, status={status}): {e}')
 
+    async def _run_pikpak_archive_after_forward(
+            self,
+            message: pyrogram.types.Message,
+            origin_chat_id: Union[str, int],
+            message_id: int,
+            media_group: Optional[list] = None,
+            transferred_at: Optional[float] = None
+    ) -> None:
+        transferred_at = transferred_at or datetime.datetime.now(datetime.UTC).timestamp()
+        messages = [message]
+        if media_group:
+            try:
+                group_messages = await message.get_media_group()
+                if group_messages:
+                    self.inherit_media_group_title(group_messages)
+                    messages = list(group_messages)
+            except Exception as e:
+                log.debug(f'Unable to resolve media group for PikPak archive: {e}')
+        for group_message in messages:
+            group_source_link = getattr(group_message, 'link', None) or getattr(message, 'link', None)
+            archive_result = self.archive_pikpak_item(
+                target_profile='pikpak',
+                item_id=None,
+                task_id=None,
+                message=group_message,
+                source_link=group_source_link,
+                source_folder=source_folder_from_message(
+                    group_message,
+                    fallback_chat_id=origin_chat_id,
+                    fallback_link=group_source_link
+                ),
+                transferred_at=transferred_at
+            )
+            if (
+                    archive_result is not None
+                    and getattr(archive_result, 'status', None) != 'disabled'
+                    and not bool(getattr(archive_result, 'ok', False))
+            ):
+                archive_status = getattr(archive_result, 'status', 'error')
+                archive_message = getattr(archive_result, 'message', '')
+                log.warning(
+                    f'PikPak archive {archive_status}: '
+                    f'{archive_message or group_source_link or getattr(group_message, "id", None) or message_id}'
+                )
+
     async def forward(
             self,
             client: pyrogram.Client,
@@ -714,30 +759,12 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             if watch_id:
                 self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'success', '转发成功。')
             if archive_after_success and target_link and 'pikpak' in str(target_link).lower():
-                archive_result = self.archive_pikpak_item(
-                    target_profile='pikpak',
-                    item_id=None,
-                    task_id=None,
+                await self._run_pikpak_archive_after_forward(
                     message=message,
-                    source_link=getattr(message, 'link', None),
-                    source_folder=source_folder_from_message(
-                        message,
-                        fallback_chat_id=origin_chat_id,
-                        fallback_link=getattr(message, 'link', None)
-                    ),
-                    transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                    origin_chat_id=origin_chat_id,
+                    message_id=message_id,
+                    media_group=media_group
                 )
-                if (
-                        archive_result is not None
-                        and getattr(archive_result, 'status', None) != 'disabled'
-                        and not bool(getattr(archive_result, 'ok', False))
-                ):
-                    archive_status = getattr(archive_result, 'status', 'error')
-                    archive_message = getattr(archive_result, 'message', '')
-                    log.warning(
-                        f'PikPak archive {archive_status}: '
-                        f'{archive_message or getattr(message, "link", None) or message_id}'
-                    )
             return forwarded_message
         except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
             if not download_upload:
