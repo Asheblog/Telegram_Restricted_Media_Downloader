@@ -30,6 +30,9 @@ class DiscussionReplyMediaGroupCase(unittest.TestCase):
         single = SimpleNamespace(id=201, media_group_id=None, video=object())
 
         class FakeClient:
+            async def get_discussion_message(self, chat_id, message_id):
+                return SimpleNamespace(id=1, chat=SimpleNamespace(id='discussion-chat'))
+
             async def get_discussion_replies(self, chat_id, message_id):
                 yield head
                 yield single
@@ -61,6 +64,9 @@ class DiscussionReplyMediaGroupCase(unittest.TestCase):
         head.get_media_group = get_media_group
 
         class FakeClient:
+            async def get_discussion_message(self, chat_id, message_id):
+                return SimpleNamespace(id=1, chat=SimpleNamespace(id='discussion-chat'))
+
             async def get_discussion_replies(self, chat_id, message_id):
                 yield head
                 yield members[1]
@@ -81,6 +87,35 @@ class DiscussionReplyMediaGroupCase(unittest.TestCase):
 
         result = asyncio.run(run())
         self.assertEqual([(301, [301, 302])], result)
+
+    def test_iter_discussion_reply_messages_groups_raw_replies_without_get_media_group(self):
+        members = [
+            SimpleNamespace(id=401, media_group_id=9101, video=object()),
+            SimpleNamespace(id=402, media_group_id=9101, video=object()),
+            SimpleNamespace(id=403, media_group_id=9101, video=object()),
+        ]
+
+        class FakeClient:
+            async def get_discussion_message(self, chat_id, message_id):
+                return SimpleNamespace(id=99, chat=SimpleNamespace(id='discussion-chat'))
+
+            async def get_discussion_replies(self, chat_id, message_id):
+                for member in members:
+                    yield member
+
+        async def run():
+            collected = []
+            async for message in iter_discussion_reply_messages(
+                    FakeClient(),
+                    'channel',
+                    2888,
+                    include_message=lambda msg: bool(getattr(msg, 'video', None))
+            ):
+                collected.append(message.id)
+            return collected
+
+        result = asyncio.run(run())
+        self.assertEqual([401, 402, 403], result)
 
 
 if __name__ == '__main__':

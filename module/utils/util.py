@@ -164,7 +164,58 @@ def extract_info_from_link(link: str) -> Link:
     return result
 
 
-async def _resolve_discussion_reply_members(message) -> list:
+async def _resolve_discussion_thread(
+        client: pyrogram.Client,
+        chat_id: Union[int, str],
+        message_id: int,
+) -> tuple[Union[int, str], int, Optional[int]]:
+    """Resolve linked discussion group thread for a channel post."""
+    try:
+        discussion = await client.get_discussion_message(chat_id, message_id)
+        discussion_chat_id = getattr(getattr(discussion, 'chat', None), 'id', None)
+        discussion_message_id = getattr(discussion, 'id', None)
+        if discussion_chat_id is not None and discussion_message_id is not None:
+            return discussion_chat_id, discussion_message_id, discussion_message_id
+    except (ValueError, AttributeError, MsgIdInvalid):
+        pass
+    return chat_id, message_id, None
+
+
+async def _collect_discussion_replies(
+        client: pyrogram.Client,
+        reply_chat_id: Union[int, str],
+        reply_message_id: int,
+        root_message_id: Optional[int] = None,
+) -> list:
+    replies: list = []
+    async for comment in client.get_discussion_replies(reply_chat_id, reply_message_id):
+        if root_message_id is not None and getattr(comment, 'id', None) == root_message_id:
+            continue
+        replies.append(comment)
+    return replies
+
+
+def _index_replies_by_media_group(replies: list) -> dict:
+    grouped: dict = {}
+    for message in replies:
+        media_group_id = getattr(message, 'media_group_id', None)
+        if media_group_id is None:
+            continue
+        grouped.setdefault(media_group_id, []).append(message)
+    for media_group_id in grouped:
+        grouped[media_group_id].sort(key=lambda item: getattr(item, 'id', 0) or 0)
+    return grouped
+
+
+async def _resolve_discussion_reply_members(
+        message,
+        replies_by_media_group: Optional[dict] = None,
+) -> list:
+    media_group_id = getattr(message, 'media_group_id', None)
+    if media_group_id is not None and replies_by_media_group:
+        grouped = replies_by_media_group.get(media_group_id) or []
+        if len(grouped) > 1:
+            return grouped
     get_media_group = getattr(message, 'get_media_group', None)
     if callable(get_media_group):
         try:
@@ -173,6 +224,10 @@ async def _resolve_discussion_reply_members(message) -> list:
                 return list(group_messages)
         except (ValueError, AttributeError, TypeError):
             pass
+    if media_group_id is not None and replies_by_media_group:
+        grouped = replies_by_media_group.get(media_group_id) or []
+        if grouped:
+            return grouped
     return [message]
 
 
@@ -185,23 +240,35 @@ async def iter_discussion_reply_messages(
         include_message: Optional[Callable[[pyrogram.types.Message], bool]] = None,
 ) -> AsyncIterator[pyrogram.types.Message]:
     """Iterate discussion replies, expanding media groups into individual messages."""
+    reply_chat_id, reply_message_id, root_message_id = await _resolve_discussion_thread(
+        client,
+        chat_id,
+        message_id
+    )
+    raw_replies = await _collect_discussion_replies(
+        client,
+        reply_chat_id,
+        reply_message_id,
+        root_message_id
+    )
+    replies_by_media_group = _index_replies_by_media_group(raw_replies)
     seen_media_group_ids: set = set()
     seen_message_ids: set = set()
 
-    async for comment in client.get_discussion_replies(chat_id, message_id):
-        members = await _resolve_discussion_reply_members(comment)
+    for comment in raw_replies:
+        media_group_id = getattr(comment, 'media_group_id', None)
+        if media_group_id is not None:
+            if media_group_id in seen_media_group_ids:
+                continue
+            seen_media_group_ids.add(media_group_id)
+
+        members = await _resolve_discussion_reply_members(comment, replies_by_media_group)
         if not members:
             continue
 
         member_ids = {getattr(member, 'id', None) for member in members}
         if target_message_id is not None and target_message_id not in member_ids:
             continue
-
-        media_group_id = getattr(comment, 'media_group_id', None)
-        if media_group_id is not None:
-            if media_group_id in seen_media_group_ids:
-                continue
-            seen_media_group_ids.add(media_group_id)
 
         for member in members:
             member_id = getattr(member, 'id', None)
@@ -221,19 +288,28 @@ async def iter_discussion_reply_forward_units(
         include_message: Optional[Callable[[pyrogram.types.Message], bool]] = None,
 ) -> AsyncIterator[tuple[pyrogram.types.Message, Optional[list]]]:
     """Iterate discussion replies as forward units; media groups are yielded once."""
+    reply_chat_id, reply_message_id, root_message_id = await _resolve_discussion_thread(
+        client,
+        chat_id,
+        message_id
+    )
+    raw_replies = await _collect_discussion_replies(
+        client,
+        reply_chat_id,
+        reply_message_id,
+        root_message_id
+    )
+    replies_by_media_group = _index_replies_by_media_group(raw_replies)
     seen_media_group_ids: set = set()
     seen_message_ids: set = set()
 
-    async for comment in client.get_discussion_replies(chat_id, message_id):
-        members = await _resolve_discussion_reply_members(comment)
-        if not members:
-            continue
-
+    for comment in raw_replies:
         media_group_id = getattr(comment, 'media_group_id', None)
         if media_group_id is not None:
             if media_group_id in seen_media_group_ids:
                 continue
             seen_media_group_ids.add(media_group_id)
+            members = await _resolve_discussion_reply_members(comment, replies_by_media_group)
             if include_message and not any(include_message(member) for member in members):
                 continue
             if len(members) > 1:
@@ -242,7 +318,7 @@ async def iter_discussion_reply_forward_units(
                 yield members[0], None
             continue
 
-        member = members[0]
+        member = comment
         member_id = getattr(member, 'id', None)
         if member_id is None or member_id in seen_message_ids:
             continue
