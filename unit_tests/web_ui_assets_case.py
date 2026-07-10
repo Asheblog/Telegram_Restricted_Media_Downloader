@@ -39,7 +39,7 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('id="channel-download-form"', WEB_UI_HTML)
         self.assertIn('id="upload-form"', WEB_UI_HTML)
         # Task list
-        self.assertIn('id="tasks-tbody"', WEB_UI_HTML)
+        self.assertIn('id="tasks-list"', WEB_UI_HTML)
         # Logout
         self.assertIn('id="btn-logout"', WEB_UI_HTML)
         # Tailwind

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>转存任务列表 · 完整页面风格预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #2563EB;
+    --primary-soft: #EFF6FF;
+    --primary-ghost: #DBEAFE;
+    --bg: #F0F4FF;
+    --surface: #FFFFFF;
+    --surface-alt: #F8FAFC;
+    --surface-hover: #F1F5F9;
+    --text: #1E293B;
+    --text-secondary: #475569;
+    --muted: #94A3B8;
+    --line: #E2E8F0;
+    --line-light: #F1F5F9;
+    --success: #10B981;
+    --success-bg: #ECFDF5;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --danger-bg: #FEF2F2;
+    --cta: #F97316;
+    --sidebar-w: 250px;
+    --form-w: 380px;
+    --font-heading: 'Poppins', 'PingFang SC', sans-serif;
+    --font-body: 'Inter', 'PingFang SC', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-body); font-size: 15px; color: var(--text); background: #e2e8f0; min-height: 100vh; }
+
+  /* ===== Preview chrome ===== */
+  .preview-chrome {
+    position: sticky; top: 0; z-index: 100;
+    background: #1e293b; color: #e2e8f0;
+    padding: 10px 20px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    font-size: 13px;
+  }
+  .preview-chrome strong { color: #fff; }
+  .preview-chrome .chip {
+    background: #334155; border: 1px solid #475569;
+    padding: 4px 10px; border-radius: 6px; font-size: 12px;
+  }
+  .preview-chrome .chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .preview-chrome button {
+    background: #334155; border: 1px solid #475569; color: #e2e8f0;
+    padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  }
+  .preview-chrome button:hover { background: #475569; }
+  .preview-chrome .warn { color: #fbbf24; }
+  .preview-chrome .ok { color: #34d399; }
+
+  .viewport-frame {
+    margin: 0 auto;
+    background: var(--bg);
+    overflow: hidden;
+    transition: width 0.2s;
+    box-shadow: 0 8px 40px rgba(15,23,42,0.15);
+  }
+  .viewport-label {
+    text-align: center; font-size: 11px; color: #64748b;
+    padding: 8px; background: #f1f5f9;
+  }
+
+  /* ===== TRMD layout (mirrors views.html) ===== */
+  .app { display: flex; min-height: calc(100vh - 52px); }
+
+  .sidebar {
+    width: var(--sidebar-w); flex-shrink: 0;
+    background: var(--surface); border-right: 1px solid var(--line);
+    padding: 24px 16px; display: flex; flex-direction: column;
+  }
+  .sidebar-brand { display: flex; gap: 12px; align-items: center; padding-bottom: 20px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sidebar-mark {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), #3B82F6);
+    color: #fff; font-weight: 700; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-heading);
+  }
+  .sidebar-brand h2 { font-family: var(--font-heading); font-size: 16px; font-weight: 700; }
+  .sidebar-brand span { font-size: 12px; color: var(--muted); }
+  .nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; padding: 16px 10px 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px; font-size: 14px;
+    color: var(--text-secondary); cursor: pointer;
+  }
+  .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-badge { margin-left: auto; background: var(--primary-ghost); color: var(--primary); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+
+  .main { flex: 1; min-width: 0; padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .topbar h1 { font-family: var(--font-heading); font-size: 20px; font-weight: 700; }
+  .topbar p { font-size: 14px; color: var(--muted); margin-top: 4px; }
+  .topbar-actions { display: flex; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer;
+  }
+  .btn svg { width: 16px; height: 16px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; display: flex; justify-content: space-between; align-items: flex-start;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+  }
+  .stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .stat-icon.blue { background: var(--primary-soft); color: var(--primary); }
+  .stat-icon.green { background: var(--success-bg); color: var(--success); }
+  .stat-icon.orange { background: #FFF7ED; color: var(--cta); }
+  .stat-icon.red { background: var(--danger-bg); color: var(--danger); }
+  .stat-icon svg { width: 20px; height: 20px; }
+  .stat-val { font-family: var(--font-heading); font-size: 20px; font-weight: 700; text-align: right; }
+  .stat-lbl { font-size: 12px; color: var(--muted); text-align: right; margin-top: 4px; }
+
+  .content-grid { display: grid; grid-template-columns: var(--form-w) 1fr; gap: 16px; align-items: stretch; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.04); overflow: hidden; display: flex; flex-direction: column; min-height: 320px; }
+  .panel-header { padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--surface-alt); display: flex; align-items: center; justify-content: space-between; }
+  .panel-header h3 { font-family: var(--font-heading); font-size: 16px; font-weight: 600; }
+  .panel-body { padding: 18px; flex: 1; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .form-input { width: 100%; height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; font-size: 14px; background: var(--surface); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-submit {
+    width: 100%; height: 40px; background: var(--primary); color: #fff; border: none;
+    border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
+  }
+  .form-hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 8px 0; }
+
+  .task-list-slot { min-width: 0; display: flex; flex-direction: column; }
+  .width-badge {
+    font-size: 10px; font-weight: 600; color: var(--primary);
+    background: var(--primary-soft); padding: 2px 8px; border-radius: 999px;
+  }
+
+  .task-detail-panel { min-height: 120px; }
+  .task-detail-panel .panel-body { text-align: center; color: var(--muted); font-size: 14px; padding: 32px; }
+
+  /* ===== Style panels (hidden by default) ===== */
+  .style-variant { display: none; flex: 1; min-height: 0; overflow: auto; }
+  .style-variant.active { display: flex; flex-direction: column; }
+
+  /* --- Current (baseline) --- */
+  .s-current table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .s-current th { padding: 10px 8px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; background: var(--surface-alt); border-bottom: 2px solid var(--line); text-align: center; white-space: nowrap; }
+  .s-current td { padding: 10px 8px; border-bottom: 1px solid var(--line-light); text-align: center; font-size: 13px; vertical-align: middle; }
+  .s-current .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  /* --- A: Compact rows (fits constrained width) --- */
+  .s-a .rows { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .s-a .row {
+    display: grid;
+    grid-template-columns: 44px 72px 1fr 64px;
+    grid-template-rows: auto auto;
+    gap: 4px 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .s-a .row:hover { background: var(--surface-hover); }
+  .s-a .row.selected { background: var(--primary-soft); border-color: #bfdbfe; }
+  .s-a .row-id { grid-row: 1 / 3; align-self: center; font-weight: 700; color: var(--primary); font-size: 13px; }
+  .s-a .row-status { align-self: center; }
+  .s-a .row-route { grid-column: 3; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .s-a .row-target { grid-column: 4; font-size: 11px; font-weight: 600; color: var(--text); text-align: right; align-self: center; }
+  .s-a .row-progress { grid-column: 2 / 5; display: flex; align-items: center; gap: 8px; }
+  .s-a .row-actions { grid-column: 4; grid-row: 1; justify-self: end; align-self: start; display: flex; gap: 3px; }
+  .s-a .prog-bar { flex: 1; height: 5px; background: #e2e8f0; border-radius: 999px; overflow: hidden; min-width: 0; }
+  .s-a .prog-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #2563eb); border-radius: 999px; }
+  .s-a .prog-text { font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .s-a .empty { padding: 28px 16px; text-align: center; }
+  .s-a .empty-icon { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 14px; background: var(--surface-alt); color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  .s-a .empty h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .s-a .empty p { font-size: 12px; color: var(--muted); }
+
+  /* --- B: Dense table (improved current, horizontal scroll OK) --- */
+  .s-b { overflow-x: auto; }
+  .s-b table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; }
+  .s-b th { padding: 8px 10px; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-alt); border-bottom: 2px solid var(--line); text-align: left; white-space: nowrap; position: sticky; top: 0; }
+  .s-b td { padding: 10px; border-bottom: 1px solid var(--line-light); vertical-align: middle; }
+  .s-b tr { cursor: pointer; }
+  .s-b tr:hover { background: var(--surface-hover); }
+  .s-b tr.selected { background: var(--primary-soft); }
+  .s-b tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+  .s-b .c-id { font-weight: 700; color: var(--primary); font-size: 13px; }
+  .s-b .c-link { max-width: 140px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .s-b .c-prog { min-width: 100px; }
+  .s-b .c-prog-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .s-b .c-prog-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
+  .s-b .c-prog-fill { height: 100%; background: var(--primary); }
+  .s-b .empty { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* --- C: Stacked cards (single column, always fits) --- */
+  .s-c .cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .s-c .card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+    cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .s-c .card:hover { border-color: #cbd5e1; }
+  .s-c .card.selected { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .s-c .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .s-c .card-id { font-size: 13px; font-weight: 700; color: var(--primary); }
+  .s-c .card-route { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.4; word-break: break-all; }
+  .s-c .card-route strong { color: var(--muted); font-weight: 600; font-size: 10px; text-transform: uppercase; margin-right: 4px; }
+  .s-c .card-prog { display: flex; align-items: center; gap: 8px; }
+  .s-c .card-prog-bar { flex: 1; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+  .s-c .card-prog-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #06b6d4); border-radius: 999px; }
+  .s-c .card-prog-pct { font-size: 12px; font-weight: 700; min-width: 32px; text-align: right; }
+  .s-c .card-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .s-c .card-count { font-size: 11px; color: var(--muted); }
+  .s-c .empty { padding: 24px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* Shared badges & buttons */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+  .badge.running { background: var(--primary-soft); color: var(--primary); }
+  .badge.success { background: var(--success-bg); color: #059669; }
+  .badge.pending { background: #FFF7ED; color: #ea580c; }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .badge.running .badge-dot { animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .icon-btn {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text-secondary); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: var(--surface-hover); }
+  .icon-btn.danger:hover { background: var(--danger-bg); color: var(--danger); border-color: #fecaca; }
+  .icon-btn svg { width: 13px; height: 13px; }
+  .fit-tag { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; margin-left: 6px; }
+  .fit-tag.ok { background: #ecfdf5; color: #059669; }
+  .fit-tag.warn { background: #fffbeb; color: #b45309; }
+  .fit-tag.no { background: #fef2f2; color: #dc2626; }
+
+  .style-note {
+    margin: 0 28px 16px;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    max-width: calc(var(--viewport-w, 1280px));
+    margin-left: auto; margin-right: auto;
+  }
+  .style-note strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="preview-chrome">
+  <strong>完整页面预览</strong>
+  <span>侧栏 250px + 表单 380px + 任务列表 = 剩余宽度</span>
+  <span class="chip active" data-vp="1280">1280px 屏</span>
+  <span class="chip" data-vp="1440">1440px 屏</span>
+  <span class="chip" data-vp="1920">1920px 屏</span>
+  <span>|</span>
+  <button data-style="current">现状</button>
+  <button data-style="a" class="active">A 紧凑行</button>
+  <button data-style="b">B 密表格</button>
+  <button data-style="c">C 堆叠卡</button>
+  <button id="toggle-data">显示示例数据</button>
+  <span id="width-info" class="ok"></span>
+</div>
+
+<div class="style-note" id="style-note">
+  <strong>A · 紧凑行</strong> — 专为 ~580–740px 任务列表区域设计：两行布局（路由 + 进度），无需横向滚动。<span class="fit-tag ok">推荐</span>
+</div>
+
+<div class="viewport-label" id="viewport-label">视口 1280px → 任务列表区域约 <strong>578px</strong></div>
+<div class="viewport-frame" id="viewport" style="width:1280px">
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-mark">T</div>
+      <div><h2>TRMD</h2><span>转存控制台</span></div>
+    </div>
+    <div class="nav-label">主要功能</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      转存任务
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+      实时监听 <span class="nav-badge">0</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      下载与上传
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>转存控制台</h1>
+        <p>管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn">中文 ▾</button>
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> 刷新</button>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div><div class="stat-val" id="st-total">0</div><div class="stat-lbl">总任务</div></div><div class="stat-icon blue"><svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div></div>
+      <div class="stat-card"><div><div class="stat-val" id="st-success">0</div><div class="stat-lbl">已完成</div></div><div class="stat-icon green"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div></div>
+      <div class="stat-card"><div><div class="stat-val" id="st-running">0</div><div class="stat-lbl">运行中</div></div><div class="stat-icon orange"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div></div>
+      <div class="stat-card"><div><div class="stat-val" id="st-failed">0</div><div class="stat-lbl">失败项</div></div><div class="stat-icon red"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div></div>
+    </div>
+
+    <div class="content-grid">
+      <!-- Left: form (fixed 380px) -->
+      <div class="panel">
+        <div class="panel-header"><h3>新建转存</h3></div>
+        <div class="panel-body">
+          <div class="form-group"><label class="form-label">来源链接</label><input class="form-input" value="https://t.me/channel/123" readonly></div>
+          <div class="form-group"><label class="form-label">目标</label><input class="form-input" value="https://t.me/pikpak_bot" readonly></div>
+          <div class="form-group"><label class="form-label">目标配置</label><input class="form-input" value="PikPak 文档转存" readonly></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">起始 ID</label><input class="form-input" placeholder="可选" readonly></div>
+            <div class="form-group"><label class="form-label">结束 ID</label><input class="form-input" placeholder="可选" readonly></div>
+          </div>
+          <p class="form-hint">单条消息链接可留空。频道不填 ID 会自动探测可访问范围。</p>
+          <button class="form-submit">+ 创建任务</button>
+        </div>
+      </div>
+
+      <!-- Right: task list (remaining width) -->
+      <div class="panel task-list-slot">
+        <div class="panel-header">
+          <h3>转存任务列表</h3>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="width-badge" id="list-width">578px</span>
+            <span style="font-size:12px;color:var(--muted)">尚未同步</span>
+          </div>
+        </div>
+
+        <!-- Current -->
+        <div class="style-variant s-current" id="v-current">
+          <div class="empty" id="cur-empty">还没有转存任务。</div>
+          <table id="cur-table" class="hidden"><thead><tr><th>ID</th><th>状态</th><th>来源</th><th>目标</th><th>进度</th><th>操作</th></tr></thead><tbody id="cur-tbody"></tbody></table>
+        </div>
+
+        <!-- A: Compact rows -->
+        <div class="style-variant s-a active" id="v-a">
+          <div class="empty" id="a-empty"><div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div><h4>还没有转存任务</h4><p>创建任务后在此查看进度</p></div>
+          <div class="rows hidden" id="a-rows"></div>
+        </div>
+
+        <!-- B: Dense table -->
+        <div class="style-variant s-b" id="v-b">
+          <div class="empty" id="b-empty">还没有转存任务。</div>
+          <table id="b-table" class="hidden"><thead><tr><th>ID</th><th>状态</th><th>来源</th><th>目标</th><th>进度</th><th>操作</th></tr></thead><tbody id="b-tbody"></tbody></table>
+        </div>
+
+        <!-- C: Stacked cards -->
+        <div class="style-variant s-c" id="v-c">
+          <div class="empty" id="c-empty">还没有转存任务。</div>
+          <div class="cards hidden" id="c-cards"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel task-detail-panel">
+      <div class="panel-header"><h3>任务详情</h3></div>
+      <div class="panel-body">选择一个任务查看详情</div>
+    </div>
+  </main>
+</div>
+</div>
+
+<script>
+const TASKS = [
+  { id: 12, status: 'running', source: 'https://t.me/example_channel/1024', target: 'local', progress: 67, done: 134, total: 200, selected: true },
+  { id: 11, status: 'success', source: 'https://t.me/another/500-600', target: 'cloud-A', progress: 100, done: 101, total: 101 },
+  { id: 10, status: 'pending', source: 'https://t.me/pending_msg/88', target: 'local', progress: 0, done: 0, total: 45 },
+];
+const LABEL = { running:'运行中', success:'已完成', pending:'等待中' };
+const iconPause = '<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
+const iconDel = '<svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M9 7V5h6v2M10 11v5M14 11v5M8 7l1 12h6l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
+const NOTES = {
+  current: '<strong>现状</strong> — 6 列表格在 ~580px 区域严重拥挤，来源列被截断、表头对齐混乱。<span class="fit-tag no">不推荐保留</span>',
+  a: '<strong>A · 紧凑行</strong> — 两行布局：第一行 ID/状态/路由/操作，第二行进度条。专为 ~580–740px 任务列表区域设计，无需横向滚动。<span class="fit-tag ok">推荐</span>',
+  b: '<strong>B · 密表格</strong> — 保留表格但压缩列宽，min-width 520px 允许区域内横向滚动（与现有 overflow-auto 一致）。大屏更整齐。<span class="fit-tag warn">可用，小屏需滚动</span>',
+  c: '<strong>C · 堆叠卡</strong> — 单列卡片，任何宽度都能完整展示来源/目标/进度。垂直空间占用多，适合任务 ≤5 个。<span class="fit-tag ok">最稳妥</span>',
+};
+
+const VP = {
+  1280: { list: 578, label: '视口 1280px → 任务列表区域约 <strong>578px</strong>' },
+  1440: { list: 738, label: '视口 1440px → 任务列表区域约 <strong>738px</strong>' },
+  1920: { list: 1218, label: '视口 1920px → 任务列表区域约 <strong>1218px</strong>' },
+};
+
+let showData = false;
+let style = 'a';
+let viewport = 1280;
+
+function badge(s) {
+  return '<span class="badge '+s+'"><span class="badge-dot"></span>'+LABEL[s]+'</span>';
+}
+function actions(t) {
+  let h = '';
+  if (t.status==='running') h += '<button class="icon-btn" title="暂停">'+iconPause+'</button>';
+  h += '<button class="icon-btn danger" title="删除">'+iconDel+'</button>';
+  return h;
+}
+
+function render() {
+  const vp = VP[viewport];
+  document.getElementById('viewport').style.width = viewport + 'px';
+  document.getElementById('viewport').style.setProperty('--viewport-w', viewport + 'px');
+  document.getElementById('viewport-label').innerHTML = vp.label;
+  document.getElementById('list-width').textContent = vp.list + 'px';
+  document.getElementById('style-note').innerHTML = NOTES[style];
+  document.getElementById('width-info').textContent = '列表宽 ' + vp.list + 'px';
+
+  ['current','a','b','c'].forEach(s => {
+    document.getElementById('v-'+s).classList.toggle('active', s === style);
+  });
+
+  // stats
+  document.getElementById('st-total').textContent = showData ? TASKS.length : 0;
+  document.getElementById('st-success').textContent = showData ? TASKS.filter(t=>t.status==='success').length : 0;
+  document.getElementById('st-running').textContent = showData ? TASKS.filter(t=>t.status==='running').length : 0;
+
+  // Current
+  document.getElementById('cur-empty').classList.toggle('hidden', showData);
+  document.getElementById('cur-table').classList.toggle('hidden', !showData);
+  if (showData) {
+    document.getElementById('cur-tbody').innerHTML = TASKS.map(t =>
+      '<tr class="'+(t.selected?'selected':'')+'"><td>#'+t.id+'</td><td>'+badge(t.status)+'</td><td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.source+'</td><td>'+t.target+'</td><td>'+t.progress+'%</td><td>'+actions(t)+'</td></tr>'
+    ).join('');
+  }
+
+  // A
+  document.getElementById('a-empty').classList.toggle('hidden', showData);
+  document.getElementById('a-rows').classList.toggle('hidden', !showData);
+  if (showData) {
+    document.getElementById('a-rows').innerHTML = TASKS.map(t =>
+      '<div class="row '+(t.selected?'selected':'')+'">'+
+        '<div class="row-id">#'+t.id+'</div>'+
+        '<div class="row-status">'+badge(t.status)+'</div>'+
+        '<div class="row-route" title="'+t.source+'">'+t.source+' → '+t.target+'</div>'+
+        '<div class="row-target">'+t.target+'</div>'+
+        '<div class="row-actions">'+actions(t)+'</div>'+
+        '<div class="row-progress"><span class="prog-text">'+t.progress+'%</span><div class="prog-bar"><div class="prog-fill" style="width:'+t.progress+'%"></div></div><span class="prog-text" style="color:var(--muted);font-weight:400">'+t.done+'/'+t.total+'</span></div>'+
+      '</div>'
+    ).join('');
+  }
+
+  // B
+  document.getElementById('b-empty').classList.toggle('hidden', showData);
+  document.getElementById('b-table').classList.toggle('hidden', !showData);
+  if (showData) {
+    document.getElementById('b-tbody').innerHTML = TASKS.map(t =>
+      '<tr class="'+(t.selected?'selected':'')+'"><td class="c-id">#'+t.id+'</td><td>'+badge(t.status)+'</td><td><span class="c-link" title="'+t.source+'">'+t.source+'</span></td><td>'+t.target+'</td><td class="c-prog"><div class="c-prog-label"><span>'+t.progress+'%</span><span>'+t.done+'/'+t.total+'</span></div><div class="c-prog-bar"><div class="c-prog-fill" style="width:'+t.progress+'%"></div></div></td><td>'+actions(t)+'</td></tr>'
+    ).join('');
+  }
+
+  // C
+  document.getElementById('c-empty').classList.toggle('hidden', showData);
+  document.getElementById('c-cards').classList.toggle('hidden', !showData);
+  if (showData) {
+    document.getElementById('c-cards').innerHTML = TASKS.map(t =>
+      '<div class="card '+(t.selected?'selected':'')+'">'+
+        '<div class="card-head"><span class="card-id">#'+t.id+'</span>'+badge(t.status)+'</div>'+
+        '<div class="card-route"><strong>来源</strong>'+t.source+'</div>'+
+        '<div class="card-route"><strong>目标</strong>'+t.target+'</div>'+
+        '<div class="card-prog"><div class="card-prog-bar"><div class="card-prog-fill" style="width:'+t.progress+'%"></div></div><span class="card-prog-pct">'+t.progress+'%</span></div>'+
+        '<div class="card-foot"><span class="card-count">'+t.done+' / '+t.total+' 文件</span><span>'+actions(t)+'</span></div>'+
+      '</div>'
+    ).join('');
+  }
+
+  document.getElementById('toggle-data').textContent = showData ? '显示空状态' : '显示示例数据';
+}
+
+document.querySelectorAll('[data-vp]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-vp]').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    viewport = parseInt(el.dataset.vp);
+    render();
+  });
+});
+document.querySelectorAll('[data-style]').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('[data-style]').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    style = el.dataset.style;
+    render();
+  });
+});
+document.getElementById('toggle-data').addEventListener('click', () => { showData = !showData; render(); });
+render();
+</script>
+</body>
+</html>

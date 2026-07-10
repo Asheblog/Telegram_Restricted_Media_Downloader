@@ -53,39 +53,52 @@ function updateStats() {
 
 function renderTasks() {
   if (state.activeView !== 'transfers') return;
-  const tbody = $('#tasks-tbody');
+  const list = $('#tasks-list');
   const empty = $('#tasks-empty');
   if (!state.tasks.length) {
-    tbody.innerHTML = '';
+    list.innerHTML = '';
+    list.classList.add('hidden');
     empty.style.display = '';
     return;
   }
   empty.style.display = 'none';
-  tbody.innerHTML = state.tasks.map(task => {
+  list.classList.remove('hidden');
+  list.innerHTML = state.tasks.map(task => {
     const isSelected = task.id === state.selectedTaskId;
     const progressPct = taskProgressPercent(task);
     const activeSummary = activeTransferSummary(task);
-    return '<tr data-task-id="' + task.id + '" class="' + (isSelected ? 'selected' : '') + '">' +
-      '<td class="font-semibold text-primary">#' + task.id + '</td>' +
-      '<td>' + statusBadge(task.status) + '</td>' +
-      '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap text-xs" title="' + esc(task.source_link || '') + '">' + esc(task.source_link || '-') + '</td>' +
-      '<td class="text-xs">' + esc(task.target_profile || task.target_link || '-') + '</td>' +
-      '<td>' +
-        (task.total_items > 0 ? (
-          '<div class="flex items-center gap-2">' +
-          '<span class="text-xs font-semibold">' + progressPct + '%</span>' +
-          '<div class="flex-1 min-w-[60px]">' +
-          '<div class="progress-bar"><div class="progress-fill" style="width:' + progressPct + '%"></div></div>' +
-          '<span class="text-[11px] text-muted">' + taskCompletedLabel(task) + '</span>' +
-          (activeSummary ? '<span class="block text-[11px] text-muted max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(activeSummary) + '">' + esc(activeSummary) + '</span>' : '') +
-          '</div></div>'
-        ) : '<span class="text-muted text-xs">-</span>') +
-      '</td>' +
-      '<td>' + taskActions(task) + '</td>' +
-      '</tr>';
+    const source = esc(task.source_link || '-');
+    const target = esc(task.target_profile || task.target_link || '-');
+    const route = source + ' → ' + target;
+    let progressHtml = '';
+    if (task.total_items > 0) {
+      progressHtml =
+        '<div class="task-row-progress">' +
+          '<span class="task-row-progress-pct">' + progressPct + '%</span>' +
+          '<div class="task-row-progress-bar">' +
+            '<div class="progress-fill" style="width:' + progressPct + '%"></div>' +
+          '</div>' +
+          '<span class="task-row-progress-count">' + taskCompletedLabel(task) + '</span>' +
+        '</div>';
+      if (activeSummary) {
+        progressHtml +=
+          '<div class="task-row-progress-summary" title="' + esc(activeSummary) + '">' +
+            esc(activeSummary) +
+          '</div>';
+      }
+    } else {
+      progressHtml = '<div class="task-row-progress"><span class="text-muted text-xs">-</span></div>';
+    }
+    return '<div class="task-row' + (isSelected ? ' selected' : '') + '" data-task-id="' + task.id + '">' +
+      '<div class="task-row-id">#' + task.id + '</div>' +
+      '<div class="task-row-status">' + statusBadge(task.status) + '</div>' +
+      '<div class="task-row-route" title="' + esc(task.source_link || '') + ' → ' + esc(task.target_profile || task.target_link || '') + '">' + route + '</div>' +
+      '<div class="task-row-actions"><div class="task-row-actions-inner">' + taskActions(task) + '</div></div>' +
+      progressHtml +
+      '</div>';
   }).join('');
 
-  $$('#tasks-tbody tr').forEach(row => {
+  $$('#tasks-list .task-row').forEach(row => {
     row.addEventListener('click', () => {
       const id = parseInt(row.dataset.taskId);
       state.selectedTaskId = id;
@@ -95,21 +108,26 @@ function renderTasks() {
   });
 }
 
+const TASK_ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
+const TASK_ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M8 5v14l11-7L8 5z" fill="currentColor"/></svg>';
+const TASK_ICON_RETRY = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.66-5.66M20 4v5h-5M20 12a8 8 0 0 1-13.66 5.66M4 20v-5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const TASK_ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 7h12M9 7V5h6v2M10 11v5M14 11v5M8 7l1 12h6l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function taskActions(task) {
   let actions = '';
   if (task.can_pause) {
-    actions += '<button class="btn btn-sm" data-task-action="pause" data-task-id="' + task.id + '" title="' + t('tasks.pause') + '">⏸</button>';
+    actions += '<button class="task-icon-btn" data-task-action="pause" data-task-id="' + task.id + '" title="' + t('tasks.pause') + '">' + TASK_ICON_PAUSE + '</button>';
   }
   if (task.can_resume) {
-    actions += '<button class="btn btn-sm btn-primary" data-task-action="resume" data-task-id="' + task.id + '" title="' + t('tasks.resume') + '">▶</button>';
+    actions += '<button class="task-icon-btn btn-primary" data-task-action="resume" data-task-id="' + task.id + '" title="' + t('tasks.resume') + '">' + TASK_ICON_PLAY + '</button>';
   }
   if (task.can_retry) {
-    actions += '<button class="btn btn-sm btn-danger" data-task-action="retry" data-task-id="' + task.id + '" title="' + t('tasks.retryFailed') + '">↻</button>';
+    actions += '<button class="task-icon-btn btn-danger" data-task-action="retry" data-task-id="' + task.id + '" title="' + t('tasks.retryFailed') + '">' + TASK_ICON_RETRY + '</button>';
   }
   if (task.can_delete) {
-    actions += '<button class="btn btn-sm btn-danger" data-task-action="delete" data-task-id="' + task.id + '" title="' + t('tasks.delete') + '">✕</button>';
+    actions += '<button class="task-icon-btn btn-danger" data-task-action="delete" data-task-id="' + task.id + '" title="' + t('tasks.delete') + '">' + TASK_ICON_DELETE + '</button>';
   }
-  return '<div class="flex gap-1">' + actions + '</div>';
+  return actions;
 }
 
 /* task action delegation */
