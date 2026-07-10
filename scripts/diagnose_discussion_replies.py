@@ -146,8 +146,15 @@ async def collect_diagnosis(client, discussion_util, channel: str, post_id: int)
         post_id
     )
     channel_raw = []
-    async for message in client.get_discussion_replies(channel, post_id):
-        channel_raw.append(message_brief(message))
+    channel_peer_error = None
+    try:
+        async for message in client.get_discussion_replies(channel, post_id):
+            channel_raw.append(message_brief(message))
+    except Exception as error:
+        channel_peer_error = {
+            'type': type(error).__name__,
+            'message': str(error),
+        }
     raw_replies = await discussion_util._collect_discussion_replies(
         client,
         reply_chat_id,
@@ -158,7 +165,7 @@ async def collect_diagnosis(client, discussion_util, channel: str, post_id: int)
     expanded = []
     async for message in discussion_util.iter_discussion_reply_messages(client, channel, post_id):
         expanded.append(message_brief(message))
-    return {
+    result = {
         'discussion_thread': {
             'reply_chat_id': reply_chat_id,
             'reply_message_id': reply_message_id,
@@ -175,6 +182,9 @@ async def collect_diagnosis(client, discussion_util, channel: str, post_id: int)
         'expanded_count': len(expanded),
         'expanded': expanded,
     }
+    if channel_peer_error:
+        result['channel_peer_error'] = channel_peer_error
+    return result
 
 
 async def run_with_session(config: dict, session_directory: Path, channel: str, post_id: int) -> dict:
