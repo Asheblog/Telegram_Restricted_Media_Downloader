@@ -566,17 +566,16 @@
 </div>
 
 <!-- ====== Settings View ====== -->
-<div class="view" id="view-settings">
-  <div class="panel">
-    <div class="panel-header">
-      <h3 data-i18n="settings.title">系统设置</h3>
-      <span class="text-xs text-muted" data-i18n="settings.safeNote">敏感字段只显示是否已配置</span>
-    </div>
-    <div class="panel-body max-w-[900px]" id="settings-body">
+<div class="view panel min-h-0" id="view-settings">
+  <div class="panel-header">
+    <h3 data-i18n="settings.title">系统设置</h3>
+    <span class="text-xs text-muted" data-i18n="settings.safeNote">敏感字段只显示是否已配置</span>
+  </div>
+  <div class="panel-body" id="settings-body">
 
-      <!-- Paths -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.paths">路径与任务</h4>
+    <!-- Paths -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.paths">路径与任务</h4>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label" data-i18n="settings.saveDirectory">保存目录</label>
@@ -615,11 +614,11 @@
           <label class="form-label" data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</label>
           <input class="form-input" name="global.target_profiles.pikpak.max_file_size" type="number" min="1">
         </div>
-      </div>
+      </section>
 
-      <!-- Behavior -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.behavior">行为</h4>
+    <!-- Behavior -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.behavior">行为</h4>
         <div class="form-row">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.notice" class="w-4 h-4">
@@ -642,11 +641,11 @@
           <label class="form-label" data-i18n="settings.pendingLimit">下载后上传队列</label>
           <input class="form-input" name="global.upload.pending_limit" type="number" min="1" max="5">
         </div>
-      </div>
+      </section>
 
-      <!-- PikPak Archive -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
+    <!-- PikPak Archive -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">
           <span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span>
@@ -681,11 +680,11 @@
             <input class="form-input" name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0">
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Account & Proxy -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.sensitive">账号与代理</h4>
+    <!-- Account & Proxy -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.sensitive">账号与代理</h4>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">API ID</label>
@@ -706,25 +705,25 @@
             <input class="form-input" name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Download Types -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.downloadTypes">下载类型</h4>
-        <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
-        <div class="grid grid-cols-2 gap-2 mt-1" id="download-type-grid"></div>
-      </div>
+    <!-- Download Types -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.downloadTypes">下载类型</h4>
+      <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
+      <div class="settings-type-grid" id="download-type-grid"></div>
+    </section>
 
-      <!-- Forward Types -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.forwardTypes">转发类型</h4>
-        <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
-        <div class="grid grid-cols-2 gap-2 mt-1" id="forward-type-grid"></div>
-      </div>
+    <!-- Forward Types -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.forwardTypes">转发类型</h4>
+      <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
+      <div class="settings-type-grid" id="forward-type-grid"></div>
+    </section>
 
-      <!-- Message Filter -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.messageFilter">消息过滤</h4>
+    <!-- Message Filter -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.messageFilter">消息过滤</h4>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
           <span data-i18n="settings.enabled">启用消息过滤</span>
@@ -732,7 +731,7 @@
         <div class="mb-3">
           <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
           <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（勾选 = 允许处理，未勾选的类型将被过滤）</span>
-          <div class="grid grid-cols-2 gap-2 mt-1" id="filter-media-grid"></div>
+          <div class="settings-type-grid" id="filter-media-grid"></div>
         </div>
         <div class="mb-3">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
@@ -760,12 +759,12 @@
             <input class="form-input" name="global.message_filter.keywords.words" data-i18n-placeholder="settings.keywordPlaceholder" placeholder="广告,推广,赞助">
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Export Tables -->
-      <div class="border border-line rounded-lg p-4 mb-[14px]">
-        <h4 class="text-base font-semibold mb-3" data-i18n="settings.exports">导出表格</h4>
-        <div class="grid grid-cols-2 gap-2">
+    <!-- Export Tables -->
+    <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.exports">导出表格</h4>
+      <div class="settings-type-grid">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
             <input type="checkbox" name="global.export_table.link" class="w-4 h-4">
             <span data-i18n="settings.exportLink">链接统计表</span>
@@ -778,16 +777,15 @@
             <input type="checkbox" name="global.export_table.upload" class="w-4 h-4">
             <span data-i18n="settings.exportUpload">上传统计表</span>
           </label>
-        </div>
       </div>
+    </section>
 
-      <div class="flex items-center justify-between gap-3 sticky bottom-0 bg-white py-3 border-t border-line mt-2">
-        <div id="settings-notice" class="text-xs hidden"></div>
-        <button class="btn btn-primary" id="settings-save">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span data-i18n="settings.save">保存设置</span>
-        </button>
-      </div>
+    <div class="settings-footer">
+      <div id="settings-notice" class="text-xs hidden"></div>
+      <button class="btn btn-primary" id="settings-save">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="settings.save">保存设置</span>
+      </button>
     </div>
   </div>
 </div>

@@ -261,6 +261,36 @@
     @apply p-[18px] flex-1 overflow-y-auto;
   }
 
+  /* Settings view — full-width panel, flat sections */
+  #view-settings.active {
+    @apply flex flex-col gap-0 min-h-0 flex-1;
+  }
+
+  .settings-section {
+    @apply pb-5 mb-5 border-b border-line;
+  }
+
+  .settings-section:last-of-type {
+    @apply border-b-0 pb-0 mb-0;
+  }
+
+  .settings-section-title {
+    @apply text-base font-semibold mb-3 text-text;
+    font-family: var(--font-heading);
+  }
+
+  .settings-footer {
+    @apply flex items-center justify-between gap-3 sticky bottom-0 bg-surface py-3 border-t border-line mt-2;
+  }
+
+  #view-settings .form-row {
+    @apply lg:grid-cols-3 xl:grid-cols-4;
+  }
+
+  #view-settings .settings-type-grid {
+    @apply grid grid-cols-2 gap-2 mt-1 md:grid-cols-3 xl:grid-cols-4;
+  }
+
   .panel-tabs {
     @apply flex gap-0.5;
   }
