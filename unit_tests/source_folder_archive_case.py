@@ -519,6 +519,21 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertTrue(settings['target_profiles']['pikpak']['archive']['enable'])
         self.assertEqual('pikpak', settings['target_profiles']['pikpak']['archive']['remote'])
 
+    def test_resolve_poll_seconds_scales_with_large_file_size(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        client = RclonePikPakArchiveClient({
+            'enable': True,
+            'remote': 'pikpak',
+            'poll_seconds': 60,
+            'poll_cap_seconds': 1800,
+            'match_window_seconds': 3600
+        })
+
+        self.assertEqual(60, client.resolve_poll_seconds(None))
+        self.assertEqual(60, client.resolve_poll_seconds(87 * 1024))
+        self.assertEqual(1800, client.resolve_poll_seconds(1536 * 1024 ** 2))
+
 
 if __name__ == '__main__':
     unittest.main()

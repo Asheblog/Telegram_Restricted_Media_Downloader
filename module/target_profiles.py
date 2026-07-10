@@ -15,7 +15,8 @@ DEFAULT_TARGET_PROFILES = {
             'root_directory': 'Telegram',
             'poll_seconds': 60,
             'poll_interval_seconds': 5,
-            'match_window_seconds': 3600
+            'match_window_seconds': 3600,
+            'poll_cap_seconds': 1800
         }
     }
 }

@@ -18,8 +18,28 @@ DEFAULT_ARCHIVE_CONFIG = {
     'root_directory': 'Telegram',
     'poll_seconds': 60,
     'poll_interval_seconds': 5,
-    'match_window_seconds': 3600
+    'match_window_seconds': 3600,
+    'poll_cap_seconds': 1800
 }
+
+
+# region agent log
+def _agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict, run_id: str = 'pre-fix') -> None:
+    try:
+        payload = {
+            'sessionId': 'f877fd',
+            'hypothesisId': hypothesis_id,
+            'location': location,
+            'message': message,
+            'data': data,
+            'timestamp': int(time.time() * 1000),
+            'runId': run_id
+        }
+        with open('/home/wanglinyu/project/tgbot/.cursor/debug-f877fd.log', 'a', encoding='utf-8') as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+# endregion
 
 
 @dataclass
@@ -53,6 +73,15 @@ class RclonePikPakArchiveClient:
     def enabled(self) -> bool:
         return bool(self.config.get('enable') and self.config.get('remote'))
 
+    def resolve_poll_seconds(self, file_size: Optional[int] = None) -> float:
+        base = max(float(self.config.get('poll_seconds') or 0), 0)
+        cap = max(float(self.config.get('poll_cap_seconds') or 0), base)
+        if not file_size or file_size <= 0:
+            return min(base, cap) if cap else base
+        megabytes = file_size / (1024 * 1024)
+        scaled = megabytes * 2.0
+        return min(max(base, scaled), cap)
+
     def archive_file(
             self,
             source_folder: str,
@@ -76,12 +105,49 @@ class RclonePikPakArchiveClient:
             target_root = clean_remote_path(self.config.get('root_directory') or '')
             target_dir = join_remote_path(target_root, source_folder)
             self.ensure_directory(target_dir)
-            candidates = self.find_candidates(
+            poll_seconds = self.resolve_poll_seconds(file_size)
+            # region agent log
+            _agent_debug_log(
+                'H1',
+                'pikpak_archive.py:archive_file',
+                'archive lookup start',
+                {
+                    'source_folder': source_folder,
+                    'target_name': target_name,
+                    'file_size': file_size,
+                    'match_original_name': match_original_name,
+                    'poll_seconds': poll_seconds,
+                    'transferred_at': transferred_at
+                }
+            )
+            # endregion
+            candidates, poll_elapsed = self.find_candidates(
                 root=source_root,
                 file_name=match_name,
                 file_size=file_size,
-                transferred_at=transferred_at
+                transferred_at=transferred_at,
+                poll_seconds=poll_seconds
             )
+            if not candidates and target_name and not match_original_name:
+                candidates = self._list_matching_candidates(
+                    root=source_root,
+                    file_name=target_name,
+                    file_size=file_size,
+                    transferred_at=transferred_at
+                )
+            # region agent log
+            _agent_debug_log(
+                'H2',
+                'pikpak_archive.py:archive_file',
+                'archive lookup result',
+                {
+                    'candidate_count': len(candidates),
+                    'poll_elapsed': poll_elapsed,
+                    'target_name': target_name,
+                    'file_size': file_size
+                }
+            )
+            # endregion
             if not candidates:
                 archived_candidates = self._list_matching_candidates(
                     root=target_dir,
@@ -139,24 +205,61 @@ class RclonePikPakArchiveClient:
             root: str,
             file_name: Optional[str],
             file_size: Optional[int],
-            transferred_at: Optional[float]
-    ) -> list[dict]:
-        deadline = self.now() + max(float(self.config.get('poll_seconds') or 0), 0)
+            transferred_at: Optional[float],
+            poll_seconds: Optional[float] = None
+    ) -> tuple[list[dict], float]:
+        started_at = self.now()
+        deadline = started_at + max(
+            float(poll_seconds if poll_seconds is not None else self.config.get('poll_seconds') or 0),
+            0
+        )
         interval = max(float(self.config.get('poll_interval_seconds') or 0), 0)
         name_fallback_candidates = []
+        last_size_matches = 0
         while True:
-            candidates, fallback_candidates = self._list_matching_candidate_groups(
+            candidates, fallback_candidates, size_matches = self._list_matching_candidate_groups(
                 root,
                 file_name,
                 file_size,
                 transferred_at
             )
+            last_size_matches = size_matches
             if candidates:
-                return candidates
+                elapsed = self.now() - started_at
+                # region agent log
+                _agent_debug_log(
+                    'H3',
+                    'pikpak_archive.py:find_candidates',
+                    'matched during poll',
+                    {
+                        'candidate_count': len(candidates),
+                        'poll_elapsed': elapsed,
+                        'size_matches': size_matches,
+                        'file_name': file_name,
+                        'file_size': file_size
+                    }
+                )
+                # endregion
+                return candidates, elapsed
             if fallback_candidates:
                 name_fallback_candidates = fallback_candidates
             if self.now() >= deadline:
-                return name_fallback_candidates
+                elapsed = self.now() - started_at
+                # region agent log
+                _agent_debug_log(
+                    'H1',
+                    'pikpak_archive.py:find_candidates',
+                    'poll deadline reached',
+                    {
+                        'poll_elapsed': elapsed,
+                        'size_matches': size_matches,
+                        'fallback_count': len(name_fallback_candidates),
+                        'file_name': file_name,
+                        'file_size': file_size
+                    }
+                )
+                # endregion
+                return name_fallback_candidates, elapsed
             time.sleep(interval)
 
     def _list_matching_candidates(
@@ -166,7 +269,7 @@ class RclonePikPakArchiveClient:
             file_size: Optional[int],
             transferred_at: Optional[float]
     ) -> list[dict]:
-        candidates, fallback_candidates = self._list_matching_candidate_groups(
+        candidates, fallback_candidates, _size_matches = self._list_matching_candidate_groups(
             root,
             file_name,
             file_size,
@@ -180,7 +283,7 @@ class RclonePikPakArchiveClient:
             file_name: Optional[str],
             file_size: Optional[int],
             transferred_at: Optional[float]
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict], list[dict], int]:
         result = self._run(['lsjson', self.remote(root), '--recursive', '--files-only'])
         try:
             items = json.loads(result.stdout or '[]')
@@ -194,7 +297,7 @@ class RclonePikPakArchiveClient:
             file_name: Optional[str],
             file_size: Optional[int],
             transferred_at: Optional[float]
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict], list[dict], int]:
         files = [item for item in items if not item.get('IsDir')]
         if file_name:
             name_matches = [
@@ -208,11 +311,15 @@ class RclonePikPakArchiveClient:
             return [
                 item for item in name_matches
                 if self._candidate_metadata_matches(item, file_size, transferred_at)
-            ], name_matches
-        return [
+            ], name_matches, len(name_matches)
+        size_matches = [
             item for item in files
+            if file_size is None or item.get('Size') is None or int(item.get('Size')) == int(file_size)
+        ]
+        return [
+            item for item in size_matches
             if self._candidate_metadata_matches(item, file_size, transferred_at)
-        ], []
+        ], [], len(size_matches)
 
     def _candidate_matches(
             self,
@@ -279,11 +386,15 @@ def normalize_archive_config(config: Optional[dict]) -> dict:
     result['remote'] = str(result.get('remote') or '').strip().rstrip(':')
     result['source_directory'] = clean_remote_path(str(result.get('source_directory') or ''))
     result['root_directory'] = clean_remote_path(str(result.get('root_directory') or ''))
-    for key in ('poll_seconds', 'poll_interval_seconds', 'match_window_seconds'):
+    for key in ('poll_seconds', 'poll_interval_seconds', 'match_window_seconds', 'poll_cap_seconds'):
         try:
             result[key] = max(float(result.get(key)), 0)
         except (TypeError, ValueError):
             result[key] = DEFAULT_ARCHIVE_CONFIG[key]
+    cap = result.get('poll_cap_seconds') or 0
+    window = result.get('match_window_seconds') or 0
+    if window:
+        result['poll_cap_seconds'] = min(cap or window, window) if cap else window
     return result
 
 
