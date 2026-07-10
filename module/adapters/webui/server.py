@@ -819,9 +819,25 @@ class WebUiServer:
                 task_id = self._task_id_from_path()
                 if task_id is None:
                     return
-                deleted = server.delete_task(task_id)
+                try:
+                    deleted = server.delete_task(task_id)
+                except Exception as e:
+                    server.diagnostic.exception('[WebUI] 删除任务失败。')
+                    self._send_json(
+                        {
+                            'error_code': 'delete_task_failed',
+                            'error': str(e),
+                            'detail': '删除失败',
+                        },
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
                 if not deleted:
-                    self._send_error('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
+                    self._send_error(
+                        'delete_task_failed',
+                        'Task delete failed. Stop running transfers or retry after files are released.',
+                        HTTPStatus.BAD_REQUEST,
+                    )
                     return
                 self._send_json({'deleted': True, 'task_id': task_id})
 

@@ -417,6 +417,61 @@ class WebTaskDeleteCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_delete_web_task_survives_loop_callback_timeout(self):
+        from module.adapters.webui.task_manager import WebUITaskManager
+        from unittest.mock import patch
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                loop = asyncio.get_running_loop()
+                downloader.loop = loop
+                downloader.web_task_queue = asyncio.Queue()
+                downloader.web_submitted_task_ids = set()
+                downloader.web_operation_queue = asyncio.Queue()
+                downloader.web_running_task = None
+                downloader.web_running_task_id = None
+                downloader.transfer_store = store
+                task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(
+                        info=lambda *args, **kwargs: None,
+                        warning=lambda *args, **kwargs: None,
+                        error=lambda *args, **kwargs: None,
+                    ),
+                    loop_getter=lambda: loop,
+                    web_task_queue=downloader.web_task_queue,
+                    web_submitted_task_ids=downloader.web_submitted_task_ids,
+                    web_running_task_getter=lambda: downloader.web_running_task,
+                    web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+                    web_running_task_id_getter=lambda: downloader.web_running_task_id,
+                    web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+                    web_operation_queue=downloader.web_operation_queue,
+                    web_operations={},
+                    process_web_transfer_task_getter=lambda tid: asyncio.sleep(0),
+                    process_web_task_queue_getter=downloader.process_web_task_queue,
+                    cleanup_task_files_getter=lambda _task_id: {'failed': False},
+                )
+                downloader.web_task_manager = task_manager
+
+                def timeout_run_on_web_loop(callback, timeout=None, raise_on_timeout=True):
+                    if raise_on_timeout:
+                        raise TimeoutError('Timed out waiting for WebUI task queue callback.')
+                    return False
+
+                with patch.object(task_manager, '_run_on_web_loop', side_effect=timeout_run_on_web_loop):
+                    deleted = await loop.run_in_executor(None, downloader.delete_web_task, task_id)
+
+                self.assertTrue(deleted)
+                self.assertIsNone(store.get_task(task_id))
+
+        asyncio.run(run_case())
+
     def test_cancel_uploads_for_task_drops_queue_and_marks_active_uploads(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'queued.bin')

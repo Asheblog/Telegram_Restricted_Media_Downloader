@@ -1,11 +1,39 @@
 # coding=UTF-8
 import asyncio
+import json
 import threading
+import time
 from typing import Callable, Optional, Set
 
 from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import source_folder_from_link
 from module.transfer_store import TransferStore, TransferStatus
+
+_AGENT_DEBUG_LOG_PATH = '/home/wanglinyu/project/tgbot/.cursor/debug-f1b378.log'
+
+
+def _agent_debug_log(
+        hypothesis_id: str,
+        location: str,
+        message: str,
+        data: Optional[dict] = None,
+        run_id: str = 'delete-fail',
+) -> None:
+    # #region agent log
+    try:
+        with open(_AGENT_DEBUG_LOG_PATH, 'a', encoding='utf-8') as log_file:
+            log_file.write(json.dumps({
+                'sessionId': 'f1b378',
+                'runId': run_id,
+                'hypothesisId': hypothesis_id,
+                'location': location,
+                'message': message,
+                'data': data or {},
+                'timestamp': int(time.time() * 1000),
+            }, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+    # #endregion
 
 
 class WebUITaskManager:
@@ -72,16 +100,21 @@ class WebUITaskManager:
         self._delete_wait_timeout_seconds: float = 10.0
         self._loop_callback_timeout_seconds: float = 15.0
 
-    def _run_on_web_loop(self, callback: Callable[[], None], timeout: Optional[float] = None) -> None:
+    def _run_on_web_loop(
+            self,
+            callback: Callable[[], None],
+            timeout: Optional[float] = None,
+            raise_on_timeout: bool = True,
+    ) -> bool:
         try:
             if asyncio.get_running_loop() is self.loop:
                 callback()
-                return
+                return True
         except RuntimeError:
             pass
         if not self.loop or not self.loop.is_running():
             callback()
-            return
+            return True
         done = threading.Event()
 
         def wrapper() -> None:
@@ -92,7 +125,10 @@ class WebUITaskManager:
 
         self.loop.call_soon_threadsafe(wrapper)
         if not done.wait(timeout=timeout or self._loop_callback_timeout_seconds):
-            raise TimeoutError('Timed out waiting for WebUI task queue callback.')
+            if raise_on_timeout:
+                raise TimeoutError('Timed out waiting for WebUI task queue callback.')
+            return False
+        return True
 
     def _clear_running_transfer_task(self, task_id: int) -> None:
         def clear() -> None:
@@ -111,7 +147,7 @@ class WebUITaskManager:
             self.web_running_task_id = None
             self.start_next_web_transfer_task()
 
-        self._run_on_web_loop(clear)
+        self._run_on_web_loop(clear, raise_on_timeout=False)
 
     def _kick_web_task_queue(self) -> None:
         def kick() -> None:
@@ -119,7 +155,16 @@ class WebUITaskManager:
                 self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
             self.start_next_web_transfer_task()
 
-        self._run_on_web_loop(kick)
+        if self.loop and self.loop.is_running():
+            try:
+                if asyncio.get_running_loop() is self.loop:
+                    kick()
+                    return
+            except RuntimeError:
+                pass
+            self.loop.call_soon_threadsafe(kick)
+            return
+        kick()
 
     @property
     def transfer_store(self):
@@ -222,7 +267,9 @@ class WebUITaskManager:
         except RuntimeError:
             pass
         if wait and self.loop and self.loop.is_running():
-            self._run_on_web_loop(cleanup)
+            synced = self._run_on_web_loop(cleanup, raise_on_timeout=False)
+            if not synced:
+                self.loop.call_soon_threadsafe(cleanup)
             return
         if self.loop.is_running():
             self.loop.call_soon_threadsafe(cleanup)
@@ -272,26 +319,56 @@ class WebUITaskManager:
             pass
 
     def delete_web_task(self, task_id: int) -> bool:
+        # #region agent log
+        _agent_debug_log('A', 'task_manager.py:delete_web_task', 'delete started', {'task_id': task_id})
+        # #endregion
         if not self.transfer_store:
             return False
         if not self.transfer_store.get_task(task_id):
             return False
-        self.discard_web_task_submission(task_id, cancel_running=True, wait=True)
-        if self._cancel_task_uploads:
-            self._cancel_task_uploads(task_id)
-        if self._cancel_task_downloads:
-            self._cancel_task_downloads(task_id)
-        self._wait_for_running_transfer_task_stop(task_id)
-        self._clear_running_transfer_task(task_id)
-        if self._cleanup_task_files:
-            cleanup_result = self._cleanup_task_files(task_id)
-            if cleanup_result.get('failed'):
-                self.submit_web_task(task_id)
-                return False
-        deleted = self.transfer_store.delete_task(task_id)
-        if deleted:
-            self._kick_web_task_queue()
-        return deleted
+        try:
+            self.discard_web_task_submission(task_id, cancel_running=True, wait=True)
+            if self._cancel_task_uploads:
+                self._cancel_task_uploads(task_id)
+            if self._cancel_task_downloads:
+                self._cancel_task_downloads(task_id)
+            self._wait_for_running_transfer_task_stop(task_id)
+            self._clear_running_transfer_task(task_id)
+            if self._cleanup_task_files:
+                cleanup_result = self._cleanup_task_files(task_id)
+                if cleanup_result.get('failed'):
+                    # #region agent log
+                    _agent_debug_log(
+                        'B',
+                        'task_manager.py:delete_web_task',
+                        'cleanup failed',
+                        {'task_id': task_id, 'cleanup_result': cleanup_result},
+                    )
+                    # #endregion
+                    self.submit_web_task(task_id)
+                    return False
+            deleted = self.transfer_store.delete_task(task_id)
+            if deleted:
+                self._kick_web_task_queue()
+            # #region agent log
+            _agent_debug_log(
+                'A',
+                'task_manager.py:delete_web_task',
+                'delete finished',
+                {'task_id': task_id, 'deleted': deleted},
+            )
+            # #endregion
+            return deleted
+        except Exception as error:
+            # #region agent log
+            _agent_debug_log(
+                'A',
+                'task_manager.py:delete_web_task',
+                'delete raised',
+                {'task_id': task_id, 'error': type(error).__name__, 'message': str(error)},
+            )
+            # #endregion
+            raise
 
     def pause_web_task(self, task_id: int) -> bool:
         if not self.transfer_store:
