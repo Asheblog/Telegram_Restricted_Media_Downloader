@@ -201,12 +201,12 @@
 
   /* Stat cards */
   .stat-grid {
-    @apply grid gap-4;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    @apply grid gap-3;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
   .stat-card {
-    @apply bg-surface border border-line rounded-[12px] p-[18px] flex items-start justify-between
+    @apply bg-surface border border-line rounded-[12px] p-3 flex items-center gap-2.5 min-w-0
            shadow-sm transition-shadow duration-200;
   }
 
@@ -215,7 +215,7 @@
   }
 
   .stat-card-icon {
-    @apply w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0;
+    @apply w-9 h-9 rounded-[8px] flex items-center justify-center flex-shrink-0;
   }
 
   .stat-card-icon.blue { @apply bg-primary-soft text-primary; }
@@ -227,16 +227,20 @@
   .stat-card-icon.slate { background: var(--color-slate-bg); color: var(--color-slate-accent); }
 
   .stat-card-icon svg {
-    @apply w-5 h-5;
+    @apply w-4 h-4;
+  }
+
+  .stat-card > div:last-child {
+    @apply min-w-0 flex-1 text-right;
   }
 
   .stat-card-value {
-    @apply text-xl font-bold text-text leading-tight text-right;
+    @apply text-base font-bold text-text leading-tight truncate;
     font-family: var(--font-heading);
   }
 
   .stat-card-label {
-    @apply text-xs text-muted mt-1 font-medium;
+    @apply text-[11px] text-muted mt-0.5 font-medium truncate;
   }
 
   /* Panels */
