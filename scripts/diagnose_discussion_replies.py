@@ -114,12 +114,7 @@ def parse_cli(argv: list[str]) -> SimpleNamespace:
 
 async def run(args: SimpleNamespace) -> int:
     from module import __version__
-    from module.util import (
-        _collect_discussion_replies,
-        _index_replies_by_media_group,
-        _resolve_discussion_thread,
-        iter_discussion_reply_messages,
-    )
+    from module.utils import util as discussion_util
 
     config_path = config_path_from_args(args.config)
     config = load_config(config_path)
@@ -148,7 +143,7 @@ async def run(args: SimpleNamespace) -> int:
             if channel.startswith('https://t.me/'):
                 channel = channel.rsplit('/', 1)[-1]
 
-            reply_chat_id, reply_message_id, root_message_id = await _resolve_discussion_thread(
+            reply_chat_id, reply_message_id, root_message_id = await discussion_util._resolve_discussion_thread(
                 client,
                 channel,
                 args.post_id
@@ -165,13 +160,13 @@ async def run(args: SimpleNamespace) -> int:
             result['channel_peer_raw_count'] = len(channel_raw)
             result['channel_peer_raw'] = channel_raw[:20]
 
-            raw_replies = await _collect_discussion_replies(
+            raw_replies = await discussion_util._collect_discussion_replies(
                 client,
                 reply_chat_id,
                 reply_message_id,
                 root_message_id
             )
-            grouped = _index_replies_by_media_group(raw_replies)
+            grouped = discussion_util._index_replies_by_media_group(raw_replies)
             result['discussion_peer_raw_count'] = len(raw_replies)
             result['discussion_peer_raw'] = [message_brief(item) for item in raw_replies[:20]]
             result['media_groups'] = {
@@ -180,7 +175,7 @@ async def run(args: SimpleNamespace) -> int:
             }
 
             expanded = []
-            async for message in iter_discussion_reply_messages(client, channel, args.post_id):
+            async for message in discussion_util.iter_discussion_reply_messages(client, channel, args.post_id):
                 expanded.append(message_brief(message))
             result['expanded_count'] = len(expanded)
             result['expanded'] = expanded
