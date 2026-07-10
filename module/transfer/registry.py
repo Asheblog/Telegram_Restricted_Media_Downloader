@@ -1,0 +1,23 @@
+# coding=UTF-8
+from typing import Optional, Callable
+
+
+class TransferRegistry:
+    def __init__(self):
+        self.link_info: dict = {}
+        self.complete_link: set = set()
+        self.tasks: set = set()
+        self.task_counter: int = 0
+        self.notify: Optional[Callable] = None
+        self.directory_name: str = ""
+
+    def reset(self):
+        self.link_info.clear()
+        self.complete_link.clear()
+        self.tasks.clear()
+        self.task_counter = 0
+        self.notify = None
+        self.directory_name = ""
+
+
+transfer_registry = TransferRegistry()

@@ -374,7 +374,7 @@ async function loadMobileWatches() {
     container.innerHTML = mobEmptyHtml('加载中...');
   }
   try {
-    var data = await fetchJson(withClientTzQuery('/api/watches'));
+    var data = await fetchJson('/api/watches');
     window.state.watches = Array.isArray(data.watches) ? data.watches : [];
     renderMobWatches();
   } catch (e) {

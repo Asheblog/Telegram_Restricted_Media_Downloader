@@ -1528,6 +1528,14 @@ function mediaScanUrl() {
     '&orphans_limit=' + MEDIA_PAGE_SIZE + '&orphans_offset=' + orphansOffset;
 }
 
+async function loadMediaCleanupLogs() {
+  try {
+    return await fetchJson('/api/media/cleanup-logs');
+  } catch (e) {
+    return { logs: [] };
+  }
+}
+
 async function loadMedia() {
   const container = $('#media-result');
   try {
@@ -1541,6 +1549,7 @@ async function loadMedia() {
     }
     const data = await fetchJson(mediaScanUrl());
     mediaScanResult = data;
+    await loadMediaCleanupLogs();
     renderMediaResult(data);
   } catch(e) {
     renderMediaError(e);

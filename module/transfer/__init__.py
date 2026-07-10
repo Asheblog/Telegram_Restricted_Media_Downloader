@@ -1,20 +1,18 @@
 # coding=UTF-8
-try:
-    from module.transfer_engine import TransferEngine
-except ImportError:
-    pass
+"""Transfer subpackage for TRMD."""
+from module.transfer.context import TransferContext, TransferPorts  # noqa: F401
+from module.transfer.engine import TransferEngine  # noqa: F401
 
-try:
-    from module.transfer_progress import TransferProgressTracker
-except ImportError:
-    pass
+__all__ = [
+    'TransferContext',
+    'TransferEngine',
+    'TransferPorts',
+    'WebTransferRunner',
+]
 
-try:
-    from module.task import DownloadTask, UploadTask
-except ImportError:
-    pass
 
-try:
-    from module.transfer_registry import transfer_registry
-except ImportError:
-    pass
+def __getattr__(name: str):
+    if name == 'WebTransferRunner':
+        from module.transfer.runner import WebTransferRunner
+        return WebTransferRunner
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

@@ -3705,6 +3705,14 @@ function mediaScanUrl() {
     '&orphans_limit=' + MEDIA_PAGE_SIZE + '&orphans_offset=' + orphansOffset;
 }
 
+async function loadMediaCleanupLogs() {
+  try {
+    return await fetchJson('/api/media/cleanup-logs');
+  } catch (e) {
+    return { logs: [] };
+  }
+}
+
 async function loadMedia() {
   const container = $('#media-result');
   try {
@@ -3718,6 +3726,7 @@ async function loadMedia() {
     }
     const data = await fetchJson(mediaScanUrl());
     mediaScanResult = data;
+    await loadMediaCleanupLogs();
     renderMediaResult(data);
   } catch(e) {
     renderMediaError(e);
@@ -5876,7 +5885,7 @@ async function loadMobileWatches() {
     container.innerHTML = mobEmptyHtml('加载中...');
   }
   try {
-    var data = await fetchJson(withClientTzQuery('/api/watches'));
+    var data = await fetchJson('/api/watches');
     window.state.watches = Array.isArray(data.watches) ? data.watches : [];
     renderMobWatches();
   } catch (e) {
