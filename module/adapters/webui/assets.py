@@ -2158,6 +2158,7 @@ async function deleteTask(event, taskId) {
   if (state.selectedTaskId === taskId) state.selectedTaskId = null;
   if (typeof renderMobTasks === 'function') renderMobTasks();
   if (typeof renderTasks === 'function') renderTasks();
+  if (typeof resetTaskPolling === 'function') resetTaskPolling();
 }
 
 async function deleteWatch(watchId) {
@@ -5513,6 +5514,7 @@ async function deleteTask(event, taskId) {
   if (state.selectedTaskId === taskId) state.selectedTaskId = null;
   if (typeof renderMobTasks === 'function') renderMobTasks();
   if (typeof renderTasks === 'function') renderTasks();
+  if (typeof resetTaskPolling === 'function') resetTaskPolling();
 }
 
 async function deleteWatch(watchId) {

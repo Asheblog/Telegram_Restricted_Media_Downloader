@@ -1,6 +1,7 @@
 # coding=UTF-8
 import asyncio
-from typing import Optional, Set
+import threading
+from typing import Callable, Optional, Set
 
 from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import source_folder_from_link
@@ -69,6 +70,56 @@ class WebUITaskManager:
         self._should_continue_web_transfer_task = should_continue_web_transfer_task_getter
         self.web_operation_counter: int = 0
         self._delete_wait_timeout_seconds: float = 10.0
+        self._loop_callback_timeout_seconds: float = 15.0
+
+    def _run_on_web_loop(self, callback: Callable[[], None], timeout: Optional[float] = None) -> None:
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                callback()
+                return
+        except RuntimeError:
+            pass
+        if not self.loop or not self.loop.is_running():
+            callback()
+            return
+        done = threading.Event()
+
+        def wrapper() -> None:
+            try:
+                callback()
+            finally:
+                done.set()
+
+        self.loop.call_soon_threadsafe(wrapper)
+        if not done.wait(timeout=timeout or self._loop_callback_timeout_seconds):
+            raise TimeoutError('Timed out waiting for WebUI task queue callback.')
+
+    def _clear_running_transfer_task(self, task_id: int) -> None:
+        def clear() -> None:
+            if self.web_running_task_id != task_id:
+                return
+            running_task = self.web_running_task
+            if running_task and running_task.done():
+                self.finish_web_transfer_task(task_id, running_task)
+                return
+            if running_task and not running_task.done():
+                try:
+                    running_task.cancel()
+                except Exception:
+                    pass
+            self.web_running_task = None
+            self.web_running_task_id = None
+            self.start_next_web_transfer_task()
+
+        self._run_on_web_loop(clear)
+
+    def _kick_web_task_queue(self) -> None:
+        def kick() -> None:
+            if self.web_running_task and self.web_running_task.done():
+                self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
+            self.start_next_web_transfer_task()
+
+        self._run_on_web_loop(kick)
 
     @property
     def transfer_store(self):
@@ -120,17 +171,26 @@ class WebUITaskManager:
         self.web_task_queue.put_nowait(task_id)
         self.start_next_web_transfer_task()
 
-    def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
+    def discard_web_task_submission(
+            self,
+            task_id: int,
+            cancel_running: bool = True,
+            wait: bool = False
+    ) -> None:
         def cleanup() -> None:
             self.web_submitted_task_ids.discard(task_id)
             self.drop_web_task_from_queue(task_id)
-            if (
-                    cancel_running
-                    and self.web_running_task_id == task_id
-                    and self.web_running_task
-                    and not self.web_running_task.done()
-            ):
-                self.web_running_task.cancel()
+            if cancel_running and self.web_running_task_id == task_id:
+                running_task = self.web_running_task
+                if running_task and not running_task.done():
+                    running_task.cancel()
+                elif running_task and running_task.done():
+                    self.finish_web_transfer_task(task_id, running_task)
+                    return
+                else:
+                    self.web_running_task = None
+                    self.web_running_task_id = None
+            self.start_next_web_transfer_task()
 
         try:
             if asyncio.get_running_loop() is self.loop:
@@ -138,6 +198,9 @@ class WebUITaskManager:
                 return
         except RuntimeError:
             pass
+        if wait and self.loop and self.loop.is_running():
+            self._run_on_web_loop(cleanup)
+            return
         if self.loop.is_running():
             self.loop.call_soon_threadsafe(cleanup)
         else:
@@ -190,17 +253,21 @@ class WebUITaskManager:
             return False
         if not self.transfer_store.get_task(task_id):
             return False
-        self.discard_web_task_submission(task_id, cancel_running=True)
+        self.discard_web_task_submission(task_id, cancel_running=True, wait=True)
         if self._cancel_task_uploads:
             self._cancel_task_uploads(task_id)
         if self._cancel_task_downloads:
             self._cancel_task_downloads(task_id)
         self._wait_for_running_transfer_task_stop(task_id)
+        self._clear_running_transfer_task(task_id)
         if self._cleanup_task_files:
             cleanup_result = self._cleanup_task_files(task_id)
             if cleanup_result.get('failed'):
                 return False
-        return self.transfer_store.delete_task(task_id)
+        deleted = self.transfer_store.delete_task(task_id)
+        if deleted:
+            self._kick_web_task_queue()
+        return deleted
 
     def pause_web_task(self, task_id: int) -> bool:
         if not self.transfer_store:

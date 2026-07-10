@@ -206,6 +206,158 @@ class WebTaskDeleteCase(unittest.TestCase):
             store.update_task(task_id, status=TransferStatus.PAUSED)
             self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
 
+    def test_delete_only_task_then_submit_new_task_starts_from_http_thread(self):
+        from module.adapters.webui.task_manager import WebUITaskManager
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                loop = asyncio.get_running_loop()
+                downloader.loop = loop
+                downloader.web_task_queue = asyncio.Queue()
+                downloader.web_submitted_task_ids = set()
+                downloader.web_operation_queue = asyncio.Queue()
+                downloader.web_running_task = None
+                downloader.web_running_task_id = None
+                downloader.transfer_store = store
+                started_task_ids = []
+
+                async def fake_process_web_transfer_task(running_id):
+                    started_task_ids.append(running_id)
+                    try:
+                        await asyncio.sleep(3600)
+                    except asyncio.CancelledError:
+                        raise
+
+                downloader.process_web_transfer_task = fake_process_web_transfer_task
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: loop,
+                    web_task_queue=downloader.web_task_queue,
+                    web_submitted_task_ids=downloader.web_submitted_task_ids,
+                    web_running_task_getter=lambda: downloader.web_running_task,
+                    web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+                    web_running_task_id_getter=lambda: downloader.web_running_task_id,
+                    web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+                    web_operation_queue=downloader.web_operation_queue,
+                    web_operations={},
+                    process_web_transfer_task_getter=fake_process_web_transfer_task,
+                    process_web_task_queue_getter=downloader.process_web_task_queue,
+                    cleanup_task_files_getter=lambda _task_id: {'failed': False},
+                )
+
+                await loop.run_in_executor(None, downloader.submit_web_task, task_id)
+                await asyncio.sleep(0.05)
+                self.assertEqual([task_id], started_task_ids)
+
+                deleted = await loop.run_in_executor(None, downloader.delete_web_task, task_id)
+                self.assertTrue(deleted)
+                self.assertIsNone(downloader.web_running_task_id)
+                self.assertIsNone(store.get_task(task_id))
+
+                new_task_id = store.create_task('https://t.me/source/2', 'https://t.me/pikpak_bot')
+                await loop.run_in_executor(None, downloader.submit_web_task, new_task_id)
+                for _ in range(20):
+                    await asyncio.sleep(0)
+
+                self.assertIn(new_task_id, started_task_ids)
+                self.assertEqual(new_task_id, downloader.web_running_task_id)
+
+                if downloader.web_running_task and not downloader.web_running_task.done():
+                    downloader.web_running_task.cancel()
+                    await asyncio.gather(downloader.web_running_task, return_exceptions=True)
+
+        asyncio.run(run_case())
+
+    def test_delete_clears_stale_running_slot_when_worker_does_not_stop(self):
+        from module.adapters.webui.task_manager import WebUITaskManager
+        from unittest.mock import patch
+
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                loop = asyncio.get_running_loop()
+                downloader.loop = loop
+                downloader.web_task_queue = asyncio.Queue()
+                downloader.web_submitted_task_ids = set()
+                downloader.web_operation_queue = asyncio.Queue()
+                downloader.web_running_task = None
+                downloader.web_running_task_id = None
+                downloader.transfer_store = store
+                started_task_ids = []
+
+                async def fake_process_web_transfer_task(running_id):
+                    started_task_ids.append(running_id)
+                    try:
+                        await asyncio.sleep(3600)
+                    except asyncio.CancelledError:
+                        raise
+
+                downloader.process_web_transfer_task = fake_process_web_transfer_task
+                task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: loop,
+                    web_task_queue=downloader.web_task_queue,
+                    web_submitted_task_ids=downloader.web_submitted_task_ids,
+                    web_running_task_getter=lambda: downloader.web_running_task,
+                    web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+                    web_running_task_id_getter=lambda: downloader.web_running_task_id,
+                    web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+                    web_operation_queue=downloader.web_operation_queue,
+                    web_operations={},
+                    process_web_transfer_task_getter=fake_process_web_transfer_task,
+                    process_web_task_queue_getter=downloader.process_web_task_queue,
+                    cleanup_task_files_getter=lambda _task_id: {'failed': False},
+                )
+                downloader.web_task_manager = task_manager
+
+                downloader.submit_web_task(task_id)
+                await asyncio.sleep(0.05)
+                self.assertEqual([task_id], started_task_ids)
+                stale_running_task = downloader.web_running_task
+                self.assertFalse(stale_running_task.done())
+
+                def discard_without_cancel(task_id_to_discard, cancel_running=True, wait=False):
+                    task_manager.web_submitted_task_ids.discard(task_id_to_discard)
+                    task_manager.drop_web_task_from_queue(task_id_to_discard)
+
+                with patch.object(task_manager, 'discard_web_task_submission', side_effect=discard_without_cancel):
+                    with patch.object(task_manager, '_wait_for_running_transfer_task_stop', return_value=None):
+                        deleted = await loop.run_in_executor(None, downloader.delete_web_task, task_id)
+
+                self.assertTrue(deleted)
+                self.assertIsNone(downloader.web_running_task_id)
+                self.assertIsNone(store.get_task(task_id))
+                if stale_running_task and not stale_running_task.done():
+                    stale_running_task.cancel()
+                    await asyncio.gather(stale_running_task, return_exceptions=True)
+
+                new_task_id = store.create_task('https://t.me/source/2', 'https://t.me/pikpak_bot')
+                await loop.run_in_executor(None, downloader.submit_web_task, new_task_id)
+                for _ in range(20):
+                    await asyncio.sleep(0)
+
+                self.assertIn(new_task_id, started_task_ids)
+                self.assertEqual(new_task_id, downloader.web_running_task_id)
+
+                if downloader.web_running_task and not downloader.web_running_task.done():
+                    downloader.web_running_task.cancel()
+                    await asyncio.gather(downloader.web_running_task, return_exceptions=True)
+
+        asyncio.run(run_case())
+
     def test_cancel_uploads_for_task_drops_queue_and_marks_active_uploads(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'queued.bin')
