@@ -149,9 +149,32 @@ class WebUITaskManager:
     def watch_manager(self):
         return self._watch_manager() if self._watch_manager else None
 
+    def _is_task_id_in_web_queue(self, task_id: int) -> bool:
+        queued_task_ids = []
+        while True:
+            try:
+                queued_task_ids.append(int(self.web_task_queue.get_nowait()))
+            except asyncio.QueueEmpty:
+                break
+            self.web_task_queue.task_done()
+        for queued_task_id in queued_task_ids:
+            self.web_task_queue.put_nowait(queued_task_id)
+        return task_id in queued_task_ids
+
+    def _is_task_actively_scheduled(self, task_id: int) -> bool:
+        if (
+                self.web_running_task_id == task_id
+                and self.web_running_task
+                and not self.web_running_task.done()
+        ):
+            return True
+        return self._is_task_id_in_web_queue(task_id)
+
     def submit_web_task(self, task_id: int) -> None:
         if task_id in self.web_submitted_task_ids:
-            return
+            if self._is_task_actively_scheduled(task_id):
+                return
+            self.web_submitted_task_ids.discard(task_id)
         self.web_submitted_task_ids.add(task_id)
 
         def enqueue_and_start() -> None:
@@ -263,6 +286,7 @@ class WebUITaskManager:
         if self._cleanup_task_files:
             cleanup_result = self._cleanup_task_files(task_id)
             if cleanup_result.get('failed'):
+                self.submit_web_task(task_id)
                 return False
         deleted = self.transfer_store.delete_task(task_id)
         if deleted:
@@ -423,7 +447,16 @@ class WebUITaskManager:
 
     def start_next_web_transfer_task(self) -> None:
         if self.web_running_task and not self.web_running_task.done():
-            return
+            running_task_id = self.web_running_task_id
+            if running_task_id and not self.is_web_transfer_task_schedulable(running_task_id):
+                try:
+                    self.web_running_task.cancel()
+                except Exception:
+                    pass
+                self.web_running_task = None
+                self.web_running_task_id = None
+            else:
+                return
         if self.web_running_task and self.web_running_task.done():
             self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
         while not self.web_task_queue.empty():
