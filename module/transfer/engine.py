@@ -140,27 +140,6 @@ class TransferEngine:
         message: pyrogram.types.Message,
         file_path: str
     ) -> bool:
-        # region agent log
-        try:
-            with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                _dbg_f.write(json.dumps({
-                    'sessionId': 'fc7e96',
-                    'location': 'engine.py:start_download_upload:entry',
-                    'message': 'start_download_upload called',
-                    'data': {
-                        'has_with_upload': isinstance(with_upload, dict),
-                        'task_id': with_upload.get('task_id') if isinstance(with_upload, dict) else None,
-                        'target_link': with_upload.get('link') if isinstance(with_upload, dict) else None,
-                        'target_profile': with_upload.get('target_profile') if isinstance(with_upload, dict) else None,
-                        'file_path': os.path.basename(file_path) if file_path else None,
-                        'message_id': getattr(message, 'id', None)
-                    },
-                    'timestamp': int(time.time() * 1000),
-                    'hypothesisId': 'A'
-                }, ensure_ascii=False) + '\n')
-        except Exception:
-            pass
-        # endregion
         if not isinstance(with_upload, dict):
             self.ports.release_download_upload_window(with_upload)
             return False
@@ -176,45 +155,9 @@ class TransferEngine:
                 with_upload=with_upload,
                 file_path=file_path
             )
-            # region agent log
-            try:
-                with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                    _dbg_f.write(json.dumps({
-                        'sessionId': 'fc7e96',
-                        'location': 'engine.py:start_download_upload:success',
-                        'message': 'download_upload dispatched',
-                        'data': {
-                            'task_id': with_upload.get('task_id'),
-                            'message_id': getattr(message, 'id', None)
-                        },
-                        'timestamp': int(time.time() * 1000),
-                        'hypothesisId': 'A'
-                    }, ensure_ascii=False) + '\n')
-            except Exception:
-                pass
-            # endregion
             return True
         except Exception as e:
             error = f'创建上传任务失败:{e}'
-            # region agent log
-            try:
-                with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                    _dbg_f.write(json.dumps({
-                        'sessionId': 'fc7e96',
-                        'location': 'engine.py:start_download_upload:error',
-                        'message': 'start_download_upload failed',
-                        'data': {
-                            'error': str(e),
-                            'error_type': type(e).__name__,
-                            'task_id': with_upload.get('task_id'),
-                            'message_id': getattr(message, 'id', None)
-                        },
-                        'timestamp': int(time.time() * 1000),
-                        'hypothesisId': 'A'
-                    }, ensure_ascii=False) + '\n')
-            except Exception:
-                pass
-            # endregion
             log.error(error, exc_info=True)
             callback = with_upload.get('failure_callback')
             if callable(callback):
@@ -594,26 +537,6 @@ class TransferEngine:
                     message=message,
                     file_path=final_path
                 )
-                # region agent log
-                try:
-                    with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                        _dbg_f.write(json.dumps({
-                            'sessionId': 'fc7e96',
-                            'location': 'engine.py:download_complete_callback:before_upload',
-                            'message': 'download finished, about to upload',
-                            'data': {
-                                'progress_task_id': task_id,
-                                'with_upload_task_id': with_upload.get('task_id') if isinstance(with_upload, dict) else None,
-                                'target_link': with_upload.get('link') if isinstance(with_upload, dict) else None,
-                                'file_name': file_name,
-                                'message_id': getattr(message, 'id', None)
-                            },
-                            'timestamp': int(time.time() * 1000),
-                            'hypothesisId': 'A,C'
-                        }, ensure_ascii=False) + '\n')
-                except Exception:
-                    pass
-                # endregion
                 MetaData.print_current_task_num(
                     prompt=_t(KeyWord.CURRENT_DOWNLOAD_TASK),
                     num=self.app.current_task_num

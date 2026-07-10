@@ -8,13 +8,18 @@ import pyrogram
 from pyrogram.errors import FloodWait, FloodPremiumWait
 from pyrogram.errors.exceptions.bad_request_400 import (
     MsgIdInvalid,
+    ChannelInvalid,
+    UsernameInvalid,
     ChatForwardsRestricted as ChatForwardsRestricted_400,
     MediaCaptionTooLong as MediaCaptionTooLong_400,
+    ChannelPrivate as ChannelPrivate_400,
 )
 from pyrogram.errors.exceptions.not_acceptable_406 import (
     ChatForwardsRestricted as ChatForwardsRestricted_406,
+    ChannelPrivate as ChannelPrivate_406,
 )
 
+from module import log
 from module.enums import DownloadStatus, DownloadType
 from module.source_folders import source_folder_from_message
 from module.transfer_store import TransferStatus
@@ -89,7 +94,11 @@ class WebTransferRunner:
         host.transfer_store.add_event(task_id, 'Transfer task started.')
         try:
             if not host.uploader:
-                host.uploader = TelegramUploader(upload_context=host)
+                ensure_uploader = getattr(host, 'ensure_uploader', None)
+                if callable(ensure_uploader):
+                    ensure_uploader()
+                else:
+                    host.uploader = TelegramUploader(upload_context=host)
             source_link = task.get('source_link')
             start_id = task.get('start_id')
             end_id = task.get('end_id')
@@ -124,39 +133,53 @@ class WebTransferRunner:
                         return
                     if message_id in completed_message_ids:
                         continue
-                    await self._resolve_method('wait_between_transfer_messages')()
-                    message = await self._resolve_method('get_web_transfer_range_message')(
-                        origin_chat_id, message_id, task_id
-                    )
-                    if not message:
-                        self._resolve_method('skip_missing_web_transfer_range_message')(
+                    try:
+                        await self._resolve_method('wait_between_transfer_messages')()
+                        message = await self._resolve_method('get_web_transfer_range_message')(
+                            origin_chat_id, message_id, task_id
+                        )
+                        if not message:
+                            self._resolve_method('skip_missing_web_transfer_range_message')(
+                                task=task,
+                                origin_chat_id=origin_chat_id,
+                                source_link=source_link,
+                                message_id=message_id
+                            )
+                            continue
+                        message_link = f'{source_prefix}/{getattr(message, "id", "")}'
+                        used_fallback = await self._resolve_method('transfer_message_to_web_target')(
                             task=task,
+                            message=message,
                             origin_chat_id=origin_chat_id,
-                            source_link=source_link,
-                            message_id=message_id
+                            target_chat_id=target_chat_id,
+                            source_link=message_link
+                        )
+                        fallback_count += 1 if used_fallback else 0
+                        if include_comment:
+                            reply_count, reply_fallback_count = await self._resolve_method(
+                                'transfer_web_discussion_replies_to_target'
+                            )(
+                                task=task,
+                                source_chat_id=origin_chat_id,
+                                source_message_id=message_id,
+                                target_chat_id=target_chat_id,
+                                expected_total=expected_total
+                            )
+                            expected_total += reply_count
+                            fallback_count += reply_fallback_count
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        log.error(
+                            f'Web transfer message failed: task={task_id}, message={message_id}, reason="{e}"',
+                            exc_info=True
+                        )
+                        host.transfer_store.add_event(
+                            task_id,
+                            f'Transfer message failed: {message_id}: {e}',
+                            level='error'
                         )
                         continue
-                    message_link = f'{source_prefix}/{getattr(message, "id", "")}'
-                    used_fallback = await self._resolve_method('transfer_message_to_web_target')(
-                        task=task,
-                        message=message,
-                        origin_chat_id=origin_chat_id,
-                        target_chat_id=target_chat_id,
-                        source_link=message_link
-                    )
-                    fallback_count += 1 if used_fallback else 0
-                    if include_comment:
-                        reply_count, reply_fallback_count = await self._resolve_method(
-                            'transfer_web_discussion_replies_to_target'
-                        )(
-                            task=task,
-                            source_chat_id=origin_chat_id,
-                            source_message_id=message_id,
-                            target_chat_id=target_chat_id,
-                            expected_total=expected_total
-                        )
-                        expected_total += reply_count
-                        fallback_count += reply_fallback_count
                 host.transfer_store.add_event(
                     task_id,
                     f'Range transfer assigned: {start_id}-{end_id}. Fallback downloads: {fallback_count}.'
@@ -222,6 +245,10 @@ class WebTransferRunner:
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            log.error(
+                f'Web transfer task failed: task={task_id}, reason="{e}"',
+                exc_info=True
+            )
             if host.transfer_store.get_task(task_id):
                 host.transfer_store.update_task(
                     task_id,
@@ -462,6 +489,25 @@ class WebTransferRunner:
                 )
             except (FloodWait, FloodPremiumWait) as e:
                 await host.wait_for_telegram_flood(e, task_id=task_id, action='load range transfer message')
+            except (
+                MsgIdInvalid,
+                ChannelInvalid,
+                UsernameInvalid,
+                ChannelPrivate_400,
+                ChannelPrivate_406,
+                ValueError,
+                AttributeError,
+            ) as e:
+                log.warning(
+                    f'Unable to load transfer message: chat={chat_id}, message={message_id}, reason="{e}"'
+                )
+                return None
+            except Exception as e:
+                log.warning(
+                    f'Unable to load transfer message: chat={chat_id}, message={message_id}, reason="{e}"',
+                    exc_info=True
+                )
+                return None
 
     def skip_missing_web_transfer_range_message(
             self,

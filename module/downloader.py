@@ -151,6 +151,10 @@ from module.bot_host import BotHostMixin
 
 class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin, BotHostMixin):
 
+    @property
+    def is_bot_running(self) -> bool:
+        return bool(getattr(self.bot, 'is_bot_running', False))
+
     @staticmethod
     def transfer_send_interval() -> float:
         return WebTransferRunner.transfer_send_interval()
@@ -563,8 +567,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         return await self._ensure_transfer_runner().get_web_transfer_range_message(chat_id, message_id, task_id)
 
     async def parse_web_transfer_link(self, client, link: str) -> dict:
-        import module.downloader as downloader_module
-        return await downloader_module.parse_link(client=client, link=link)
+        return await parse_link(client=client, link=link)
 
     def skip_missing_web_transfer_range_message(
             self,
@@ -1232,7 +1235,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     return bool(ft.get(media, False))
             if getattr(message, 'text', None) or getattr(message, 'caption', None):
                 return bool(ft.get('text', False))
-        return self.transfer_engine.check_type(message)
+        return False
 
     async def forward_discussion_replies(
             self,
