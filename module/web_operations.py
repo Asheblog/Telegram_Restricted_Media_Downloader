@@ -18,7 +18,7 @@ from module.media_manager import MediaManager
 from module.live_watch_applicator import LiveWatchApplicator
 from module.enums import DownloadType, UploadStatus, KeyWord
 from module.language import _t
-from module.task import UploadTask
+from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
 from module.uploader import TelegramUploader
 from module.web_ui import (

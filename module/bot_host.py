@@ -121,8 +121,8 @@ class BotHostMixin:
             client: pyrogram.Client,
             message: pyrogram.types.Message
     ):
-        self.last_client: pyrogram.Client = client
-        self.last_message: pyrogram.types.Message = message
+        self.bot.last_client = client
+        self.bot.last_message = message
         if self.gc.config.get(BotCallbackText.NOTICE):
             await self.bot.start(client, message)
 

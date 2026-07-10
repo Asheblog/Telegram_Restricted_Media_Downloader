@@ -830,8 +830,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         meta: Union[dict, None] = await self.bot.get_forward_link_from_bot(client, message)
         if meta is None:
             return None
-        self.last_client: pyrogram.Client = client
-        self.last_message: pyrogram.types.Message = message
+        self.bot.last_client = client
+        self.bot.last_message = message
         origin_link: str = meta.get('origin_link')
         target_link: str = meta.get('target_link')
         start_id: int = meta.get('message_range')[0]
