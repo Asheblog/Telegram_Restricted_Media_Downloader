@@ -10,7 +10,7 @@ import stat
 import string
 import random
 
-from typing import Tuple, List, Union, Optional
+from typing import Tuple, List, Union, Optional, Callable, AsyncIterator
 
 import pyrogram
 from pyrogram import utils
@@ -164,6 +164,94 @@ def extract_info_from_link(link: str) -> Link:
     return result
 
 
+async def _resolve_discussion_reply_members(message) -> list:
+    get_media_group = getattr(message, 'get_media_group', None)
+    if callable(get_media_group):
+        try:
+            group_messages = await get_media_group()
+            if group_messages:
+                return list(group_messages)
+        except (ValueError, AttributeError, TypeError):
+            pass
+    return [message]
+
+
+async def iter_discussion_reply_messages(
+        client: pyrogram.Client,
+        chat_id: Union[int, str],
+        message_id: int,
+        *,
+        target_message_id: Optional[int] = None,
+        include_message: Optional[Callable[[pyrogram.types.Message], bool]] = None,
+) -> AsyncIterator[pyrogram.types.Message]:
+    """Iterate discussion replies, expanding media groups into individual messages."""
+    seen_media_group_ids: set = set()
+    seen_message_ids: set = set()
+
+    async for comment in client.get_discussion_replies(chat_id, message_id):
+        members = await _resolve_discussion_reply_members(comment)
+        if not members:
+            continue
+
+        member_ids = {getattr(member, 'id', None) for member in members}
+        if target_message_id is not None and target_message_id not in member_ids:
+            continue
+
+        media_group_id = getattr(comment, 'media_group_id', None)
+        if media_group_id is not None:
+            if media_group_id in seen_media_group_ids:
+                continue
+            seen_media_group_ids.add(media_group_id)
+
+        for member in members:
+            member_id = getattr(member, 'id', None)
+            if member_id is None or member_id in seen_message_ids:
+                continue
+            if include_message and not include_message(member):
+                continue
+            seen_message_ids.add(member_id)
+            yield member
+
+
+async def iter_discussion_reply_forward_units(
+        client: pyrogram.Client,
+        chat_id: Union[int, str],
+        message_id: int,
+        *,
+        include_message: Optional[Callable[[pyrogram.types.Message], bool]] = None,
+) -> AsyncIterator[tuple[pyrogram.types.Message, Optional[list]]]:
+    """Iterate discussion replies as forward units; media groups are yielded once."""
+    seen_media_group_ids: set = set()
+    seen_message_ids: set = set()
+
+    async for comment in client.get_discussion_replies(chat_id, message_id):
+        members = await _resolve_discussion_reply_members(comment)
+        if not members:
+            continue
+
+        media_group_id = getattr(comment, 'media_group_id', None)
+        if media_group_id is not None:
+            if media_group_id in seen_media_group_ids:
+                continue
+            seen_media_group_ids.add(media_group_id)
+            if include_message and not any(include_message(member) for member in members):
+                continue
+            if len(members) > 1:
+                yield comment, members
+            else:
+                yield members[0], None
+            continue
+
+        member = members[0]
+        member_id = getattr(member, 'id', None)
+        if member_id is None or member_id in seen_message_ids:
+            continue
+        if include_message and not include_message(member):
+            continue
+        seen_message_ids.add(member_id)
+        yield member, None
+
+
 async def get_message_by_link(
         client: pyrogram.Client,
         link: str,
@@ -203,12 +291,19 @@ async def get_message_by_link(
     comment_message: list = []
     if LinkType.COMMENT in record_type:
         # 如果用户需要同时下载媒体下面的评论,把评论中的所有信息放入列表一起返回。
-        async for comment in client.get_discussion_replies(chat_id, message_id):
-            if not any(getattr(comment, dtype) for dtype in DownloadType()):
-                continue
-            if single_link:  # 处理单链接情况。
-                if '=' in origin_link and int(origin_link.split('=')[-1]) != comment.id:
-                    continue
+        target_message_id = None
+        if single_link and '=' in origin_link:
+            try:
+                target_message_id = int(origin_link.split('=')[-1])
+            except ValueError:
+                target_message_id = None
+        async for comment in iter_discussion_reply_messages(
+                client=client,
+                chat_id=chat_id,
+                message_id=message_id,
+                target_message_id=target_message_id,
+                include_message=lambda item: any(getattr(item, dtype) for dtype in DownloadType())
+        ):
             comment_message.append(comment)
     message = await client.get_messages(chat_id=chat_id, message_ids=message_id)
     is_group, group_message = await __is_group(message)

@@ -15,6 +15,7 @@ from module.enums import BotCallbackText, BotButton, DownloadType, KeyWord
 from module.language import _t
 from module.live_watch_manager import LiveWatchManager
 from module.task import DownloadTask
+from module.util import iter_discussion_reply_messages
 
 
 class BotHostMixin:
@@ -262,13 +263,12 @@ class BotHostMixin:
                     continue
                 # 检查并获取评论区。
                 try:
-                    async for comment in self.app.client.get_discussion_replies(
+                    async for comment in iter_discussion_reply_messages(
+                            client=self.app.client,
                             chat_id=chat_id,
-                            message_id=message.id
+                            message_id=message.id,
+                            include_message=lambda item: _filter.dtype(item, download_type)
                     ):
-                        # 根据用户设置的download_type过滤评论中的媒体，但不过滤具体时间。
-                        if not _filter.dtype(comment, download_type):
-                            continue
                         comment_link = comment.link if comment.link else comment
                         links.append(comment_link)
                         # 使用时间节流机制,只在指定时间间隔后才更新,避免频繁API调用。

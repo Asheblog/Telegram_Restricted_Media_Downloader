@@ -24,7 +24,7 @@ from module.enums import DownloadStatus, DownloadType
 from module.source_folders import source_folder_from_message
 from module.transfer_store import TransferStatus
 from module.uploader import TelegramUploader
-from module.util import get_message_by_link
+from module.util import get_message_by_link, iter_discussion_reply_messages
 
 
 @runtime_checkable
@@ -485,12 +485,12 @@ class WebTransferRunner:
         reply_count = 0
         fallback_count = 0
         try:
-            async for comment in host.app.client.get_discussion_replies(
+            async for comment in iter_discussion_reply_messages(
+                    client=host.app.client,
                     chat_id=source_chat_id,
-                    message_id=source_message_id
+                    message_id=source_message_id,
+                    include_message=self._resolve_method('check_type')
             ):
-                if not self._resolve_method('check_type')(comment):
-                    continue
                 reply_count += 1
                 host.transfer_store.refresh_task_counts(
                     task_id,

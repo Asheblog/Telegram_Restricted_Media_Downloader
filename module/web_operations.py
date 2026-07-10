@@ -28,7 +28,7 @@ from module.web_ui import (
     get_web_username_from_env,
     merge_allowed_settings,
 )
-from module.util import is_docker, make_forward_watch_rule
+from module.util import is_docker, make_forward_watch_rule, iter_discussion_reply_messages
 from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import source_folder_from_link
 
@@ -806,9 +806,13 @@ class WebOperationsMixin:
                 links.append(message.link if getattr(message, 'link', None) else message)
                 if include_comment:
                     try:
-                        async for comment in self.app.client.get_discussion_replies(chat_id=chat_id, message_id=message.id):
-                            if filter_obj.dtype(comment, download_type):
-                                links.append(comment.link if getattr(comment, 'link', None) else comment)
+                        async for comment in iter_discussion_reply_messages(
+                                client=self.app.client,
+                                chat_id=chat_id,
+                                message_id=message.id,
+                                include_message=lambda item: filter_obj.dtype(item, download_type)
+                        ):
+                            links.append(comment.link if getattr(comment, 'link', None) else comment)
                     except (ValueError, AttributeError, MsgIdInvalid):
                         pass
         for link in links:

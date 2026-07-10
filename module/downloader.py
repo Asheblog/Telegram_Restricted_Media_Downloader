@@ -134,7 +134,8 @@ from module.util import (
     Issues,
     make_forward_watch_rule,
     parse_forward_watch_rule,
-    is_allow_upload
+    is_allow_upload,
+    iter_discussion_reply_forward_units,
 )
 from module.transfer_engine import TransferEngine
 from module.comp import TransferContext, TransferPorts
@@ -1283,13 +1284,14 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     ) -> int:
         count = 0
         try:
-            async for comment in self.app.client.get_discussion_replies(
+            async for comment, media_group in iter_discussion_reply_forward_units(
+                    client=self.app.client,
                     chat_id=source_chat_id,
-                    message_id=source_message_id
+                    message_id=source_message_id,
+                    include_message=self.check_type
             ):
-                if not self.check_type(comment):
-                    continue
                 comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
+                media_group_ids = sorted(member.id for member in media_group) if media_group else None
                 await self.forward(
                     client=client,
                     message=comment,
@@ -1299,7 +1301,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     target_link=target_link,
                     download_upload=True,
                     done_notice=done_notice,
-                    watch_id=watch_id
+                    watch_id=watch_id,
+                    media_group=media_group_ids
                 )
                 count += 1
         except (ValueError, AttributeError, MsgIdInvalid):
