@@ -102,13 +102,18 @@ class WebUITaskManager:
         if task_id in self.web_submitted_task_ids:
             return
         self.web_submitted_task_ids.add(task_id)
+
+        def enqueue_and_start() -> None:
+            self.web_task_queue.put_nowait(task_id)
+            self.start_next_web_transfer_task()
+
         try:
             if asyncio.get_running_loop() is self.loop:
-                self.web_task_queue.put_nowait(task_id)
+                enqueue_and_start()
                 return
         except RuntimeError:
             pass
-        self.loop.call_soon_threadsafe(self.web_task_queue.put_nowait, task_id)
+        self.loop.call_soon_threadsafe(enqueue_and_start)
 
     def _enqueue_and_process_web_task(self, task_id: int) -> None:
         self.web_submitted_task_ids.discard(task_id)

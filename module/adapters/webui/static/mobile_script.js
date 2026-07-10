@@ -169,6 +169,11 @@ function hasActiveTasks() {
   }));
 }
 
+function resetTaskPolling() {
+  stopPolling();
+  startPolling();
+}
+
 function startPolling() {
   stopPolling();
   initialLoadDone = true;
@@ -1322,7 +1327,10 @@ async function loadMediaMobile() {
         await postJson('/api/tasks', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         transferForm.reset();
-        setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileTasks(); }, 1000);
+        await loadMobileTasks();
+        resetTaskPolling();
+        setTimeout(function() { loadMobileTasks(); }, 800);
+        setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 1000);
       } catch (e) {
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
       }

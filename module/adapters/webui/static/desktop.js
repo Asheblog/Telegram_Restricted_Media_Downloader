@@ -28,6 +28,9 @@ async function loadTasks() {
     const data = await fetchJson('/api/tasks');
     state.tasks = data.tasks || [];
     state.metrics = data.metrics || {};
+    state.lastSync = new Date();
+    const syncEl = $('#last-sync');
+    if (syncEl) syncEl.textContent = state.lastSync.toLocaleTimeString();
     renderTasks();
     updateStats();
   } catch(e) {
@@ -345,6 +348,8 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     notice.className = 'text-xs text-success mt-2';
     notice.textContent = t('form.createSuccess');
     await loadTasks();
+    resetTaskPolling();
+    setTimeout(function() { refreshTransferData().catch(function() {}); }, 800);
   } catch(err) {
     notice.className = 'text-xs text-danger mt-2';
     notice.textContent = translateApiError(err, 'form.createFailed');
@@ -361,13 +366,23 @@ function hasActiveTasks() {
 
 async function refreshTransferData() {
   await loadTasks();
+  await loadWatches();
   await refreshSelectedTaskDetail();
+}
+
+function resetTaskPolling() {
+  if (state.taskPollTimer) {
+    clearTimeout(state.taskPollTimer);
+    state.taskPollTimer = null;
+  }
+  startPolling();
 }
 
 function startPolling() {
   if (state.taskPollTimer) return;
   const fast = 3000, slow = 15000;
-  let interval = fast, lastPoll = 0;
+  let interval = hasActiveTasks() ? fast : slow;
+  let lastPoll = 0;
 
   async function poll() {
     if (document.hidden) { state.taskPollTimer = setTimeout(poll, interval); return; }
@@ -376,7 +391,6 @@ function startPolling() {
     lastPoll = now;
     try {
       await refreshTransferData();
-      if (state.activeView === 'watches') await loadWatches();
     } catch(e) {}
     interval = hasActiveTasks() ? fast : slow;
     state.taskPollTimer = setTimeout(poll, interval);
@@ -543,9 +557,9 @@ $('#language-select').addEventListener('change', e => {
 /* ====== Refresh ====== */
 $('#refresh').addEventListener('click', () => {
   loadTasks();
+  loadWatches();
   if (state.activeView === 'records') loadRecords();
   if (state.activeView === 'settings') loadSettings();
-  if (state.activeView === 'watches') loadWatches();
   if (state.activeView === 'statistics') loadStatistics();
   if (state.activeView === 'downloads-uploads') loadOperations();
 });
@@ -639,9 +653,16 @@ async function loadWatches() {
 }
 
 function updateWatchBadge() {
-  const count = (state.watches || []).filter(w => w.status !== 'paused').length;
-  $('#badge-watches').textContent = count || '';
-  $('#badge-watches').style.display = count ? '' : 'none';
+  const watches = state.watches || [];
+  const activeWatches = watches.filter(w => w.status !== 'paused');
+  const todayTotal = activeWatches.reduce(function(sum, w) {
+    return sum + (Number(w.today_count) || 0);
+  }, 0);
+  const count = todayTotal > 0 ? todayTotal : activeWatches.length;
+  const badge = $('#badge-watches');
+  if (!badge) return;
+  badge.textContent = count || '';
+  badge.style.display = count ? '' : 'none';
 }
 
 function renderWatches() {
