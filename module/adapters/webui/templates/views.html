@@ -8,7 +8,7 @@
       </div>
       <div>
         <div class="stat-card-value" id="stat-total">0</div>
-        <div class="stat-card-label">总任务</div>
+        <div class="stat-card-label" data-i18n="stats.total">总任务</div>
       </div>
     </div>
     <div class="stat-card">
@@ -17,7 +17,7 @@
       </div>
       <div>
         <div class="stat-card-value" id="stat-success">0</div>
-        <div class="stat-card-label">已完成</div>
+        <div class="stat-card-label" data-i18n="stats.success">已完成</div>
       </div>
     </div>
     <div class="stat-card">
@@ -26,7 +26,7 @@
       </div>
       <div>
         <div class="stat-card-value" id="stat-running">0</div>
-        <div class="stat-card-label">运行中</div>
+        <div class="stat-card-label" data-i18n="stats.running">运行中</div>
       </div>
     </div>
     <div class="stat-card">
@@ -35,7 +35,34 @@
       </div>
       <div>
         <div class="stat-card-value" id="stat-failed">0</div>
-        <div class="stat-card-label">失败项</div>
+        <div class="stat-card-label" data-i18n="stats.failed">失败项</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon purple">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M7 10l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-upload-speed">0 B/s</div>
+        <div class="stat-card-label" data-i18n="stats.uploadSpeed">实时上传网速</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon cyan">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-download-speed">0 B/s</div>
+        <div class="stat-card-label" data-i18n="stats.downloadSpeed">实时下载网速</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon slate">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-disk-free">-</div>
+        <div class="stat-card-label" data-i18n="stats.diskFree">硬盘剩余空间</div>
       </div>
     </div>
   </div>

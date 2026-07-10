@@ -27,6 +27,7 @@ async function loadTasks() {
   try {
     const data = await fetchJson('/api/tasks');
     state.tasks = data.tasks || [];
+    state.metrics = data.metrics || {};
     renderTasks();
     updateStats();
   } catch(e) {
@@ -49,6 +50,18 @@ function updateStats() {
   $('#metric-failed').textContent = stats.failedItems;
   $('#badge-transfers').textContent = stats.running || '';
   $('#badge-transfers').style.display = stats.running ? '' : 'none';
+
+  const metrics = state.metrics || {};
+  const uploadEl = $('#stat-upload-speed');
+  const downloadEl = $('#stat-download-speed');
+  const diskEl = $('#stat-disk-free');
+  if (uploadEl) uploadEl.textContent = formatSpeedStat(metrics.upload_speed_bps);
+  if (downloadEl) downloadEl.textContent = formatSpeedStat(metrics.download_speed_bps);
+  if (diskEl) {
+    const freeBytes = Number(metrics.disk_free_bytes);
+    diskEl.textContent = Number.isFinite(freeBytes) && freeBytes >= 0 ? fmtSize(freeBytes) : '-';
+    if (metrics.disk_path) diskEl.title = metrics.disk_path;
+  }
 }
 
 function renderTasks() {

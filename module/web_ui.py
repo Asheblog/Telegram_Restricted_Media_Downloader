@@ -481,7 +481,17 @@ class WebUiServer:
                         self._send_json({'step': 'none', 'error': None, 'user': None})
                     return
                 if parsed.path == '/api/tasks':
-                    self._send_json(server.view_model.task_list())
+                    settings = server.get_settings()
+                    user = (settings or {}).get('user') or {}
+                    payload = server.view_model.task_list()
+                    payload['metrics'] = {
+                        **server.view_model.transfer_speed_metrics(),
+                        **WebUiViewModel.disk_metrics([
+                            user.get('temp_directory'),
+                            user.get('save_directory'),
+                        ]),
+                    }
+                    self._send_json(payload)
                     return
                 if parsed.path == '/api/settings':
                     settings = server.get_sanitized_settings()

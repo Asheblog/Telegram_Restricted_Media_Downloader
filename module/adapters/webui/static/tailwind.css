@@ -24,6 +24,12 @@
   --color-danger-bg: #FEF2F2;
   --color-cta: #F97316;
   --color-cta-hover: #EA580C;
+  --color-purple: #8B5CF6;
+  --color-purple-bg: #F5F3FF;
+  --color-cyan: #06B6D4;
+  --color-cyan-bg: #ECFEFF;
+  --color-slate-accent: #64748B;
+  --color-slate-bg: #F1F5F9;
   --font-heading: 'Poppins', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Open Sans', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
   --font-mob: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -195,7 +201,8 @@
 
   /* Stat cards */
   .stat-grid {
-    @apply grid grid-cols-4 gap-4;
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 
   .stat-card {
@@ -215,6 +222,9 @@
   .stat-card-icon.green { @apply bg-success-bg text-success; }
   .stat-card-icon.orange { @apply bg-orange-50 text-cta; }
   .stat-card-icon.red { @apply bg-danger-bg text-danger; }
+  .stat-card-icon.purple { background: var(--color-purple-bg); color: var(--color-purple); }
+  .stat-card-icon.cyan { background: var(--color-cyan-bg); color: var(--color-cyan); }
+  .stat-card-icon.slate { background: var(--color-slate-bg); color: var(--color-slate-accent); }
 
   .stat-card-icon svg {
     @apply w-5 h-5;
@@ -745,12 +755,6 @@
   }
 
   /* Responsive */
-  @media (max-width: 1200px) {
-    .stat-grid {
-      @apply grid-cols-2;
-    }
-  }
-
   @media (max-width: 960px) {
     .sidebar {
       @apply hidden;

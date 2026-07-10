@@ -20,6 +20,13 @@ const i18n = {
     'side.status': '系统运行中',
     'hero.title': '转存控制台',
     'hero.body': '管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤',
+    'stats.total': '总任务',
+    'stats.success': '已完成',
+    'stats.running': '运行中',
+    'stats.failed': '失败项',
+    'stats.uploadSpeed': '实时上传网速',
+    'stats.downloadSpeed': '实时下载网速',
+    'stats.diskFree': '硬盘剩余空间',
     'action.refresh': '刷新',
     'new.title': '新建转存',
     'new.source': '来源链接',
@@ -265,6 +272,13 @@ const i18n = {
     'side.status': 'System running',
     'hero.title': 'Transfer Console',
     'hero.body': 'Manage Telegram content transfer tasks — live monitoring, batch operations, smart filtering',
+    'stats.total': 'Total Tasks',
+    'stats.success': 'Completed',
+    'stats.running': 'Running',
+    'stats.failed': 'Failed Items',
+    'stats.uploadSpeed': 'Upload Speed',
+    'stats.downloadSpeed': 'Download Speed',
+    'stats.diskFree': 'Free Disk Space',
     'action.refresh': 'Refresh',
     'new.title': 'New Transfer',
     'new.source': 'Source link',
@@ -518,6 +532,7 @@ const state = {
   recordsPage: 1,
   recordsPageSize: 50,
   recordsTotal: 0,
+  metrics: {},
 };
 window.state = state;
 
@@ -752,6 +767,12 @@ function taskFailedCount(task) {
 function formatSpeed(bytesPerSecond) {
   const value = Number(bytesPerSecond || 0);
   if (!value || value < 0) return '-';
+  return fmtSize(value) + '/s';
+}
+
+function formatSpeedStat(bytesPerSecond) {
+  const value = Number(bytesPerSecond || 0);
+  if (!value || value < 0) return '0 B/s';
   return fmtSize(value) + '/s';
 }
 

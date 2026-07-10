@@ -1,6 +1,8 @@
 # coding=UTF-8
+import os
 from typing import Any, Optional
 
+from module.local_storage_guard import LocalStorageGuard
 from module.transfer_store import TransferStatus, TransferStore
 
 
@@ -371,6 +373,35 @@ class WebUiViewModel:
                 (task_id, limit, offset)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def transfer_speed_metrics(self) -> dict[str, int]:
+        with self.store.connect() as conn:
+            row = conn.execute(
+                '''
+                SELECT COALESCE(SUM(download_speed_bps), 0) AS download_speed_bps,
+                       COALESCE(SUM(upload_speed_bps), 0) AS upload_speed_bps
+                FROM transfer_items
+                WHERE status = ?
+                ''',
+                (TransferStatus.RUNNING,)
+            ).fetchone()
+        return {
+            'download_speed_bps': int(row['download_speed_bps'] or 0),
+            'upload_speed_bps': int(row['upload_speed_bps'] or 0),
+        }
+
+    @staticmethod
+    def disk_metrics(storage_paths: list[str]) -> dict[str, Any]:
+        candidates = [
+            str(path).strip()
+            for path in (storage_paths or [])
+            if str(path or '').strip()
+        ]
+        probe = candidates[0] if candidates else os.getcwd()
+        return {
+            'disk_free_bytes': LocalStorageGuard._disk_free_bytes(probe),
+            'disk_path': probe,
+        }
 
     def _list_events(self, task_id: int, limit: int, offset: int) -> list[dict[str, Any]]:
         limit = max(0, int(limit or 0))

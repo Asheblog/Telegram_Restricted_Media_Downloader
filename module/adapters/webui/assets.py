@@ -427,7 +427,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-total">0</div>
-        <div class="stat-card-label">总任务</div>
+        <div class="stat-card-label" data-i18n="stats.total">总任务</div>
       </div>
     </div>
     <div class="stat-card">
@@ -436,7 +436,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-success">0</div>
-        <div class="stat-card-label">已完成</div>
+        <div class="stat-card-label" data-i18n="stats.success">已完成</div>
       </div>
     </div>
     <div class="stat-card">
@@ -445,7 +445,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-running">0</div>
-        <div class="stat-card-label">运行中</div>
+        <div class="stat-card-label" data-i18n="stats.running">运行中</div>
       </div>
     </div>
     <div class="stat-card">
@@ -454,7 +454,34 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-failed">0</div>
-        <div class="stat-card-label">失败项</div>
+        <div class="stat-card-label" data-i18n="stats.failed">失败项</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon purple">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M7 10l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-upload-speed">0 B/s</div>
+        <div class="stat-card-label" data-i18n="stats.uploadSpeed">实时上传网速</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon cyan">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-download-speed">0 B/s</div>
+        <div class="stat-card-label" data-i18n="stats.downloadSpeed">实时下载网速</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon slate">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stat-disk-free">-</div>
+        <div class="stat-card-label" data-i18n="stats.diskFree">硬盘剩余空间</div>
       </div>
     </div>
   </div>
@@ -1141,6 +1168,13 @@ const i18n = {
     'side.status': '系统运行中',
     'hero.title': '转存控制台',
     'hero.body': '管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤',
+    'stats.total': '总任务',
+    'stats.success': '已完成',
+    'stats.running': '运行中',
+    'stats.failed': '失败项',
+    'stats.uploadSpeed': '实时上传网速',
+    'stats.downloadSpeed': '实时下载网速',
+    'stats.diskFree': '硬盘剩余空间',
     'action.refresh': '刷新',
     'new.title': '新建转存',
     'new.source': '来源链接',
@@ -1386,6 +1420,13 @@ const i18n = {
     'side.status': 'System running',
     'hero.title': 'Transfer Console',
     'hero.body': 'Manage Telegram content transfer tasks — live monitoring, batch operations, smart filtering',
+    'stats.total': 'Total Tasks',
+    'stats.success': 'Completed',
+    'stats.running': 'Running',
+    'stats.failed': 'Failed Items',
+    'stats.uploadSpeed': 'Upload Speed',
+    'stats.downloadSpeed': 'Download Speed',
+    'stats.diskFree': 'Free Disk Space',
     'action.refresh': 'Refresh',
     'new.title': 'New Transfer',
     'new.source': 'Source link',
@@ -1639,6 +1680,7 @@ const state = {
   recordsPage: 1,
   recordsPageSize: 50,
   recordsTotal: 0,
+  metrics: {},
 };
 window.state = state;
 
@@ -1876,6 +1918,12 @@ function formatSpeed(bytesPerSecond) {
   return fmtSize(value) + '/s';
 }
 
+function formatSpeedStat(bytesPerSecond) {
+  const value = Number(bytesPerSecond || 0);
+  if (!value || value < 0) return '0 B/s';
+  return fmtSize(value) + '/s';
+}
+
 function transferPhaseLabel(phase) {
   const labels = {
     downloading: '下载',
@@ -1987,6 +2035,7 @@ async function loadTasks() {
   try {
     const data = await fetchJson('/api/tasks');
     state.tasks = data.tasks || [];
+    state.metrics = data.metrics || {};
     renderTasks();
     updateStats();
   } catch(e) {
@@ -2009,6 +2058,18 @@ function updateStats() {
   $('#metric-failed').textContent = stats.failedItems;
   $('#badge-transfers').textContent = stats.running || '';
   $('#badge-transfers').style.display = stats.running ? '' : 'none';
+
+  const metrics = state.metrics || {};
+  const uploadEl = $('#stat-upload-speed');
+  const downloadEl = $('#stat-download-speed');
+  const diskEl = $('#stat-disk-free');
+  if (uploadEl) uploadEl.textContent = formatSpeedStat(metrics.upload_speed_bps);
+  if (downloadEl) downloadEl.textContent = formatSpeedStat(metrics.download_speed_bps);
+  if (diskEl) {
+    const freeBytes = Number(metrics.disk_free_bytes);
+    diskEl.textContent = Number.isFinite(freeBytes) && freeBytes >= 0 ? fmtSize(freeBytes) : '-';
+    if (metrics.disk_path) diskEl.title = metrics.disk_path;
+  }
 }
 
 function renderTasks() {
@@ -4101,6 +4162,13 @@ const i18n = {
     'side.status': '系统运行中',
     'hero.title': '转存控制台',
     'hero.body': '管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤',
+    'stats.total': '总任务',
+    'stats.success': '已完成',
+    'stats.running': '运行中',
+    'stats.failed': '失败项',
+    'stats.uploadSpeed': '实时上传网速',
+    'stats.downloadSpeed': '实时下载网速',
+    'stats.diskFree': '硬盘剩余空间',
     'action.refresh': '刷新',
     'new.title': '新建转存',
     'new.source': '来源链接',
@@ -4346,6 +4414,13 @@ const i18n = {
     'side.status': 'System running',
     'hero.title': 'Transfer Console',
     'hero.body': 'Manage Telegram content transfer tasks — live monitoring, batch operations, smart filtering',
+    'stats.total': 'Total Tasks',
+    'stats.success': 'Completed',
+    'stats.running': 'Running',
+    'stats.failed': 'Failed Items',
+    'stats.uploadSpeed': 'Upload Speed',
+    'stats.downloadSpeed': 'Download Speed',
+    'stats.diskFree': 'Free Disk Space',
     'action.refresh': 'Refresh',
     'new.title': 'New Transfer',
     'new.source': 'Source link',
@@ -4599,6 +4674,7 @@ const state = {
   recordsPage: 1,
   recordsPageSize: 50,
   recordsTotal: 0,
+  metrics: {},
 };
 window.state = state;
 
@@ -4833,6 +4909,12 @@ function taskFailedCount(task) {
 function formatSpeed(bytesPerSecond) {
   const value = Number(bytesPerSecond || 0);
   if (!value || value < 0) return '-';
+  return fmtSize(value) + '/s';
+}
+
+function formatSpeedStat(bytesPerSecond) {
+  const value = Number(bytesPerSecond || 0);
+  if (!value || value < 0) return '0 B/s';
   return fmtSize(value) + '/s';
 }
 

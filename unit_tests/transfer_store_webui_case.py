@@ -3932,6 +3932,43 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(4096, item['upload_speed_bps'])
             self.assertEqual(64, item['active_progress_percent'])
 
+    def test_webui_task_list_exposes_transfer_and_disk_metrics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/9',
+                target_link='https://t.me/pikpak_bot'
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=9,
+                source_link='https://t.me/source/9',
+                target_link='https://t.me/pikpak_bot',
+                file_name='movie.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+            store.update_item_progress(
+                item_id=item_id,
+                phase='downloading',
+                download_current=40,
+                download_total=100,
+                download_speed_bps=2048,
+                upload_current=10,
+                upload_total=100,
+                upload_speed_bps=1024
+            )
+
+            model = WebUiViewModel(store)
+            speeds = model.transfer_speed_metrics()
+            disk = WebUiViewModel.disk_metrics([directory])
+
+            self.assertEqual(2048, speeds['download_speed_bps'])
+            self.assertEqual(1024, speeds['upload_speed_bps'])
+            self.assertGreater(disk['disk_free_bytes'], 0)
+            self.assertEqual(directory, disk['disk_path'])
+
 
 if __name__ == '__main__':
     unittest.main()
