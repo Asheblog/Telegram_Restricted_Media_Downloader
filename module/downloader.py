@@ -771,6 +771,26 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     fallback_link=link
                 )
             )
+            # region agent log
+            try:
+                import json as _json, time as _time
+                with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
+                    _dbg_f.write(_json.dumps({
+                        'sessionId': 'fc7e96',
+                        'location': 'downloader.py:forward:download_upload_fallback',
+                        'message': 'forward restricted, falling back to download+upload',
+                        'data': {
+                            'source_link': link,
+                            'target_link': target_link,
+                            'task_id': upload_meta.get('task_id'),
+                            'message_id': message_id
+                        },
+                        'timestamp': int(_time.time() * 1000),
+                        'hypothesisId': 'A,B'
+                    }, ensure_ascii=False) + '\n')
+            except Exception:
+                pass
+            # endregion
             upload_meta['bot_progress'] = await self.create_bot_transfer_progress(
                 source_link=link,
                 target_link=target_link,

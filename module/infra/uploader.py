@@ -3,11 +3,13 @@
 # Software:PyCharm
 # Time:2025/9/6 23:00
 # File:uploader.py
+import json
 import os
 import hashlib
 import asyncio
 import inspect
 import random
+import time
 
 from functools import partial
 from typing import (
@@ -894,7 +896,39 @@ class TelegramUploader:
         if isinstance(with_upload, dict):
             item_id = with_upload.get('item_id')
             if callable(with_upload.get('on_file_ready')):
+                # region agent log
+                try:
+                    with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
+                        _dbg_f.write(json.dumps({
+                            'sessionId': 'fc7e96',
+                            'location': 'uploader.py:download_upload:before_on_file_ready',
+                            'message': 'calling on_file_ready before upload task',
+                            'data': {
+                                'task_id': with_upload.get('task_id'),
+                                'target_link': with_upload.get('link'),
+                                'file_name': os.path.basename(file_path) if file_path else None
+                            },
+                            'timestamp': int(time.time() * 1000),
+                            'hypothesisId': 'A'
+                        }, ensure_ascii=False) + '\n')
+                except Exception:
+                    pass
+                # endregion
                 item_id = with_upload.get('on_file_ready')(file_path, with_upload)
+                # region agent log
+                try:
+                    with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
+                        _dbg_f.write(json.dumps({
+                            'sessionId': 'fc7e96',
+                            'location': 'uploader.py:download_upload:after_on_file_ready',
+                            'message': 'on_file_ready returned',
+                            'data': {'item_id': item_id},
+                            'timestamp': int(time.time() * 1000),
+                            'hypothesisId': 'A'
+                        }, ensure_ascii=False) + '\n')
+                except Exception:
+                    pass
+                # endregion
             asyncio.create_task(
                 self.create_upload_task(
                     link=with_upload.get('link'),

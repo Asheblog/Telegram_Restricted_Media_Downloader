@@ -453,6 +453,46 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             self.assertEqual(file_path, uploaded[0][1])
             self.assertEqual(9, uploaded[0][0]['message_id'])
 
+    def test_on_transfer_file_ready_without_task_id_skips_store_item_but_allows_upload(self):
+        from module.transfer.progress import TransferProgressTracker
+
+        add_item_calls = []
+
+        class FakeStore:
+            def add_item(self, **kwargs):
+                add_item_calls.append(kwargs)
+                return 99
+
+            def add_event(self, *args, **kwargs):
+                return None
+
+        tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: FakeStore(),
+            diagnostic=SimpleNamespace(),
+            app_getter=lambda: None,
+            gc_getter=lambda: None,
+            loop_getter=lambda: None,
+            pb_getter=lambda: None,
+            release_storage=lambda *a: None,
+            release_window=lambda *a: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda *a: None,
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda *a: None,
+        )
+
+        item_id = tracker.on_transfer_file_ready(
+            '/tmp/media.mp4',
+            {
+                'task_id': None,
+                'link': 'https://t.me/pikpak_bot',
+                'target_profile': 'pikpak',
+            }
+        )
+
+        self.assertEqual(0, item_id)
+        self.assertEqual([], add_item_calls)
+
     def test_pikpak_download_upload_meta_uses_profile_defaults_even_when_media_group_requested(self):
         downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
         downloader.gc = SimpleNamespace(upload_delete=False)

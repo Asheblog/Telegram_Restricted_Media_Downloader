@@ -1,6 +1,7 @@
 # coding=UTF-8
 import asyncio
 import datetime
+import json
 import os
 import time
 from typing import Callable, Optional
@@ -585,10 +586,32 @@ class TransferProgressTracker:
         return int(delta / elapsed)
 
     def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
+        # region agent log
+        try:
+            with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
+                _dbg_f.write(json.dumps({
+                    'sessionId': 'fc7e96',
+                    'location': 'progress.py:on_transfer_file_ready:entry',
+                    'message': 'on_file_ready callback invoked',
+                    'data': {
+                        'task_id': with_upload.get('task_id'),
+                        'has_store': self.transfer_store is not None,
+                        'target_link': with_upload.get('link'),
+                        'file_name': os.path.basename(file_path) if file_path else None
+                    },
+                    'timestamp': int(time.time() * 1000),
+                    'hypothesisId': 'A'
+                }, ensure_ascii=False) + '\n')
+        except Exception:
+            pass
+        # endregion
         store = self.transfer_store
         if not store:
             return 0
-        task_id = int(with_upload.get('task_id'))
+        raw_task_id = with_upload.get('task_id')
+        if raw_task_id is None:
+            return 0
+        task_id = int(raw_task_id)
         item_id = store.add_item(
             task_id=task_id,
             source_chat_id=with_upload.get('source_chat_id'),
