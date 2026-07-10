@@ -186,13 +186,28 @@ async def _collect_discussion_replies(
         reply_chat_id: Union[int, str],
         reply_message_id: int,
         root_message_id: Optional[int] = None,
+        *,
+        channel_chat_id: Optional[Union[int, str]] = None,
+        channel_message_id: Optional[int] = None,
 ) -> list:
-    replies: list = []
-    async for comment in client.get_discussion_replies(reply_chat_id, reply_message_id):
-        if root_message_id is not None and getattr(comment, 'id', None) == root_message_id:
-            continue
-        replies.append(comment)
-    return replies
+    async def _fetch(peer_chat_id: Union[int, str], peer_message_id: int) -> list:
+        replies: list = []
+        async for comment in client.get_discussion_replies(peer_chat_id, peer_message_id):
+            if root_message_id is not None and getattr(comment, 'id', None) == root_message_id:
+                continue
+            replies.append(comment)
+        return replies
+
+    try:
+        return await _fetch(reply_chat_id, reply_message_id)
+    except MsgIdInvalid:
+        if (
+            channel_chat_id is None
+            or channel_message_id is None
+            or (reply_chat_id == channel_chat_id and reply_message_id == channel_message_id)
+        ):
+            raise
+        return await _fetch(channel_chat_id, channel_message_id)
 
 
 def _index_replies_by_media_group(replies: list) -> dict:
@@ -249,7 +264,9 @@ async def iter_discussion_reply_messages(
         client,
         reply_chat_id,
         reply_message_id,
-        root_message_id
+        root_message_id,
+        channel_chat_id=chat_id,
+        channel_message_id=message_id,
     )
     replies_by_media_group = _index_replies_by_media_group(raw_replies)
     seen_media_group_ids: set = set()
@@ -297,7 +314,9 @@ async def iter_discussion_reply_forward_units(
         client,
         reply_chat_id,
         reply_message_id,
-        root_message_id
+        root_message_id,
+        channel_chat_id=chat_id,
+        channel_message_id=message_id,
     )
     replies_by_media_group = _index_replies_by_media_group(raw_replies)
     seen_media_group_ids: set = set()

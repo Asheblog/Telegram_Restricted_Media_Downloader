@@ -117,6 +117,41 @@ class DiscussionReplyMediaGroupCase(unittest.TestCase):
         result = asyncio.run(run())
         self.assertEqual([401, 402, 403], result)
 
+    def test_iter_discussion_reply_messages_falls_back_to_channel_peer(self):
+        from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid
+
+        channel_replies = [
+            SimpleNamespace(id=5, media_group_id=None, video=object()),
+            SimpleNamespace(id=6, media_group_id=None, video=object()),
+        ]
+
+        class FakeClient:
+            async def get_discussion_message(self, chat_id, message_id):
+                return SimpleNamespace(id=4, chat=SimpleNamespace(id='discussion-chat'))
+
+            async def get_discussion_replies(self, chat_id, message_id):
+                if chat_id == 'discussion-chat' and message_id == 4:
+                    raise MsgIdInvalid('discussion root invalid')
+                if chat_id == 'channel' and message_id == 2827:
+                    for item in channel_replies:
+                        yield item
+                else:
+                    raise AssertionError(f'unexpected peer: {chat_id!r}, {message_id!r}')
+
+        async def run():
+            collected = []
+            async for message in iter_discussion_reply_messages(
+                    FakeClient(),
+                    'channel',
+                    2827,
+                    include_message=lambda msg: bool(getattr(msg, 'video', None))
+            ):
+                collected.append(message.id)
+            return collected
+
+        result = asyncio.run(run())
+        self.assertEqual([5, 6], result)
+
 
 if __name__ == '__main__':
     unittest.main()
