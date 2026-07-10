@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -61,7 +61,26 @@ def session_name() -> str:
 
 
 def configured_session_directory(config: dict) -> Path:
-    return Path(config.get('session_directory') or Path.home() / '.config' / 'TRMD').expanduser()
+    raw = config.get('session_directory')
+    if raw not in (None, '', '~', 'null', 'None'):
+        return Path(str(raw)).expanduser()
+    for candidate in (
+        Path('/app/sessions'),
+        Path(os.environ.get('XDG_CONFIG_HOME', Path.home())) / 'sessions',
+        Path.home() / '.config' / 'TRMD',
+    ):
+        if candidate.exists():
+            return candidate
+    return Path('/app/sessions')
+
+
+def _copy_session_sidecar_files(source_session: Path, target_session: Path) -> None:
+    for suffix in ('', '-wal', '-shm'):
+        source_path = Path(f'{source_session}{suffix}') if suffix else source_session
+        if not source_path.exists():
+            continue
+        target_path = Path(f'{target_session}{suffix}') if suffix else target_session
+        shutil.copy2(source_path, target_path)
 
 
 def copy_session_to_temp_directory(config: dict) -> Path:
@@ -71,24 +90,28 @@ def copy_session_to_temp_directory(config: dict) -> Path:
         raise FileNotFoundError(f'Session file not found: {source_session}')
     target_directory = Path(tempfile.mkdtemp(prefix='trmd_diag_session_'))
     target_session = target_directory / source_session.name
-    with sqlite3.connect(f'file:{source_session}?mode=ro', uri=True, timeout=30) as source:
-        with sqlite3.connect(target_session) as target:
-            source.backup(target)
+    try:
+        with sqlite3.connect(f'file:{source_session}?mode=ro', uri=True, timeout=60) as source:
+            source.execute('PRAGMA busy_timeout=60000')
+            with sqlite3.connect(target_session) as target:
+                source.backup(target)
+    except sqlite3.OperationalError:
+        _copy_session_sidecar_files(source_session, target_session)
     return target_directory
 
 
-def build_client(config: dict, session_directory: Path | None = None):
+def build_client(config: dict, session_directory: Path):
     import pyrogram
     from module import SLEEP_THRESHOLD
 
-    workdir = session_directory or configured_session_directory(config)
     return pyrogram.Client(
         name=session_name(),
         api_id=config.get('api_id'),
         api_hash=config.get('api_hash'),
         proxy=config.get('proxy') if (config.get('proxy') or {}).get('enable_proxy') else None,
-        workdir=str(workdir),
-        sleep_threshold=SLEEP_THRESHOLD
+        workdir=str(session_directory),
+        sleep_threshold=SLEEP_THRESHOLD,
+        no_updates=True,
     )
 
 
@@ -107,20 +130,84 @@ def parse_cli(argv: list[str]) -> SimpleNamespace:
     parser.add_argument(
         '--live-session',
         action='store_true',
-        help='Use configured session directly instead of a temporary read-only copy.'
+        help='Use the live session file directly. Do not use this while TRMD is running.'
     )
     return parser.parse_args(argv)
 
 
+def _session_locked(error: Exception) -> bool:
+    return 'database is locked' in str(error).lower()
+
+
+async def collect_diagnosis(client, discussion_util, channel: str, post_id: int) -> dict:
+    reply_chat_id, reply_message_id, root_message_id = await discussion_util._resolve_discussion_thread(
+        client,
+        channel,
+        post_id
+    )
+    channel_raw = []
+    async for message in client.get_discussion_replies(channel, post_id):
+        channel_raw.append(message_brief(message))
+    raw_replies = await discussion_util._collect_discussion_replies(
+        client,
+        reply_chat_id,
+        reply_message_id,
+        root_message_id
+    )
+    grouped = discussion_util._index_replies_by_media_group(raw_replies)
+    expanded = []
+    async for message in discussion_util.iter_discussion_reply_messages(client, channel, post_id):
+        expanded.append(message_brief(message))
+    return {
+        'discussion_thread': {
+            'reply_chat_id': reply_chat_id,
+            'reply_message_id': reply_message_id,
+            'root_message_id': root_message_id,
+        },
+        'channel_peer_raw_count': len(channel_raw),
+        'channel_peer_raw': channel_raw[:20],
+        'discussion_peer_raw_count': len(raw_replies),
+        'discussion_peer_raw': [message_brief(item) for item in raw_replies[:20]],
+        'media_groups': {
+            str(key): [message_brief(item) for item in values]
+            for key, values in grouped.items()
+        },
+        'expanded_count': len(expanded),
+        'expanded': expanded,
+    }
+
+
+async def run_with_session(config: dict, session_directory: Path, channel: str, post_id: int) -> dict:
+    from module.utils import util as discussion_util
+
+    async with build_client(config, session_directory) as client:
+        me = await client.get_me()
+        diagnosis = await collect_diagnosis(client, discussion_util, channel, post_id)
+        diagnosis['account'] = {
+            'id': getattr(me, 'id', None),
+            'username': getattr(me, 'username', None),
+        }
+        return diagnosis
+
+
 async def run(args: SimpleNamespace) -> int:
     from module import __version__
-    from module.utils import util as discussion_util
+    from module.utils import util as discussion_util  # noqa: F401 - warms util module
 
     config_path = config_path_from_args(args.config)
     config = load_config(config_path)
-    copied_session_directory = None
-    session_directory = None
-    if not args.live_session:
+    channel = args.channel.rstrip('/')
+    if channel.startswith('https://t.me/'):
+        channel = channel.rsplit('/', 1)[-1]
+
+    source_session_directory = configured_session_directory(config)
+    copied_session_directory: Optional[Path] = None
+    session_mode = 'copy'
+    session_directory = source_session_directory
+
+    if args.live_session:
+        session_mode = 'live'
+    else:
         copied_session_directory = copy_session_to_temp_directory(config)
         session_directory = copied_session_directory
 
@@ -129,56 +216,25 @@ async def run(args: SimpleNamespace) -> int:
         'channel': args.channel,
         'post_id': args.post_id,
         'config_path': str(config_path),
+        'session_mode': session_mode,
+        'session_directory': str(session_directory),
+        'source_session_directory': str(source_session_directory),
     }
 
     try:
-        async with build_client(config, session_directory=session_directory) as client:
-            me = await client.get_me()
-            result['account'] = {
-                'id': getattr(me, 'id', None),
-                'username': getattr(me, 'username', None),
-            }
-
-            channel = args.channel.rstrip('/')
-            if channel.startswith('https://t.me/'):
-                channel = channel.rsplit('/', 1)[-1]
-
-            reply_chat_id, reply_message_id, root_message_id = await discussion_util._resolve_discussion_thread(
-                client,
-                channel,
-                args.post_id
+        try:
+            result.update(await run_with_session(config, session_directory, channel, args.post_id))
+        except (sqlite3.OperationalError, OSError) as error:
+            if not args.live_session or not _session_locked(error):
+                raise
+            result['session_fallback'] = (
+                'Live session is locked because TRMD is running; retrying with a temporary session copy.'
             )
-            result['discussion_thread'] = {
-                'reply_chat_id': reply_chat_id,
-                'reply_message_id': reply_message_id,
-                'root_message_id': root_message_id,
-            }
-
-            channel_raw = []
-            async for message in client.get_discussion_replies(channel, args.post_id):
-                channel_raw.append(message_brief(message))
-            result['channel_peer_raw_count'] = len(channel_raw)
-            result['channel_peer_raw'] = channel_raw[:20]
-
-            raw_replies = await discussion_util._collect_discussion_replies(
-                client,
-                reply_chat_id,
-                reply_message_id,
-                root_message_id
-            )
-            grouped = discussion_util._index_replies_by_media_group(raw_replies)
-            result['discussion_peer_raw_count'] = len(raw_replies)
-            result['discussion_peer_raw'] = [message_brief(item) for item in raw_replies[:20]]
-            result['media_groups'] = {
-                str(key): [message_brief(item) for item in values]
-                for key, values in grouped.items()
-            }
-
-            expanded = []
-            async for message in discussion_util.iter_discussion_reply_messages(client, channel, args.post_id):
-                expanded.append(message_brief(message))
-            result['expanded_count'] = len(expanded)
-            result['expanded'] = expanded
+            copied_session_directory = copy_session_to_temp_directory(config)
+            session_directory = copied_session_directory
+            result['session_mode'] = 'copy_after_live_lock'
+            result['session_directory'] = str(session_directory)
+            result.update(await run_with_session(config, session_directory, channel, args.post_id))
 
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
