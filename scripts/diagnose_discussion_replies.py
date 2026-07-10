@@ -9,9 +9,14 @@ import sqlite3
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import yaml
+
+# Isolate CLI args before TRMD's global argparse (module.utils.parser.PARSE_ARGS) runs on import.
+CLI_ARGV = sys.argv[1:]
+sys.argv = [sys.argv[0]]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -38,6 +43,9 @@ def config_path_from_args(path: str | None) -> Path:
     env_path = os.environ.get('TRMD_CONFIG')
     if env_path:
         return Path(env_path).expanduser()
+    docker_default = Path('/app/TRMD/config.yaml')
+    if docker_default.exists():
+        return docker_default
     return Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'TRMD' / '.CONFIG.yaml'
 
 
@@ -84,7 +92,27 @@ def build_client(config: dict, session_directory: Path | None = None):
     )
 
 
-async def run(args: argparse.Namespace) -> int:
+def parse_cli(argv: list[str]) -> SimpleNamespace:
+    parser = argparse.ArgumentParser(
+        prog='trmd-diagnose-discussion',
+        description='Diagnose discussion reply capture for one channel post.'
+    )
+    parser.add_argument('--channel', default='https://t.me/hdydydey', help='Channel link or username.')
+    parser.add_argument('--post-id', type=int, required=True, help='Channel post message id.')
+    parser.add_argument(
+        '--config',
+        dest='config',
+        help='TRMD config path. Defaults to TRMD_CONFIG, /app/TRMD/config.yaml, or ~/.config/TRMD/.CONFIG.yaml.'
+    )
+    parser.add_argument(
+        '--live-session',
+        action='store_true',
+        help='Use configured session directly instead of a temporary read-only copy.'
+    )
+    return parser.parse_args(argv)
+
+
+async def run(args: SimpleNamespace) -> int:
     from module import __version__
     from module.util import (
         _collect_discussion_replies,
@@ -164,18 +192,5 @@ async def run(args: argparse.Namespace) -> int:
             shutil.rmtree(copied_session_directory, ignore_errors=True)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Diagnose discussion reply capture for one channel post.')
-    parser.add_argument('--channel', default='https://t.me/hdydydey', help='Channel link or username.')
-    parser.add_argument('--post-id', type=int, required=True, help='Channel post message id.')
-    parser.add_argument('--config', help='TRMD config path. Defaults to TRMD_CONFIG or /app/TRMD/config.yaml in Docker.')
-    parser.add_argument(
-        '--live-session',
-        action='store_true',
-        help='Use configured session directly instead of a temporary read-only copy.'
-    )
-    return parser.parse_args()
-
-
 if __name__ == '__main__':
-    raise SystemExit(asyncio.run(run(parse_args())))
+    raise SystemExit(asyncio.run(run(parse_cli(CLI_ARGV))))
