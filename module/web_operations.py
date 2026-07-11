@@ -780,7 +780,7 @@ class WebOperationsMixin:
         global_config = merge_allowed_settings(
             target=deepcopy(self.gc.config),
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'}
+            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch', 'deep_link'}
         )
         user_config = UserConfig.normalize_runtime_numbers(user_config)
         self.app.save_config(user_config)

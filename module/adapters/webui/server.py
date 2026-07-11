@@ -1368,6 +1368,9 @@ class WebUiServer:
             },
             'upload_pending_limit': {'min': 1, 'max': 5},
             'comment_delay_minutes': {'min': 0, 'max': 1440},
+            'deep_link': {
+                'timeout_seconds': {'min': 1, 'max': 600},
+            },
             'target_profiles': {
                 'pikpak': {
                     'max_file_size': {'min': 1}
@@ -1468,7 +1471,7 @@ def save_runtime_settings(payload: dict) -> dict:
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'},
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch', 'deep_link'},
         gc=global_config
     )
     user.save_config(user_config)
