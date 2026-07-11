@@ -336,6 +336,43 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertGreaterEqual(counts['cleanup_log'], 1)
             self.assertIsNotNone(store.get_live_transfer_watch(watch_id))
 
+    def test_transfer_store_purges_old_system_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            store.add_system_log('watch', 'message_received', 'new message')
+            old_cutoff = TransferStore.retention_cutoff_iso(
+                TransferStore.SYSTEM_LOGS_RETENTION_DAYS + 1
+            )
+            with store.connect(run_maintenance=False) as conn:
+                conn.execute(
+                    'UPDATE system_logs SET created_at = ?',
+                    (old_cutoff,)
+                )
+            store.add_system_log('watch', 'message_received', 'fresh message')
+
+            counts = store.purge_old_event_records(force=True)
+
+            self.assertGreaterEqual(counts['system_logs'], 1)
+            logs, total = store.list_system_logs(limit=10)
+            messages = {row['message'] for row in logs}
+            self.assertIn('fresh message', messages)
+            self.assertNotIn('new message', messages)
+
+    def test_list_system_logs_supports_filters_and_pagination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            store.add_system_log('watch', 'message_received', 'watch log', level='info')
+            store.add_system_log('filter', 'filter_reject', 'filter log', level='warning')
+            store.add_system_log('archive', 'archive_success', 'archive log', level='info')
+
+            filtered, total = store.list_system_logs(category='filter', limit=10)
+            self.assertEqual(1, total)
+            self.assertEqual('filter log', filtered[0]['message'])
+
+            page, page_total = store.list_system_logs(limit=1, offset=1)
+            self.assertEqual(3, page_total)
+            self.assertEqual(1, len(page))
+
     def test_transfer_store_maintenance_vacuums_and_marks_last_run(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)

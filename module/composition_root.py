@@ -9,6 +9,7 @@ from module.app import Application
 from module.config import GlobalConfig
 from module.async_window import DynamicAsyncWindow
 from module.diagnostics import RichDiagnosticAdapter
+from module.persistence.system_log import SystemLogTracer
 from module.local_storage_guard import LocalStorageGuard
 from module.media_manager import MediaManager
 from module.web_task_manager import WebUITaskManager
@@ -69,6 +70,7 @@ class TrmdCompositionRoot:
     def __init__(self):
         self.gc = GlobalConfig()
         self.diagnostic = RichDiagnosticAdapter(console, log)
+        self.system_log = SystemLogTracer(diagnostic=self.diagnostic)
         self.bot = Bot(
             handler_overrides={
                 'start': self.start,

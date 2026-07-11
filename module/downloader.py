@@ -111,6 +111,7 @@ from module.transfer_progress import TransferProgressTracker
 from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
+from module.persistence.system_log import SystemLogTracer
 from module.stdio import ProgressBar, MetaData
 from module.uploader import TelegramUploader
 from module.web_ui import (
@@ -614,6 +615,21 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         except Exception as e:
             log.debug(f'记录实时监听事件失败(watch_id={watch_id}, status={status}): {e}')
 
+    def _message_chain_context(
+            self,
+            message: pyrogram.types.Message,
+            watch_id: Optional[str] = None
+    ) -> tuple[str, str, int]:
+        origin_chat_id = str(getattr(getattr(message, 'chat', None), 'id', ''))
+        message_id = int(getattr(message, 'id', 0) or 0)
+        trace_id = SystemLogTracer.make_trace_id(watch_id, origin_chat_id, message_id)
+        return trace_id, origin_chat_id, message_id
+
+    def _log_system_chain(self, **kwargs) -> None:
+        tracer = getattr(self, 'system_log', None)
+        if tracer is not None:
+            tracer.log(**kwargs)
+
     async def _run_pikpak_archive_after_forward(
             self,
             message: pyrogram.types.Message,
@@ -658,6 +674,31 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     f'PikPak archive {archive_status}: '
                     f'{archive_message or group_source_link or getattr(group_message, "id", None) or message_id}'
                 )
+            if archive_result is not None:
+                archive_status = getattr(archive_result, 'status', 'unknown')
+                archive_ok = bool(getattr(archive_result, 'ok', False))
+                self._log_system_chain(
+                    category='archive',
+                    stage='archive_success' if archive_ok else f'archive_{archive_status}',
+                    message=(
+                        f'rclone 归档成功: {getattr(archive_result, "archive_path", "") or group_source_link}'
+                        if archive_ok else
+                        f'rclone 归档失败({archive_status}): {getattr(archive_result, "message", "")}'
+                    ),
+                    level='info' if archive_ok else 'warning',
+                    source_chat_id=origin_chat_id,
+                    source_message_id=getattr(group_message, 'id', message_id),
+                    target_link=group_source_link,
+                    details={
+                        'archive_path': getattr(archive_result, 'archive_path', None),
+                        'source_folder': source_folder_from_message(
+                            group_message,
+                            fallback_chat_id=origin_chat_id,
+                            fallback_link=group_source_link
+                        ),
+                        'file_name': getattr(archive_result, 'file_name', None),
+                    }
+                )
 
     async def forward(
             self,
@@ -672,10 +713,26 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             done_notice: Optional[bool] = True,
             ignore_type_filter: Optional[bool] = False,
             archive_after_success: Optional[bool] = True,
-            watch_id: Optional[str] = None
+            watch_id: Optional[str] = None,
+            trace_id: Optional[str] = None
     ):
         try:
+            if trace_id is None:
+                trace_id, _, _ = self._message_chain_context(message, watch_id)
             if not ignore_type_filter and not self.message_filter.should_pass(message):
+                reject_reason = self.message_filter.get_reject_reason(message) or '消息过滤器拒绝'
+                self._log_system_chain(
+                    category='filter',
+                    stage='filter_reject',
+                    message=f'消息被过滤器拦截: {reject_reason}',
+                    level='info',
+                    trace_id=trace_id,
+                    watch_id=watch_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    target_link=target_link,
+                    details={'reject_reason': reject_reason}
+                )
                 console.log(
                     f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{message_id}"'
                     f' -> '
@@ -683,7 +740,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     f'{_t(KeyWord.STATUS)}:{_t(KeyWord.FORWARD_SKIP)}。'
                 )
                 if watch_id:
-                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', '跳过转发(已被消息过滤器过滤)。')
+                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', f'跳过转发(已被消息过滤器过滤: {reject_reason})。')
                 if done_notice:
                     await asyncio.create_task(
                         self.done_notice(
@@ -767,6 +824,20 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 )
             if watch_id:
                 self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'success', '转发成功。')
+            self._log_system_chain(
+                category='forward',
+                stage='forward_success',
+                message='直接转发成功',
+                trace_id=trace_id,
+                watch_id=watch_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                target_link=target_link,
+                details={
+                    'target_chat_id': str(target_chat_id),
+                    'media_group': bool(media_group)
+                }
+            )
             if archive_after_success and target_link and 'pikpak' in str(target_link).lower():
                 await self._run_pikpak_archive_after_forward(
                     message=message,
@@ -790,6 +861,18 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 raise
             link = getattr(message, 'link', None)
             if not self.gc.download_upload:
+                self._log_system_chain(
+                    category='forward',
+                    stage='forward_restricted',
+                    message='转发受限且未启用下载后上传，已跳过',
+                    level='warning',
+                    trace_id=trace_id,
+                    watch_id=watch_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    target_link=target_link,
+                    details={'source_link': link, 'error': str(e)}
+                )
                 await self.bot.bot.send_message(
                     chat_id=client.me.id,
                     text=f'⚠️⚠️⚠️无法转发⚠️⚠️⚠️\n'
@@ -810,26 +893,21 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     fallback_link=link
                 )
             )
-            # region agent log
-            try:
-                import json as _json, time as _time
-                with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                    _dbg_f.write(_json.dumps({
-                        'sessionId': 'fc7e96',
-                        'location': 'downloader.py:forward:download_upload_fallback',
-                        'message': 'forward restricted, falling back to download+upload',
-                        'data': {
-                            'source_link': link,
-                            'target_link': target_link,
-                            'task_id': upload_meta.get('task_id'),
-                            'message_id': message_id
-                        },
-                        'timestamp': int(_time.time() * 1000),
-                        'hypothesisId': 'A,B'
-                    }, ensure_ascii=False) + '\n')
-            except Exception:
-                pass
-            # endregion
+            self._log_system_chain(
+                category='transfer',
+                stage='download_fallback_start',
+                message='转发受限，回退为下载后上传',
+                trace_id=trace_id,
+                watch_id=watch_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                target_link=target_link,
+                details={
+                    'source_link': link,
+                    'task_id': upload_meta.get('task_id'),
+                    'error': str(e)
+                }
+            )
             upload_meta['bot_progress'] = await self.create_bot_transfer_progress(
                 source_link=link,
                 target_link=target_link,
@@ -1240,22 +1318,61 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             message: pyrogram.types.Message
     ):
         try:
+            origin_chat_id = str(getattr(getattr(message, 'chat', None), 'id', ''))
+            watch_id = self.watch_manager._download_chat_watch_id.get(origin_chat_id)
+            trace_id, _, message_id = self._message_chain_context(message, watch_id)
+            self._log_system_chain(
+                category='watch',
+                stage='message_received',
+                message='监听下载收到新消息',
+                trace_id=trace_id,
+                watch_id=watch_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                details={'source_link': getattr(message, 'link', None)}
+            )
             if not self.message_filter.should_pass(message):
+                reject_reason = self.message_filter.get_reject_reason(message) or '消息过滤器拒绝'
                 msg_id = getattr(message, 'id', '?')
                 log.info(f'监听下载:消息已被过滤器过滤,跳过。message_id={msg_id}')
-                # 记录过滤事件到 watch events：通过 chat_id 反查 watch_id
-                origin_chat_id = str(getattr(getattr(message, 'chat', None), 'id', ''))
-                watch_id = self.watch_manager._download_chat_watch_id.get(origin_chat_id)
+                self._log_system_chain(
+                    category='filter',
+                    stage='filter_reject',
+                    message=f'监听下载被过滤器拦截: {reject_reason}',
+                    trace_id=trace_id,
+                    watch_id=watch_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    details={'reject_reason': reject_reason}
+                )
                 if watch_id:
                     self._record_watch_event(
                         watch_id, origin_chat_id,
                         getattr(message, 'id', 0), '', '',
-                        'skipped', '消息被过滤器过滤,跳过下载。'
+                        'skipped', f'消息被过滤器过滤,跳过下载。原因: {reject_reason}'
                     )
                 return
+            self._log_system_chain(
+                category='transfer',
+                stage='download_start',
+                message='监听下载触发下载任务',
+                trace_id=trace_id,
+                watch_id=watch_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                details={'source_link': getattr(message, 'link', None)}
+            )
             await self.create_download_task(message_ids=message.link, single_link=True)
         except Exception as e:
             log.exception(f'监听下载出现错误,{_t(KeyWord.REASON)}:"{e}"')
+            self._log_system_chain(
+                category='watch',
+                stage='error',
+                message=f'监听下载异常: {e}',
+                level='error',
+                source_chat_id=str(getattr(getattr(message, 'chat', None), 'id', '')),
+                source_message_id=getattr(message, 'id', None)
+            )
 
     def check_type(self, message: pyrogram.types.Message):
         te = getattr(self, 'transfer_engine', None)
@@ -1319,6 +1436,21 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             link: str = message.link
             meta = await parse_link(client=self.app.client, link=link)
             listen_chat_id = meta.get('chat_id')
+            trace_id, origin_chat_id, message_id = self._message_chain_context(message)
+            self._log_system_chain(
+                category='watch',
+                stage='message_received',
+                message='监听转发收到新消息',
+                trace_id=trace_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                details={
+                    'source_link': link,
+                    'resolved_chat_id': listen_chat_id,
+                    'active_rules': list(self.listen_forward_chat)
+                }
+            )
+            matched = False
             for m in self.listen_forward_chat:
                 rule = parse_forward_watch_rule(m)
                 listen_link = rule.get('source_link')
@@ -1335,7 +1467,22 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 _listen_chat_id = _listen_link_meta.get('chat_id')
                 _target_chat_id = _target_link_meta.get('chat_id')
                 if listen_chat_id == _listen_chat_id:
+                    matched = True
                     watch_id = self.watch_manager.forward_watch_id(m)
+                    self._log_system_chain(
+                        category='watch',
+                        stage='rule_matched',
+                        message=f'命中监听规则: {listen_link} -> {target_link}',
+                        trace_id=trace_id,
+                        watch_id=watch_id,
+                        source_chat_id=origin_chat_id,
+                        source_message_id=message_id,
+                        target_link=target_link,
+                        details={
+                            'listen_link': listen_link,
+                            'include_comment': include_comment
+                        }
+                    )
                     try:
                         media_group_ids = await message.get_media_group()
                         if not media_group_ids:
@@ -1384,7 +1531,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 target_link=target_link,
                                 download_upload=False,
                                 media_group=sorted(ids),
-                                watch_id=watch_id
+                                watch_id=watch_id,
+                                trace_id=trace_id
                             )
                             if include_comment:
                                 await self.forward_discussion_replies(
@@ -1398,7 +1546,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             break
                         break
                     except ValueError:
-                        pass
+                        self._log_system_chain(
+                            category='forward',
+                            stage='media_group_fallback',
+                            message='媒体组直转不可用，回退单条转发(允许下载上传)',
+                            trace_id=trace_id,
+                            watch_id=watch_id,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_link=target_link
+                        )
                     await self.forward(
                         client=client,
                         message=message,
@@ -1407,7 +1564,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         target_chat_id=_target_chat_id,
                         target_link=target_link,
                         download_upload=True,
-                        watch_id=watch_id
+                        watch_id=watch_id,
+                        trace_id=trace_id
                     )
                     if include_comment:
                         await self.forward_discussion_replies(
@@ -1418,11 +1576,43 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             target_link=target_link,
                             watch_id=watch_id
                         )
+                    return
+            if not matched:
+                self._log_system_chain(
+                    category='watch',
+                    stage='rule_not_matched',
+                    message='消息来源频道未匹配任何监听转发规则',
+                    level='warning',
+                    trace_id=trace_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    details={
+                        'source_link': link,
+                        'resolved_chat_id': listen_chat_id,
+                        'active_rules': list(self.listen_forward_chat)
+                    }
+                )
         except (ValueError, KeyError, UsernameInvalid, ChatWriteForbidden) as e:
             log.error(
                 f'监听转发出现错误,{_t(KeyWord.REASON)}:{e}频道性质可能发生改变,包括但不限于(频道解散、频道名改变、频道类型改变、该账户没有在目标频道上传的权限、该账号被当前频道移除)。')
+            self._log_system_chain(
+                category='watch',
+                stage='error',
+                message=f'监听转发错误: {e}',
+                level='error',
+                source_chat_id=str(getattr(getattr(message, 'chat', None), 'id', '')),
+                source_message_id=getattr(message, 'id', None)
+            )
         except Exception as e:
             log.exception(f'监听转发出现错误,{_t(KeyWord.REASON)}:"{e}"')
+            self._log_system_chain(
+                category='watch',
+                stage='error',
+                message=f'监听转发异常: {e}',
+                level='error',
+                source_chat_id=str(getattr(getattr(message, 'chat', None), 'id', '')),
+                source_message_id=getattr(message, 'id', None)
+            )
 
     async def handle_forwarded_media(
             self,

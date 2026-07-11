@@ -512,6 +512,57 @@
   </div>
 </div>
 
+<!-- ====== System Logs View ====== -->
+<div class="view" id="view-system-logs">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h3 data-i18n="systemLogs.title">系统日志</h3>
+        <p class="text-xs text-muted mt-1" id="system-logs-retention" data-i18n="systemLogs.retentionHint">链路调试日志，自动保留 2 天</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select class="input input-sm" id="system-logs-category">
+          <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
+          <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
+          <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
+          <option value="forward" data-i18n="systemLogs.categoryForward">转发</option>
+          <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
+          <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
+        </select>
+        <select class="input input-sm" id="system-logs-level">
+          <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
+          <option value="info">INFO</option>
+          <option value="warning">WARNING</option>
+          <option value="error">ERROR</option>
+        </select>
+        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+          <input type="checkbox" id="system-logs-today">
+          <span data-i18n="systemLogs.todayOnly">仅今天</span>
+        </label>
+        <button class="btn btn-sm" id="system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
+        <button class="btn btn-sm btn-primary" id="system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
+      </div>
+    </div>
+    <div class="overflow-auto">
+      <table class="data-table system-logs-table">
+        <thead>
+          <tr>
+            <th data-i18n="systemLogs.time">时间</th>
+            <th data-i18n="systemLogs.level">级别</th>
+            <th data-i18n="systemLogs.category">分类</th>
+            <th data-i18n="systemLogs.stage">阶段</th>
+            <th data-i18n="systemLogs.message">消息</th>
+            <th data-i18n="systemLogs.context">上下文</th>
+          </tr>
+        </thead>
+        <tbody id="system-logs-tbody"></tbody>
+      </table>
+      <div id="system-logs-empty" class="p-8 text-center text-muted text-sm hidden" data-i18n="systemLogs.empty">暂无系统日志。</div>
+    </div>
+    <div id="system-logs-pagination"></div>
+  </div>
+</div>
+
 <!-- ====== Media View ====== -->
 <div class="view" id="view-media">
   <div class="panel">

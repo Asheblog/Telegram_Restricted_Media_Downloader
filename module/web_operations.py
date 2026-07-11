@@ -621,6 +621,37 @@ class WebOperationsMixin:
             return []
         return self.transfer_store.list_cleanup_logs()
 
+    def list_system_logs(
+            self,
+            limit: int = 50,
+            offset: int = 0,
+            category: str | None = None,
+            level: str | None = None,
+            trace_id: str | None = None,
+            watch_id: str | None = None,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> dict:
+        if not self.transfer_store:
+            return {'logs': [], 'total': 0, 'limit': limit, 'offset': offset}
+        logs, total = self.transfer_store.list_system_logs(
+            limit=limit,
+            offset=offset,
+            category=category,
+            level=level,
+            trace_id=trace_id,
+            watch_id=watch_id,
+            today_only=today_only,
+            tz_offset_minutes=tz_offset_minutes
+        )
+        return {
+            'logs': logs,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'retention_days': self.transfer_store.SYSTEM_LOGS_RETENTION_DAYS
+        }
+
     def get_web_settings(self) -> dict:
         return {
             'user': {
@@ -680,6 +711,9 @@ class WebOperationsMixin:
         if dl.PARSE_ARGS.web is None:
             return
         self.transfer_store = dl.TransferStore(directory=self.app.temp_directory)
+        system_log = getattr(self, 'system_log', None)
+        if system_log is not None:
+            system_log.bind(store=self.transfer_store)
         ctx = self.__dict__.get('ctx')
         if ctx is not None:
             ctx.transfer_store = self.transfer_store
@@ -937,7 +971,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
-    'cleanup_media_files', 'list_cleanup_logs',
+    'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs',
 )
 
 

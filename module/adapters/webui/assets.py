@@ -269,6 +269,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </button>
 
     <div class="sidebar-nav-label" data-i18n="nav.section.system">系统</div>
+    <button class="sidebar-nav-item" data-nav="system-logs">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 10h16M4 14h10M4 18h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.systemLogs">系统日志</span>
+    </button>
     <button class="sidebar-nav-item" data-nav="settings">
       <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98" stroke="currentColor" stroke-width="1.5"/></svg>
       <span data-i18n="nav.settings">系统设置</span>
@@ -931,6 +935,57 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ====== System Logs View ====== -->
+<div class="view" id="view-system-logs">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h3 data-i18n="systemLogs.title">系统日志</h3>
+        <p class="text-xs text-muted mt-1" id="system-logs-retention" data-i18n="systemLogs.retentionHint">链路调试日志，自动保留 2 天</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select class="input input-sm" id="system-logs-category">
+          <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
+          <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
+          <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
+          <option value="forward" data-i18n="systemLogs.categoryForward">转发</option>
+          <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
+          <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
+        </select>
+        <select class="input input-sm" id="system-logs-level">
+          <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
+          <option value="info">INFO</option>
+          <option value="warning">WARNING</option>
+          <option value="error">ERROR</option>
+        </select>
+        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+          <input type="checkbox" id="system-logs-today">
+          <span data-i18n="systemLogs.todayOnly">仅今天</span>
+        </label>
+        <button class="btn btn-sm" id="system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
+        <button class="btn btn-sm btn-primary" id="system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
+      </div>
+    </div>
+    <div class="overflow-auto">
+      <table class="data-table system-logs-table">
+        <thead>
+          <tr>
+            <th data-i18n="systemLogs.time">时间</th>
+            <th data-i18n="systemLogs.level">级别</th>
+            <th data-i18n="systemLogs.category">分类</th>
+            <th data-i18n="systemLogs.stage">阶段</th>
+            <th data-i18n="systemLogs.message">消息</th>
+            <th data-i18n="systemLogs.context">上下文</th>
+          </tr>
+        </thead>
+        <tbody id="system-logs-tbody"></tbody>
+      </table>
+      <div id="system-logs-empty" class="p-8 text-center text-muted text-sm hidden" data-i18n="systemLogs.empty">暂无系统日志。</div>
+    </div>
+    <div id="system-logs-pagination"></div>
+  </div>
+</div>
+
 <!-- ====== Media View ====== -->
 <div class="view" id="view-media">
   <div class="panel">
@@ -1228,6 +1283,7 @@ const i18n = {
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
     'nav.media': '媒体管理',
+    'nav.systemLogs': '系统日志',
     'nav.profile': '我的',
     'nav.logout': '退出登录',
     'side.failed': '失败项',
@@ -1473,6 +1529,27 @@ const i18n = {
     'records.clear': '清空记录',
     'records.confirmClear': '确定清空全部下载记录？此操作不可撤销。',
     'records.cleared': '下载记录已清空。',
+    'systemLogs.title': '系统日志',
+    'systemLogs.retentionHint': '全链路调试日志，自动保留 {days} 天',
+    'systemLogs.filterAllCategories': '全部分类',
+    'systemLogs.filterAllLevels': '全部级别',
+    'systemLogs.categoryWatch': '监听',
+    'systemLogs.categoryFilter': '过滤',
+    'systemLogs.categoryForward': '转发',
+    'systemLogs.categoryTransfer': '下载上传',
+    'systemLogs.categoryArchive': '归档',
+    'systemLogs.todayOnly': '仅今天',
+    'systemLogs.copyPage': '复制本页',
+    'systemLogs.copied': '已复制本页日志到剪贴板。',
+    'systemLogs.time': '时间',
+    'systemLogs.level': '级别',
+    'systemLogs.category': '分类',
+    'systemLogs.stage': '阶段',
+    'systemLogs.message': '消息',
+    'systemLogs.context': '上下文',
+    'systemLogs.empty': '暂无系统日志。',
+    'systemLogs.trace': '链路',
+    'systemLogs.watch': '监听',
     'form.createFailed': '创建失败。',
     'form.requestFailed': '请求失败。',
     'form.creatingTransfer': '正在分析来源消息范围…',
@@ -1535,6 +1612,7 @@ const i18n = {
     'nav.settings': 'Settings',
     'nav.records': 'Records',
     'nav.media': 'Media Mgmt',
+    'nav.systemLogs': 'System Logs',
     'nav.profile': 'Me',
     'nav.logout': 'Log Out',
     'side.failed': 'Failed items',
@@ -1780,6 +1858,27 @@ const i18n = {
     'records.clear': 'Clear All',
     'records.confirmClear': 'Clear all download records? This cannot be undone.',
     'records.cleared': 'Download records cleared.',
+    'systemLogs.title': 'System Logs',
+    'systemLogs.retentionHint': 'Full-chain debug logs, retained for {days} days',
+    'systemLogs.filterAllCategories': 'All categories',
+    'systemLogs.filterAllLevels': 'All levels',
+    'systemLogs.categoryWatch': 'Watch',
+    'systemLogs.categoryFilter': 'Filter',
+    'systemLogs.categoryForward': 'Forward',
+    'systemLogs.categoryTransfer': 'Download/Upload',
+    'systemLogs.categoryArchive': 'Archive',
+    'systemLogs.todayOnly': 'Today only',
+    'systemLogs.copyPage': 'Copy page',
+    'systemLogs.copied': 'Page logs copied to clipboard.',
+    'systemLogs.time': 'Time',
+    'systemLogs.level': 'Level',
+    'systemLogs.category': 'Category',
+    'systemLogs.stage': 'Stage',
+    'systemLogs.message': 'Message',
+    'systemLogs.context': 'Context',
+    'systemLogs.empty': 'No system logs yet.',
+    'systemLogs.trace': 'Trace',
+    'systemLogs.watch': 'Watch',
     'form.createFailed': 'Creation failed.',
     'form.requestFailed': 'Request failed.',
     'form.creatingTransfer': 'Analyzing source message range…',
@@ -2245,6 +2344,7 @@ function switchView(view) {
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
   if (view === 'media') loadMedia();
+  if (view === 'system-logs') loadSystemLogs();
 }
 
 $$('[data-nav]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.nav)));
@@ -2802,6 +2902,7 @@ $('#refresh').addEventListener('click', () => {
   if (state.activeView === 'settings') loadSettings();
   if (state.activeView === 'statistics') loadStatistics();
   if (state.activeView === 'downloads-uploads') loadOperations();
+  if (state.activeView === 'system-logs') loadSystemLogs();
 });
 
 /* ====== Logout ====== */
@@ -2881,6 +2982,124 @@ $('#records-clear-btn')?.addEventListener('click', async function() {
     alert(translateApiError(e, 'form.requestFailed'));
   }
 });
+
+/* ====== System Logs ====== */
+const SYSTEM_LOGS_PAGE_SIZE = 50;
+
+function systemLogLevelClass(level) {
+  const value = String(level || 'info').toLowerCase();
+  if (value === 'error') return 'system-log-level-error';
+  if (value === 'warning') return 'system-log-level-warning';
+  return 'system-log-level-info';
+}
+
+function formatSystemLogContext(entry) {
+  const parts = [];
+  if (entry.trace_id) parts.push(t('systemLogs.trace') + ': ' + entry.trace_id);
+  if (entry.watch_id) parts.push(t('systemLogs.watch') + ': ' + entry.watch_id);
+  if (entry.source_chat_id) parts.push('chat: ' + entry.source_chat_id);
+  if (entry.source_message_id) parts.push('msg: ' + entry.source_message_id);
+  if (entry.target_link) parts.push('target: ' + entry.target_link);
+  if (entry.details) {
+    try {
+      const parsed = typeof entry.details === 'string' ? JSON.parse(entry.details) : entry.details;
+      parts.push(JSON.stringify(parsed));
+    } catch (e) {
+      parts.push(String(entry.details));
+    }
+  }
+  return parts.join(' | ');
+}
+
+function formatSystemLogCopyLine(entry) {
+  const time = entry.created_at ? new Date(entry.created_at).toISOString() : '-';
+  const context = formatSystemLogContext(entry);
+  return '[' + time + '] [' + (entry.level || 'info').toUpperCase() + '] '
+    + '[' + (entry.category || '-') + '/' + (entry.stage || '-') + '] '
+    + (entry.message || '') + (context ? ' | ' + context : '');
+}
+
+async function loadSystemLogs(page) {
+  if (page !== undefined) state.systemLogsPage = page;
+  const currentPage = state.systemLogsPage || 1;
+  const tbody = $('#system-logs-tbody');
+  const empty = $('#system-logs-empty');
+  const pagEl = $('#system-logs-pagination');
+  const retentionEl = $('#system-logs-retention');
+  const category = $('#system-logs-category')?.value || '';
+  const level = $('#system-logs-level')?.value || '';
+  const todayOnly = $('#system-logs-today')?.checked ? '1' : '0';
+  try {
+    const offset = (currentPage - 1) * SYSTEM_LOGS_PAGE_SIZE;
+    const query = '/api/system-logs?limit=' + SYSTEM_LOGS_PAGE_SIZE + '&offset=' + offset
+      + '&today=' + todayOnly
+      + (category ? '&category=' + encodeURIComponent(category) : '')
+      + (level ? '&level=' + encodeURIComponent(level) : '');
+    const data = await fetchJson(withClientTzQuery(query));
+    const logs = data.logs || [];
+    const total = Number(data.total || 0);
+    state.systemLogs = logs;
+    state.systemLogsTotal = total;
+    if (retentionEl) {
+      retentionEl.textContent = t('systemLogs.retentionHint').replace('{days}', data.retention_days || 2);
+    }
+    const totalPages = Math.max(1, Math.ceil(total / SYSTEM_LOGS_PAGE_SIZE) || 1);
+    if (currentPage > totalPages && total > 0) {
+      state.systemLogsPage = totalPages;
+      return loadSystemLogs(totalPages);
+    }
+    if (!logs.length) {
+      tbody.innerHTML = '';
+      empty.classList.remove('hidden');
+      if (pagEl) pagEl.innerHTML = '';
+      return;
+    }
+    empty.classList.add('hidden');
+    tbody.innerHTML = logs.map(function(entry) {
+      const timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
+      const context = formatSystemLogContext(entry);
+      return '<tr class="system-log-row" data-log-id="' + esc(String(entry.id || '')) + '">' +
+        '<td class="whitespace-nowrap text-xs">' + esc(timeText) + '</td>' +
+        '<td><span class="system-log-level ' + systemLogLevelClass(entry.level) + '">' + esc((entry.level || 'info').toUpperCase()) + '</span></td>' +
+        '<td class="text-xs">' + esc(entry.category || '-') + '</td>' +
+        '<td class="text-xs font-mono">' + esc(entry.stage || '-') + '</td>' +
+        '<td class="text-sm">' + esc(entry.message || '') + '</td>' +
+        '<td class="text-xs text-muted font-mono system-log-context" title="' + esc(context) + '">' + esc(context) + '</td>' +
+      '</tr>';
+    }).join('');
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'system-logs',
+        page: currentPage,
+        pageSize: SYSTEM_LOGS_PAGE_SIZE,
+        total: total
+      });
+      bindPaginationBar('system-logs', currentPage, totalPages, function(nextPage) {
+        state.systemLogsPage = nextPage;
+        loadSystemLogs(nextPage);
+      });
+    }
+  } catch (e) {
+    if (e.error_code === 'auth_required') redirectToLoginPage();
+  }
+}
+
+function copySystemLogsPage() {
+  const logs = state.systemLogs || [];
+  if (!logs.length) return;
+  const text = logs.map(formatSystemLogCopyLine).join('\n');
+  navigator.clipboard.writeText(text).then(function() {
+    alert(t('systemLogs.copied'));
+  }).catch(function() {
+    prompt(t('systemLogs.copyPage'), text);
+  });
+}
+
+$('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(); });
+$('#system-logs-copy-btn')?.addEventListener('click', copySystemLogsPage);
+$('#system-logs-category')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
+$('#system-logs-level')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
+$('#system-logs-today')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 
 /* ====== Watches ====== */
 async function loadWatches() {
@@ -4648,6 +4867,7 @@ const i18n = {
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
     'nav.media': '媒体管理',
+    'nav.systemLogs': '系统日志',
     'nav.profile': '我的',
     'nav.logout': '退出登录',
     'side.failed': '失败项',
@@ -4893,6 +5113,27 @@ const i18n = {
     'records.clear': '清空记录',
     'records.confirmClear': '确定清空全部下载记录？此操作不可撤销。',
     'records.cleared': '下载记录已清空。',
+    'systemLogs.title': '系统日志',
+    'systemLogs.retentionHint': '全链路调试日志，自动保留 {days} 天',
+    'systemLogs.filterAllCategories': '全部分类',
+    'systemLogs.filterAllLevels': '全部级别',
+    'systemLogs.categoryWatch': '监听',
+    'systemLogs.categoryFilter': '过滤',
+    'systemLogs.categoryForward': '转发',
+    'systemLogs.categoryTransfer': '下载上传',
+    'systemLogs.categoryArchive': '归档',
+    'systemLogs.todayOnly': '仅今天',
+    'systemLogs.copyPage': '复制本页',
+    'systemLogs.copied': '已复制本页日志到剪贴板。',
+    'systemLogs.time': '时间',
+    'systemLogs.level': '级别',
+    'systemLogs.category': '分类',
+    'systemLogs.stage': '阶段',
+    'systemLogs.message': '消息',
+    'systemLogs.context': '上下文',
+    'systemLogs.empty': '暂无系统日志。',
+    'systemLogs.trace': '链路',
+    'systemLogs.watch': '监听',
     'form.createFailed': '创建失败。',
     'form.requestFailed': '请求失败。',
     'form.creatingTransfer': '正在分析来源消息范围…',
@@ -4955,6 +5196,7 @@ const i18n = {
     'nav.settings': 'Settings',
     'nav.records': 'Records',
     'nav.media': 'Media Mgmt',
+    'nav.systemLogs': 'System Logs',
     'nav.profile': 'Me',
     'nav.logout': 'Log Out',
     'side.failed': 'Failed items',
@@ -5200,6 +5442,27 @@ const i18n = {
     'records.clear': 'Clear All',
     'records.confirmClear': 'Clear all download records? This cannot be undone.',
     'records.cleared': 'Download records cleared.',
+    'systemLogs.title': 'System Logs',
+    'systemLogs.retentionHint': 'Full-chain debug logs, retained for {days} days',
+    'systemLogs.filterAllCategories': 'All categories',
+    'systemLogs.filterAllLevels': 'All levels',
+    'systemLogs.categoryWatch': 'Watch',
+    'systemLogs.categoryFilter': 'Filter',
+    'systemLogs.categoryForward': 'Forward',
+    'systemLogs.categoryTransfer': 'Download/Upload',
+    'systemLogs.categoryArchive': 'Archive',
+    'systemLogs.todayOnly': 'Today only',
+    'systemLogs.copyPage': 'Copy page',
+    'systemLogs.copied': 'Page logs copied to clipboard.',
+    'systemLogs.time': 'Time',
+    'systemLogs.level': 'Level',
+    'systemLogs.category': 'Category',
+    'systemLogs.stage': 'Stage',
+    'systemLogs.message': 'Message',
+    'systemLogs.context': 'Context',
+    'systemLogs.empty': 'No system logs yet.',
+    'systemLogs.trace': 'Trace',
+    'systemLogs.watch': 'Watch',
     'form.createFailed': 'Creation failed.',
     'form.requestFailed': 'Request failed.',
     'form.creatingTransfer': 'Analyzing source message range…',

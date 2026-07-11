@@ -83,15 +83,42 @@ class MessageFilter:
         Returns:
             True 表示消息应被处理，False 表示应跳过。
         """
+        passed, _reason = self.check_pass_with_reason(message)
+        return passed
+
+    def check_pass_with_reason(self, message: pyrogram.types.Message) -> tuple[bool, Optional[str]]:
+        """判断消息是否通过过滤，并返回拒绝原因（若被拒绝）。"""
         if not self.enabled:
-            return True
+            return True, None
         if not self._check_media_type(message):
-            return False
+            enabled_types = [k for k, v in self.media_types.items() if v]
+            return False, f'媒体类型不匹配(允许: {", ".join(enabled_types) or "全部"})'
         if not self._check_date_range(message):
-            return False
-        if not self._check_keywords(message):
-            return False
-        return True
+            return False, '消息日期不在允许范围内'
+        reject_keyword = self._reject_keyword(message)
+        if reject_keyword:
+            return False, f'命中过滤关键词: {reject_keyword}'
+        return True, None
+
+    def get_reject_reason(self, message: pyrogram.types.Message) -> Optional[str]:
+        """若消息被过滤则返回原因，否则返回 None。"""
+        passed, reason = self.check_pass_with_reason(message)
+        if passed:
+            return None
+        return reason
+
+    def _reject_keyword(self, message: pyrogram.types.Message) -> Optional[str]:
+        if not self.keywords_enabled:
+            return None
+        words = self.keywords
+        if not words:
+            return None
+        text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ''
+        text_lower = text.lower()
+        for keyword in words:
+            if keyword.lower() in text_lower:
+                return keyword
+        return None
 
     # ── 各维度检查方法 ──
 
@@ -130,14 +157,7 @@ class MessageFilter:
 
     def _check_keywords(self, message: pyrogram.types.Message) -> bool:
         """排除包含关键词的消息（黑名单模式）。"""
-        if not self.keywords_enabled:
-            return True
-        words = self.keywords
-        if not words:
-            return True
-        text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ''
-        text_lower = text.lower()
-        return not any(kw.lower() in text_lower for kw in words)
+        return self._reject_keyword(message) is None
 
     # ── 兼容旧版 static 方法（供 download_chat 的 per-chat 过滤使用）──
 

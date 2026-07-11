@@ -595,6 +595,27 @@ class WebUiServer:
                 if parsed.path == '/api/media/cleanup-logs':
                     self._send_json({'logs': server.list_cleanup_logs()})
                     return
+                if parsed.path == '/api/system-logs':
+                    query = parse_qs(parsed.query)
+                    limit = self._query_int(query, 'limit', 50)
+                    offset = self._query_int(query, 'offset', 0)
+                    category = (query.get('category') or [None])[0]
+                    level = (query.get('level') or [None])[0]
+                    trace_id = (query.get('trace_id') or [None])[0]
+                    watch_id = (query.get('watch_id') or [None])[0]
+                    today_only = (query.get('today') or ['0'])[0] in ('1', 'true', 'yes')
+                    tz_offset = self._query_int(query, 'tz_offset', None)
+                    self._send_json(server.list_system_logs(
+                        limit=limit,
+                        offset=offset,
+                        category=category,
+                        level=level,
+                        trace_id=trace_id,
+                        watch_id=watch_id,
+                        today_only=today_only,
+                        tz_offset_minutes=tz_offset
+                    ))
+                    return
                 self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
             def do_POST(self):
@@ -1211,6 +1232,49 @@ class WebUiServer:
         if list_cleanup_logs:
             return list_cleanup_logs()
         return []
+
+    def list_system_logs(
+            self,
+            limit: int = 50,
+            offset: int = 0,
+            category: str | None = None,
+            level: str | None = None,
+            trace_id: str | None = None,
+            watch_id: str | None = None,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> dict:
+        list_system_logs = self._operation('list_system_logs')
+        if list_system_logs:
+            return list_system_logs(
+                limit=limit,
+                offset=offset,
+                category=category,
+                level=level,
+                trace_id=trace_id,
+                watch_id=watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
+        if self.store and hasattr(self.store, 'list_system_logs'):
+            logs, total = self.store.list_system_logs(
+                limit=limit,
+                offset=offset,
+                category=category,
+                level=level,
+                trace_id=trace_id,
+                watch_id=watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
+            return {
+                'logs': logs,
+                'total': total,
+                'limit': limit,
+                'offset': offset,
+                'retention_days': self.store.SYSTEM_LOGS_RETENTION_DAYS
+            }
+        return {'logs': [], 'total': 0, 'limit': limit, 'offset': offset}
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())

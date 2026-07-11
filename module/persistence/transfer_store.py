@@ -23,6 +23,7 @@ class TransferStore:
     TRANSFER_EVENTS_RETENTION_DAYS = 90
     LIVE_WATCH_EVENTS_RETENTION_DAYS = 30
     CLEANUP_LOG_RETENTION_DAYS = 30
+    SYSTEM_LOGS_RETENTION_DAYS = 2
     VACUUM_FREE_PAGE_THRESHOLD = 512
 
     def __init__(self, directory: str):
@@ -242,6 +243,21 @@ class TransferStore:
                     message TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS system_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trace_id TEXT,
+                    category TEXT NOT NULL,
+                    level TEXT NOT NULL DEFAULT 'info',
+                    stage TEXT NOT NULL,
+                    watch_id TEXT,
+                    source_chat_id TEXT,
+                    source_message_id INTEGER,
+                    target_link TEXT,
+                    message TEXT NOT NULL,
+                    details TEXT,
+                    created_at TEXT NOT NULL
+                );
                 '''
             )
             self._ensure_columns(
@@ -280,6 +296,12 @@ class TransferStore:
                 ON live_watch_events(watch_id, id DESC);
             CREATE INDEX IF NOT EXISTS idx_live_watch_events_watch_created
                 ON live_watch_events(watch_id, created_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_system_logs_created_order
+                ON system_logs(created_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_system_logs_trace_order
+                ON system_logs(trace_id, id ASC);
+            CREATE INDEX IF NOT EXISTS idx_system_logs_category_created
+                ON system_logs(category, created_at DESC, id DESC);
             '''
         )
 
@@ -368,6 +390,19 @@ class TransferStore:
             )
             return int(cursor.rowcount or 0)
 
+    def purge_old_system_logs(
+            self,
+            retention_days: int = SYSTEM_LOGS_RETENTION_DAYS,
+            cutoff_at: str | None = None
+    ) -> int:
+        cutoff = cutoff_at or self.retention_cutoff_iso(retention_days)
+        with self.connect(run_maintenance=False) as conn:
+            cursor = conn.execute(
+                'DELETE FROM system_logs WHERE created_at < ?',
+                (cutoff,)
+            )
+            return int(cursor.rowcount or 0)
+
     def purge_old_event_records(
             self,
             force: bool = False,
@@ -386,6 +421,7 @@ class TransferStore:
             'transfer_events': self.purge_old_transfer_events(),
             'live_watch_events': self.purge_old_live_watch_events(),
             'cleanup_log': self.purge_old_cleanup_logs(),
+            'system_logs': self.purge_old_system_logs(),
         }
         try:
             with open(marker_path, 'w', encoding='UTF-8') as marker:
@@ -1549,3 +1585,85 @@ class TransferStore:
                 (watch_id,)
             )
             return int(cursor.rowcount)
+
+    # --- system_logs ---
+
+    def add_system_log(
+            self,
+            category: str,
+            stage: str,
+            message: str,
+            level: str = 'info',
+            trace_id: Optional[str] = None,
+            watch_id: Optional[str] = None,
+            source_chat_id: Optional[str] = None,
+            source_message_id: Optional[int] = None,
+            target_link: Optional[str] = None,
+            details: Optional[dict | str] = None
+    ) -> int:
+        import json
+        details_text = None
+        if details is not None:
+            details_text = details if isinstance(details, str) else json.dumps(details, ensure_ascii=False)
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                INSERT INTO system_logs (
+                    trace_id, category, level, stage, watch_id,
+                    source_chat_id, source_message_id, target_link,
+                    message, details, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    trace_id, category, level, stage, watch_id,
+                    source_chat_id, source_message_id, target_link,
+                    message, details_text, self.utc_now()
+                )
+            )
+            return int(cursor.lastrowid)
+
+    def list_system_logs(
+            self,
+            limit: int = 50,
+            offset: int = 0,
+            category: Optional[str] = None,
+            level: Optional[str] = None,
+            trace_id: Optional[str] = None,
+            watch_id: Optional[str] = None,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> tuple[list[Dict[str, Any]], int]:
+        where_parts: list[str] = []
+        params: list[Any] = []
+        if category:
+            where_parts.append('category = ?')
+            params.append(category)
+        if level:
+            where_parts.append('level = ?')
+            params.append(level)
+        if trace_id:
+            where_parts.append('trace_id = ?')
+            params.append(trace_id)
+        if watch_id:
+            where_parts.append('watch_id = ?')
+            params.append(watch_id)
+        if today_only:
+            start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
+            where_parts.append('created_at >= ? AND created_at < ?')
+            params.extend([start_at, end_at])
+        where_sql = ' AND '.join(where_parts) if where_parts else '1=1'
+        with self.connect() as conn:
+            total = int(conn.execute(
+                f'SELECT COUNT(*) FROM system_logs WHERE {where_sql}',
+                params
+            ).fetchone()[0])
+            rows = conn.execute(
+                f'''
+                SELECT * FROM system_logs
+                WHERE {where_sql}
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                ''',
+                [*params, limit, offset]
+            ).fetchall()
+            return [dict(row) for row in rows], total

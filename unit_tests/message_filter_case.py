@@ -135,6 +135,16 @@ class MessageFilterTestCase(unittest.TestCase):
         msg = make_message(text="today's weather")
         self.assertTrue(f.should_pass(msg))
 
+    def test_get_reject_reason_for_keyword(self):
+        f = MessageFilter({'keywords': {'enabled': True, 'words': ['电影']}})
+        msg = make_message(text='好看的电影推荐')
+        self.assertEqual('命中过滤关键词: 电影', f.get_reject_reason(msg))
+
+    def test_get_reject_reason_none_when_passed(self):
+        f = MessageFilter({'keywords': {'enabled': True, 'words': ['电影']}})
+        msg = make_message(text='today weather')
+        self.assertIsNone(f.get_reject_reason(msg))
+
     # ── AND 组合逻辑 ──
 
     def test_all_filters_must_pass(self):
