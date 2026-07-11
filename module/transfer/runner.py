@@ -681,18 +681,27 @@ class WebTransferRunner:
             except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
                 if not host.gc.download_upload:
                     raise
-                fallback_link = getattr(message, 'link', None) or source_link
                 host.transfer_store.add_event(
                     int(task.get('id')),
                     f'Direct forward fallback for {source_link}: {e}',
                     level='warning'
                 )
-                await self.create_web_transfer_fallback_download(
-                    task=task,
-                    source_link=fallback_link,
-                    message=None if fallback_link else message,
-                    range_message_id=range_message_id
-                )
+                if resolved_meta is not None:
+                    # Deep-link media lives in bot DM — never re-fetch the channel teaser.
+                    await self.create_web_transfer_fallback_download(
+                        task=task,
+                        source_link=source_link,
+                        message=message,
+                        range_message_id=range_message_id
+                    )
+                else:
+                    fallback_link = getattr(message, 'link', None) or source_link
+                    await self.create_web_transfer_fallback_download(
+                        task=task,
+                        source_link=fallback_link,
+                        message=None if fallback_link else message,
+                        range_message_id=range_message_id
+                    )
                 return True
 
     async def transfer_web_discussion_replies_to_target(

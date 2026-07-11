@@ -174,6 +174,54 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertEqual(1, item['source_message_id'])
             self.assertIn('timeout', item['error_message'])
 
+    def test_resolve_success_forward_fallback_uses_resolved_message(self):
+        from pyrogram.errors import ChatForwardsRestricted
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/target',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolved = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+                _deep_link_meta={'bot': 'a82bot', 'start_param': 'v_abc'},
+            )
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+
+            async def restricted_forward(**kwargs):
+                raise ChatForwardsRestricted('restricted')
+
+            host = _make_host(store, resolver=resolver, forward=restricted_forward)
+            runner = WebTransferRunner(host)
+            runner.create_web_transfer_fallback_download = AsyncMock()
+            channel_msg = SimpleNamespace(
+                id=1,
+                empty=False,
+                link='https://t.me/source/1',
+                chat=SimpleNamespace(id='source-chat', username='source'),
+                video=None,
+            )
+
+            result = asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1',
+            ))
+
+            self.assertTrue(result)
+            runner.create_web_transfer_fallback_download.assert_awaited_once()
+            kwargs = runner.create_web_transfer_fallback_download.await_args.kwargs
+            self.assertIs(resolved, kwargs['message'])
+            self.assertEqual('https://t.me/source/1', kwargs['source_link'])
+
 
 if __name__ == '__main__':
     unittest.main()
