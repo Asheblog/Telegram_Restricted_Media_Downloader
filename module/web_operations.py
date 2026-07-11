@@ -823,7 +823,8 @@ class WebOperationsMixin:
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
             password=get_web_password_from_env(),
-            diagnostic=getattr(self, 'diagnostic', None)
+            diagnostic=getattr(self, 'diagnostic', None),
+            deep_link_whitelist_getter=lambda: self.gc.get_deep_link_bot_whitelist(),
         )
         if with_auth_provider:
             from module.web_ui import AuthProvider

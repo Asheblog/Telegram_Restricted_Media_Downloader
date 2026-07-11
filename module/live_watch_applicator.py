@@ -60,7 +60,10 @@ class LiveWatchApplicator:
             source_link = payload.get('source_link')
             target_link = payload.get('target_link')
             include_comment = bool(payload.get('include_comment'))
-            rule = make_forward_watch_rule(source_link, target_link, include_comment)
+            resolve_deep_link = bool(payload.get('resolve_deep_link'))
+            rule = make_forward_watch_rule(
+                source_link, target_link, include_comment, resolve_deep_link
+            )
             watch_id = host.forward_watch_id(rule)
             if rule in host.listen_forward_chat:
                 host.set_live_watch_status(watch_id, TransferStatus.RUNNING)
