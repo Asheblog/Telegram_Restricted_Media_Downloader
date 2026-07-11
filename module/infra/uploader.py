@@ -197,6 +197,94 @@ class TelegramUploader:
         if delete_file and upload_task.with_delete:
             safe_delete(upload_task.file_path)
 
+    def _transfer_upload_registry(self) -> dict[int, set]:
+        return self.__dict__.setdefault('_transfer_upload_tasks', {})
+
+    def _register_transfer_upload_task(self, upload_task: UploadTask, upload_async_task: asyncio.Task) -> None:
+        task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+        if task_id is None or upload_async_task is None:
+            return
+        self._transfer_upload_registry().setdefault(int(task_id), set()).add(upload_async_task)
+
+    def _unregister_transfer_upload_task(self, upload_task: UploadTask, upload_async_task: asyncio.Task) -> None:
+        task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+        if task_id is None:
+            return
+        registry = self._transfer_upload_registry()
+        tasks = registry.get(int(task_id))
+        if not tasks:
+            return
+        tasks.discard(upload_async_task)
+        if not tasks:
+            registry.pop(int(task_id), None)
+
+    def _pause_upload_task(self, upload_task: UploadTask) -> None:
+        upload_task.release_window()
+        meta = getattr(upload_task, 'transfer_meta', {}) or {}
+        item_id = meta.get('item_id')
+        task_id = meta.get('task_id')
+        store = getattr(self.upload_context, 'transfer_store', None)
+        if store and item_id:
+            item = store.get_item(int(item_id)) or {}
+            store.update_item_progress(
+                item_id=int(item_id),
+                phase='uploading',
+                upload_current=int(item.get('upload_current') or 0),
+                upload_total=int(item.get('upload_total') or upload_task.file_size or 0),
+                upload_speed_bps=0
+            )
+        if store and task_id:
+            store.add_event(
+                int(task_id),
+                f'Upload paused: {upload_task.file_name}',
+                level='warning',
+                item_id=int(item_id) if item_id else None
+            )
+
+    def pause_uploads_for_task(self, task_id: int) -> int:
+        paused = self._drop_uploads_for_task_from_queue_on_pause(task_id)
+        registry = self._transfer_upload_registry()
+        async_tasks = list(registry.pop(int(task_id), set()))
+        cancelled_async = False
+        for async_task in async_tasks:
+            if async_task and not async_task.done():
+                async_task.cancel()
+                cancelled_async = True
+                paused += 1
+        if not cancelled_async:
+            paused += self._pause_active_upload_tasks_for_task(task_id)
+        return paused
+
+    def _drop_uploads_for_task_from_queue_on_pause(self, task_id: int) -> int:
+        kept = []
+        dropped = 0
+        while True:
+            try:
+                item = self.upload_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            media, upload_task = item
+            if self._upload_task_matches_task_id(upload_task, task_id):
+                self._pause_upload_task(upload_task)
+                dropped += 1
+            else:
+                kept.append(item)
+            self.upload_queue.task_done()
+        for item in kept:
+            self.upload_queue.put_nowait(item)
+        return dropped
+
+    def _pause_active_upload_tasks_for_task(self, task_id: int) -> int:
+        paused = 0
+        for upload_task in list(UploadTask.TASKS):
+            if not self._upload_task_matches_task_id(upload_task, task_id):
+                continue
+            if upload_task.status != UploadStatus.UPLOADING:
+                continue
+            self._pause_upload_task(upload_task)
+            paused += 1
+        return paused
+
     def cancel_uploads_for_task(self, task_id: int) -> int:
         cancelled = self._drop_uploads_for_task_from_queue(task_id)
         cancelled += self._cancel_active_uploads_for_task(task_id)
@@ -268,6 +356,9 @@ class TelegramUploader:
             self.diagnostic.info(f'需要上传的分片:{len(missing_parts)}/{file_total_parts}')
         # 上传缺失的分片。
         for part_index in missing_parts:
+            transfer_task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+            if transfer_task_id and not self._should_continue_upload_for_task(int(transfer_task_id)):
+                raise asyncio.CancelledError()
             try:
                 part_size = 512 * 1024
                 await self.upload_file_part(upload_task, part_index)
@@ -403,7 +494,7 @@ class TelegramUploader:
 
                 task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
                 if task_id and not self._should_continue_upload_for_task(int(task_id)):
-                    self._skip_upload_task(upload_task, 'Transfer task deleted or stopped')
+                    self._pause_upload_task(upload_task)
                     continue
 
                 self.diagnostic.info(
@@ -831,6 +922,13 @@ class TelegramUploader:
                 )
             )
         )
+        self._register_transfer_upload_task(upload_task, _task)
+        _task.add_done_callback(
+            partial(
+                self._unregister_transfer_upload_task,
+                upload_task
+            )
+        )
         _task.add_done_callback(
             partial(
                 self.upload_complete_callback,
@@ -855,6 +953,14 @@ class TelegramUploader:
     ):
         try:
             _ = _future.result()
+        except asyncio.CancelledError:
+            self.current_task_num -= 1
+            self.pb.progress.remove_task(task_id=task_id)
+            self.event.set()
+            transfer_task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
+            if transfer_task_id and not self._should_continue_upload_for_task(int(transfer_task_id)):
+                self._pause_upload_task(upload_task)
+            return
         except Exception as e:
             self.current_task_num -= 1
             self.pb.progress.remove_task(task_id=task_id)

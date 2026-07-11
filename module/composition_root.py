@@ -190,6 +190,7 @@ class TrmdCompositionRoot:
                 self._ensure_media_manager().cleanup_task_files(task_id)
             ),
             cancel_task_uploads_getter=self.cancel_task_uploads,
+            pause_task_uploads_getter=self.pause_task_uploads,
             cancel_task_downloads_getter=self.cancel_task_downloads,
             should_continue_web_transfer_task_getter=None,
         )

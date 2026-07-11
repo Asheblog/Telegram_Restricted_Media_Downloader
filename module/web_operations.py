@@ -65,6 +65,12 @@ class WebOperationsMixin:
             return int(uploader.cancel_uploads_for_task(task_id) or 0)
         return 0
 
+    def pause_task_uploads(self, task_id: int) -> int:
+        uploader = getattr(self, 'uploader', None)
+        if uploader and hasattr(uploader, 'pause_uploads_for_task'):
+            return int(uploader.pause_uploads_for_task(task_id) or 0)
+        return 0
+
     def _transfer_download_registry(self) -> dict:
         return self.__dict__.setdefault('_transfer_download_tasks', {})
 
@@ -218,6 +224,7 @@ class WebOperationsMixin:
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
         self.cancel_task_downloads(task_id)
+        self.pause_task_uploads(task_id)
         self.discard_web_task_submission(task_id, cancel_running=True)
         return True
 
@@ -925,7 +932,7 @@ class WebOperationsMixin:
 
 
 _WEB_UI_DELEGATE_METHODS = (
-    'should_continue_web_transfer_task', 'cancel_task_uploads', 'cancel_task_downloads', 'submit_web_task',
+    'should_continue_web_transfer_task', 'cancel_task_uploads', 'pause_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
     'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
