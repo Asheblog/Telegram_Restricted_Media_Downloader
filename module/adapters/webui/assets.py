@@ -5809,6 +5809,7 @@ async function submitAuth(payload) {
 var pollTimer = null;
 var initialLoadDone = false;
 var mobileSettingsLoadPromise = null;
+var mobExpandedWatchEvents = {};
 
 function hasActiveTasks() {
   return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) {
@@ -6190,8 +6191,21 @@ function renderMobWatches() {
       if (!panel) return;
       var isHidden = panel.classList.contains('hidden');
       panel.classList.toggle('hidden');
-      if (isHidden) loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
+      if (isHidden) {
+        mobExpandedWatchEvents[btn.dataset.sanitized] = btn.dataset.eventsWatch;
+        loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
+      } else {
+        delete mobExpandedWatchEvents[btn.dataset.sanitized];
+      }
     });
+  });
+  Object.keys(mobExpandedWatchEvents).forEach(function(sanitized) {
+    var panel = document.getElementById('mob-watch-events-' + sanitized);
+    var watchId = mobExpandedWatchEvents[sanitized];
+    if (panel && watchId) {
+      panel.classList.remove('hidden');
+      loadMobileWatchEvents(watchId, sanitized);
+    }
   });
   container.querySelectorAll('[data-watch-history]').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -6286,10 +6300,43 @@ async function loadMobileWatchHistoryPage() {
 // ---------------------------------------------------------------------------
 // Task detail sheet
 // ---------------------------------------------------------------------------
-var sheetState = { sheetType: '', taskId: null, items: [], events: [], currentTab: 'all', currentPage: 1, pageSize: 20 };
+var sheetState = { sheetType: '', taskId: null, items: [], events: [], summary: {}, currentTab: 'all', currentPage: 1, pageSize: 20 };
+
+function sheetTabApiStatus(tab) {
+  if (tab === 'all') return '';
+  if (tab === 'active') return 'active';
+  if (tab === 'failure') return 'failure';
+  return tab;
+}
+
+function sheetTabCount(summary, tab) {
+  summary = summary || {};
+  if (tab === 'all') return summary.total || 0;
+  if (tab === 'active') return (summary.running || 0) + (summary.pending || 0);
+  if (tab === 'failure') return summary.failed || 0;
+  return summary[tab] || 0;
+}
+
+function sheetTabLabel(tab) {
+  if (tab === 'all') return '全部';
+  if (tab === 'active') return '进行中';
+  if (tab === 'success') return '成功';
+  if (tab === 'failure') return '失败';
+  return '跳过';
+}
+
+function sheetTabs(summary) {
+  return [
+    { key: 'all', label: '全部', count: sheetTabCount(summary, 'all') },
+    { key: 'active', label: '进行中', count: sheetTabCount(summary, 'active') },
+    { key: 'success', label: '成功', count: sheetTabCount(summary, 'success') },
+    { key: 'failure', label: '失败', count: sheetTabCount(summary, 'failure') },
+    { key: 'skipped', label: '跳过', count: sheetTabCount(summary, 'skipped') }
+  ];
+}
 
 async function openTaskDetail(taskId) {
-  sheetState = { sheetType: 'task-detail', taskId: taskId, items: [], events: [], currentTab: 'all', currentPage: 1, pageSize: 20 };
+  sheetState = { sheetType: 'task-detail', taskId: taskId, items: [], events: [], summary: {}, currentTab: 'all', currentPage: 1, pageSize: 20 };
   var overlay = document.getElementById('mob-sheet-overlay');
   var sheet = document.getElementById('mob-sheet');
   if (!overlay || !sheet) return;
@@ -6298,10 +6345,11 @@ async function openTaskDetail(taskId) {
   overlay.classList.add('open');
 
   try {
-    var data = await fetchJson('/api/tasks/' + taskId);
-    sheetState.items = data.items || [];
-    sheetState.events = data.events || [];
+    var data = await fetchJson('/api/tasks/' + taskId + '/summary');
+    sheetState.summary = data.summary || {};
+    sheetState.events = data.recent_events || data.events || [];
     renderSheetContent(data);
+    await loadSheetItemPage();
   } catch (e) {
     sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
   }
@@ -6310,13 +6358,12 @@ async function openTaskDetail(taskId) {
 async function refreshOpenTaskSheet() {
   var overlay = document.getElementById('mob-sheet-overlay');
   if (!overlay || !overlay.classList.contains('open') || sheetState.sheetType !== 'task-detail' || !sheetState.taskId) return;
-  var sheet = document.getElementById('mob-sheet');
-  if (!sheet) return;
   try {
-    var data = await fetchJson('/api/tasks/' + sheetState.taskId);
-    sheetState.items = data.items || [];
-    sheetState.events = data.events || [];
+    var data = await fetchJson('/api/tasks/' + sheetState.taskId + '/summary');
+    sheetState.summary = data.summary || sheetState.summary || {};
+    sheetState.events = data.recent_events || data.events || sheetState.events || [];
     updateSheetContent(data);
+    await loadSheetItemPage({ silent: true });
   } catch (e) {}
 }
 
@@ -6325,20 +6372,11 @@ function renderSheetContent(data) {
   if (!sheet) return;
 
   var task = data.task || {};
-  var summary = data.summary || {};
-  var totalItems = summary.total || sheetState.items.length || 0;
-  var successCount = summary.success || 0;
-  var failedCount = summary.failed || 0;
-  var skippedCount = summary.skipped || 0;
+  var summary = data.summary || sheetState.summary || {};
+  sheetState.summary = summary;
 
   var tabsHtml = '';
-  var tabs = [
-    { key: 'all', label: '全部', count: totalItems },
-    { key: 'success', label: '成功', count: successCount },
-    { key: 'failure', label: '失败', count: failedCount },
-    { key: 'skipped', label: '跳过', count: skippedCount }
-  ];
-  tabs.forEach(function(tab) {
+  sheetTabs(summary).forEach(function(tab) {
     tabsHtml += '<button class="mob-sheet-tab' + (sheetState.currentTab === tab.key ? ' active' : '') + '" data-sheet-tab="' + tab.key + '">' +
       tab.label + '<span class="count">' + tab.count + '</span></button>';
   });
@@ -6360,13 +6398,13 @@ function renderSheetContent(data) {
     '</div>';
 
   bindSheetTabClicks();
-  renderSheetItemPage();
   document.getElementById('mob-sheet-close').addEventListener('click', closeSheet);
 }
 
 function updateSheetContent(data) {
   var task = data.task || {};
-  var summary = data.summary || {};
+  var summary = data.summary || sheetState.summary || {};
+  sheetState.summary = summary;
   var header = document.getElementById('mob-sheet-task-header');
   if (header) {
     header.innerHTML =
@@ -6374,19 +6412,10 @@ function updateSheetContent(data) {
       '<div class="task-meta">状态: ' + esc(task.status || '-') + ' · 进度: ' + esc(taskCompletedLabel(task)) + '</div>' +
       (activeTransferSummary(task) ? '<div class="task-meta">' + esc(activeTransferSummary(task)) + '</div>' : '');
   }
-  var counts = {
-    all: summary.total || sheetState.items.length || 0,
-    success: summary.success || 0,
-    failure: summary.failed || 0,
-    skipped: summary.skipped || 0
-  };
   document.querySelectorAll('#mob-sheet-item-tabs .mob-sheet-tab').forEach(function(tab) {
     var key = tab.dataset.sheetTab;
-    var count = counts[key] || 0;
-    var label = key === 'all' ? '全部' : key === 'success' ? '成功' : key === 'failure' ? '失败' : '跳过';
-    tab.innerHTML = label + '<span class="count">' + count + '</span>';
+    tab.innerHTML = sheetTabLabel(key) + '<span class="count">' + sheetTabCount(summary, key) + '</span>';
   });
-  renderSheetItemPage();
 }
 
 function closeSheet() {
@@ -6405,64 +6434,80 @@ function bindSheetTabClicks() {
       tab.classList.add('active');
       sheetState.currentTab = tab.dataset.sheetTab;
       sheetState.currentPage = 1;
-      renderSheetItemPage();
+      loadSheetItemPage();
     });
   });
 }
 
-function renderSheetItemPage() {
+async function loadSheetItemPage(options) {
+  options = options || {};
+  var silent = Boolean(options.silent);
   var container = document.getElementById('mob-sheet-item-list');
   var pagination = document.getElementById('mob-sheet-item-pagination');
-  if (!container) return;
+  if (!container || !sheetState.taskId) return;
 
-  var filtered = sheetState.items;
-  if (sheetState.currentTab !== 'all') {
-    filtered = sheetState.items.filter(function(item) { return item.status === sheetState.currentTab; });
+  if (!silent) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
   }
 
-  var meta = paginationMeta(filtered.length, sheetState.pageSize, sheetState.currentPage);
-  sheetState.currentPage = meta.page;
-  var start = (meta.page - 1) * meta.pageSize;
-  var page = filtered.slice(start, start + meta.pageSize);
+  var status = sheetTabApiStatus(sheetState.currentTab);
+  var offset = (sheetState.currentPage - 1) * sheetState.pageSize;
+  var url = '/api/tasks/' + sheetState.taskId + '?items_limit=' + sheetState.pageSize + '&items_offset=' + offset;
+  if (status) url += '&item_status=' + encodeURIComponent(status);
 
-  if (page.length === 0) {
-    container.innerHTML = '<div class="mob-empty">暂无数据</div>';
-  } else {
-    var html = '';
-    page.forEach(function(item) {
-      var summary = itemTransferSummary(item);
-      html += '<div class="mob-item-row">' +
-        '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
-          '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
-        '</span>' +
-        '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
-      '</div>';
-    });
-    container.innerHTML = html;
+  try {
+    var data = await fetchJson(url);
+    sheetState.items = data.items || [];
+    if (data.summary) sheetState.summary = data.summary;
+
+    var totalItems = sheetTabCount(sheetState.summary, sheetState.currentTab);
+    var meta = paginationMeta(totalItems, sheetState.pageSize, sheetState.currentPage);
+    sheetState.currentPage = meta.page;
+    var page = sheetState.items;
+
+    if (page.length === 0) {
+      container.innerHTML = '<div class="mob-empty">暂无数据</div>';
+    } else {
+      var html = '';
+      page.forEach(function(item) {
+        var summary = itemTransferSummary(item);
+        html += '<div class="mob-item-row">' +
+          '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
+            '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
+          '</span>' +
+          '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
+        '</div>';
+      });
+      container.innerHTML = html;
+    }
+
+    if (pagination) {
+      pagination.innerHTML = renderPaginationBar({
+        total: totalItems,
+        pageSize: sheetState.pageSize,
+        page: meta.page,
+        prefix: 'mob-sheet-items',
+        variant: 'mobile'
+      });
+      bindSheetItemPagination(meta.page, meta.totalPages);
+    }
+
+    if (!silent) container.scrollTop = 0;
+  } catch (e) {
+    if (!silent) {
+      container.innerHTML = '<div class="mob-empty">加载失败</div>';
+    }
   }
-
-  if (pagination) {
-    pagination.innerHTML = renderPaginationBar({
-      total: filtered.length,
-      pageSize: sheetState.pageSize,
-      page: meta.page,
-      prefix: 'mob-sheet-items',
-      variant: 'mobile'
-    });
-    bindSheetItemPagination(meta.page, meta.totalPages);
-  }
-
-  container.scrollTop = 0;
 }
 
 function bindSheetItemPagination(currentPage, totalPages) {
   document.getElementById('mob-sheet-items-prev')?.addEventListener('click', function() {
     sheetState.currentPage = Math.max(1, currentPage - 1);
-    renderSheetItemPage();
+    loadSheetItemPage();
   });
   document.getElementById('mob-sheet-items-next')?.addEventListener('click', function() {
     sheetState.currentPage = Math.min(totalPages, currentPage + 1);
-    renderSheetItemPage();
+    loadSheetItemPage();
   });
 }
 

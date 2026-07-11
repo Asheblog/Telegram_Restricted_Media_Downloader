@@ -330,12 +330,22 @@ class WebUiViewModel:
             result.setdefault(task_id, dict(row))
         return result
 
+    @staticmethod
+    def _item_status_filter(item_status: Optional[str]) -> tuple[str, ...]:
+        if item_status == 'active':
+            return tuple(TASK_ACTIVE_STATUSES)
+        if item_status:
+            return (item_status,)
+        return ()
+
     def _item_count(self, task_id: int, item_status: Optional[str] = None) -> int:
         with self.store.connect() as conn:
-            if item_status:
+            statuses = self._item_status_filter(item_status)
+            if statuses:
+                placeholders = ', '.join('?' for _ in statuses)
                 return int(conn.execute(
-                    'SELECT COUNT(*) FROM transfer_items WHERE task_id = ? AND status = ?',
-                    (task_id, item_status)
+                    f'SELECT COUNT(*) FROM transfer_items WHERE task_id = ? AND status IN ({placeholders})',
+                    (task_id, *statuses)
                 ).fetchone()[0])
             return int(conn.execute(
                 'SELECT COUNT(*) FROM transfer_items WHERE task_id = ?',
@@ -355,15 +365,17 @@ class WebUiViewModel:
         if limit == 0:
             return []
         with self.store.connect() as conn:
-            if item_status:
+            statuses = self._item_status_filter(item_status)
+            if statuses:
+                placeholders = ', '.join('?' for _ in statuses)
                 rows = conn.execute(
-                    '''
+                    f'''
                     SELECT * FROM transfer_items
-                    WHERE task_id = ? AND status = ?
+                    WHERE task_id = ? AND status IN ({placeholders})
                     ORDER BY id ASC
                     LIMIT ? OFFSET ?
                     ''',
-                    (task_id, item_status, limit, offset)
+                    (task_id, *statuses, limit, offset)
                 ).fetchall()
                 return [dict(row) for row in rows]
             rows = conn.execute(
