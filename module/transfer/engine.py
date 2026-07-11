@@ -258,7 +258,7 @@ class TransferEngine:
             item_chat_id = item.get('source_chat_id')
             if normalized_chat_id is not None and str(item_chat_id or '') != normalized_chat_id:
                 continue
-            if item.get('phase') != 'downloading':
+            if item.get('phase') != 'downloading' and item.get('phase') != 'uploading':
                 continue
             if item.get('status') not in (TransferStatus.RUNNING, TransferStatus.PENDING):
                 continue

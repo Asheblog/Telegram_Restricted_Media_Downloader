@@ -4169,6 +4169,128 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(33, task_model['range_progress_percent'])
             self.assertEqual('1/3', f"{task_model['range_completed_ids']}/{task_model['range_total_ids']}")
 
+    def test_is_range_message_complete_requires_all_comment_items_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source',
+                target_link='https://t.me/pikpak_bot',
+                start_id=10,
+                end_id=10,
+                include_comment=True
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=10,
+                range_message_id=10,
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='discussion',
+                source_message_id=299,
+                range_message_id=10,
+                source_link='https://t.me/c/3923609459/299',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='299 - 006.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+
+            self.assertFalse(store.is_range_message_complete(task_id, 10))
+            self.assertEqual(
+                1,
+                len(store.list_resumable_items_for_range_message(task_id, 10))
+            )
+
+    def test_runner_resumes_comment_item_before_advancing_range_message(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task(
+                    'https://t.me/source',
+                    'https://t.me/pikpak_bot',
+                    start_id=10,
+                    end_id=11,
+                    include_comment=True
+                )
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source',
+                    source_message_id=10,
+                    range_message_id=10,
+                    source_link='https://t.me/source/10',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS
+                )
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='discussion',
+                    source_message_id=299,
+                    range_message_id=10,
+                    source_link='https://t.me/c/3923609459/299',
+                    target_link='https://t.me/pikpak_bot',
+                    media_type='video',
+                    file_name='299 - 006.mp4',
+                    phase='downloading',
+                    status=TransferStatus.RUNNING
+                )
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                store.update_task_range_runtime(task_id, current_range_message_id=10)
+
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                downloader.transfer_store = store
+                downloader.uploader = object()
+                downloader.app = SimpleNamespace(client=SimpleNamespace())
+                downloader.gc = SimpleNamespace(download_upload=True, upload_delete=False)
+                downloader.forward_calls = []
+                downloader.fallback_calls = []
+
+                async def fake_forward(**kwargs):
+                    downloader.forward_calls.append(kwargs)
+                    return SimpleNamespace(id=100 + kwargs['message_id'])
+
+                async def fake_create_download_task(**kwargs):
+                    downloader.fallback_calls.append(kwargs)
+                    return {'status': 'success'}
+
+                downloader.forward = fake_forward
+                downloader.create_download_task = fake_create_download_task
+                downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+
+                async def fake_parse_link(client, link):
+                    if link == 'https://t.me/source':
+                        return {'chat_id': 'source-chat'}
+                    if link == 'https://t.me/pikpak_bot':
+                        return {'chat_id': 'target-chat'}
+                    return {'chat_id': 'unknown'}
+
+                async def fake_discussion_replies(**kwargs):
+                    if False:
+                        yield None
+
+                with patch('module.downloader.parse_link', side_effect=fake_parse_link), \
+                        patch('module.transfer.runner.iter_discussion_reply_messages', new=fake_discussion_replies), \
+                        patch.object(downloader, 'wait_between_transfer_messages', new=AsyncMock()):
+                    await downloader.process_web_transfer_task(task_id)
+
+                self.assertEqual([], downloader.forward_calls)
+                self.assertEqual(1, len(downloader.fallback_calls))
+                self.assertEqual(
+                    'https://t.me/c/3923609459/299',
+                    downloader.fallback_calls[0]['with_upload']['source_link']
+                )
+
+        asyncio.run(run_case())
+
 
 if __name__ == '__main__':
     unittest.main()

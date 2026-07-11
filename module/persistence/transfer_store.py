@@ -602,6 +602,7 @@ class TransferStore:
             archive_status: Optional[str] = None,
             archive_error: Optional[str] = None,
             archive_match_original_name: Optional[bool] = None,
+            range_message_id: Optional[int] = None,
             error_message: Optional[str] = None
     ) -> None:
         now = self.utc_now()
@@ -621,6 +622,7 @@ class TransferStore:
                 archive_status=archive_status,
                 archive_error=archive_error,
                 archive_match_original_name=archive_match_original_name,
+                range_message_id=range_message_id,
                 phase=phase,
                 error_message=error_message,
                 now=now
@@ -756,6 +758,77 @@ class TransferStore:
                 (task_id, TransferStatus.SUCCESS, TransferStatus.SKIPPED)
             ).fetchall()
             return {int(row['source_message_id']) for row in rows}
+
+    @staticmethod
+    def _terminal_item_statuses() -> set[str]:
+        return {
+            TransferStatus.SUCCESS,
+            TransferStatus.SKIPPED,
+            TransferStatus.FAILURE,
+        }
+
+    @staticmethod
+    def _resumable_item_phases() -> set[str]:
+        return {'downloading', 'uploading'}
+
+    def list_items_for_range_message(self, task_id: int, range_message_id: int) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT *
+                FROM transfer_items
+                WHERE task_id = ?
+                  AND (
+                    range_message_id = ?
+                    OR (
+                        range_message_id IS NULL
+                        AND source_message_id = ?
+                    )
+                  )
+                ORDER BY id ASC
+                ''',
+                (int(task_id), int(range_message_id), int(range_message_id))
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def is_range_message_complete(self, task_id: int, range_message_id: int) -> bool:
+        items = self.list_items_for_range_message(task_id, range_message_id)
+        if not items:
+            return False
+        terminal_statuses = self._terminal_item_statuses()
+        return all(str(item.get('status') or '') in terminal_statuses for item in items)
+
+    def is_source_message_terminal(
+            self,
+            task_id: int,
+            source_message_id: int,
+            source_chat_id=None
+    ) -> bool:
+        normalized_chat_id = str(source_chat_id) if source_chat_id is not None else None
+        terminal_statuses = self._terminal_item_statuses()
+        for item in self.list_items(int(task_id)):
+            if int(item.get('source_message_id') or -1) != int(source_message_id):
+                continue
+            item_chat_id = item.get('source_chat_id')
+            if normalized_chat_id is not None and str(item_chat_id or '') != normalized_chat_id:
+                continue
+            if str(item.get('status') or '') in terminal_statuses:
+                return True
+        return False
+
+    def list_resumable_items_for_range_message(
+            self,
+            task_id: int,
+            range_message_id: int
+    ) -> List[Dict[str, Any]]:
+        resumable_statuses = {TransferStatus.RUNNING, TransferStatus.PENDING}
+        resumable_phases = self._resumable_item_phases()
+        return [
+            item
+            for item in self.list_items_for_range_message(task_id, range_message_id)
+            if str(item.get('status') or '') in resumable_statuses
+            and str(item.get('phase') or '') in resumable_phases
+        ]
 
     def add_event(self, task_id: int, message: str, level: str = 'info', item_id: Optional[int] = None) -> None:
         with self.connect() as conn:

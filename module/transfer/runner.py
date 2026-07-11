@@ -123,6 +123,11 @@ class WebTransferRunner:
                     expected_total=expected_total,
                     assignment_completed=False
                 )
+                await self.resume_orphan_resumable_items(
+                    task=task,
+                    start_id=int(start_id),
+                    end_id=int(end_id)
+                )
                 for message_id in range(int(start_id), int(end_id) + 1):
                     if not self.should_continue_web_transfer_task(task_id):
                         latest_task = host.transfer_store.get_task(task_id)
@@ -132,6 +137,8 @@ class WebTransferRunner:
                                 f'Transfer task paused before message: {message_id}.'
                             )
                         return
+                    if host.transfer_store.is_range_message_complete(task_id, message_id):
+                        continue
                     host.transfer_store.update_task_range_runtime(
                         task_id,
                         current_range_message_id=message_id,
@@ -139,7 +146,28 @@ class WebTransferRunner:
                         current_range_video_index=0
                     )
                     range_video_seq = 0
-                    if message_id in completed_message_ids:
+                    resumed_count = await self.resume_interrupted_items_for_range_message(task, message_id)
+                    if resumed_count:
+                        fallback_count += resumed_count
+                        if host.transfer_store.is_range_message_complete(task_id, message_id):
+                            continue
+                    main_post_done = message_id in completed_message_ids
+                    if main_post_done and include_comment:
+                        range_video_seq = len(host.transfer_store.list_items_for_range_message(task_id, message_id))
+                        reply_count, reply_fallback_count = await self._resolve_method(
+                            'transfer_web_discussion_replies_to_target'
+                        )(
+                            task=task,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_chat_id=target_chat_id,
+                            expected_total=expected_total,
+                            range_video_seq=range_video_seq
+                        )
+                        expected_total += reply_count
+                        fallback_count += reply_fallback_count
+                        continue
+                    if main_post_done:
                         continue
                     if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
                         try:
@@ -332,6 +360,112 @@ class WebTransferRunner:
                     finished=True
                 )
                 host.transfer_store.add_event(task_id, f'Transfer task failed: {e}', level='error')
+
+    async def resume_transfer_item_download(
+            self,
+            task: dict,
+            item: dict,
+            range_message_id: Optional[int] = None
+    ) -> None:
+        source_link = item.get('source_link')
+        if not source_link:
+            raise RuntimeError(f'Missing source link for resumable item #{item.get("id")}.')
+        await self.create_web_transfer_fallback_download(
+            task=task,
+            source_link=source_link,
+            range_message_id=range_message_id or item.get('range_message_id')
+        )
+
+    async def resume_interrupted_items_for_range_message(
+            self,
+            task: dict,
+            range_message_id: int
+    ) -> int:
+        host = self._host
+        if not host.transfer_store:
+            return 0
+        task_id = int(task.get('id'))
+        resumed = 0
+        for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
+            try:
+                await self._resolve_method('wait_between_transfer_messages')()
+                await self.resume_transfer_item_download(
+                    task=task,
+                    item=item,
+                    range_message_id=range_message_id
+                )
+                resumed += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.error(
+                    f'Web transfer resume item failed: task={task_id}, item={item.get("id")}, reason="{e}"',
+                    exc_info=True
+                )
+                host.transfer_store.add_event(
+                    task_id,
+                    f'Resume item failed: {item.get("file_name") or item.get("id")}: {e}',
+                    level='error',
+                    item_id=item.get('id')
+                )
+        return resumed
+
+    async def resume_orphan_resumable_items(
+            self,
+            task: dict,
+            start_id: int,
+            end_id: int
+    ) -> int:
+        host = self._host
+        if not host.transfer_store:
+            return 0
+        task_id = int(task.get('id'))
+        anchor_id = task.get('current_range_message_id')
+        if anchor_id is None:
+            for message_id in range(int(start_id), int(end_id) + 1):
+                if not host.transfer_store.is_range_message_complete(task_id, message_id):
+                    anchor_id = message_id
+                    break
+        if anchor_id is None:
+            return 0
+        anchor_id = int(anchor_id)
+        resumed = 0
+        resumable_statuses = {TransferStatus.RUNNING, TransferStatus.PENDING}
+        resumable_phases = host.transfer_store._resumable_item_phases()
+        for item in host.transfer_store.list_items(task_id):
+            if item.get('range_message_id') is not None:
+                continue
+            if str(item.get('status') or '') not in resumable_statuses:
+                continue
+            if str(item.get('phase') or '') not in resumable_phases:
+                continue
+            item_id = int(item.get('id') or 0)
+            if not item_id:
+                continue
+            host.transfer_store.update_item(item_id, range_message_id=anchor_id)
+            item = host.transfer_store.get_item(item_id) or item
+            try:
+                await self._resolve_method('wait_between_transfer_messages')()
+                await self.resume_transfer_item_download(
+                    task=task,
+                    item=item,
+                    range_message_id=anchor_id
+                )
+                resumed += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.error(
+                    f'Web transfer resume orphan item failed: task={task_id}, item={item_id}, reason="{e}"',
+                    exc_info=True
+                )
+                host.transfer_store.add_event(
+                    task_id,
+                    f'Resume orphan item failed: {item.get("file_name") or item_id}: {e}',
+                    level='error',
+                    item_id=item_id
+                )
+        return resumed
 
     async def create_web_transfer_fallback_download(
             self,
@@ -527,6 +661,54 @@ class WebTransferRunner:
                     message_id=source_message_id,
                     include_message=self._resolve_method('check_type')
             ):
+                comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
+                comment_id = getattr(comment, 'id', None)
+                comment_link = getattr(comment, 'link', None)
+                if comment_id is not None and host.transfer_store.is_source_message_terminal(
+                        task_id,
+                        int(comment_id),
+                        comment_chat_id
+                ):
+                    continue
+                if comment_id is not None and host.find_resumable_transfer_item(
+                        task_id,
+                        int(comment_id),
+                        comment_chat_id
+                ):
+                    resumable_item = host.find_resumable_transfer_item(
+                        task_id,
+                        int(comment_id),
+                        comment_chat_id
+                    )
+                    reply_count += 1
+                    range_video_seq += 1
+                    host.transfer_store.update_task_range_runtime(
+                        task_id,
+                        current_range_message_id=source_message_id,
+                        current_range_video_captured=range_video_seq,
+                        current_range_video_index=range_video_seq
+                    )
+                    try:
+                        await self._resolve_method('wait_between_transfer_messages')()
+                        await self.resume_transfer_item_download(
+                            task=task,
+                            item=resumable_item,
+                            range_message_id=source_message_id
+                        )
+                        fallback_count += 1
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        log.error(
+                            f'Web transfer resume comment failed: task={task_id}, comment={comment_id}, reason="{e}"',
+                            exc_info=True
+                        )
+                        host.transfer_store.add_event(
+                            task_id,
+                            f'Resume comment failed: {comment_id}: {e}',
+                            level='error'
+                        )
+                    continue
                 reply_count += 1
                 range_video_seq += 1
                 host.transfer_store.update_task_range_runtime(
@@ -540,8 +722,6 @@ class WebTransferRunner:
                     expected_total=expected_total + reply_count,
                     assignment_completed=False
                 )
-                comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
-                comment_link = getattr(comment, 'link', None)
                 used_fallback = await self._resolve_method('transfer_message_to_web_target')(
                     task=task,
                     message=comment,
