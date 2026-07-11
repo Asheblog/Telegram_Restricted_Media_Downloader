@@ -1134,7 +1134,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
         <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
-          placeholder="每行一个，例如：&#10;a82bot"></textarea>
+          placeholder="每行一个，例如：&#10;123456"></textarea>
         <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkWhitelistHint">
           每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。留空且任务未勾选时功能关闭。
         </p>
@@ -7061,7 +7061,7 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
     '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
-    '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;a82bot">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
+    '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>';
 
