@@ -1,4 +1,5 @@
 # coding=UTF-8
+import asyncio
 from typing import Optional, Callable
 
 
@@ -9,6 +10,7 @@ class TransferRegistry:
         self.tasks: set = set()
         self.task_counter: int = 0
         self.notify: Optional[Callable] = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.directory_name: str = ""
 
     def reset(self):
@@ -17,6 +19,7 @@ class TransferRegistry:
         self.tasks.clear()
         self.task_counter = 0
         self.notify = None
+        self.loop = None
         self.directory_name = ""
 
 

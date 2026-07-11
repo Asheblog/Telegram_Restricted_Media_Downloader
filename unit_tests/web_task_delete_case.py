@@ -532,6 +532,56 @@ class WebTaskDeleteCase(unittest.TestCase):
             remaining_media, remaining_task = uploader.upload_queue.get_nowait()
             self.assertEqual(9, remaining_task.transfer_meta['task_id'])
 
+    def test_cancel_uploads_for_task_from_sync_thread_does_not_crash_notice(self):
+        from module.transfer.registry import transfer_registry
+
+        async def run_case():
+            with tempfile.TemporaryDirectory() as directory:
+                file_path = os.path.join(directory, 'queued.bin')
+                with open(file_path, 'wb') as file:
+                    file.write(b'12345')
+                loop = asyncio.get_running_loop()
+                notified = asyncio.Event()
+
+                async def fake_done_notice(message):
+                    notified.set()
+
+                transfer_registry.notify = fake_done_notice
+                transfer_registry.loop = loop
+
+                uploader = object.__new__(TelegramUploader)
+                uploader.upload_queue = asyncio.Queue()
+                uploader.loop = loop
+                uploader.upload_context = SimpleNamespace(
+                    should_continue_web_transfer_task=lambda task_id: False,
+                    diagnostic=SimpleNamespace(
+                        info=lambda *args, **kwargs: None,
+                        warning=lambda *args, **kwargs: None,
+                        error=lambda *args, **kwargs: None,
+                        console_log=lambda *args, **kwargs: None,
+                    ),
+                )
+                uploader.notify_transfer_status = lambda upload_task: None
+
+                active_task = UploadTask(
+                    chat_id=1,
+                    file_path=file_path,
+                    file_id=2,
+                    file_size=5,
+                    file_part=[],
+                    status=UploadStatus.UPLOADING,
+                    transfer_meta={'task_id': 7},
+                )
+
+                cancelled = await loop.run_in_executor(None, uploader.cancel_uploads_for_task, 7)
+
+                self.assertEqual(1, cancelled)
+                self.assertEqual(UploadStatus.FAILURE, active_task.status)
+                self.assertFalse(notified.is_set())
+
+        asyncio.run(run_case())
+        transfer_registry.reset()
+
 
 if __name__ == '__main__':
     unittest.main()

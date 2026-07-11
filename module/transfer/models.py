@@ -219,7 +219,8 @@ class UploadTask:
                                 f'{_t(KeyWord.REASON)}:"{self.error_msg}",'
                                 f'{_t(KeyWord.STATUS)}:{_t(str(value))}。'
                             )
-                            self.notice(f'"{self.file_path}" ⬆️ "{self.chat_id}"上传失败。')
+                            if not getattr(self, '_suppress_notice', False):
+                                self.notice(f'"{self.file_path}" ⬆️ "{self.chat_id}"上传失败。')
                     elif name == 'chat_id':
                         if value:
                             self.upload_manager_path: str = os.path.join(
@@ -246,12 +247,18 @@ class UploadTask:
 
     def notice(self, message: str):
         notify = transfer_registry.notify or self.NOTIFY
-        if isinstance(notify, Callable):
-            asyncio.create_task(
-                notify(
-                    message
-                )
-            )
+        if not isinstance(notify, Callable):
+            return
+        coro = notify(message)
+        try:
+            asyncio.get_running_loop().create_task(coro)
+            return
+        except RuntimeError:
+            pass
+        loop = transfer_registry.loop
+        if loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(coro, loop)
 
     def release_window(self) -> None:
         release_callback = self.release_callback

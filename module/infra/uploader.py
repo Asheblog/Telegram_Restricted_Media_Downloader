@@ -87,6 +87,7 @@ class TelegramUploader:
         self.valid_link_cache = {}
         self._save_file_lock: asyncio.Lock = asyncio.Lock()
         transfer_registry.notify = upload_context.done_notice
+        transfer_registry.loop = upload_context.loop
         transfer_registry.directory_name = os.path.join(
             transfer_registry.directory_name or UploadTask.DIRECTORY_NAME,
             str(upload_context.my_id)
@@ -190,6 +191,7 @@ class TelegramUploader:
 
     def _skip_upload_task(self, upload_task: UploadTask, error_message: str, delete_file: bool = False) -> None:
         upload_task.error_msg = error_message
+        upload_task._suppress_notice = True
         upload_task.status = UploadStatus.FAILURE
         self.release_transfer_local_storage(upload_task)
         upload_task.release_window()
