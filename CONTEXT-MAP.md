@@ -73,6 +73,8 @@
 | message_filter | GlobalConfig | `gc.message_filter.*` |
 | file_log_level / console_log_level | GlobalConfig | `.CONFIG.yaml` |
 | notice | GlobalConfig | `.CONFIG.yaml` |
+| `deep_link.bot_whitelist` | GlobalConfig | 资源 bot 白名单 |
+| `deep_link.timeout_seconds` | GlobalConfig | 取片超时秒数 |
 
 ## WebUI API → handler
 

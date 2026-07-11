@@ -545,6 +545,12 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     def fail_transfer_item(self, task_id: int, item_id: int, message: str) -> None:
         return self.pikpak_manager.fail_transfer_item(task_id, item_id, message)
 
+    def get_deep_link_resolver(self):
+        if getattr(self, '_deep_link_resolver', None) is None:
+            from module.transfer.deep_link import DeepLinkResolver
+            self._deep_link_resolver = DeepLinkResolver()
+        return self._deep_link_resolver
+
     def skip_transfer_item_for_target_limit(
             self,
             task: dict,
@@ -1469,6 +1475,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 if listen_chat_id == _listen_chat_id:
                     matched = True
                     watch_id = self.watch_manager.forward_watch_id(m)
+                    resolve_deep_link = bool(rule.get('resolve_deep_link'))
                     self._log_system_chain(
                         category='watch',
                         stage='rule_matched',
@@ -1480,9 +1487,47 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         target_link=target_link,
                         details={
                             'listen_link': listen_link,
-                            'include_comment': include_comment
+                            'include_comment': include_comment,
+                            'resolve_deep_link': resolve_deep_link,
                         }
                     )
+                    forward_origin_chat_id = _listen_chat_id
+                    forward_message_id = message.id
+                    if resolve_deep_link:
+                        from module.transfer.deep_link import DeepLinkResolveError
+                        resolver = self.get_deep_link_resolver()
+                        try:
+                            resolved = await resolver.resolve(
+                                client=self.app.client,
+                                message=message,
+                                whitelist=self.gc.get_deep_link_bot_whitelist(),
+                                timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
+                            )
+                        except DeepLinkResolveError as e:
+                            self._log_system_chain(
+                                category='watch',
+                                stage='deep_link_failed',
+                                message=f'Deep link resolve failed: {e}',
+                                level='error',
+                                trace_id=trace_id,
+                                watch_id=watch_id,
+                                source_chat_id=origin_chat_id,
+                                source_message_id=message_id,
+                                target_link=target_link,
+                                details={'error': str(e)},
+                            )
+                            continue
+                        if resolved is not None:
+                            message = resolved
+                            forward_message_id = getattr(resolved, 'id', forward_message_id)
+                            resolved_chat = getattr(resolved, 'chat', None)
+                            resolved_chat_id = getattr(resolved_chat, 'id', None)
+                            if resolved_chat_id is not None:
+                                forward_origin_chat_id = resolved_chat_id
+                            else:
+                                meta = getattr(resolved, '_deep_link_meta', {}) or {}
+                                if meta.get('bot'):
+                                    forward_origin_chat_id = meta['bot']
                     try:
                         media_group_ids = await message.get_media_group()
                         if not media_group_ids:
@@ -1525,8 +1570,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             await self.forward(
                                 client=client,
                                 message=message,
-                                message_id=message.id,
-                                origin_chat_id=_listen_chat_id,
+                                message_id=forward_message_id,
+                                origin_chat_id=forward_origin_chat_id,
                                 target_chat_id=_target_chat_id,
                                 target_link=target_link,
                                 download_upload=False,
@@ -1538,7 +1583,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 await self.schedule_or_forward_discussion_replies(
                                     client=client,
                                     source_chat_id=_listen_chat_id,
-                                    source_message_id=message.id,
+                                    source_message_id=message_id,
                                     target_chat_id=_target_chat_id,
                                     target_link=target_link,
                                     watch_id=watch_id
@@ -1559,8 +1604,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     await self.forward(
                         client=client,
                         message=message,
-                        message_id=message.id,
-                        origin_chat_id=_listen_chat_id,
+                        message_id=forward_message_id,
+                        origin_chat_id=forward_origin_chat_id,
                         target_chat_id=_target_chat_id,
                         target_link=target_link,
                         download_upload=True,
@@ -1571,7 +1616,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         await self.schedule_or_forward_discussion_replies(
                             client=client,
                             source_chat_id=_listen_chat_id,
-                            source_message_id=message.id,
+                            source_message_id=message_id,
                             target_chat_id=_target_chat_id,
                             target_link=target_link,
                             watch_id=watch_id

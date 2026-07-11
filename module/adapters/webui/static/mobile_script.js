@@ -965,7 +965,11 @@ function renderMobSettingsForm() {
     '</div>' +
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
-    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>';
+    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
+    '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;a82bot">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
+    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');
@@ -1425,6 +1429,7 @@ async function loadMediaMobile() {
       if (payload.start_id) payload.start_id = Number(payload.start_id);
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
+      payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
       var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
@@ -1454,6 +1459,7 @@ async function loadMediaMobile() {
         payload.source_link = formData.get('source_link');
         payload.target_link = formData.get('target_link');
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
+        payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
       var notice = document.getElementById('mob-watch-notice');
       try {
@@ -1521,13 +1527,14 @@ async function loadMediaMobile() {
       if (!settingsContainer) return;
 
       // Collect form data from all inputs in settings subpage
-      var inputs = settingsContainer.querySelectorAll('input[name], select[name]');
+      var inputs = settingsContainer.querySelectorAll('input[name], select[name], textarea[name]');
       var payload = {};
       var downloadTypes = Array.from(settingsContainer.querySelectorAll('input[name="user.download_type"]:checked')).map(function(input) { return input.value; });
       payload.user = payload.user || {};
       payload.user.download_type = downloadTypes;
       inputs.forEach(function(input) {
         if (input.name === 'user.download_type') return;
+        if (input.name === 'global.deep_link.bot_whitelist') return;
         var keys = input.name.split('.');
         var cur = payload;
         for (var i = 0; i < keys.length - 1; i++) {
@@ -1543,6 +1550,16 @@ async function loadMediaMobile() {
           cur[lastKey] = input.value || undefined;
         }
       });
+
+      var whitelistEl = settingsContainer.querySelector('[name="global.deep_link.bot_whitelist"]');
+      if (whitelistEl) {
+        payload.global = payload.global || {};
+        payload.global.deep_link = payload.global.deep_link || {};
+        payload.global.deep_link.bot_whitelist = String(whitelistEl.value || '')
+          .split(/[\n,]+/)
+          .map(function(s) { return s.trim(); })
+          .filter(Boolean);
+      }
 
       // Clean undefined values
       function clean(obj) {

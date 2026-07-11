@@ -124,7 +124,8 @@ class TransferStore:
                     started_at TEXT,
                     finished_at TEXT,
                     assignment_completed INTEGER NOT NULL DEFAULT 0,
-                    include_comment INTEGER NOT NULL DEFAULT 0
+                    include_comment INTEGER NOT NULL DEFAULT 0,
+                    resolve_deep_link INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS transfer_items (
@@ -186,6 +187,7 @@ class TransferStore:
                     source_link TEXT NOT NULL,
                     target_link TEXT,
                     include_comment INTEGER NOT NULL DEFAULT 0,
+                    resolve_deep_link INTEGER NOT NULL DEFAULT 0,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     created_at TEXT NOT NULL,
@@ -199,6 +201,7 @@ class TransferStore:
                 {
                     'assignment_completed': 'INTEGER NOT NULL DEFAULT 0',
                     'include_comment': 'INTEGER NOT NULL DEFAULT 0',
+                    'resolve_deep_link': 'INTEGER NOT NULL DEFAULT 0',
                     'current_range_message_id': 'INTEGER',
                     'current_range_video_captured': 'INTEGER NOT NULL DEFAULT 0',
                     'current_range_video_index': 'INTEGER NOT NULL DEFAULT 0',
@@ -289,6 +292,7 @@ class TransferStore:
                 {
                     'target_link': 'TEXT',
                     'include_comment': 'INTEGER NOT NULL DEFAULT 0',
+                    'resolve_deep_link': 'INTEGER NOT NULL DEFAULT 0',
                     'status': f"TEXT NOT NULL DEFAULT '{TransferStatus.PENDING}'",
                     'error_message': 'TEXT'
                 }
@@ -474,7 +478,8 @@ class TransferStore:
             target_profile: str = 'pikpak',
             start_id: Optional[int] = None,
             end_id: Optional[int] = None,
-            include_comment: bool = False
+            include_comment: bool = False,
+            resolve_deep_link: bool = False
     ) -> int:
         now = self.utc_now()
         with self.connect() as conn:
@@ -482,12 +487,13 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
-                    include_comment, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    include_comment, resolve_deep_link, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
-                    int(bool(include_comment)), TransferStatus.PENDING, now, now
+                    int(bool(include_comment)), int(bool(resolve_deep_link)),
+                    TransferStatus.PENDING, now, now
                 )
             )
             task_id = int(cursor.lastrowid)
@@ -500,6 +506,12 @@ class TransferStore:
             )
             return task_id
 
+    @staticmethod
+    def _task_row(row: sqlite3.Row) -> Dict[str, Any]:
+        task = dict(row)
+        task['resolve_deep_link'] = bool(task.get('resolve_deep_link'))
+        return task
+
     def list_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -510,12 +522,12 @@ class TransferStore:
                 ''',
                 (limit,)
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [self._task_row(row) for row in rows]
 
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         with self.connect() as conn:
             row = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()
-            return dict(row) if row else None
+            return self._task_row(row) if row else None
 
     def update_task(
             self,
@@ -1444,6 +1456,7 @@ class TransferStore:
     def _live_transfer_watch_row(row: sqlite3.Row) -> Dict[str, Any]:
         watch = dict(row)
         watch['include_comment'] = bool(watch.get('include_comment'))
+        watch['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
         return watch
 
     def upsert_live_transfer_watch(
@@ -1453,6 +1466,7 @@ class TransferStore:
             source_link: str,
             target_link: Optional[str] = None,
             include_comment: bool = False,
+            resolve_deep_link: bool = False,
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -1461,21 +1475,23 @@ class TransferStore:
             conn.execute(
                 '''
                 INSERT INTO live_transfer_watches (
-                    id, type, source_link, target_link, include_comment,
+                    id, type, source_link, target_link, include_comment, resolve_deep_link,
                     status, error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     type = excluded.type,
                     source_link = excluded.source_link,
                     target_link = excluded.target_link,
                     include_comment = excluded.include_comment,
+                    resolve_deep_link = excluded.resolve_deep_link,
                     status = excluded.status,
                     error_message = excluded.error_message,
                     updated_at = excluded.updated_at
                 ''',
                 (
                     watch_id, watch_type, source_link, target_link,
-                    int(bool(include_comment)), status, error_message, now, now
+                    int(bool(include_comment)), int(bool(resolve_deep_link)),
+                    status, error_message, now, now
                 )
             )
         return self.get_live_transfer_watch(watch_id) or {
@@ -1484,6 +1500,7 @@ class TransferStore:
             'source_link': source_link,
             'target_link': target_link,
             'include_comment': bool(include_comment),
+            'resolve_deep_link': bool(resolve_deep_link),
             'status': status,
             'error_message': error_message,
             'created_at': now,

@@ -354,6 +354,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     start_id: fd.get('start_id') ? Number(fd.get('start_id')) : null,
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
+    resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
   };
 
   try {
@@ -1000,6 +1001,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       source_link: fd.get('source_link'),
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
+      resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
     });
     await loadWatches();
     this.reset();
@@ -1126,6 +1128,7 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-source').value = watch.source_link || '';
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
+  $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -1153,6 +1156,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         source_link: fd.get('source_link'),
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
+        resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       }),
     });
     closeEditWatchModal();
@@ -1563,6 +1567,12 @@ function renderSettings() {
   setCheckboxVal('global.upload.delete', sg.upload?.delete);
   setFieldVal('global.upload.pending_limit', sg.upload?.pending_limit);
   setFieldVal('global.live_watch.comment_delay_minutes', sg.live_watch?.comment_delay_minutes ?? 20);
+  const deepLinkWhitelist = sg.deep_link?.bot_whitelist;
+  setFieldVal(
+    'global.deep_link.bot_whitelist',
+    Array.isArray(deepLinkWhitelist) ? deepLinkWhitelist.join('\n') : (deepLinkWhitelist || '')
+  );
+  setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -1696,10 +1706,11 @@ function buildSettingsPayload() {
     }
   });
 
-  /* global settings */
+  /* global settings — skip bot_whitelist textarea; collected explicitly as array below */
   $$('[name^="global."]').forEach(el => {
     if (!el.name) return;
     if (el.name === 'global.forward_type' || el.name === 'global.message_filter.media_types') return;
+    if (el.name === 'global.deep_link.bot_whitelist') return;
     const parts = el.name.split('.');
     if (parts[0] !== 'global') return;
     if (el.type === 'checkbox') {
@@ -1733,6 +1744,16 @@ function buildSettingsPayload() {
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');
   if (kwInput && kwInput.value) {
     setNested(payload, ['global', 'message_filter', 'keywords', 'words'], kwInput.value.split(',').map(k => k.trim()).filter(Boolean));
+  }
+
+  /* deep link bot whitelist — textarea may arrive as newline/comma-separated string */
+  const whitelistInput = document.querySelector('[name="global.deep_link.bot_whitelist"]');
+  if (whitelistInput) {
+    const lines = String(whitelistInput.value || '')
+      .split(/[\n,]+/)
+      .map(function(s) { return s.trim(); })
+      .filter(Boolean);
+    setNested(payload, ['global', 'deep_link', 'bot_whitelist'], lines);
   }
 
   return payload;

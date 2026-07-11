@@ -37,6 +37,7 @@ def safe_index(lst: list, index: int, default=None):
 
 
 INCLUDE_COMMENT_FLAGS = {'--include-comment', '--include-comments', '--comment'}
+RESOLVE_DEEP_LINK_FLAGS = {'--resolve-deep-link', '--resolve_deep_link'}
 
 
 def split_include_comment_flag(args: list) -> Tuple[list, bool]:
@@ -50,17 +51,39 @@ def split_include_comment_flag(args: list) -> Tuple[list, bool]:
     return clean_args, include_comment
 
 
-def make_forward_watch_rule(source_link: str, target_link: str, include_comment: bool = False) -> str:
+def split_resolve_deep_link_flag(args: list) -> Tuple[list, bool]:
+    resolve_deep_link = False
+    clean_args = []
+    for arg in args:
+        if str(arg).strip().lower() in RESOLVE_DEEP_LINK_FLAGS:
+            resolve_deep_link = True
+        else:
+            clean_args.append(arg)
+    return clean_args, resolve_deep_link
+
+
+def make_forward_watch_rule(
+        source_link: str,
+        target_link: str,
+        include_comment: bool = False,
+        resolve_deep_link: bool = False
+) -> str:
     rule = f'{source_link} {target_link}'
-    return f'{rule} --include-comment' if include_comment else rule
+    if include_comment:
+        rule += ' --include-comment'
+    if resolve_deep_link:
+        rule += ' --resolve-deep-link'
+    return rule
 
 
 def parse_forward_watch_rule(rule: str) -> dict:
     args, include_comment = split_include_comment_flag(str(rule).split())
+    args, resolve_deep_link = split_resolve_deep_link_flag(args)
     return {
         'source_link': safe_index(args, 0, ''),
         'target_link': safe_index(args, 1, ''),
-        'include_comment': include_comment
+        'include_comment': include_comment,
+        'resolve_deep_link': resolve_deep_link,
     }
 
 

@@ -22,6 +22,7 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 from module import log
 from module.enums import DownloadStatus, DownloadType
 from module.source_folders import source_folder_from_message
+from module.transfer.deep_link import DeepLinkResolveError
 from module.transfer_store import TransferStatus
 from module.uploader import TelegramUploader
 from module.util import get_message_by_link, iter_discussion_reply_messages
@@ -510,11 +511,56 @@ class WebTransferRunner:
                 message_id=message_id
             )
             return False
+        channel_message = message
+        forward_chat_id = origin_chat_id
+        forward_message_id = message_id
+        resolved_meta = None
+        if bool(task.get('resolve_deep_link')):
+            resolver = host.get_deep_link_resolver()
+            try:
+                resolved = await resolver.resolve(
+                    client=host.app.client,
+                    message=message,
+                    whitelist=host.gc.get_deep_link_bot_whitelist(),
+                    timeout_seconds=host.gc.get_deep_link_timeout_seconds(),
+                )
+            except DeepLinkResolveError as e:
+                task_id = int(task.get('id'))
+                item_id = host.transfer_store.add_item(
+                    task_id=task_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    range_message_id=range_message_id,
+                    source_link=source_link,
+                    target_link=task.get('target_link'),
+                    media_type='deep_link',
+                    phase='failed',
+                    status=TransferStatus.FAILURE,
+                    error_message=str(e),
+                )
+                host.transfer_store.add_event(
+                    task_id,
+                    f'Deep link resolve failed: {e}',
+                    level='error',
+                    item_id=item_id,
+                )
+                host.refresh_transfer_task_counts(task_id)
+                return False
+            if resolved is not None:
+                resolved_meta = getattr(resolved, '_deep_link_meta', {}) or {}
+                message = resolved
+                forward_message_id = getattr(resolved, 'id', message_id)
+                resolved_chat = getattr(resolved, 'chat', None)
+                resolved_chat_id = getattr(resolved_chat, 'id', None)
+                if resolved_chat_id is not None:
+                    forward_chat_id = resolved_chat_id
+                elif resolved_meta.get('bot'):
+                    forward_chat_id = resolved_meta['bot']
         limit_error = host.get_task_target_size_limit_error(task, message)
         if limit_error:
             host.skip_transfer_item_for_target_limit(
                 task=task,
-                message=message,
+                message=channel_message,
                 source_link=source_link,
                 origin_chat_id=origin_chat_id,
                 limit_error=limit_error,
@@ -526,8 +572,8 @@ class WebTransferRunner:
                 forwarded_message = await host.forward(
                     client=host.app.client,
                     message=message,
-                    message_id=message_id,
-                    origin_chat_id=origin_chat_id,
+                    message_id=forward_message_id,
+                    origin_chat_id=forward_chat_id,
                     target_chat_id=target_chat_id,
                     target_link=task.get('target_link'),
                     download_upload=False,
@@ -549,7 +595,7 @@ class WebTransferRunner:
                     file_name=(media_meta or {}).get('file_name'),
                     file_size=(media_meta or {}).get('file_size'),
                     source_folder=source_folder_from_message(
-                        message,
+                        channel_message,
                         fallback_chat_id=origin_chat_id,
                         fallback_link=source_link
                     ),
@@ -562,6 +608,14 @@ class WebTransferRunner:
                     phase='forwarded',
                     status=TransferStatus.RUNNING
                 )
+                if resolved_meta:
+                    bot = resolved_meta.get('bot') or ''
+                    start_param = resolved_meta.get('start_param') or ''
+                    host.transfer_store.add_event(
+                        task_id,
+                        f'resolved_via=@{bot} start={start_param} source={source_link}',
+                        item_id=item_id,
+                    )
                 if host.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
                     if not host.forwarded_message_has_identity(forwarded_message):
                         host.fail_transfer_item(
@@ -627,18 +681,27 @@ class WebTransferRunner:
             except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
                 if not host.gc.download_upload:
                     raise
-                fallback_link = getattr(message, 'link', None) or source_link
                 host.transfer_store.add_event(
                     int(task.get('id')),
                     f'Direct forward fallback for {source_link}: {e}',
                     level='warning'
                 )
-                await self.create_web_transfer_fallback_download(
-                    task=task,
-                    source_link=fallback_link,
-                    message=None if fallback_link else message,
-                    range_message_id=range_message_id
-                )
+                if resolved_meta is not None:
+                    # Deep-link media lives in bot DM — never re-fetch the channel teaser.
+                    await self.create_web_transfer_fallback_download(
+                        task=task,
+                        source_link=source_link,
+                        message=message,
+                        range_message_id=range_message_id
+                    )
+                else:
+                    fallback_link = getattr(message, 'link', None) or source_link
+                    await self.create_web_transfer_fallback_download(
+                        task=task,
+                        source_link=fallback_link,
+                        message=None if fallback_link else message,
+                        range_message_id=range_message_id
+                    )
                 return True
 
     async def transfer_web_discussion_replies_to_target(

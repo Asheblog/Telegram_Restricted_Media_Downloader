@@ -153,7 +153,8 @@ class WebUiServer:
             port: int = 0,
             username: Optional[str] = None,
             password: Optional[str] = None,
-            diagnostic: Optional[IDiagnosticPort] = None
+            diagnostic: Optional[IDiagnosticPort] = None,
+            deep_link_whitelist_getter: Optional[Callable[[], list]] = None,
     ):
         self.store = store
         self.view_model = WebUiViewModel(store)
@@ -166,10 +167,23 @@ class WebUiServer:
         self.username = (username or '').strip()
         self.password = password or ''
         self.diagnostic = diagnostic or default_diagnostic
+        self.deep_link_whitelist_getter = deep_link_whitelist_getter
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self.auth_provider: Optional[AuthProvider] = None
         self.validate_auth_config()
+
+    def _require_deep_link_whitelist_if_enabled(self, resolve_deep_link: bool) -> None:
+        if not resolve_deep_link:
+            return
+        getter = getattr(self, 'deep_link_whitelist_getter', None)
+        whitelist = list(getter() or []) if callable(getter) else []
+        if not whitelist:
+            raise WebUiApiError(
+                'deep_link_whitelist_required',
+                '已开启深链取片，请先在系统设置填写资源 bot 白名单。',
+                HTTPStatus.BAD_REQUEST,
+            )
 
     def _operation(self, name: str):
         if self.operations is None:
@@ -942,10 +956,12 @@ class WebUiServer:
         target_link = str(payload.get('target_link') or 'https://t.me/pikpak_bot').strip()
         target_profile = str(payload.get('target_profile') or 'pikpak').strip()
         include_comment = bool(payload.get('include_comment'))
+        resolve_deep_link = bool(payload.get('resolve_deep_link'))
         if not source_link:
             raise WebUiApiError('source_link_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
         if not target_link:
             raise WebUiApiError('target_link_required', 'Target link is required.', HTTPStatus.BAD_REQUEST)
+        self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
         start_id = normalize_optional_int(payload.get('start_id'))
         end_id = normalize_optional_int(payload.get('end_id'))
         if (start_id is None) != (end_id is None):
@@ -976,7 +992,8 @@ class WebUiServer:
             target_profile=target_profile,
             start_id=start_id,
             end_id=end_id,
-            include_comment=include_comment
+            include_comment=include_comment,
+            resolve_deep_link=resolve_deep_link,
         )
         if self.task_submitter:
             self.task_submitter(task_id)
@@ -1042,6 +1059,7 @@ class WebUiServer:
             source_link = str(payload.get('source_link') or '').strip()
             target_link = str(payload.get('target_link') or '').strip()
             include_comment = bool(payload.get('include_comment'))
+            resolve_deep_link = bool(payload.get('resolve_deep_link'))
             if not source_link:
                 raise WebUiApiError('watch_source_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
             if not target_link:
@@ -1050,11 +1068,13 @@ class WebUiServer:
                 raise WebUiApiError('invalid_watch_source', 'Watch source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
             if not target_link.startswith('https://t.me/'):
                 raise WebUiApiError('invalid_watch_target', 'Watch target link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
+            self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
             payload = {
                 **payload,
                 'source_link': source_link,
                 'target_link': target_link,
-                'include_comment': include_comment
+                'include_comment': include_comment,
+                'resolve_deep_link': resolve_deep_link,
             }
         create_watch = self._operation('create_watch')
         if create_watch:
@@ -1077,6 +1097,11 @@ class WebUiServer:
         raise WebUiApiError('watch_operations_unavailable', 'Watch operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
 
     def update_watch(self, watch_id: str, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        resolve_deep_link = bool(payload.get('resolve_deep_link'))
+        self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
+        payload = {**payload, 'resolve_deep_link': resolve_deep_link}
         update_watch = self._operation('update_watch')
         if update_watch:
             try:
@@ -1368,6 +1393,9 @@ class WebUiServer:
             },
             'upload_pending_limit': {'min': 1, 'max': 5},
             'comment_delay_minutes': {'min': 0, 'max': 1440},
+            'deep_link': {
+                'timeout_seconds': {'min': 1, 'max': 600},
+            },
             'target_profiles': {
                 'pikpak': {
                     'max_file_size': {'min': 1}
@@ -1468,7 +1496,7 @@ def save_runtime_settings(payload: dict) -> dict:
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'},
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch', 'deep_link'},
         gc=global_config
     )
     user.save_config(user_config)
@@ -1505,6 +1533,13 @@ def _coerce_type(target_val, new_val):
         if isinstance(new_val, str):
             return new_val.lower() in ('true', '1', 'yes', 'on')
         return bool(new_val)
+    if target_type is list and isinstance(new_val, str):
+        # textarea / comma fields: avoid list("a\\nb") character-splitting
+        return [
+            part.strip()
+            for part in new_val.replace(',', '\n').split('\n')
+            if part.strip()
+        ]
     try:
         return target_type(new_val)
     except (TypeError, ValueError):

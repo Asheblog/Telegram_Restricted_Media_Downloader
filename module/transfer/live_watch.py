@@ -71,6 +71,7 @@ class LiveWatchManager:
         if watch.get('type') == 'forward':
             payload['target_link'] = watch.get('target_link')
             payload['include_comment'] = bool(watch.get('include_comment'))
+            payload['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
         return payload
 
     def persisted_watches(self) -> list:
@@ -89,6 +90,7 @@ class LiveWatchManager:
             source_link=watch.get('source_link'),
             target_link=watch.get('target_link'),
             include_comment=bool(watch.get('include_comment')),
+            resolve_deep_link=bool(watch.get('resolve_deep_link')),
             status=watch.get('status') or TransferStatus.PENDING,
             error_message=watch.get('error_message')
         )
@@ -120,6 +122,7 @@ class LiveWatchManager:
                 'source_link': link,
                 'target_link': None,
                 'include_comment': False,
+                'resolve_deep_link': False,
                 'status': TransferStatus.RUNNING
             }
         for rule in sorted(self.listen_forward_chat):
@@ -132,6 +135,7 @@ class LiveWatchManager:
                 'source_link': parsed.get('source_link'),
                 'target_link': parsed.get('target_link'),
                 'include_comment': bool(parsed.get('include_comment')),
+                'resolve_deep_link': bool(parsed.get('resolve_deep_link')),
                 'status': TransferStatus.RUNNING
             }
         running_ids = set(watches_by_id)
@@ -200,7 +204,8 @@ class LiveWatchManager:
             rule = make_forward_watch_rule(
                 payload.get('source_link'),
                 payload.get('target_link'),
-                bool(payload.get('include_comment'))
+                bool(payload.get('include_comment')),
+                bool(payload.get('resolve_deep_link')),
             )
             watch_id = f'forward:{rule}'
         else:
@@ -239,9 +244,12 @@ class LiveWatchManager:
             source_link = payload.get('source_link')
             target_link = payload.get('target_link')
             include_comment = bool(payload.get('include_comment'))
+            resolve_deep_link = bool(payload.get('resolve_deep_link'))
             if self.has_download_watch_source(source_link):
                 raise ValueError('watch_source_conflict')
-            rule = make_forward_watch_rule(source_link, target_link, include_comment)
+            rule = make_forward_watch_rule(
+                source_link, target_link, include_comment, resolve_deep_link
+            )
             same_target_exists = any(
                 parse_forward_watch_rule(existing).get('source_link') == source_link and
                 parse_forward_watch_rule(existing).get('target_link') == target_link
@@ -267,13 +275,19 @@ class LiveWatchManager:
                 'source_link': source_link,
                 'target_link': target_link,
                 'include_comment': include_comment,
+                'resolve_deep_link': resolve_deep_link,
                 'status': TransferStatus.PENDING
             }
             watch = self.persist_watch(watch)
             self.web_pending_watches[watch['id']] = watch
             self._create_live_watch_operation(
                 'forward',
-                {'source_link': source_link, 'target_link': target_link, 'include_comment': include_comment}
+                {
+                    'source_link': source_link,
+                    'target_link': target_link,
+                    'include_comment': include_comment,
+                    'resolve_deep_link': resolve_deep_link,
+                }
             )
             return {
                 'watches': [watch]
@@ -340,6 +354,7 @@ class LiveWatchManager:
         new_source = str(payload.get('source_link') or '').strip()
         new_target = str(payload.get('target_link') or '').strip()
         new_include_comment = bool(payload.get('include_comment'))
+        new_resolve_deep_link = bool(payload.get('resolve_deep_link'))
         if not new_source:
             new_source = old_source
         if not new_source:
@@ -362,7 +377,8 @@ class LiveWatchManager:
             'type': 'forward',
             'source_link': new_source,
             'target_link': new_target,
-            'include_comment': new_include_comment
+            'include_comment': new_include_comment,
+            'resolve_deep_link': new_resolve_deep_link,
         })
 
     def list_watch_events(

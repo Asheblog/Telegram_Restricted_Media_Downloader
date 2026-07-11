@@ -528,6 +528,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="new.includeComment">包含评论区</span>
           </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <span data-i18n="new.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.hint">
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
@@ -622,6 +629,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="watches.includeComment">包含评论区</span>
           </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <span data-i18n="watches.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createForward">新增监听转发</span>
@@ -691,6 +705,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
         <span data-i18n="watches.includeComment">包含评论区</span>
       </label>
+      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+        <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
+        <span data-i18n="watches.resolveDeepLink">深链取片</span>
+      </label>
+      <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
+        勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+      </p>
       <div class="flex gap-2 justify-end">
         <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
         <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
@@ -1120,6 +1141,15 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
           <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
+        <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
+        <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
+        <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
+          placeholder="每行一个，例如：&#10;a82bot"></textarea>
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkWhitelistHint">
+          每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。留空且任务未勾选时功能关闭。
+        </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout">取片超时（秒）</label>
+        <input class="form-input" name="global.deep_link.timeout_seconds" type="number" min="1" max="600">
       </section>
 
     <!-- PikPak Archive -->
@@ -1313,6 +1343,8 @@ const i18n = {
     'new.endId': '结束 ID',
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
+    'new.resolveDeepLink': '深链取片',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'watches.title': '活跃监听',
@@ -1325,6 +1357,8 @@ const i18n = {
     'watches.target': '目标频道',
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
+    'watches.resolveDeepLink': '深链取片',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -1513,6 +1547,10 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
     'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
+    'settings.deepLinkTitle': '深链取片',
+    'settings.deepLinkWhitelist': '资源 bot 白名单',
+    'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
+    'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -1654,6 +1692,8 @@ const i18n = {
     'new.endId': 'End ID',
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
+    'new.resolveDeepLink': 'Resolve deep links',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'watches.title': 'Active Watches',
@@ -1666,6 +1706,8 @@ const i18n = {
     'watches.target': 'Target channel',
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
+    'watches.resolveDeepLink': 'Resolve deep links',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -1854,6 +1896,10 @@ const i18n = {
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
     'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.deepLinkTitle': 'Deep link resolve',
+    'settings.deepLinkWhitelist': 'Resource bot whitelist',
+    'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
+    'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -2709,6 +2755,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     start_id: fd.get('start_id') ? Number(fd.get('start_id')) : null,
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
+    resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
   };
 
   try {
@@ -3355,6 +3402,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       source_link: fd.get('source_link'),
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
+      resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
     });
     await loadWatches();
     this.reset();
@@ -3481,6 +3529,7 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-source').value = watch.source_link || '';
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
+  $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -3508,6 +3557,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         source_link: fd.get('source_link'),
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
+        resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       }),
     });
     closeEditWatchModal();
@@ -3918,6 +3968,12 @@ function renderSettings() {
   setCheckboxVal('global.upload.delete', sg.upload?.delete);
   setFieldVal('global.upload.pending_limit', sg.upload?.pending_limit);
   setFieldVal('global.live_watch.comment_delay_minutes', sg.live_watch?.comment_delay_minutes ?? 20);
+  const deepLinkWhitelist = sg.deep_link?.bot_whitelist;
+  setFieldVal(
+    'global.deep_link.bot_whitelist',
+    Array.isArray(deepLinkWhitelist) ? deepLinkWhitelist.join('\n') : (deepLinkWhitelist || '')
+  );
+  setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -4051,10 +4107,11 @@ function buildSettingsPayload() {
     }
   });
 
-  /* global settings */
+  /* global settings — skip bot_whitelist textarea; collected explicitly as array below */
   $$('[name^="global."]').forEach(el => {
     if (!el.name) return;
     if (el.name === 'global.forward_type' || el.name === 'global.message_filter.media_types') return;
+    if (el.name === 'global.deep_link.bot_whitelist') return;
     const parts = el.name.split('.');
     if (parts[0] !== 'global') return;
     if (el.type === 'checkbox') {
@@ -4088,6 +4145,16 @@ function buildSettingsPayload() {
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');
   if (kwInput && kwInput.value) {
     setNested(payload, ['global', 'message_filter', 'keywords', 'words'], kwInput.value.split(',').map(k => k.trim()).filter(Boolean));
+  }
+
+  /* deep link bot whitelist — textarea may arrive as newline/comma-separated string */
+  const whitelistInput = document.querySelector('[name="global.deep_link.bot_whitelist"]');
+  if (whitelistInput) {
+    const lines = String(whitelistInput.value || '')
+      .split(/[\n,]+/)
+      .map(function(s) { return s.trim(); })
+      .filter(Boolean);
+    setNested(payload, ['global', 'deep_link', 'bot_whitelist'], lines);
   }
 
   return payload;
@@ -4748,6 +4815,13 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             <input type="checkbox" name="include_comment">
             <span data-i18n="new.includeComment">包含评论区</span>
           </label>
+          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="resolve_deep_link">
+            <span data-i18n="new.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="new.create">创建任务</button>
           <p class="mob-empty hidden" id="mob-form-notice"></p>
         </form>
@@ -4784,6 +4858,13 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
               <input type="checkbox" name="include_comment">
               <span data-i18n="watches.includeComment">包含评论区</span>
             </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="resolve_deep_link">
+              <span data-i18n="watches.resolveDeepLink">深链取片</span>
+            </label>
+            <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
+              勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+            </p>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
           <p class="mob-empty hidden" id="mob-watch-notice"></p>
@@ -5020,6 +5101,8 @@ const i18n = {
     'new.endId': '结束 ID',
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
+    'new.resolveDeepLink': '深链取片',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'watches.title': '活跃监听',
@@ -5032,6 +5115,8 @@ const i18n = {
     'watches.target': '目标频道',
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
+    'watches.resolveDeepLink': '深链取片',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -5220,6 +5305,10 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
     'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
+    'settings.deepLinkTitle': '深链取片',
+    'settings.deepLinkWhitelist': '资源 bot 白名单',
+    'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
+    'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -5361,6 +5450,8 @@ const i18n = {
     'new.endId': 'End ID',
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
+    'new.resolveDeepLink': 'Resolve deep links',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'watches.title': 'Active Watches',
@@ -5373,6 +5464,8 @@ const i18n = {
     'watches.target': 'Target channel',
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
+    'watches.resolveDeepLink': 'Resolve deep links',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -5561,6 +5654,10 @@ const i18n = {
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
     'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.deepLinkTitle': 'Deep link resolve',
+    'settings.deepLinkWhitelist': 'Resource bot whitelist',
+    'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
+    'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -7027,7 +7124,11 @@ function renderMobSettingsForm() {
     '</div>' +
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
-    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>';
+    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
+    '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;a82bot">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
+    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');
@@ -7487,6 +7588,7 @@ async function loadMediaMobile() {
       if (payload.start_id) payload.start_id = Number(payload.start_id);
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
+      payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
       var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
@@ -7516,6 +7618,7 @@ async function loadMediaMobile() {
         payload.source_link = formData.get('source_link');
         payload.target_link = formData.get('target_link');
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
+        payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
       var notice = document.getElementById('mob-watch-notice');
       try {
@@ -7583,13 +7686,14 @@ async function loadMediaMobile() {
       if (!settingsContainer) return;
 
       // Collect form data from all inputs in settings subpage
-      var inputs = settingsContainer.querySelectorAll('input[name], select[name]');
+      var inputs = settingsContainer.querySelectorAll('input[name], select[name], textarea[name]');
       var payload = {};
       var downloadTypes = Array.from(settingsContainer.querySelectorAll('input[name="user.download_type"]:checked')).map(function(input) { return input.value; });
       payload.user = payload.user || {};
       payload.user.download_type = downloadTypes;
       inputs.forEach(function(input) {
         if (input.name === 'user.download_type') return;
+        if (input.name === 'global.deep_link.bot_whitelist') return;
         var keys = input.name.split('.');
         var cur = payload;
         for (var i = 0; i < keys.length - 1; i++) {
@@ -7605,6 +7709,16 @@ async function loadMediaMobile() {
           cur[lastKey] = input.value || undefined;
         }
       });
+
+      var whitelistEl = settingsContainer.querySelector('[name="global.deep_link.bot_whitelist"]');
+      if (whitelistEl) {
+        payload.global = payload.global || {};
+        payload.global.deep_link = payload.global.deep_link || {};
+        payload.global.deep_link.bot_whitelist = String(whitelistEl.value || '')
+          .split(/[\n,]+/)
+          .map(function(s) { return s.trim(); })
+          .filter(Boolean);
+      }
 
       // Clean undefined values
       function clean(obj) {

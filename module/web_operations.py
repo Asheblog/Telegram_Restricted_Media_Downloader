@@ -780,7 +780,7 @@ class WebOperationsMixin:
         global_config = merge_allowed_settings(
             target=deepcopy(self.gc.config),
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'}
+            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch', 'deep_link'}
         )
         user_config = UserConfig.normalize_runtime_numbers(user_config)
         self.app.save_config(user_config)
@@ -823,7 +823,8 @@ class WebOperationsMixin:
             port=get_web_port_from_env(),
             username=get_web_username_from_env(),
             password=get_web_password_from_env(),
-            diagnostic=getattr(self, 'diagnostic', None)
+            diagnostic=getattr(self, 'diagnostic', None),
+            deep_link_whitelist_getter=lambda: self.gc.get_deep_link_bot_whitelist(),
         )
         if with_auth_provider:
             from module.web_ui import AuthProvider
