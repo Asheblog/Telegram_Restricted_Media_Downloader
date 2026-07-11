@@ -563,18 +563,26 @@ class WebOperationsMixin:
                 return
             offset_id = next_offset_id
 
-    def statistics(self) -> dict:
-        from module.statistics_payload import build_statistics_payload
+    def statistics(self, tz_offset_minutes: int | None = None) -> dict:
+        from module.statistics_payload import (
+            DEFAULT_STATISTICS_WINDOW_DAYS,
+            build_statistics_payload,
+        )
 
+        rows = self.transfer_store.aggregate_channel_download_stats(
+            days=DEFAULT_STATISTICS_WINDOW_DAYS,
+            tz_offset_minutes=tz_offset_minutes,
+        )
         payload = build_statistics_payload(
-            link_info=DownloadTask.LINK_INFO,
-            app=self.app,
-            upload_tasks=UploadTask.TASKS,
+            rows,
+            window_days=DEFAULT_STATISTICS_WINDOW_DAYS,
         )
         payload['operations'] = list(self.web_operations.values())[-50:]
         return payload
 
     def export_table(self, table_type: str) -> dict:
+        if table_type == 'channel':
+            return self._export_channel_statistics_table()
         if table_type == 'link':
             exported = self.app.print_link_table(
                 link_info=DownloadTask.LINK_INFO,
@@ -596,6 +604,64 @@ class WebOperationsMixin:
             'exported': bool(exported),
             'table_type': table_type,
             'directory': folder
+        }
+
+    def _export_channel_statistics_table(self) -> dict:
+        import csv
+        import datetime
+        import os
+        import sys
+        from module.statistics_payload import (
+            DEFAULT_STATISTICS_WINDOW_DAYS,
+            build_statistics_payload,
+        )
+
+        rows = self.transfer_store.aggregate_channel_download_stats(
+            days=DEFAULT_STATISTICS_WINDOW_DAYS,
+            tz_offset_minutes=None,
+        )
+        payload = build_statistics_payload(
+            rows,
+            window_days=DEFAULT_STATISTICS_WINDOW_DAYS,
+        )
+        if not payload['tables']['channel']['available']:
+            return {
+                'exported': False,
+                'table_type': 'channel',
+                'directory': 'DownloadRecordForm',
+            }
+        if is_docker():
+            directory = '/app/form/ChannelForm'
+            folder = 'form'
+        else:
+            directory = os.path.join(
+                os.path.dirname(os.path.abspath(sys.argv[0])),
+                'DownloadRecordForm',
+                'ChannelForm',
+            )
+            folder = 'DownloadRecordForm'
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(
+            directory,
+            f'{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_频道下载统计表.csv',
+        )
+        with open(path, 'w', encoding='utf-8-sig', newline='') as handle:
+            writer = csv.writer(handle)
+            writer.writerow(['频道', '成功', '失败', '跳过', '合计', '成功率'])
+            for row in payload['channels']:
+                writer.writerow([
+                    row['channel'],
+                    row['success'],
+                    row['failure'],
+                    row['skip'],
+                    row['total'],
+                    row['success_rate'],
+                ])
+        return {
+            'exported': True,
+            'table_type': 'channel',
+            'directory': folder,
+            'path': path,
         }
 
     def create_upload(self, payload: dict) -> dict:

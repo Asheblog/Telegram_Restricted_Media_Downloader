@@ -283,10 +283,6 @@
     @apply flex items-center justify-between gap-3 sticky bottom-0 bg-surface py-3 border-t border-line mt-2;
   }
 
-  #view-settings .form-row {
-    @apply lg:grid-cols-3 xl:grid-cols-4;
-  }
-
   #view-settings .settings-type-grid {
     @apply grid grid-cols-2 gap-2 mt-1 md:grid-cols-3 xl:grid-cols-4;
   }
@@ -600,8 +596,37 @@
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   }
 
+  .stats-chart-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .stats-bar-chart {
     @apply flex items-end gap-2.5 min-h-[180px] pt-2;
+  }
+
+  .stats-hbar-chart {
+    @apply flex flex-col gap-2.5 min-h-[180px] py-1;
+  }
+
+  .stats-hbar-row {
+    @apply grid items-center gap-3;
+    grid-template-columns: minmax(72px, 160px) minmax(0, 1fr) auto;
+  }
+
+  .stats-hbar-label {
+    @apply text-xs text-text truncate;
+  }
+
+  .stats-hbar-track {
+    @apply h-4 rounded overflow-hidden bg-slate-100 flex;
+  }
+
+  .stats-hbar-seg-success { @apply h-full bg-success; }
+  .stats-hbar-seg-failure { @apply h-full bg-danger; }
+  .stats-hbar-seg-skip { @apply h-full bg-slate-400; }
+
+  .stats-hbar-total {
+    @apply text-xs font-semibold text-text-secondary tabular-nums min-w-8 text-right;
   }
 
   .stats-bar-group {
@@ -679,6 +704,10 @@
 
     .stats-chart-grid {
       grid-template-columns: 1fr;
+    }
+
+    .stats-hbar-row {
+      grid-template-columns: minmax(64px, 120px) minmax(0, 1fr) auto;
     }
   }
 

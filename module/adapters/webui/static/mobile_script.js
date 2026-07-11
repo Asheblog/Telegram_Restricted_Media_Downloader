@@ -1220,38 +1220,32 @@ async function loadMobileStatistics() {
   var container = document.getElementById('mob-statistics-list');
   if (!container) return;
   try {
-    var data = await fetchJson('/api/statistics');
+    var data = await fetchJson(withClientTzQuery('/api/statistics'));
     var tables = data && data.tables ? data.tables : null;
     var summary = data && data.summary ? data.summary : {};
     if (!tables) {
       container.innerHTML = '<div class="mob-empty">暂无统计数据</div>';
       return;
     }
-    var rows = [
-      { key: 'link', label: '链接统计表' },
-      { key: 'count', label: '计数统计表' },
-      { key: 'upload', label: '上传统计表' }
-    ];
+    var channelTable = tables.channel || {};
     var html = '';
-    if (summary.links || summary.downloads_total || summary.upload_tasks) {
-      html += '<div class="mob-card">' +
-        '<div class="mob-card__head"><span class="mob-card__title">数据概览</span></div>' +
-        '<div class="mob-card__row"><span class="label">监控链接</span><span>' + (summary.links || 0) + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">下载总量</span><span>' + (summary.downloads_total || 0) + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">成功率</span><span>' + (summary.success_rate || 0) + '%</span></div>' +
-        '<div class="mob-card__row"><span class="label">上传任务</span><span>' + (summary.upload_tasks || 0) + '</span></div>' +
-      '</div>';
-    }
-    rows.forEach(function(row) {
-      var t = tables[row.key] || {};
-      html += '<div class="mob-card">' +
-        '<div class="mob-card__head"><span class="mob-card__title">' + esc(row.label) + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">行数</span><span>' + (t.row_count || t.rows || 0) + '</span></div>' +
-        '<div class="mob-card__row"><span class="label">可用</span><span>' + (t.available ? '是' : '否') + '</span></div>' +
-        (t.available ? '<button class="mob-btn mob-btn--primary" type="button" data-export="' + row.key + '">导出</button>' : '') +
-      '</div>';
-    });
-    container.innerHTML = html || '<div class="mob-empty">暂无统计数据</div>';
+    html += '<div class="mob-card">' +
+      '<div class="mob-card__head"><span class="mob-card__title">近 7 天概览</span></div>' +
+      '<div class="mob-card__row"><span class="label">频道数</span><span>' + (summary.channels || 0) + '</span></div>' +
+      '<div class="mob-card__row"><span class="label">条目总数</span><span>' + (summary.downloads_total || 0) + '</span></div>' +
+      '<div class="mob-card__row"><span class="label">成功率</span><span>' + (summary.success_rate || 0) + '%</span></div>' +
+      '<div class="mob-card__row"><span class="label">失败 / 跳过</span><span>' +
+        (summary.failure_count || 0) + ' / ' + (summary.skip_count || 0) + '</span></div>' +
+    '</div>';
+    html += '<div class="mob-card">' +
+      '<div class="mob-card__head"><span class="mob-card__title">按频道</span></div>' +
+      '<div class="mob-card__row"><span class="label">行数</span><span>' + (channelTable.rows || 0) + '</span></div>' +
+      '<div class="mob-card__row"><span class="label">可用</span><span>' + (channelTable.available ? '是' : '否') + '</span></div>' +
+      (channelTable.available
+        ? '<button class="mob-btn mob-btn--primary" type="button" data-export="channel">导出</button>'
+        : '') +
+    '</div>';
+    container.innerHTML = html;
   } catch (e) {
     container.innerHTML = '<div class="mob-empty">加载失败</div>';
   }

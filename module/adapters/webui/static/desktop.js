@@ -1329,134 +1329,48 @@ setInterval(() => {
 }, 10000);
 
 /* ====== Statistics ====== */
-const STATS_TAB_EXPORT_KEYS = {
-  link: 'statistics.exportLink',
-  count: 'statistics.exportCount',
-  upload: 'statistics.exportUpload',
-};
-
-function mediaTypeLabel(type) {
-  return t('statistics.media.' + type) || type;
-}
-
-function uploadStatusLabel(status) {
-  return t('statistics.upload.' + status) || status;
-}
-
-function linkStatusBadge(status) {
-  if (status === 'complete') return '<span class="badge badge-success">' + esc(t('statistics.statusComplete')) + '</span>';
-  if (status === 'error') return '<span class="badge badge-failed">' + esc(t('statistics.statusError')) + '</span>';
-  return '<span class="badge badge-warning">' + esc(t('statistics.statusProgress')) + '</span>';
-}
-
-function progressClass(status) {
-  if (status === 'complete') return 'complete';
-  if (status === 'error') return 'error';
-  return 'progress';
-}
-
 function renderStatisticsKpis(data) {
   const summary = data.summary || {};
-  const linksEl = $('#stats-kpi-links');
+  const channelsEl = $('#stats-kpi-channels');
   const downloadsEl = $('#stats-kpi-downloads');
+  const successRateEl = $('#stats-kpi-success-rate');
   const issuesEl = $('#stats-kpi-issues');
-  const uploadsEl = $('#stats-kpi-uploads');
-  if (!linksEl) return;
+  if (!channelsEl) return;
 
-  linksEl.textContent = summary.links || 0;
+  channelsEl.textContent = summary.channels || 0;
   downloadsEl.textContent = summary.downloads_total || 0;
+  if (successRateEl) successRateEl.textContent = (summary.success_rate || 0) + '%';
   issuesEl.textContent = (summary.failure_count || 0) + ' / ' + (summary.skip_count || 0);
-  uploadsEl.textContent = summary.upload_tasks || 0;
-
-  const downloadsLabel = downloadsEl.parentElement?.querySelector('.stat-card-label');
-  if (downloadsLabel && summary.downloads_total) {
-    downloadsLabel.textContent = t('statistics.kpiSuccessRate', { rate: summary.success_rate || 0 });
-  } else if (downloadsLabel) {
-    downloadsLabel.textContent = t('statistics.kpiDownloads');
-  }
-
-  const uploadsLabel = uploadsEl.parentElement?.querySelector('.stat-card-label');
-  if (uploadsLabel && summary.upload_tasks) {
-    uploadsLabel.textContent = t('statistics.kpiUploadDone', { count: summary.upload_completed || 0 });
-  } else if (uploadsLabel) {
-    uploadsLabel.textContent = t('statistics.kpiUploads');
-  }
 }
 
 function renderStatisticsMediaChart(data) {
   const container = $('#stats-media-chart');
   if (!container) return;
-  const rows = (data.count_by_type || []).filter(row => row.total > 0);
+  const rows = (data.chart_by_channel || data.count_by_channel || []).filter(row => row.total > 0);
   if (!rows.length) {
     container.innerHTML = '<div class="text-sm text-muted text-center py-10">' + esc(t('statistics.empty')) + '</div>';
     return;
   }
   const maxTotal = Math.max(...rows.map(row => row.total), 1);
   container.innerHTML = rows.map(row => {
-    const height = Math.max(12, Math.round((row.total / maxTotal) * 180));
-    const successH = row.total ? Math.round((row.success / row.total) * height) : 0;
-    const failureH = row.total ? Math.round((row.failure / row.total) * height) : 0;
-    const skipH = Math.max(0, height - successH - failureH);
-    return '<div class="stats-bar-group">' +
-      '<div class="stats-bar-stack" style="height:' + height + 'px">' +
-        (successH ? '<div class="stats-bar-seg-success" style="height:' + successH + 'px"></div>' : '') +
-        (failureH ? '<div class="stats-bar-seg-failure" style="height:' + failureH + 'px"></div>' : '') +
-        (skipH ? '<div class="stats-bar-seg-skip" style="height:' + skipH + 'px"></div>' : '') +
+    const width = Math.max(4, Math.round((row.total / maxTotal) * 100));
+    const successW = row.total ? Math.round((row.success / row.total) * 100) : 0;
+    const failureW = row.total ? Math.round((row.failure / row.total) * 100) : 0;
+    const skipW = Math.max(0, 100 - successW - failureW);
+    const label = row.is_other ? t('statistics.otherChannel') : (row.channel || 'unknown');
+    return '<div class="stats-hbar-row" title="' + esc(label + ' · ' + row.total) + '">' +
+      '<span class="stats-hbar-label">' + esc(label) + '</span>' +
+      '<div class="stats-hbar-track" style="width:' + width + '%">' +
+        (successW ? '<div class="stats-hbar-seg-success" style="width:' + successW + '%"></div>' : '') +
+        (failureW ? '<div class="stats-hbar-seg-failure" style="width:' + failureW + '%"></div>' : '') +
+        (skipW ? '<div class="stats-hbar-seg-skip" style="width:' + skipW + '%"></div>' : '') +
       '</div>' +
-      '<span class="stats-bar-label">' + esc(mediaTypeLabel(row.type)) + '</span>' +
+      '<span class="stats-hbar-total">' + esc(row.total) + '</span>' +
     '</div>';
   }).join('');
-}
-
-function renderStatisticsLinkDonut(data) {
-  const container = $('#stats-link-donut');
-  if (!container) return;
-  const completion = data.link_completion || {};
-  const total = (completion.complete || 0) + (completion.progress || 0) + (completion.error || 0);
-  if (!total) {
-    container.innerHTML = '<div class="text-sm text-muted text-center py-10">' + esc(t('statistics.empty')) + '</div>';
-    return;
-  }
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  const segments = [
-    { key: 'complete', count: completion.complete || 0, color: '#10b981', label: t('statistics.donutComplete') },
-    { key: 'progress', count: completion.progress || 0, color: '#f59e0b', label: t('statistics.donutProgress') },
-    { key: 'error', count: completion.error || 0, color: '#ef4444', label: t('statistics.donutError') },
-  ];
-  let offset = 0;
-  const arcs = segments.map(seg => {
-    const length = (seg.count / total) * circumference;
-    const arc = '<circle cx="70" cy="70" r="' + radius + '" fill="none" stroke="' + seg.color + '" stroke-width="18" ' +
-      'stroke-dasharray="' + length + ' ' + (circumference - length) + '" stroke-dashoffset="-' + offset + '" transform="rotate(-90 70 70)"></circle>';
-    offset += length;
-    return arc;
-  }).join('');
-  const legend = segments.map(seg => {
-    const pct = total ? Math.round(seg.count / total * 100) : 0;
-    return '<div class="stats-donut-legend-item">' +
-      '<span class="stats-legend-dot" style="background:' + seg.color + '"></span>' +
-      '<span>' + esc(seg.label) + ' (' + seg.count + ')</span>' +
-      '<span class="stats-donut-legend-val">' + pct + '%</span>' +
-    '</div>';
-  }).join('');
-
-  container.innerHTML =
-    '<svg width="140" height="140" viewBox="0 0 140 140" aria-hidden="true">' +
-      '<circle cx="70" cy="70" r="' + radius + '" fill="none" stroke="#e2e8f0" stroke-width="18"></circle>' +
-      arcs +
-      '<text x="70" y="66" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">' + (completion.avg_rate || 0) + '%</text>' +
-      '<text x="70" y="84" text-anchor="middle" font-size="11" fill="#94a3b8">' + esc(t('statistics.donutAvg')) + '</text>' +
-    '</svg>' +
-    '<div class="stats-donut-legend">' + legend + '</div>';
-}
-
-function statisticsTabAvailable(data, tab) {
-  return !!(data.tables && data.tables[tab] && data.tables[tab].available);
 }
 
 function renderStatisticsDetailTable(data) {
-  const tab = state.statisticsTab || 'link';
   const thead = $('#statistics-detail-thead');
   const tbody = $('#statistics-detail-tbody');
   const emptyEl = $('#statistics-empty');
@@ -1464,75 +1378,34 @@ function renderStatisticsDetailTable(data) {
   const exportBtn = $('#statistics-export-btn');
   if (!thead || !tbody) return;
 
-  $$('#statistics-tabs .panel-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.statsTab === tab);
-  });
-
+  const available = !!(data.tables && data.tables.channel && data.tables.channel.available);
   if (exportBtn) {
-    exportBtn.dataset.export = tab;
-    exportBtn.disabled = !statisticsTabAvailable(data, tab);
+    exportBtn.dataset.export = 'channel';
+    exportBtn.disabled = !available;
     exportBtn.classList.toggle('opacity-50', exportBtn.disabled);
     exportBtn.style.cursor = exportBtn.disabled ? 'not-allowed' : 'pointer';
   }
-  const exportLabel = $('#statistics-export-label');
-  if (exportLabel) {
-    exportLabel.textContent = t(STATS_TAB_EXPORT_KEYS[tab] || 'statistics.exportCurrent');
-  }
 
-  let headers = [];
-  let rowsHtml = '';
-  if (tab === 'link') {
-    headers = ['statistics.colLink', 'statistics.colCompletion', 'statistics.colFiles', 'statistics.colStatus', 'statistics.colError'];
-    const rows = data.links || [];
-    rowsHtml = rows.map(row => {
-      const width = Math.max(0, Math.min(100, row.rate || 0));
-      return '<tr>' +
-        '<td class="link">' + esc(row.link) + '</td>' +
-        '<td><div class="stats-inline-progress"><div class="stats-inline-progress-fill ' + progressClass(row.status) + '" style="width:' + width + '%"></div></div>' +
-          '<span class="text-xs text-muted">' + esc((row.complete_num || 0) + '/' + (row.member_num || 0) + ' · ' + width + '%') + '</span></td>' +
-        '<td class="num">' + esc(row.file_count || 0) + '</td>' +
-        '<td>' + linkStatusBadge(row.status) + '</td>' +
-        '<td class="text-sm text-danger">' + esc(row.error || '—') + '</td>' +
-      '</tr>';
-    }).join('');
-    if (!rows.length || !statisticsTabAvailable(data, tab)) rowsHtml = '';
-  } else if (tab === 'count') {
-    headers = ['statistics.colType', 'statistics.colSuccess', 'statistics.colFailure', 'statistics.colSkip', 'statistics.colTotal'];
-    const rows = data.count_by_type || [];
-    rowsHtml = rows.map(row =>
-      '<tr>' +
-        '<td>' + esc(mediaTypeLabel(row.type)) + '</td>' +
-        '<td class="num">' + esc(row.success || 0) + '</td>' +
-        '<td class="num">' + esc(row.failure || 0) + '</td>' +
-        '<td class="num">' + esc(row.skip || 0) + '</td>' +
-        '<td class="num font-semibold">' + esc(row.total || 0) + '</td>' +
-      '</tr>'
-    ).join('');
-    const totals = data.count_totals || {};
-    if (statisticsTabAvailable(data, tab)) {
-      rowsHtml += '<tr class="font-semibold bg-surface-alt">' +
-        '<td>' + esc(t('statistics.colTotal')) + '</td>' +
-        '<td class="num">' + esc(totals.success || 0) + '</td>' +
-        '<td class="num">' + esc(totals.failure || 0) + '</td>' +
-        '<td class="num">' + esc(totals.skip || 0) + '</td>' +
-        '<td class="num">' + esc((totals.success || 0) + (totals.failure || 0) + (totals.skip || 0)) + '</td>' +
-      '</tr>';
-    }
-    if (!statisticsTabAvailable(data, tab)) rowsHtml = '';
-  } else {
-    headers = ['statistics.colChannel', 'statistics.colFile', 'statistics.colSize', 'statistics.colStatus', 'statistics.colError'];
-    const rows = data.upload_rows || [];
-    rowsHtml = rows.map(row =>
-      '<tr>' +
-        '<td>' + esc(row.chat_id || '—') + '</td>' +
-        '<td class="link">' + esc(row.file || '—') + '</td>' +
-        '<td class="num">' + esc(row.size || '—') + '</td>' +
-        '<td>' + esc(uploadStatusLabel(row.status)) + '</td>' +
-        '<td class="text-sm text-danger">' + esc(row.error || '—') + '</td>' +
-      '</tr>'
-    ).join('');
-    if (!rows.length || !statisticsTabAvailable(data, tab)) rowsHtml = '';
-  }
+  const headers = [
+    'statistics.colChannel',
+    'statistics.colSuccess',
+    'statistics.colFailure',
+    'statistics.colSkip',
+    'statistics.colTotal',
+    'statistics.colSuccessRate',
+  ];
+  const rows = data.channels || data.count_by_channel || [];
+  let rowsHtml = rows.map(row =>
+    '<tr>' +
+      '<td class="link">' + esc(row.channel || 'unknown') + '</td>' +
+      '<td class="num">' + esc(row.success || 0) + '</td>' +
+      '<td class="num">' + esc(row.failure || 0) + '</td>' +
+      '<td class="num">' + esc(row.skip || 0) + '</td>' +
+      '<td class="num font-semibold">' + esc(row.total || 0) + '</td>' +
+      '<td class="num">' + esc((row.success_rate || 0) + '%') + '</td>' +
+    '</tr>'
+  ).join('');
+  if (!available) rowsHtml = '';
 
   thead.innerHTML = '<tr>' + headers.map(key => '<th data-i18n="' + key + '">' + esc(t(key)) + '</th>').join('') + '</tr>';
   tbody.innerHTML = rowsHtml;
@@ -1544,30 +1417,22 @@ function renderStatisticsDetailTable(data) {
 function renderStatisticsDashboard(data) {
   renderStatisticsKpis(data);
   renderStatisticsMediaChart(data);
-  renderStatisticsLinkDonut(data);
   renderStatisticsDetailTable(data);
 }
 
 async function loadStatistics() {
   try {
-    const data = await fetchJson('/api/statistics');
+    const data = await fetchJson(withClientTzQuery('/api/statistics'));
     state.statistics = data;
     if (state.activeView === 'statistics') renderStatisticsDashboard(data);
   } catch (e) {}
 }
 
-$('#statistics-tabs')?.addEventListener('click', (event) => {
-  const tabBtn = event.target.closest('[data-stats-tab]');
-  if (!tabBtn) return;
-  state.statisticsTab = tabBtn.dataset.statsTab || 'link';
-  if (state.statistics) renderStatisticsDetailTable(state.statistics);
-});
-
 $('#statistics-export-btn')?.addEventListener('click', async () => {
   const btn = $('#statistics-export-btn');
   if (!btn || btn.disabled) return;
   try {
-    await postJson('/api/tables/export', { table_type: btn.dataset.export || state.statisticsTab || 'link' });
+    await postJson('/api/tables/export', { table_type: btn.dataset.export || 'channel' });
     alert(t('statistics.exported'));
   } catch (err) {
     alert(translateApiError(err, 'form.requestFailed'));

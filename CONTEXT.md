@@ -132,6 +132,9 @@ _Avoid_: Auto dump, guessed range
 **Download Success Record** — 已成功下载消息的持久化记录（按来源会话+消息 ID），后续转存可复用，避免重复下载。
 _Avoid_: Cache hit, finished file
 
+**Channel Download Statistics** — WebUI 统计面板按 Source Channel Folder（缺省回退 `source_chat_id`）聚合近 7 个本地自然日的 Transfer Item 终端态（success / failure / skipped）；数据来自 TransferStore，进程重启不丢失。
+_Avoid_: In-memory link completion, upload task counters, media-type-only chart
+
 **Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
 _Avoid_: Upload concurrency, temp cache size
 

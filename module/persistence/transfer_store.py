@@ -80,6 +80,24 @@ class TransferStore:
         cutoff = reference - datetime.timedelta(days=max(0, retention_days))
         return cutoff.isoformat(timespec='seconds')
 
+    @classmethod
+    def local_calendar_window_start_utc(
+            cls,
+            days: int,
+            tz_offset_minutes: int | None = None,
+    ) -> str:
+        """UTC ISO start of a local calendar window that includes today.
+
+        ``days=7`` means today plus the previous 6 local calendar days.
+        """
+        window_days = max(1, int(days))
+        today_start, _ = cls.local_today_utc_bounds(tz_offset_minutes)
+        start_dt = datetime.datetime.fromisoformat(today_start)
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=datetime.UTC)
+        window_start = start_dt - datetime.timedelta(days=window_days - 1)
+        return window_start.astimezone(datetime.UTC).isoformat(timespec='seconds')
+
     def _get_conn(self) -> sqlite3.Connection:
         """返回当前线程缓存的数据库连接，首次调用时创建并配置。"""
         conn = getattr(self._tls, 'conn', None)
@@ -1010,6 +1028,70 @@ class TransferStore:
             return conn.execute(
                 'SELECT COUNT(*) FROM transfer_items WHERE task_id = ?', (task_id,)
             ).fetchone()[0]
+
+    def aggregate_channel_download_stats(
+            self,
+            days: int = 7,
+            tz_offset_minutes: int | None = None,
+    ) -> List[Dict[str, Any]]:
+        """Aggregate terminal transfer items by source channel for a local window."""
+        cutoff = self.local_calendar_window_start_utc(
+            days=days,
+            tz_offset_minutes=tz_offset_minutes,
+        )
+        terminal = (
+            TransferStatus.SUCCESS,
+            TransferStatus.FAILURE,
+            TransferStatus.SKIPPED,
+        )
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT
+                    CASE
+                        WHEN source_folder IS NOT NULL AND TRIM(source_folder) != ''
+                            THEN TRIM(source_folder)
+                        WHEN source_chat_id IS NOT NULL AND TRIM(CAST(source_chat_id AS TEXT)) != ''
+                            THEN TRIM(CAST(source_chat_id AS TEXT))
+                        ELSE 'unknown'
+                    END AS channel,
+                    status,
+                    COUNT(*) AS cnt
+                FROM transfer_items
+                WHERE updated_at >= ?
+                  AND status IN (?, ?, ?)
+                GROUP BY channel, status
+                ''',
+                (cutoff, *terminal),
+            ).fetchall()
+
+        aggregated: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            channel = str(row['channel'] or 'unknown')
+            bucket = aggregated.setdefault(
+                channel,
+                {
+                    'channel': channel,
+                    'success': 0,
+                    'failure': 0,
+                    'skip': 0,
+                    'total': 0,
+                },
+            )
+            count = int(row['cnt'] or 0)
+            status = str(row['status'] or '')
+            if status == TransferStatus.SUCCESS:
+                bucket['success'] += count
+            elif status == TransferStatus.FAILURE:
+                bucket['failure'] += count
+            elif status == TransferStatus.SKIPPED:
+                bucket['skip'] += count
+            bucket['total'] = bucket['success'] + bucket['failure'] + bucket['skip']
+
+        return sorted(
+            aggregated.values(),
+            key=lambda item: (-int(item['total']), str(item['channel'])),
+        )
 
     def count_events(self, task_id: int) -> int:
         with self.connect() as conn:

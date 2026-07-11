@@ -108,13 +108,22 @@ class FakeWebUiOperations:
             raise self.transfer_range_error
         return self.transfer_range
 
-    def statistics(self):
+    def statistics(self, tz_offset_minutes=None):
         return {
             'tables': {
-                'link': {'available': True, 'rows': 2},
-                'count': {'available': True, 'rows': 1},
-                'upload': {'available': False, 'rows': 0}
-            }
+                'channel': {'available': True, 'rows': 2},
+            },
+            'summary': {
+                'channels': 2,
+                'downloads_total': 10,
+                'success_rate': 80.0,
+                'failure_count': 1,
+                'skip_count': 1,
+                'issue_count': 2,
+                'window_days': 7,
+            },
+            'channels': [],
+            'chart_by_channel': [],
         }
 
     def export_table(self, table_type):
@@ -1610,21 +1619,21 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 response = conn.getresponse()
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(200, response.status)
-                self.assertTrue(body['tables']['link']['available'])
-                self.assertFalse(body['tables']['upload']['available'])
+                self.assertTrue(body['tables']['channel']['available'])
+                self.assertEqual(2, body['summary']['channels'])
 
                 conn.request(
                     'POST',
                     '/api/tables/export',
-                    body=json.dumps({'table_type': 'link'}),
+                    body=json.dumps({'table_type': 'channel'}),
                     headers={**headers, 'Content-Type': 'application/json'}
                 )
                 response = conn.getresponse()
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(200, response.status)
                 self.assertTrue(body['exported'])
-                self.assertEqual('link', body['table_type'])
-                self.assertEqual(['link'], operations.exported_tables)
+                self.assertEqual('channel', body['table_type'])
+                self.assertEqual(['channel'], operations.exported_tables)
             finally:
                 server.stop()
 

@@ -89,7 +89,7 @@
 | `/api/tasks/<id>/retry-failed` | POST | 重试失败 Items |
 | `/api/watches` | GET/POST | 列出/创建监听规则 |
 | `/api/watches/<id>` | DELETE/PATCH | 删除/更新监听 |
-| `/api/statistics` | GET | 获取统计 |
+| `/api/statistics` | GET | 近 7 天按频道聚合的转存统计（`tz_offset` 可选） |
 | `/api/operations` | GET | 操作历史 |
 | `/api/transfer/detect-range` | POST | 检测频道消息范围 |
 | `/api/media/scan` | GET | 扫描可清理文件 |

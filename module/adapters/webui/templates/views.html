@@ -428,11 +428,11 @@
   <div class="stats-kpi-grid">
     <div class="stat-card">
       <div class="stat-card-icon blue">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
       <div>
-        <div class="stat-card-value" id="stats-kpi-links">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiLinks">监控链接</div>
+        <div class="stat-card-value" id="stats-kpi-channels">0</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiChannels">频道数</div>
       </div>
     </div>
     <div class="stat-card">
@@ -441,7 +441,16 @@
       </div>
       <div>
         <div class="stat-card-value" id="stats-kpi-downloads">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiDownloads">下载总量</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiDownloads">条目总数</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon cyan">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 20V10M8 14l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div>
+        <div class="stat-card-value" id="stats-kpi-success-rate">0%</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiSuccessRateLabel">成功率</div>
       </div>
     </div>
     <div class="stat-card">
@@ -453,25 +462,16 @@
         <div class="stat-card-label" data-i18n="statistics.kpiIssues">失败 / 跳过</div>
       </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-card-icon purple">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M7 10l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-      <div>
-        <div class="stat-card-value" id="stats-kpi-uploads">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiUploads">上传任务</div>
-      </div>
-    </div>
   </div>
 
-  <div class="stats-chart-grid">
+  <div class="stats-chart-grid stats-chart-grid--single">
     <div class="panel">
       <div class="panel-header">
         <h3 data-i18n="statistics.mediaChartTitle">媒体下载分布</h3>
-        <span class="text-xs text-muted" data-i18n="statistics.mediaChartMeta">按类型 · 成功 / 失败 / 跳过</span>
+        <span class="text-xs text-muted" data-i18n="statistics.mediaChartMeta">近 7 天 · 按频道 · 成功 / 失败 / 跳过</span>
       </div>
       <div class="panel-body">
-        <div id="stats-media-chart" class="stats-bar-chart"></div>
+        <div id="stats-media-chart" class="stats-hbar-chart"></div>
         <div class="stats-chart-legend">
           <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-success"></span><span data-i18n="statistics.legendSuccess">成功</span></span>
           <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-failure"></span><span data-i18n="statistics.legendFailure">失败</span></span>
@@ -479,28 +479,14 @@
         </div>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-header">
-        <h3 data-i18n="statistics.linkChartTitle">链接完成率</h3>
-        <span class="text-xs text-muted" data-i18n="statistics.linkChartMeta">按来源链接</span>
-      </div>
-      <div class="panel-body">
-        <div id="stats-link-donut" class="stats-donut-wrap"></div>
-      </div>
-    </div>
   </div>
 
   <div class="panel">
     <div class="panel-header">
-      <div class="panel-tabs" id="statistics-tabs">
-        <button type="button" class="panel-tab active" data-stats-tab="link" data-i18n="statistics.tabLink">链接统计</button>
-        <button type="button" class="panel-tab" data-stats-tab="count" data-i18n="statistics.tabCount">计数统计</button>
-        <button type="button" class="panel-tab" data-stats-tab="upload" data-i18n="statistics.tabUpload">上传统计</button>
-      </div>
-      <button class="btn btn-sm btn-primary" id="statistics-export-btn" data-export="link">
+      <h3 data-i18n="statistics.tabChannel">按频道</h3>
+      <button class="btn btn-sm btn-primary" id="statistics-export-btn" data-export="channel">
         <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span id="statistics-export-label" data-i18n="statistics.exportCurrent">导出当前报表</span>
+        <span id="statistics-export-label" data-i18n="statistics.exportChannel">导出频道报表</span>
       </button>
     </div>
     <div class="overflow-auto">
@@ -663,10 +649,10 @@
             <label class="form-label" data-i18n="settings.tempDirectory">临时目录</label>
             <input class="form-input" name="user.temp_directory">
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="settings.sessionDirectory">会话目录</label>
-          <input class="form-input" name="user.session_directory">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.sessionDirectory">会话目录</label>
+            <input class="form-input" name="user.session_directory">
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -677,8 +663,6 @@
             <label class="form-label" data-i18n="settings.maxUpload">最大上传任务</label>
             <input class="form-input" name="user.max_tasks.upload" type="number" min="1">
           </div>
-        </div>
-        <div class="form-row">
           <div class="form-group">
             <label class="form-label" data-i18n="settings.retryDownload">下载重试</label>
             <input class="form-input" name="user.max_retries.download" type="number" min="0">
@@ -687,10 +671,10 @@
             <label class="form-label" data-i18n="settings.retryUpload">上传重试</label>
             <input class="form-input" name="user.max_retries.upload" type="number" min="0">
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</label>
-          <input class="form-input" name="global.target_profiles.pikpak.max_file_size" type="number" min="1">
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</label>
+            <input class="form-input" name="global.target_profiles.pikpak.max_file_size" type="number" min="1">
+          </div>
         </div>
       </section>
 

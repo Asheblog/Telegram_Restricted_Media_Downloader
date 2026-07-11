@@ -533,7 +533,9 @@ class WebUiServer:
                     })
                     return
                 if parsed.path == '/api/statistics':
-                    self._send_json(server.statistics())
+                    query = parse_qs(parsed.query)
+                    tz_offset = self._query_optional_int(query, 'tz_offset')
+                    self._send_json(server.statistics(tz_offset_minutes=tz_offset))
                     return
                 if parsed.path == '/api/operations':
                     self._send_json({'operations': server.list_operations()})
@@ -1212,13 +1214,28 @@ class WebUiServer:
             return {'task_id': task_id, 'action': action}
         raise WebUiApiError('invalid_task_action', 'Invalid task action.', HTTPStatus.BAD_REQUEST)
 
-    def statistics(self) -> dict:
+    def statistics(self, tz_offset_minutes: int | None = None) -> dict:
         statistics = self._operation('statistics')
         if statistics:
-            return statistics()
-        from module.statistics_payload import build_statistics_payload, empty_statistics_app
+            try:
+                return statistics(tz_offset_minutes=tz_offset_minutes)
+            except TypeError:
+                return statistics()
+        from module.statistics_payload import build_statistics_payload
 
-        return build_statistics_payload(link_info={}, app=empty_statistics_app(), upload_tasks=set())
+        store = getattr(self, 'transfer_store', None)
+        if store is not None:
+            from module.statistics_payload import DEFAULT_STATISTICS_WINDOW_DAYS
+
+            rows = store.aggregate_channel_download_stats(
+                days=DEFAULT_STATISTICS_WINDOW_DAYS,
+                tz_offset_minutes=tz_offset_minutes,
+            )
+            return build_statistics_payload(
+                rows,
+                window_days=DEFAULT_STATISTICS_WINDOW_DAYS,
+            )
+        return build_statistics_payload([])
 
     def list_operations(self, limit: int = 50) -> list:
         list_operations = self._operation('list_operations')
@@ -1227,8 +1244,12 @@ class WebUiServer:
         return []
 
     def export_table(self, table_type: str) -> dict:
-        if table_type not in ('link', 'count', 'upload'):
-            raise WebUiApiError('invalid_table_type', 'Table type must be link, count, or upload.', HTTPStatus.BAD_REQUEST)
+        if table_type not in ('channel', 'link', 'count', 'upload'):
+            raise WebUiApiError(
+                'invalid_table_type',
+                'Table type must be channel, link, count, or upload.',
+                HTTPStatus.BAD_REQUEST,
+            )
         export_table = self._operation('export_table')
         if export_table:
             return export_table(table_type)
