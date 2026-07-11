@@ -1535,7 +1535,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 trace_id=trace_id
                             )
                             if include_comment:
-                                await self.forward_discussion_replies(
+                                await self.schedule_or_forward_discussion_replies(
                                     client=client,
                                     source_chat_id=_listen_chat_id,
                                     source_message_id=message.id,
@@ -1568,7 +1568,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         trace_id=trace_id
                     )
                     if include_comment:
-                        await self.forward_discussion_replies(
+                        await self.schedule_or_forward_discussion_replies(
                             client=client,
                             source_chat_id=_listen_chat_id,
                             source_message_id=message.id,

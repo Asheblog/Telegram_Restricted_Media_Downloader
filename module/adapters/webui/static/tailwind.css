@@ -879,6 +879,7 @@
   .watch-row:hover { background: var(--color-surface-hover); }
   .watch-events-row { display: none; }
   .watch-events-row.open { display: table-row; }
+  .watch-deferred-panel.hidden { display: none; }
   .watch-events-row td {
     padding: 0;
     background: var(--color-surface-alt);

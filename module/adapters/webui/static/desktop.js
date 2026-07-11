@@ -817,10 +817,12 @@ function renderWatches() {
     const eventCount = w.event_count || 0;
     const todayCount = w.today_count || 0;
     const sanitized = sanitizeWatchId(w.id);
+    const deferredCount = w.deferred_comment_count || 0;
     const rowAttrs = w.type === 'forward' ? ' class="watch-row" data-watch-id="' + esc(w.id) + '"' : '';
     const eventsRow = w.type === 'forward' ?
       '<tr class="watch-events-row" id="watch-events-' + sanitized + '">' +
-      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div></td>' +
+      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div>' +
+      '<div class="watch-deferred-panel hidden" id="watch-deferred-panel-' + sanitized + '"></div></td>' +
       '</tr>' : '';
     return '<tr' + rowAttrs + '>' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
@@ -831,6 +833,7 @@ function renderWatches() {
       '<td><div class="table-actions flex gap-1">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-history="' + esc(w.id) + '">' + esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
+        (w.type === 'forward' && w.include_comment ? '<button class="btn btn-sm" data-watch-deferred="' + esc(w.id) + '">' + esc(t('watches.deferredComments')) + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
       '</div></td>' +
       '</tr>' + eventsRow;
@@ -853,12 +856,15 @@ function toggleWatchEvents(watchId) {
   const sanitized = sanitizeWatchId(watchId);
   const row = document.getElementById('watch-events-' + sanitized);
   if (!row) return;
+  const deferredPanel = document.getElementById('watch-deferred-panel-' + sanitized);
   const isOpen = row.classList.contains('open');
   if (isOpen) {
     row.classList.remove('open');
+    if (deferredPanel) deferredPanel.classList.add('hidden');
     return;
   }
   row.classList.add('open');
+  if (deferredPanel) deferredPanel.classList.add('hidden');
   loadWatchEvents(watchId, 0, true);
 }
 
@@ -1019,7 +1025,99 @@ document.addEventListener('click', async function(e) {
   if (historyBtn) {
     openWatchHistoryModal(historyBtn.dataset.watchHistory, 1);
   }
+  const deferredBtn = e.target.closest('[data-watch-deferred]');
+  if (deferredBtn) {
+    toggleWatchDeferred(deferredBtn.dataset.watchDeferred);
+  }
+  const runNowBtn = e.target.closest('[data-deferred-run-now]');
+  if (runNowBtn) {
+    await postDeferredAction(runNowBtn.dataset.watchId, runNowBtn.dataset.deferredRunNow, 'run-now');
+  }
+  const cancelDeferredBtn = e.target.closest('[data-deferred-cancel]');
+  if (cancelDeferredBtn) {
+    await postDeferredAction(cancelDeferredBtn.dataset.watchId, cancelDeferredBtn.dataset.deferredCancel, 'cancel');
+  }
 });
+
+function deferredStatusLabel(status) {
+  const map = {
+    pending: 'watches.deferredPending',
+    running: 'watches.deferredRunning',
+    done: 'watches.deferredDone',
+    cancelled: 'watches.deferredCancelled',
+    failure: 'watches.deferredFailure',
+  };
+  return t(map[status] || 'watches.deferredPending');
+}
+
+function toggleWatchDeferred(watchId) {
+  const sanitized = sanitizeWatchId(watchId);
+  const row = document.getElementById('watch-events-' + sanitized);
+  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
+  if (!row || !panel) return;
+  const isOpen = row.classList.contains('open') && !panel.classList.contains('hidden');
+  document.querySelectorAll('.watch-deferred-panel').forEach(el => el.classList.add('hidden'));
+  if (isOpen) {
+    row.classList.remove('open');
+    return;
+  }
+  row.classList.add('open');
+  panel.classList.remove('hidden');
+  loadWatchDeferred(watchId);
+}
+
+async function loadWatchDeferred(watchId) {
+  const sanitized = sanitizeWatchId(watchId);
+  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
+  if (!panel) return;
+  panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+  try {
+    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
+    const data = await res.json();
+    if (!res.ok) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>';
+      return;
+    }
+    const items = data.captures || [];
+    if (!items.length) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noDeferredComments')) + '</div>';
+      return;
+    }
+    panel.innerHTML = items.map(item => {
+      const due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      const actions = item.status === 'pending'
+        ? '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
+          '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>'
+        : '';
+      return '<div class="watch-event-item flex flex-wrap items-center gap-2">' +
+        '<span class="watch-event-time">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</span>' +
+        '<span class="badge">' + esc(deferredStatusLabel(item.status)) + '</span>' +
+        '<span class="watch-event-info">#' + esc(String(item.source_message_id || '')) + '</span>' +
+        actions +
+        '</div>';
+    }).join('');
+  } catch (err) {
+    panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+  }
+}
+
+async function postDeferredAction(watchId, captureId, action) {
+  try {
+    const res = await fetch(
+      '/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(captureId) + '/' + action,
+      { method: 'POST' }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || t('form.requestFailed'));
+      return;
+    }
+    await loadWatchDeferred(watchId);
+    await loadWatches();
+  } catch (err) {
+    alert(t('form.requestFailed'));
+  }
+}
 
 function openEditWatchModal(watchId) {
   const watch = (state.watches || []).find(w => w.id === watchId);
@@ -1464,6 +1562,7 @@ function renderSettings() {
   setCheckboxVal('global.upload.download_upload', sg.upload?.download_upload);
   setCheckboxVal('global.upload.delete', sg.upload?.delete);
   setFieldVal('global.upload.pending_limit', sg.upload?.pending_limit);
+  setFieldVal('global.live_watch.comment_delay_minutes', sg.live_watch?.comment_delay_minutes ?? 20);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);

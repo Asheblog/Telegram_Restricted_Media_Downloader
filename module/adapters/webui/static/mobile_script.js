@@ -517,6 +517,7 @@ function renderMobWatches() {
     var statusLabel = w.status === 'paused' ? '已暂停' : '运行中';
     var sanitized = esc(w.id).replace(/[^a-zA-Z0-9_-]/g, '_');
     var eventCount = Number(w.event_count || 0);
+    var deferredCount = Number(w.deferred_comment_count || 0);
     html += '<div class="mob-card status-' + statusClass + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(typeLabels[w.type] || w.type || '监听') + '</span>' +
@@ -529,8 +530,10 @@ function renderMobWatches() {
         '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">今日</button>' : '') +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-history="' + esc(w.id) + '">记录' + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
+        (w.type === 'forward' && w.include_comment ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-deferred="' + esc(w.id) + '" data-sanitized="' + sanitized + '">待抓评论区' + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
       '</div>' +
       '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
+      '<div class="mob-watch-deferred hidden" id="mob-watch-deferred-' + sanitized + '"></div>' +
     '</div>';
   });
   container.innerHTML = html || mobEmptyHtml('还没有实时监听。', 'watches.empty');
@@ -565,6 +568,57 @@ function renderMobWatches() {
       openMobileWatchHistory(btn.dataset.watchHistory, 1);
     });
   });
+  container.querySelectorAll('[data-watch-deferred]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var panel = document.getElementById('mob-watch-deferred-' + btn.dataset.sanitized);
+      if (!panel) return;
+      var isHidden = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden');
+      if (isHidden) loadMobileDeferredComments(btn.dataset.watchDeferred, btn.dataset.sanitized);
+    });
+  });
+}
+
+async function loadMobileDeferredComments(watchId, sanitized) {
+  var panel = document.getElementById('mob-watch-deferred-' + sanitized);
+  if (!panel) return;
+  panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
+  try {
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
+    var items = (data && data.captures) || [];
+    if (!items.length) {
+      panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无待抓评论区任务</div>';
+      return;
+    }
+    panel.innerHTML = items.map(function(item) {
+      var due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      var actions = item.status === 'pending'
+        ? '<button class="mob-btn mob-btn-sm" data-run-deferred="' + esc(String(item.id)) + '">立即执行</button>' +
+          '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>'
+        : '';
+      return '<div style="padding:8px;border-top:1px solid var(--color-border);">' +
+        '<div>#' + esc(String(item.source_message_id || '')) + ' · ' + esc(item.status || '') + '</div>' +
+        '<div style="color:var(--color-muted);font-size:12px;">计划: ' + esc(due) + '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px;" data-deferred-watch="' + esc(watchId) + '" data-deferred-sanitized="' + esc(sanitized) + '">' + actions + '</div>' +
+        '</div>';
+    }).join('');
+    panel.querySelectorAll('[data-run-deferred]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.runDeferred) + '/run-now', {});
+        loadMobileDeferredComments(watchId, sanitized);
+        if (typeof loadWatches === 'function') loadWatches();
+      });
+    });
+    panel.querySelectorAll('[data-cancel-deferred]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.cancelDeferred) + '/cancel', {});
+        loadMobileDeferredComments(watchId, sanitized);
+        if (typeof loadWatches === 'function') loadWatches();
+      });
+    });
+  } catch (e) {
+    panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载失败</div>';
+  }
 }
 
 async function loadMobileWatchEvents(watchId, sanitized) {
@@ -909,7 +963,9 @@ function renderMobSettingsForm() {
       '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload"' + (getSettingLeafKey(glob, 'upload.download_upload') ? ' checked' : '') + '><span>受限转发时下载后上传</span></label>' +
       '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete"' + (getSettingLeafKey(glob, 'upload.delete') ? ' checked' : '') + '><span>上传完成删除本地文件</span></label>' +
     '</div>' +
-    '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>';
+    '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
+    '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');

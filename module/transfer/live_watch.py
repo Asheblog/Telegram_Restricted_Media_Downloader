@@ -142,6 +142,7 @@ class LiveWatchManager:
         for watch_id in watches_by_id:
             count = 0
             today_count = 0
+            deferred_count = 0
             if store and watches_by_id[watch_id].get('type') == 'forward':
                 count = store.get_live_watch_event_count(watch_id)
                 today_count = store.get_live_watch_event_count(
@@ -149,8 +150,14 @@ class LiveWatchManager:
                     today_only=True,
                     tz_offset_minutes=tz_offset_minutes
                 )
+                deferred_count = len(store.list_deferred_discussion_captures(
+                    watch_id=watch_id,
+                    statuses=['pending', 'running'],
+                    limit=500,
+                ))
             watches_by_id[watch_id]['event_count'] = count
             watches_by_id[watch_id]['today_count'] = today_count
+            watches_by_id[watch_id]['deferred_comment_count'] = deferred_count
         return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
 
     def pending_watch_sources(self, watch_type: str) -> set:
@@ -277,11 +284,13 @@ class LiveWatchManager:
         watch_type, separator, value = watch_id.partition(':')
         if not separator:
             return False
+        store = self._transfer_store
+        if store:
+            store.cancel_deferred_discussion_captures_for_watch(watch_id)
         if watch_type == 'download':
             handler = self.listen_download_chat.get(value)
             if not handler:
                 pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
-                store = self._transfer_store
                 store_deleted = store.delete_live_transfer_watch(watch_id) if store else False
                 if store:
                     store.delete_live_watch_events(watch_id)
@@ -295,7 +304,6 @@ class LiveWatchManager:
             stale_keys = [k for k, v in self._download_chat_watch_id.items() if v == watch_id]
             for k in stale_keys:
                 self._download_chat_watch_id.pop(k, None)
-            store = self._transfer_store
             if store:
                 store.delete_live_transfer_watch(watch_id)
                 store.delete_live_watch_events(watch_id)
@@ -305,7 +313,6 @@ class LiveWatchManager:
             handler = self.listen_forward_chat.get(value)
             if not handler:
                 pending_deleted = self.web_pending_watches.pop(watch_id, None) is not None
-                store = self._transfer_store
                 store_deleted = store.delete_live_transfer_watch(watch_id) if store else False
                 if store:
                     store.delete_live_watch_events(watch_id)
@@ -315,7 +322,6 @@ class LiveWatchManager:
                 client.remove_handler(handler)
             self.listen_forward_chat.pop(value, None)
             self.web_pending_watches.pop(watch_id, None)
-            store = self._transfer_store
             if store:
                 store.delete_live_transfer_watch(watch_id)
                 store.delete_live_watch_events(watch_id)

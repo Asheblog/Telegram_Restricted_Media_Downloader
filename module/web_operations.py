@@ -21,6 +21,7 @@ from module.enums import DownloadType, UploadStatus, KeyWord
 from module.language import _t
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
+from module.transfer.comment_delay import CommentDelayScheduler
 
 
 ORPHAN_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
@@ -44,6 +45,101 @@ def _downloader():
 
 
 class WebOperationsMixin:
+    def _ensure_transfer_store(self) -> TransferStore:
+        store = getattr(self, 'transfer_store', None)
+        if store is not None:
+            return store
+        temp_directory = getattr(getattr(self, 'app', None), 'temp_directory', None)
+        if not temp_directory:
+            raise RuntimeError('temp_directory is required to create TransferStore')
+        store = TransferStore(directory=temp_directory)
+        self.transfer_store = store
+        ctx = self.__dict__.get('ctx')
+        if ctx is not None:
+            ctx.transfer_store = store
+        system_log = getattr(self, 'system_log', None)
+        if system_log is not None:
+            system_log.bind(store=store)
+        return store
+
+    def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
+        scheduler = self.__dict__.get('comment_delay_scheduler')
+        if scheduler is not None:
+            return scheduler
+        store = self._ensure_transfer_store()
+
+        async def executor(capture: dict):
+            client = (
+                capture.get('client')
+                or getattr(self, 'user', None)
+                or getattr(getattr(self, 'app', None), 'client', None)
+            )
+            count = await self.forward_discussion_replies(
+                client=client,
+                source_chat_id=capture.get('source_chat_id'),
+                source_message_id=int(capture.get('source_message_id')),
+                target_chat_id=capture.get('target_chat_id'),
+                target_link=capture.get('target_link'),
+                watch_id=capture.get('watch_id'),
+            )
+            watch_id = capture.get('watch_id')
+            if watch_id:
+                self._record_watch_event(
+                    watch_id,
+                    capture.get('source_chat_id'),
+                    capture.get('source_message_id'),
+                    capture.get('target_chat_id'),
+                    capture.get('target_link'),
+                    'success' if count else 'skipped',
+                    f'延迟抓取评论区完成,匹配{count}条'
+                )
+            return count
+
+        scheduler = CommentDelayScheduler(
+            store=store,
+            delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
+            executor=executor,
+        )
+        self.comment_delay_scheduler = scheduler
+        scheduler.start()
+        return scheduler
+
+    async def schedule_or_forward_discussion_replies(
+            self,
+            *,
+            client,
+            source_chat_id,
+            source_message_id: int,
+            target_chat_id,
+            target_link: str,
+            watch_id: Optional[str] = None,
+            done_notice: Optional[bool] = True,
+    ) -> Optional[dict]:
+        scheduler = self._ensure_comment_delay_scheduler()
+        scheduled = await scheduler.schedule(
+            watch_id=watch_id or '',
+            source_chat_id=source_chat_id,
+            source_message_id=source_message_id,
+            target_chat_id=target_chat_id,
+            target_link=target_link,
+            client=client,
+        )
+        if scheduled is None:
+            return None
+        if watch_id:
+            due_at = float(scheduled.get('due_at') or 0)
+            delay_minutes = max(0, int(round((due_at - time.time()) / 60)))
+            self._record_watch_event(
+                watch_id,
+                source_chat_id,
+                source_message_id,
+                target_chat_id,
+                target_link,
+                'success',
+                f'已调度延迟抓取评论区,约{delay_minutes}分钟后执行'
+            )
+        return scheduled
+
     def _web_ui_operations(self) -> 'WebOperationsFacade':
         facade = self.__dict__.get('_web_operations_facade')
         if facade is None:
@@ -684,7 +780,7 @@ class WebOperationsMixin:
         global_config = merge_allowed_settings(
             target=deepcopy(self.gc.config),
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter'}
+            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'}
         )
         user_config = UserConfig.normalize_runtime_numbers(user_config)
         self.app.save_config(user_config)
@@ -743,6 +839,10 @@ class WebOperationsMixin:
             recovered_archives = progress_tracker.recover_pending_upload_archives()
         if recovered_archives:
             self.diagnostic.info(f'Recovered {recovered_archives} pending PikPak upload archive job(s).')
+        try:
+            self._ensure_comment_delay_scheduler()
+        except Exception as e:
+            log.debug(f'Comment delay scheduler start skipped: {e}')
         console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
     async def process_web_operation(self, operation_id: str) -> None:
         operation = self.web_operations.get(operation_id)
@@ -965,10 +1065,37 @@ class WebOperationsMixin:
             self.loop.create_task(self.process_web_task_queue())
 
 
+    def list_deferred_discussion_captures(self, watch_id: str) -> dict:
+        store = self._ensure_transfer_store()
+        captures = store.list_deferred_discussion_captures(watch_id=watch_id, limit=500)
+        return {'captures': captures, 'total': len(captures)}
+
+    def cancel_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
+        store = self._ensure_transfer_store()
+        capture = store.get_deferred_discussion_capture(int(capture_id))
+        if not capture or capture.get('watch_id') != watch_id:
+            return False
+        scheduler = self._ensure_comment_delay_scheduler()
+        return scheduler.cancel(int(capture_id))
+
+    def run_deferred_discussion_capture_now(self, watch_id: str, capture_id: int) -> bool:
+        store = self._ensure_transfer_store()
+        capture = store.get_deferred_discussion_capture(int(capture_id))
+        if not capture or capture.get('watch_id') != watch_id:
+            return False
+        scheduler = self._ensure_comment_delay_scheduler()
+        loop = getattr(self, 'loop', None)
+        if loop is None:
+            return False
+        future = asyncio.run_coroutine_threadsafe(scheduler.run_now(int(capture_id)), loop)
+        return bool(future.result(timeout=180))
+
+
 _WEB_UI_DELEGATE_METHODS = (
     'should_continue_web_transfer_task', 'cancel_task_uploads', 'pause_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
     'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
+    'list_deferred_discussion_captures', 'cancel_deferred_discussion_capture', 'run_deferred_discussion_capture_now',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs',

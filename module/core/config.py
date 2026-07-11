@@ -673,6 +673,9 @@ class GlobalConfig(BaseConfig):
                 'enabled': False,
                 'words': ['广告', '推广', '赞助']
             }
+        },
+        'live_watch': {
+            'comment_delay_minutes': 20,
         }
     }
 
@@ -682,6 +685,7 @@ class GlobalConfig(BaseConfig):
         self.default_target_profiles_nesting = self.TEMPLATE.get('target_profiles')
         self.default_forward_type_nesting = self.TEMPLATE.get('forward_type')
         self.default_message_filter_nesting = self.TEMPLATE.get('message_filter')
+        self.default_live_watch_nesting = self.TEMPLATE.get('live_watch')
         self.load_config()
         self.__check_params(deepcopy(self.config))
         self.download_upload: bool = self.get_nesting_config(
@@ -699,6 +703,8 @@ class GlobalConfig(BaseConfig):
         self.target_profiles: dict = self.config.get('target_profiles', self.default_target_profiles_nesting)
         self.forward_type: dict = self._resolve_forward_type()
         self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
+        self.live_watch: dict = self.config.get('live_watch', self.default_live_watch_nesting)
+        self.comment_delay_minutes: int = self.get_comment_delay_minutes()
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
         return self.config.get(param, default_nesting).get(nesting_param)
@@ -768,6 +774,18 @@ class GlobalConfig(BaseConfig):
             value = default_value
         return max(0, value)
 
+    def get_comment_delay_minutes(self) -> int:
+        default_value = int(self.default_live_watch_nesting.get('comment_delay_minutes', 20))
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_live_watch_nesting,
+                param='live_watch',
+                nesting_param='comment_delay_minutes'
+            ))
+        except (TypeError, ValueError, AttributeError):
+            value = default_value
+        return min(max(value, 0), 1440)
+
     def save_config(self, config: dict) -> None:
         super().save_config(config)
         self.download_upload = self.get_nesting_config(
@@ -786,6 +804,8 @@ class GlobalConfig(BaseConfig):
         self._sync_message_filter_media_types()
         self.forward_type: dict = self._resolve_forward_type()
         self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
+        self.live_watch = self.config.get('live_watch', self.default_live_watch_nesting)
+        self.comment_delay_minutes = self.get_comment_delay_minutes()
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')
         log.info(f'{p}{self.config}')
@@ -885,6 +905,7 @@ class GlobalConfig(BaseConfig):
         self.process_target_profiles(config=config)
         self.process_nesting(param_name='forward_type', config=config)
         self.process_message_filter(config=config)
+        self.process_nesting(param_name='live_watch', config=config)
         # 删除父级模板中没有的字段。
         self.remove_extra_keys(
             target=config,

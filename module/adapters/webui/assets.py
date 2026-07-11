@@ -1115,6 +1115,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <label class="form-label" data-i18n="settings.pendingLimit">下载后上传队列</label>
           <input class="form-input" name="global.upload.pending_limit" type="number" min="1" max="5">
         </div>
+        <div class="form-group mt-3">
+          <label class="form-label" data-i18n="settings.commentDelayMinutes">评论区延迟抓取（分钟）</label>
+          <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
+          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
+        </div>
       </section>
 
     <!-- PikPak Archive -->
@@ -1343,6 +1348,16 @@ const i18n = {
     'watches.loadMore': '加载更多',
     'watches.targetRequired': '目标频道为必填项。',
     'watches.sourceRequired': '来源频道为必填项。',
+    'watches.deferredComments': '待抓评论区',
+    'watches.noDeferredComments': '暂无待抓评论区任务',
+    'watches.deferredDue': '计划执行',
+    'watches.deferredRunNow': '立即执行',
+    'watches.deferredCancel': '取消',
+    'watches.deferredPending': '等待中',
+    'watches.deferredRunning': '执行中',
+    'watches.deferredDone': '已完成',
+    'watches.deferredCancelled': '已取消',
+    'watches.deferredFailure': '失败',
     'action.cancel': '取消',
     'action.save': '保存',
     // merged downloads & uploads page
@@ -1496,6 +1511,8 @@ const i18n = {
     'settings.downloadUpload': '受限转发时下载后上传',
     'settings.uploadDelete': '上传完成删除本地文件',
     'settings.pendingLimit': '下载后上传队列',
+    'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
+    'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -1672,6 +1689,16 @@ const i18n = {
     'watches.loadMore': 'Load more',
     'watches.targetRequired': 'Target link is required.',
     'watches.sourceRequired': 'Source link is required.',
+    'watches.deferredComments': 'Deferred comments',
+    'watches.noDeferredComments': 'No deferred comment jobs',
+    'watches.deferredDue': 'Due',
+    'watches.deferredRunNow': 'Run now',
+    'watches.deferredCancel': 'Cancel',
+    'watches.deferredPending': 'Pending',
+    'watches.deferredRunning': 'Running',
+    'watches.deferredDone': 'Done',
+    'watches.deferredCancelled': 'Cancelled',
+    'watches.deferredFailure': 'Failed',
     'action.cancel': 'Cancel',
     'action.save': 'Save',
     // merged downloads & uploads page
@@ -1825,6 +1852,8 @@ const i18n = {
     'settings.downloadUpload': 'Download-then-upload for restricted',
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
+    'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
+    'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -3143,10 +3172,12 @@ function renderWatches() {
     const eventCount = w.event_count || 0;
     const todayCount = w.today_count || 0;
     const sanitized = sanitizeWatchId(w.id);
+    const deferredCount = w.deferred_comment_count || 0;
     const rowAttrs = w.type === 'forward' ? ' class="watch-row" data-watch-id="' + esc(w.id) + '"' : '';
     const eventsRow = w.type === 'forward' ?
       '<tr class="watch-events-row" id="watch-events-' + sanitized + '">' +
-      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div></td>' +
+      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div>' +
+      '<div class="watch-deferred-panel hidden" id="watch-deferred-panel-' + sanitized + '"></div></td>' +
       '</tr>' : '';
     return '<tr' + rowAttrs + '>' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
@@ -3157,6 +3188,7 @@ function renderWatches() {
       '<td><div class="table-actions flex gap-1">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-history="' + esc(w.id) + '">' + esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
+        (w.type === 'forward' && w.include_comment ? '<button class="btn btn-sm" data-watch-deferred="' + esc(w.id) + '">' + esc(t('watches.deferredComments')) + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
         '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
       '</div></td>' +
       '</tr>' + eventsRow;
@@ -3179,12 +3211,15 @@ function toggleWatchEvents(watchId) {
   const sanitized = sanitizeWatchId(watchId);
   const row = document.getElementById('watch-events-' + sanitized);
   if (!row) return;
+  const deferredPanel = document.getElementById('watch-deferred-panel-' + sanitized);
   const isOpen = row.classList.contains('open');
   if (isOpen) {
     row.classList.remove('open');
+    if (deferredPanel) deferredPanel.classList.add('hidden');
     return;
   }
   row.classList.add('open');
+  if (deferredPanel) deferredPanel.classList.add('hidden');
   loadWatchEvents(watchId, 0, true);
 }
 
@@ -3345,7 +3380,99 @@ document.addEventListener('click', async function(e) {
   if (historyBtn) {
     openWatchHistoryModal(historyBtn.dataset.watchHistory, 1);
   }
+  const deferredBtn = e.target.closest('[data-watch-deferred]');
+  if (deferredBtn) {
+    toggleWatchDeferred(deferredBtn.dataset.watchDeferred);
+  }
+  const runNowBtn = e.target.closest('[data-deferred-run-now]');
+  if (runNowBtn) {
+    await postDeferredAction(runNowBtn.dataset.watchId, runNowBtn.dataset.deferredRunNow, 'run-now');
+  }
+  const cancelDeferredBtn = e.target.closest('[data-deferred-cancel]');
+  if (cancelDeferredBtn) {
+    await postDeferredAction(cancelDeferredBtn.dataset.watchId, cancelDeferredBtn.dataset.deferredCancel, 'cancel');
+  }
 });
+
+function deferredStatusLabel(status) {
+  const map = {
+    pending: 'watches.deferredPending',
+    running: 'watches.deferredRunning',
+    done: 'watches.deferredDone',
+    cancelled: 'watches.deferredCancelled',
+    failure: 'watches.deferredFailure',
+  };
+  return t(map[status] || 'watches.deferredPending');
+}
+
+function toggleWatchDeferred(watchId) {
+  const sanitized = sanitizeWatchId(watchId);
+  const row = document.getElementById('watch-events-' + sanitized);
+  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
+  if (!row || !panel) return;
+  const isOpen = row.classList.contains('open') && !panel.classList.contains('hidden');
+  document.querySelectorAll('.watch-deferred-panel').forEach(el => el.classList.add('hidden'));
+  if (isOpen) {
+    row.classList.remove('open');
+    return;
+  }
+  row.classList.add('open');
+  panel.classList.remove('hidden');
+  loadWatchDeferred(watchId);
+}
+
+async function loadWatchDeferred(watchId) {
+  const sanitized = sanitizeWatchId(watchId);
+  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
+  if (!panel) return;
+  panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+  try {
+    const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
+    const data = await res.json();
+    if (!res.ok) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>';
+      return;
+    }
+    const items = data.captures || [];
+    if (!items.length) {
+      panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noDeferredComments')) + '</div>';
+      return;
+    }
+    panel.innerHTML = items.map(item => {
+      const due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      const actions = item.status === 'pending'
+        ? '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
+          '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>'
+        : '';
+      return '<div class="watch-event-item flex flex-wrap items-center gap-2">' +
+        '<span class="watch-event-time">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</span>' +
+        '<span class="badge">' + esc(deferredStatusLabel(item.status)) + '</span>' +
+        '<span class="watch-event-info">#' + esc(String(item.source_message_id || '')) + '</span>' +
+        actions +
+        '</div>';
+    }).join('');
+  } catch (err) {
+    panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+  }
+}
+
+async function postDeferredAction(watchId, captureId, action) {
+  try {
+    const res = await fetch(
+      '/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(captureId) + '/' + action,
+      { method: 'POST' }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || t('form.requestFailed'));
+      return;
+    }
+    await loadWatchDeferred(watchId);
+    await loadWatches();
+  } catch (err) {
+    alert(t('form.requestFailed'));
+  }
+}
 
 function openEditWatchModal(watchId) {
   const watch = (state.watches || []).find(w => w.id === watchId);
@@ -3790,6 +3917,7 @@ function renderSettings() {
   setCheckboxVal('global.upload.download_upload', sg.upload?.download_upload);
   setCheckboxVal('global.upload.delete', sg.upload?.delete);
   setFieldVal('global.upload.pending_limit', sg.upload?.pending_limit);
+  setFieldVal('global.live_watch.comment_delay_minutes', sg.live_watch?.comment_delay_minutes ?? 20);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -4927,6 +5055,16 @@ const i18n = {
     'watches.loadMore': '加载更多',
     'watches.targetRequired': '目标频道为必填项。',
     'watches.sourceRequired': '来源频道为必填项。',
+    'watches.deferredComments': '待抓评论区',
+    'watches.noDeferredComments': '暂无待抓评论区任务',
+    'watches.deferredDue': '计划执行',
+    'watches.deferredRunNow': '立即执行',
+    'watches.deferredCancel': '取消',
+    'watches.deferredPending': '等待中',
+    'watches.deferredRunning': '执行中',
+    'watches.deferredDone': '已完成',
+    'watches.deferredCancelled': '已取消',
+    'watches.deferredFailure': '失败',
     'action.cancel': '取消',
     'action.save': '保存',
     // merged downloads & uploads page
@@ -5080,6 +5218,8 @@ const i18n = {
     'settings.downloadUpload': '受限转发时下载后上传',
     'settings.uploadDelete': '上传完成删除本地文件',
     'settings.pendingLimit': '下载后上传队列',
+    'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
+    'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -5256,6 +5396,16 @@ const i18n = {
     'watches.loadMore': 'Load more',
     'watches.targetRequired': 'Target link is required.',
     'watches.sourceRequired': 'Source link is required.',
+    'watches.deferredComments': 'Deferred comments',
+    'watches.noDeferredComments': 'No deferred comment jobs',
+    'watches.deferredDue': 'Due',
+    'watches.deferredRunNow': 'Run now',
+    'watches.deferredCancel': 'Cancel',
+    'watches.deferredPending': 'Pending',
+    'watches.deferredRunning': 'Running',
+    'watches.deferredDone': 'Done',
+    'watches.deferredCancelled': 'Cancelled',
+    'watches.deferredFailure': 'Failed',
     'action.cancel': 'Cancel',
     'action.save': 'Save',
     // merged downloads & uploads page
@@ -5409,6 +5559,8 @@ const i18n = {
     'settings.downloadUpload': 'Download-then-upload for restricted',
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
+    'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
+    'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -6427,6 +6579,7 @@ function renderMobWatches() {
     var statusLabel = w.status === 'paused' ? '已暂停' : '运行中';
     var sanitized = esc(w.id).replace(/[^a-zA-Z0-9_-]/g, '_');
     var eventCount = Number(w.event_count || 0);
+    var deferredCount = Number(w.deferred_comment_count || 0);
     html += '<div class="mob-card status-' + statusClass + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(typeLabels[w.type] || w.type || '监听') + '</span>' +
@@ -6439,8 +6592,10 @@ function renderMobWatches() {
         '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">今日</button>' : '') +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-history="' + esc(w.id) + '">记录' + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
+        (w.type === 'forward' && w.include_comment ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-deferred="' + esc(w.id) + '" data-sanitized="' + sanitized + '">待抓评论区' + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
       '</div>' +
       '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
+      '<div class="mob-watch-deferred hidden" id="mob-watch-deferred-' + sanitized + '"></div>' +
     '</div>';
   });
   container.innerHTML = html || mobEmptyHtml('还没有实时监听。', 'watches.empty');
@@ -6475,6 +6630,57 @@ function renderMobWatches() {
       openMobileWatchHistory(btn.dataset.watchHistory, 1);
     });
   });
+  container.querySelectorAll('[data-watch-deferred]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var panel = document.getElementById('mob-watch-deferred-' + btn.dataset.sanitized);
+      if (!panel) return;
+      var isHidden = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden');
+      if (isHidden) loadMobileDeferredComments(btn.dataset.watchDeferred, btn.dataset.sanitized);
+    });
+  });
+}
+
+async function loadMobileDeferredComments(watchId, sanitized) {
+  var panel = document.getElementById('mob-watch-deferred-' + sanitized);
+  if (!panel) return;
+  panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
+  try {
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
+    var items = (data && data.captures) || [];
+    if (!items.length) {
+      panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无待抓评论区任务</div>';
+      return;
+    }
+    panel.innerHTML = items.map(function(item) {
+      var due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      var actions = item.status === 'pending'
+        ? '<button class="mob-btn mob-btn-sm" data-run-deferred="' + esc(String(item.id)) + '">立即执行</button>' +
+          '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>'
+        : '';
+      return '<div style="padding:8px;border-top:1px solid var(--color-border);">' +
+        '<div>#' + esc(String(item.source_message_id || '')) + ' · ' + esc(item.status || '') + '</div>' +
+        '<div style="color:var(--color-muted);font-size:12px;">计划: ' + esc(due) + '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px;" data-deferred-watch="' + esc(watchId) + '" data-deferred-sanitized="' + esc(sanitized) + '">' + actions + '</div>' +
+        '</div>';
+    }).join('');
+    panel.querySelectorAll('[data-run-deferred]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.runDeferred) + '/run-now', {});
+        loadMobileDeferredComments(watchId, sanitized);
+        if (typeof loadWatches === 'function') loadWatches();
+      });
+    });
+    panel.querySelectorAll('[data-cancel-deferred]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.cancelDeferred) + '/cancel', {});
+        loadMobileDeferredComments(watchId, sanitized);
+        if (typeof loadWatches === 'function') loadWatches();
+      });
+    });
+  } catch (e) {
+    panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载失败</div>';
+  }
 }
 
 async function loadMobileWatchEvents(watchId, sanitized) {
@@ -6819,7 +7025,9 @@ function renderMobSettingsForm() {
       '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.download_upload"' + (getSettingLeafKey(glob, 'upload.download_upload') ? ' checked' : '') + '><span>受限转发时下载后上传</span></label>' +
       '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.upload.delete"' + (getSettingLeafKey(glob, 'upload.delete') ? ' checked' : '') + '><span>上传完成删除本地文件</span></label>' +
     '</div>' +
-    '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>';
+    '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
+    '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');

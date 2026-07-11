@@ -552,6 +552,18 @@ class WebUiServer:
                         return
                     self._send_json(result)
                     return
+                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/deferred-comments'):
+                    watch_path = parsed.path[len('/api/watches/'):][:-len('/deferred-comments')]
+                    watch_id = unquote(watch_path)
+                    if not watch_id:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    result = server.list_deferred_discussion_captures(watch_id)
+                    if result is None:
+                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
+                        return
+                    self._send_json(result)
+                    return
                 if parsed.path.startswith('/api/tasks/'):
                     # 提取路径段: /api/tasks/123 或 /api/tasks/123/summary
                     subpath = parsed.path[len('/api/tasks/'):]
@@ -670,6 +682,42 @@ class WebUiServer:
                                 'error_code': 'create_watch_failed',
                                 'error': str(e)
                             },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path.startswith('/api/watches/') and (
+                        parsed.path.endswith('/cancel') or parsed.path.endswith('/run-now')
+                ):
+                    # /api/watches/{watch_id}/deferred-comments/{id}/cancel|run-now
+                    body_path = parsed.path[len('/api/watches/'):]
+                    action = 'cancel' if body_path.endswith('/cancel') else 'run-now'
+                    suffix = '/cancel' if action == 'cancel' else '/run-now'
+                    remainder = body_path[:-len(suffix)]
+                    marker = '/deferred-comments/'
+                    if marker not in remainder:
+                        self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
+                        return
+                    watch_part, capture_part = remainder.split(marker, 1)
+                    watch_id = unquote(watch_part)
+                    if not watch_id or not capture_part.isdigit():
+                        self._send_error('invalid_watch_id', 'Invalid deferred comment id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    capture_id = int(capture_part)
+                    try:
+                        if action == 'cancel':
+                            ok = server.cancel_deferred_discussion_capture(watch_id, capture_id)
+                        else:
+                            ok = server.run_deferred_discussion_capture_now(watch_id, capture_id)
+                        if not ok:
+                            self._send_error('deferred_comment_not_found', 'Deferred comment job not found.', HTTPStatus.NOT_FOUND)
+                            return
+                        self._send_json({'ok': True, 'action': action, 'id': capture_id})
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 操作延迟评论区任务失败。')
+                        self._send_json(
+                            {'error_code': 'deferred_comment_action_failed', 'error': str(e)},
                             HTTPStatus.BAD_REQUEST
                         )
                     return
@@ -1047,6 +1095,24 @@ class WebUiServer:
             return bool(delete_watch(watch_id))
         return False
 
+    def list_deferred_discussion_captures(self, watch_id: str) -> Optional[dict]:
+        op = self._operation('list_deferred_discussion_captures')
+        if not op:
+            return {'captures': [], 'total': 0}
+        return op(watch_id)
+
+    def cancel_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
+        op = self._operation('cancel_deferred_discussion_capture')
+        if not op:
+            return False
+        return bool(op(watch_id, capture_id))
+
+    def run_deferred_discussion_capture_now(self, watch_id: str, capture_id: int) -> bool:
+        op = self._operation('run_deferred_discussion_capture_now')
+        if not op:
+            return False
+        return bool(op(watch_id, capture_id))
+
     def list_watch_events(
             self,
             watch_id: str,
@@ -1301,6 +1367,7 @@ class WebUiServer:
                 'keywords': {'enabled': False}
             },
             'upload_pending_limit': {'min': 1, 'max': 5},
+            'comment_delay_minutes': {'min': 0, 'max': 1440},
             'target_profiles': {
                 'pikpak': {
                     'max_file_size': {'min': 1}
@@ -1401,7 +1468,7 @@ def save_runtime_settings(payload: dict) -> dict:
     global_settings = merge_allowed_settings(
         target=deepcopy(global_config.config),
         patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter'},
+        allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch'},
         gc=global_config
     )
     user.save_config(user_config)
