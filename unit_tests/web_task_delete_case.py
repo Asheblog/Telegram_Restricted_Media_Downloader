@@ -478,8 +478,9 @@ class WebTaskDeleteCase(unittest.TestCase):
             with open(file_path, 'wb') as file:
                 file.write(b'12345')
             uploader = object.__new__(TelegramUploader)
+            loop = asyncio.new_event_loop()
             uploader.upload_queue = asyncio.Queue()
-            uploader.loop = asyncio.get_event_loop()
+            uploader.loop = loop
             uploader.upload_context = SimpleNamespace(
                 should_continue_web_transfer_task=lambda task_id: False,
                 diagnostic=SimpleNamespace(

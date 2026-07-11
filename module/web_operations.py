@@ -3,6 +3,7 @@
 import os
 import asyncio
 import random
+import time
 from copy import deepcopy
 from functools import partial
 from typing import Optional, Union, Callable
@@ -20,6 +21,9 @@ from module.enums import DownloadType, UploadStatus, KeyWord
 from module.language import _t
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
+
+
+ORPHAN_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 from module.uploader import TelegramUploader
 from module.web_ui import (
     get_web_host_from_env,
@@ -583,6 +587,27 @@ class WebOperationsMixin:
             result['total_deleted_size'] += orphan_result['total_deleted_size']
 
         return result
+
+    def maybe_run_scheduled_media_cleanup(self) -> None:
+        if not self.transfer_store:
+            return
+        now = time.time()
+        last_run = getattr(self, '_last_orphan_cleanup_at', 0.0)
+        if now - last_run < ORPHAN_CLEANUP_INTERVAL_SECONDS:
+            return
+        self._last_orphan_cleanup_at = now
+        try:
+            result = self._ensure_media_manager().auto_cleanup_orphan_files()
+            deleted_count = int(result.get('total_deleted_count') or 0)
+            if deleted_count:
+                diagnostic = getattr(self, 'diagnostic', None)
+                message = f'Auto orphan cleanup removed {deleted_count} file(s).'
+                if diagnostic is not None:
+                    diagnostic.info(message)
+                else:
+                    log.info(message)
+        except Exception as error:
+            log.warning(f'Scheduled orphan cleanup failed: {error}')
 
     def list_cleanup_logs(self) -> list:
         if not self.transfer_store:

@@ -2092,6 +2092,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
          sorted(links)] if links else None
         # 处理队列中的任务与机器人事件。
         while not self.queue.empty() or self.is_bot_running or self.web_ui:
+            self.maybe_run_scheduled_media_cleanup()
             await self.process_web_task_queue()
             if self.queue.empty():
                 await asyncio.sleep(0.5)

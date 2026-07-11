@@ -259,6 +259,83 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertTrue(os.path.exists(fresh_log))
             self.assertTrue(os.path.exists(active_log))
 
+    def test_start_periodic_log_cleanup_starts_only_once(self):
+        trmd_module._log_cleanup_thread_started = False
+        with patch.object(trmd_module.threading, 'Thread') as mock_thread:
+            mock_thread.return_value.start = lambda: None
+            trmd_module.start_periodic_log_cleanup(interval_seconds=3600)
+            trmd_module.start_periodic_log_cleanup(interval_seconds=3600)
+            mock_thread.assert_called_once()
+        trmd_module._log_cleanup_thread_started = False
+
+    def test_transfer_store_purges_old_event_records_without_deleting_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1')
+            store.add_event(task_id, 'recent event')
+            old_cutoff = TransferStore.retention_cutoff_iso(
+                TransferStore.TRANSFER_EVENTS_RETENTION_DAYS + 1
+            )
+            with store.connect(run_maintenance=False) as conn:
+                conn.execute(
+                    'UPDATE transfer_events SET created_at = ? WHERE message = ?',
+                    (old_cutoff, 'recent event')
+                )
+                conn.execute(
+                    '''
+                    INSERT INTO transfer_events (task_id, level, message, created_at)
+                    VALUES (?, ?, ?, ?)
+                    ''',
+                    (task_id, 'info', 'fresh event', store.utc_now())
+                )
+
+            counts = store.purge_old_event_records(force=True)
+
+            self.assertEqual(1, counts['transfer_events'])
+            self.assertIsNotNone(store.get_task(task_id))
+            events = store.list_events(task_id, limit=10)
+            messages = {event['message'] for event in events}
+            self.assertIn('fresh event', messages)
+            self.assertNotIn('recent event', messages)
+
+    def test_transfer_store_skips_event_purge_until_weekly_interval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            store.purge_old_event_records(force=True)
+            skipped = store.purge_old_event_records(force=False)
+            self.assertIsNone(skipped)
+
+    def test_transfer_store_purges_old_live_watch_and_cleanup_log_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            watch_id = 'watch-1'
+            store.upsert_live_transfer_watch(watch_id, 'download', 'https://t.me/source')
+            old_watch_cutoff = TransferStore.retention_cutoff_iso(
+                TransferStore.LIVE_WATCH_EVENTS_RETENTION_DAYS + 1
+            )
+            store.add_live_watch_event(watch_id, '123', 1, None, None, 'success', 'old event')
+            with store.connect(run_maintenance=False) as conn:
+                conn.execute(
+                    'UPDATE live_watch_events SET created_at = ?',
+                    (old_watch_cutoff,)
+                )
+
+            store.insert_cleanup_log('/tmp/old.bin', reason='test')
+            old_cleanup_cutoff = TransferStore.retention_cutoff_iso(
+                TransferStore.CLEANUP_LOG_RETENTION_DAYS + 1
+            )
+            with store.connect(run_maintenance=False) as conn:
+                conn.execute(
+                    'UPDATE cleanup_log SET created_at = ?',
+                    (old_cleanup_cutoff,)
+                )
+
+            counts = store.purge_old_event_records(force=True)
+
+            self.assertGreaterEqual(counts['live_watch_events'], 1)
+            self.assertGreaterEqual(counts['cleanup_log'], 1)
+            self.assertIsNotNone(store.get_live_transfer_watch(watch_id))
+
     def test_transfer_store_maintenance_vacuums_and_marks_last_run(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)

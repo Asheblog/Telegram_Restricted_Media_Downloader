@@ -19,6 +19,10 @@ class TransferStatus:
 class TransferStore:
     FILE_NAME = 'transfer_tasks.sqlite3'
     DEFAULT_MAINTENANCE_MIN_INTERVAL_SECONDS = 6 * 60 * 60
+    DEFAULT_EVENT_PURGE_MIN_INTERVAL_SECONDS = 7 * 24 * 60 * 60
+    TRANSFER_EVENTS_RETENTION_DAYS = 90
+    LIVE_WATCH_EVENTS_RETENTION_DAYS = 30
+    CLEANUP_LOG_RETENTION_DAYS = 30
     VACUUM_FREE_PAGE_THRESHOLD = 512
 
     def __init__(self, directory: str):
@@ -57,6 +61,15 @@ class TransferStore:
             start_utc.isoformat(timespec='seconds'),
             end_utc.isoformat(timespec='seconds')
         )
+
+    @staticmethod
+    def retention_cutoff_iso(
+            retention_days: int,
+            now: datetime.datetime | None = None
+    ) -> str:
+        reference = now or datetime.datetime.now(datetime.UTC)
+        cutoff = reference - datetime.timedelta(days=max(0, retention_days))
+        return cutoff.isoformat(timespec='seconds')
 
     def _get_conn(self) -> sqlite3.Connection:
         """返回当前线程缓存的数据库连接，首次调用时创建并配置。"""
@@ -309,7 +322,73 @@ class TransferStore:
                 marker.write(self.utc_now())
         except OSError:
             pass
+        self.purge_old_event_records(force=force)
         return True
+
+    def purge_old_transfer_events(
+            self,
+            retention_days: int = TRANSFER_EVENTS_RETENTION_DAYS,
+            cutoff_at: str | None = None
+    ) -> int:
+        cutoff = cutoff_at or self.retention_cutoff_iso(retention_days)
+        with self.connect(run_maintenance=False) as conn:
+            cursor = conn.execute(
+                'DELETE FROM transfer_events WHERE created_at < ?',
+                (cutoff,)
+            )
+            return int(cursor.rowcount or 0)
+
+    def purge_old_live_watch_events(
+            self,
+            retention_days: int = LIVE_WATCH_EVENTS_RETENTION_DAYS,
+            cutoff_at: str | None = None
+    ) -> int:
+        cutoff = cutoff_at or self.retention_cutoff_iso(retention_days)
+        with self.connect(run_maintenance=False) as conn:
+            cursor = conn.execute(
+                'DELETE FROM live_watch_events WHERE created_at < ?',
+                (cutoff,)
+            )
+            return int(cursor.rowcount or 0)
+
+    def purge_old_cleanup_logs(
+            self,
+            retention_days: int = CLEANUP_LOG_RETENTION_DAYS,
+            cutoff_at: str | None = None
+    ) -> int:
+        cutoff = cutoff_at or self.retention_cutoff_iso(retention_days)
+        with self.connect(run_maintenance=False) as conn:
+            cursor = conn.execute(
+                'DELETE FROM cleanup_log WHERE created_at < ?',
+                (cutoff,)
+            )
+            return int(cursor.rowcount or 0)
+
+    def purge_old_event_records(
+            self,
+            force: bool = False,
+            min_interval_seconds: int = DEFAULT_EVENT_PURGE_MIN_INTERVAL_SECONDS
+    ) -> dict[str, int] | None:
+        marker_path = f'{self.path}.event_purge'
+        now = datetime.datetime.now(datetime.UTC).timestamp()
+        if not force and os.path.exists(marker_path):
+            try:
+                if now - os.path.getmtime(marker_path) < min_interval_seconds:
+                    return None
+            except OSError:
+                pass
+
+        counts = {
+            'transfer_events': self.purge_old_transfer_events(),
+            'live_watch_events': self.purge_old_live_watch_events(),
+            'cleanup_log': self.purge_old_cleanup_logs(),
+        }
+        try:
+            with open(marker_path, 'w', encoding='UTF-8') as marker:
+                marker.write(self.utc_now())
+        except OSError:
+            pass
+        return counts
 
     @staticmethod
     def _ensure_columns(conn: sqlite3.Connection, table: str, columns: Dict[str, str]) -> None:

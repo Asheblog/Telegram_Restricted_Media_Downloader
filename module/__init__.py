@@ -7,6 +7,7 @@ import os
 import atexit
 import logging
 import platform
+import threading
 import time
 from glob import glob
 from logging.handlers import TimedRotatingFileHandler
@@ -52,9 +53,9 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.104'
+__version__ = '0.2.105'
 __license__ = 'MIT License'
-__update_date__ = '2026/07/11 10:56:00'
+__update_date__ = '2026/07/11 11:12:00'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
 SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
 SOFTWARE_SHORT_NAME = 'TRMD'
@@ -71,6 +72,9 @@ read_input_history(history_path=INPUT_HISTORY_PATH, max_record_len=MAX_RECORD_LE
 # 配置日志输出到文件
 LOG_PATH = os.path.join(APPDATA_PATH, f'{SOFTWARE_SHORT_NAME}_LOG.log')
 LOG_RETENTION_DAYS = 3
+LOG_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
+_log_cleanup_thread_started = False
+_log_cleanup_lock = threading.Lock()
 LINK_PREVIEW_OPTIONS = LinkPreviewOptions(is_disabled=True)
 LOG_FORMAT = '%(name)s:%(funcName)s:%(lineno)d - %(message)s'
 FILE_LOG_LEVEL: int = logging.INFO
@@ -94,6 +98,33 @@ def cleanup_old_log_files(
         except OSError:
             pass
     return removed
+
+
+def start_periodic_log_cleanup(
+        log_path: str = LOG_PATH,
+        retention_days: int = LOG_RETENTION_DAYS,
+        interval_seconds: int = LOG_CLEANUP_INTERVAL_SECONDS,
+) -> None:
+    """Start a daemon thread that removes rotated log files daily."""
+    global _log_cleanup_thread_started
+    with _log_cleanup_lock:
+        if _log_cleanup_thread_started:
+            return
+        _log_cleanup_thread_started = True
+
+    def _loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            try:
+                cleanup_old_log_files(log_path=log_path, retention_days=retention_days)
+            except OSError:
+                pass
+
+    threading.Thread(
+        target=_loop,
+        name='trmd-log-cleanup',
+        daemon=True,
+    ).start()
 
 
 cleanup_old_log_files()
@@ -145,6 +176,7 @@ log = logging.getLogger('rich')
 log.info(f'{SOFTWARE_SHORT_NAME}:{__version__},更新日期:{__update_date__}。')
 log.info(f'文件日志等级:"{logging.getLevelName(FILE_LOG_LEVEL)}"。')
 log.info(f'终端日志等级:"{logging.getLevelName(CONSOLE_LOG_LEVEL)}"。')
+start_periodic_log_cleanup()
 CustomDumper.add_representer(type(None), CustomDumper.represent_none)
 README = r'''
 ```yaml

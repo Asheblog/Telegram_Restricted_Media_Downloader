@@ -476,3 +476,19 @@ class MediaManager:
             'total_deleted_count': len(deleted),
             'total_deleted_size': total_deleted_size,
         }
+
+    def auto_cleanup_orphan_files(self) -> Dict[str, Any]:
+        """Scan and delete orphan files that exceeded the retention threshold."""
+        scan_result = self.scan_orphan_files()
+        file_paths = [entry['path'] for entry in scan_result.get('files', [])]
+        if not file_paths:
+            return {
+                'deleted': [],
+                'failed': [],
+                'total_deleted_count': 0,
+                'total_deleted_size': 0,
+                'scanned_count': 0,
+            }
+        cleanup_result = self.cleanup_orphan_files(file_paths)
+        cleanup_result['scanned_count'] = scan_result.get('total_count', 0)
+        return cleanup_result

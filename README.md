@@ -49,6 +49,11 @@ services:
       - "2921"
       - --mode
       - SESSION
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 ```
 
 把 `TRMD_WEB_PASSWORD` 改成强密码，然后启动：

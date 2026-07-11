@@ -167,6 +167,28 @@ class MediaManagerCase(unittest.TestCase):
 
             self.assertIn(orphan_path, paths)
 
+    def test_auto_cleanup_orphan_files_deletes_stale_orphans(self):
+        with tempfile.TemporaryDirectory() as directory:
+            orphan_path = os.path.join(directory, 'stale.bin')
+            with open(orphan_path, 'wb') as file:
+                file.write(b'data')
+            old = time.time() - 10 * 86400
+            os.utime(orphan_path, (old, old))
+
+            store = TransferStore(directory=directory)
+            manager = MediaManager(
+                store,
+                save_directory=directory,
+                temp_directory=directory,
+                retention_days=7,
+            )
+
+            result = manager.auto_cleanup_orphan_files()
+
+            self.assertEqual(1, result['total_deleted_count'])
+            self.assertEqual(1, result['scanned_count'])
+            self.assertFalse(os.path.exists(orphan_path))
+
 
 if __name__ == '__main__':
     unittest.main()
