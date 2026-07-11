@@ -853,19 +853,35 @@ document.addEventListener('click', function(e) {
   toggleWatchEvents(row.dataset.watchId);
 });
 
+function setWatchExpandMode(sanitized, mode) {
+  const eventsPanel = document.getElementById('watch-events-panel-' + sanitized);
+  const deferredPanel = document.getElementById('watch-deferred-panel-' + sanitized);
+  if (eventsPanel) eventsPanel.classList.toggle('hidden', mode !== 'events');
+  if (deferredPanel) deferredPanel.classList.toggle('hidden', mode !== 'deferred');
+}
+
+function watchExpandShell(title, bodyHtml) {
+  return '<div class="watch-expand-header">' + esc(title) + '</div>' +
+    '<div class="watch-expand-body">' + bodyHtml + '</div>';
+}
+
+function watchExpandEmpty(message) {
+  return '<div class="watch-expand-empty">' + esc(message) + '</div>';
+}
+
 function toggleWatchEvents(watchId) {
   const sanitized = sanitizeWatchId(watchId);
   const row = document.getElementById('watch-events-' + sanitized);
   if (!row) return;
-  const deferredPanel = document.getElementById('watch-deferred-panel-' + sanitized);
-  const isOpen = row.classList.contains('open');
+  const eventsPanel = document.getElementById('watch-events-panel-' + sanitized);
+  const isOpen = row.classList.contains('open') && eventsPanel && !eventsPanel.classList.contains('hidden');
   if (isOpen) {
     row.classList.remove('open');
-    if (deferredPanel) deferredPanel.classList.add('hidden');
+    setWatchExpandMode(sanitized, null);
     return;
   }
   row.classList.add('open');
-  if (deferredPanel) deferredPanel.classList.add('hidden');
+  setWatchExpandMode(sanitized, 'events');
   loadWatchEvents(watchId, 0, true);
 }
 
@@ -873,64 +889,75 @@ async function loadWatchEvents(watchId, offset, todayOnly) {
   const sanitized = sanitizeWatchId(watchId);
   const panel = document.getElementById('watch-events-panel-' + sanitized);
   if (!panel) return;
-  if (offset === 0) panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+  const title = todayOnly ? t('watches.todayEvents') : t('watches.events');
+  if (offset === 0) panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.eventLoading')));
   try {
     const todayQuery = todayOnly ? '&today=1' : '';
     const res = await fetch(withClientTzQuery('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset + todayQuery));
     const data = await res.json();
-    if (!res.ok) { panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>'; return; }
-    const items = data.events || [];
-    if (offset === 0) panel.innerHTML = '';
-    if (!items.length && offset === 0) {
-      panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noEvents')) + '</div>';
+    if (!res.ok) {
+      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(data.error || t('form.requestFailed')));
       return;
     }
-    items.forEach(evt => {
-      const time = new Date(evt.created_at).toLocaleString();
-      const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
-      const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
-      const div = document.createElement('div');
-      div.className = 'watch-event-item';
-      div.innerHTML = '<span class="watch-event-time">' + esc(time) + '</span>'
-        + '<span class="watch-event-badge"><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></span>'
-        + '<span class="watch-event-info">' + esc(evt.message) + ' ' + esc(t('watches.source')) + ': #' + esc(String(evt.source_message_id || '')) + ' → ' + esc(t('watches.target')) + ': ' + esc(evt.target_link || evt.target_chat_id || '') + '</span>';
-      panel.appendChild(div);
-    });
+    const items = data.events || [];
+    if (!items.length && offset === 0) {
+      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.noEvents')));
+      return;
+    }
+    panel.querySelector('.watch-events-load-more')?.remove();
+    if (offset === 0) {
+      panel.innerHTML = watchExpandShell(title,
+        '<div class="watch-expand-scroll">' + renderWatchEventTable(items) + '</div>');
+    } else {
+      const tbody = panel.querySelector('tbody');
+      if (tbody) tbody.insertAdjacentHTML('beforeend', renderWatchEventTbodyRows(items));
+    }
     if (data.has_more) {
-      const btn = document.createElement('button');
-      btn.className = 'watch-events-load-more btn btn-sm';
-      btn.textContent = t('watches.loadMore');
-      btn.onclick = function() { loadWatchEvents(watchId, offset + items.length, todayOnly); };
-      panel.appendChild(btn);
+      const body = panel.querySelector('.watch-expand-body');
+      if (body) {
+        const btn = document.createElement('button');
+        btn.className = 'watch-events-load-more btn btn-sm';
+        btn.textContent = t('watches.loadMore');
+        btn.onclick = function() { loadWatchEvents(watchId, offset + items.length, todayOnly); };
+        body.appendChild(btn);
+      }
     }
   } catch (e) {
-    panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+    panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('form.requestFailed')));
   }
 }
 
-function renderWatchEventRows(items) {
-  if (!items.length) {
-    return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
-  }
-  return '<table class="data-table watch-history-table"><thead><tr>' +
+function renderWatchEventTbodyRows(items) {
+  return items.map(evt => {
+    const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
+    const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
+    return '<tr>' +
+      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.message || '') + '">' + esc(evt.message || '-') + '</td>' +
+      '<td><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></td>' +
+      '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
+      '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
+      '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderWatchEventTable(items, tableClass) {
+  return '<table class="data-table ' + (tableClass || 'watch-expand-table') + '"><thead><tr>' +
     '<th>' + esc(t('events.title')) + '</th>' +
     '<th>' + esc(t('tasks.status')) + '</th>' +
     '<th>' + esc(t('watches.source')) + '</th>' +
     '<th>' + esc(t('watches.target')) + '</th>' +
     '<th>' + esc(t('records.updated')) + '</th>' +
     '</tr></thead><tbody>' +
-    items.map(evt => {
-      const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
-      const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
-      return '<tr>' +
-        '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.message || '') + '">' + esc(evt.message || '-') + '</td>' +
-        '<td><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></td>' +
-        '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
-        '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
-        '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
-      '</tr>';
-    }).join('') +
+    renderWatchEventTbodyRows(items) +
     '</tbody></table>';
+}
+
+function renderWatchEventRows(items) {
+  if (!items.length) {
+    return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
+  }
+  return renderWatchEventTable(items, 'watch-history-table');
 }
 
 async function openWatchHistoryModal(watchId, page) {
@@ -1058,48 +1085,73 @@ function toggleWatchDeferred(watchId) {
   const panel = document.getElementById('watch-deferred-panel-' + sanitized);
   if (!row || !panel) return;
   const isOpen = row.classList.contains('open') && !panel.classList.contains('hidden');
-  document.querySelectorAll('.watch-deferred-panel').forEach(el => el.classList.add('hidden'));
   if (isOpen) {
     row.classList.remove('open');
+    setWatchExpandMode(sanitized, null);
     return;
   }
+  // Close other watches' expand rows, then show deferred for this one.
+  document.querySelectorAll('.watch-events-row.open').forEach(el => {
+    if (el.id !== 'watch-events-' + sanitized) el.classList.remove('open');
+  });
+  document.querySelectorAll('.watch-events-panel, .watch-deferred-panel').forEach(el => el.classList.add('hidden'));
   row.classList.add('open');
-  panel.classList.remove('hidden');
+  setWatchExpandMode(sanitized, 'deferred');
   loadWatchDeferred(watchId);
+}
+
+function renderDeferredCommentRows(watchId, items) {
+  return '<table class="data-table watch-expand-table"><thead><tr>' +
+    '<th>' + esc(t('records.message')) + '</th>' +
+    '<th>' + esc(t('tasks.status')) + '</th>' +
+    '<th>' + esc(t('watches.deferredDue')) + '</th>' +
+    '<th>' + esc(t('tasks.actions')) + '</th>' +
+    '</tr></thead><tbody>' +
+    items.map(item => {
+      const due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      const actions = item.status === 'pending'
+        ? '<div class="table-actions flex gap-1">' +
+          '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
+          '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>' +
+          '</div>'
+        : '<span class="text-xs text-muted">—</span>';
+      const statusCls = item.status === 'pending' ? 'badge-warning'
+        : item.status === 'running' ? 'badge-running'
+        : item.status === 'done' ? 'badge-success'
+        : item.status === 'failure' ? 'badge-failed'
+        : 'badge-paused';
+      return '<tr>' +
+        '<td class="text-xs font-mono text-muted">#' + esc(String(item.source_message_id || '-')) + '</td>' +
+        '<td><span class="badge ' + statusCls + '">' + esc(deferredStatusLabel(item.status)) + '</span></td>' +
+        '<td class="text-xs text-muted">' + esc(due) + '</td>' +
+        '<td>' + actions + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table>';
 }
 
 async function loadWatchDeferred(watchId) {
   const sanitized = sanitizeWatchId(watchId);
   const panel = document.getElementById('watch-deferred-panel-' + sanitized);
   if (!panel) return;
-  panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.eventLoading')) + '</div>';
+  const title = t('watches.deferredComments');
+  panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.eventLoading')));
   try {
     const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
     const data = await res.json();
     if (!res.ok) {
-      panel.innerHTML = '<div class="watch-event-item">' + esc(data.error || t('form.requestFailed')) + '</div>';
+      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(data.error || t('form.requestFailed')));
       return;
     }
     const items = data.captures || [];
     if (!items.length) {
-      panel.innerHTML = '<div class="watch-event-item">' + esc(t('watches.noDeferredComments')) + '</div>';
+      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.noDeferredComments')));
       return;
     }
-    panel.innerHTML = items.map(item => {
-      const due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
-      const actions = item.status === 'pending'
-        ? '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
-          '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>'
-        : '';
-      return '<div class="watch-event-item flex flex-wrap items-center gap-2">' +
-        '<span class="watch-event-time">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</span>' +
-        '<span class="badge">' + esc(deferredStatusLabel(item.status)) + '</span>' +
-        '<span class="watch-event-info">#' + esc(String(item.source_message_id || '')) + '</span>' +
-        actions +
-        '</div>';
-    }).join('');
+    panel.innerHTML = watchExpandShell(title,
+      '<div class="watch-expand-scroll">' + renderDeferredCommentRows(watchId, items) + '</div>');
   } catch (err) {
-    panel.innerHTML = '<div class="watch-event-item">' + esc(t('form.requestFailed')) + '</div>';
+    panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('form.requestFailed')));
   }
 }
 
