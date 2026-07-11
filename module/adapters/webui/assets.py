@@ -524,14 +524,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
               <input class="form-input" name="end_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
             </div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-            <input type="checkbox" name="include_comment" class="w-4 h-4">
-            <span data-i18n="new.includeComment">包含评论区</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
-            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
-            <span data-i18n="new.resolveDeepLink">深链取片</span>
-          </label>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="include_comment" class="w-4 h-4">
+              <span data-i18n="new.includeComment">包含评论区</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+              <span data-i18n="new.resolveDeepLink">深链取片</span>
+            </label>
+          </div>
           <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
@@ -625,14 +627,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <label class="form-label" data-i18n="watches.target">目标频道</label>
             <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
           </div>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-            <input type="checkbox" name="include_comment" class="w-4 h-4">
-            <span data-i18n="watches.includeComment">包含评论区</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
-            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
-            <span data-i18n="watches.resolveDeepLink">深链取片</span>
-          </label>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="include_comment" class="w-4 h-4">
+              <span data-i18n="watches.includeComment">包含评论区</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+              <span data-i18n="watches.resolveDeepLink">深链取片</span>
+            </label>
+          </div>
           <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
@@ -701,14 +705,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <label class="form-label" data-i18n="watches.target">目标频道</label>
         <input class="form-input" name="target_link" id="edit-watch-target" type="text" required>
       </div>
-      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-        <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
-        <span data-i18n="watches.includeComment">包含评论区</span>
-      </label>
-      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
-        <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
-        <span data-i18n="watches.resolveDeepLink">深链取片</span>
-      </label>
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
+          <span data-i18n="watches.includeComment">包含评论区</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
+          <span data-i18n="watches.resolveDeepLink">深链取片</span>
+        </label>
+      </div>
       <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
       </p>
@@ -4811,14 +4817,16 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
               <input type="number" name="end_id" placeholder="可选">
             </label>
           </div>
-          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-            <input type="checkbox" name="include_comment">
-            <span data-i18n="new.includeComment">包含评论区</span>
-          </label>
-          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-            <input type="checkbox" name="resolve_deep_link">
-            <span data-i18n="new.resolveDeepLink">深链取片</span>
-          </label>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;">
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="include_comment">
+              <span data-i18n="new.includeComment">包含评论区</span>
+            </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="resolve_deep_link">
+              <span data-i18n="new.resolveDeepLink">深链取片</span>
+            </label>
+          </div>
           <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
@@ -4854,14 +4862,16 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             </label>
           </div>
           <div id="mob-watch-comment-group" class="hidden">
-            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-              <input type="checkbox" name="include_comment">
-              <span data-i18n="watches.includeComment">包含评论区</span>
-            </label>
-            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-              <input type="checkbox" name="resolve_deep_link">
-              <span data-i18n="watches.resolveDeepLink">深链取片</span>
-            </label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="checkbox" name="include_comment">
+                <span data-i18n="watches.includeComment">包含评论区</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="checkbox" name="resolve_deep_link">
+                <span data-i18n="watches.resolveDeepLink">深链取片</span>
+              </label>
+            </div>
             <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
               勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
             </p>

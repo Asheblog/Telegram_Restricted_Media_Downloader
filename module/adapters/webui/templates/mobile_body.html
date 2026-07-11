@@ -153,14 +153,16 @@
               <input type="number" name="end_id" placeholder="可选">
             </label>
           </div>
-          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-            <input type="checkbox" name="include_comment">
-            <span data-i18n="new.includeComment">包含评论区</span>
-          </label>
-          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-            <input type="checkbox" name="resolve_deep_link">
-            <span data-i18n="new.resolveDeepLink">深链取片</span>
-          </label>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;">
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="include_comment">
+              <span data-i18n="new.includeComment">包含评论区</span>
+            </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="resolve_deep_link">
+              <span data-i18n="new.resolveDeepLink">深链取片</span>
+            </label>
+          </div>
           <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
@@ -196,14 +198,16 @@
             </label>
           </div>
           <div id="mob-watch-comment-group" class="hidden">
-            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-              <input type="checkbox" name="include_comment">
-              <span data-i18n="watches.includeComment">包含评论区</span>
-            </label>
-            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
-              <input type="checkbox" name="resolve_deep_link">
-              <span data-i18n="watches.resolveDeepLink">深链取片</span>
-            </label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="checkbox" name="include_comment">
+                <span data-i18n="watches.includeComment">包含评论区</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="checkbox" name="resolve_deep_link">
+                <span data-i18n="watches.resolveDeepLink">深链取片</span>
+              </label>
+            </div>
             <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
               勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
             </p>
