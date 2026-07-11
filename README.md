@@ -113,9 +113,10 @@ target_profiles:
       remote: pikpak
       source_directory: My Telegram
       root_directory: Telegram
-      poll_seconds: 60
+      poll_seconds: 180
       poll_interval_seconds: 5
       match_window_seconds: 3600
+      archive_retry_interval_seconds: 300
 ```
 
 保存后重启：

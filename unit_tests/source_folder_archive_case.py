@@ -1,6 +1,7 @@
 # coding=UTF-8
 import json
 import os
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
+sys.argv = [sys.argv[0]]
 
 
 class SourceFolderArchiveCase(unittest.TestCase):
@@ -533,6 +535,120 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual(60, client.resolve_poll_seconds(None))
         self.assertEqual(60, client.resolve_poll_seconds(87 * 1024))
         self.assertEqual(1800, client.resolve_poll_seconds(1536 * 1024 ** 2))
+
+    def test_pikpak_upload_archive_retries_not_found_within_match_window(self):
+        import asyncio
+        import time
+        from module.transfer.progress import TransferProgressTracker
+
+        archive_calls = []
+
+        class FakeLoop:
+            def is_running(self):
+                return True
+
+            def create_task(self, coro):
+                asyncio.run(coro)
+                return None
+
+        tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            app_getter=lambda: None,
+            gc_getter=lambda: SimpleNamespace(config={
+                'target_profiles': {
+                    'pikpak': {
+                        'archive': {
+                            'enable': True,
+                            'remote': 'pikpak',
+                            'archive_retry_interval_seconds': 0,
+                            'match_window_seconds': 3600
+                        }
+                    }
+                }
+            }),
+            loop_getter=lambda: FakeLoop(),
+            pb_getter=lambda: None,
+            release_storage=lambda *a: None,
+            release_window=lambda *a: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: (
+                archive_calls.append(kw) or SimpleNamespace(ok=False, status='not_found', message='missing')
+            ),
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda *a: None,
+        )
+
+        transferred_at = time.time()
+        tracker._run_upload_archive_now(
+            task_id=None,
+            item_id=None,
+            target_profile='pikpak',
+            source_link='https://t.me/ctuxas/1',
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=transferred_at,
+            match_original_name=False,
+            pending_key=None
+        )
+
+        self.assertEqual(1, len(archive_calls))
+
+    def test_pikpak_upload_archive_schedules_retry_when_not_found(self):
+        import time
+        from module.transfer.progress import TransferProgressTracker
+
+        scheduled = []
+
+        tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            app_getter=lambda: None,
+            gc_getter=lambda: SimpleNamespace(config={
+                'target_profiles': {
+                    'pikpak': {
+                        'archive': {
+                            'enable': True,
+                            'remote': 'pikpak',
+                            'archive_retry_interval_seconds': 300,
+                            'match_window_seconds': 3600
+                        }
+                    }
+                }
+            }),
+            loop_getter=lambda: None,
+            pb_getter=lambda: None,
+            release_storage=lambda *a: None,
+            release_window=lambda *a: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: SimpleNamespace(
+                ok=False,
+                status='not_found',
+                message='missing'
+            ),
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda *a: None,
+        )
+        tracker._schedule_deferred_upload_archive = lambda **kwargs: scheduled.append(kwargs) or True
+
+        transferred_at = time.time()
+        tracker._run_upload_archive_now(
+            task_id=1,
+            item_id=2,
+            target_profile='pikpak',
+            source_link='https://t.me/ctuxas/1',
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=transferred_at,
+            match_original_name=False,
+            pending_key=None
+        )
+
+        self.assertEqual(1, len(scheduled))
+        self.assertEqual(300, scheduled[0]['delay_seconds'])
+        self.assertTrue(scheduled[0]['reset_archive_status'])
 
 
 if __name__ == '__main__':

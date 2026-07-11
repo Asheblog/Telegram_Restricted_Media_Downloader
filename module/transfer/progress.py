@@ -75,6 +75,21 @@ class TransferProgressTracker:
         archive = self._pikpak_archive_config()
         return max(float(archive.get('archive_delay_seconds') or 600), 0)
 
+    def _pikpak_archive_match_window_seconds(self) -> float:
+        archive = self._pikpak_archive_config()
+        return max(float(archive.get('match_window_seconds') or 3600), 0)
+
+    def _pikpak_archive_retry_interval_seconds(self) -> float:
+        archive = self._pikpak_archive_config()
+        return max(float(archive.get('archive_retry_interval_seconds') or 300), 0)
+
+    def _pikpak_archive_remaining_window_seconds(self, transferred_at: float) -> float:
+        return max(self._pikpak_archive_match_window_seconds() - max(time.time() - transferred_at, 0), 0)
+
+    @staticmethod
+    def _pikpak_archive_status_is_retryable(archive_status: Optional[str]) -> bool:
+        return str(archive_status or '') in ('not_found', 'error')
+
     def recover_pending_upload_archives(self) -> int:
         store = self.transfer_store
         if not store or not self._pikpak_archive_enabled():
@@ -85,15 +100,23 @@ class TransferProgressTracker:
                 continue
             task_id = int(task['id'])
             for item in store.list_items(task_id):
-                if (
-                        item.get('status') != TransferStatus.SUCCESS
-                        or item.get('archive_status') != 'pending'
-                ):
+                archive_status = item.get('archive_status')
+                if item.get('status') != TransferStatus.SUCCESS:
+                    continue
+                if archive_status not in ('pending', 'not_found', 'error'):
                     continue
                 transferred_at = PikpakIntegrationManager.transfer_item_archive_timestamp(item)
-                delay_seconds = self._pikpak_archive_delay_seconds(item.get('file_size'))
-                elapsed = max(time.time() - transferred_at, 0)
-                remaining = max(delay_seconds - elapsed, 0)
+                remaining_window = self._pikpak_archive_remaining_window_seconds(transferred_at)
+                if remaining_window <= 0:
+                    continue
+                if archive_status == 'pending':
+                    delay_seconds = self._pikpak_archive_delay_seconds(item.get('file_size'))
+                    elapsed = max(time.time() - transferred_at, 0)
+                    delay_seconds = max(delay_seconds - elapsed, 0)
+                elif self._pikpak_archive_retry_interval_seconds() <= 0:
+                    continue
+                else:
+                    delay_seconds = min(self._pikpak_archive_retry_interval_seconds(), remaining_window)
                 if self._schedule_deferred_upload_archive(
                         task_id=task_id,
                         item_id=int(item['id']),
@@ -104,7 +127,8 @@ class TransferProgressTracker:
                         file_size=item.get('file_size'),
                         transferred_at=transferred_at,
                         match_original_name=PikpakIntegrationManager.transfer_item_archive_match_original_name(item),
-                        delay_seconds=remaining
+                        delay_seconds=delay_seconds,
+                        reset_archive_status=archive_status != 'pending'
                 ):
                     recovered += 1
         return recovered
@@ -121,7 +145,8 @@ class TransferProgressTracker:
             file_size: Optional[int],
             transferred_at: float,
             match_original_name: bool,
-            delay_seconds: Optional[float] = None
+            delay_seconds: Optional[float] = None,
+            reset_archive_status: bool = False
     ) -> bool:
         if target_profile != 'pikpak' or not self._pikpak_archive_enabled():
             return False
@@ -130,6 +155,15 @@ class TransferProgressTracker:
             if key in self._pending_archive_tasks:
                 return False
             self._pending_archive_tasks.add(key)
+        if reset_archive_status:
+            store = self.transfer_store
+            if store and item_id:
+                store.update_item(
+                    int(item_id),
+                    archive_status='pending',
+                    archive_error=None,
+                    error_message=''
+                )
         delay = self._pikpak_archive_delay_seconds(file_size) if delay_seconds is None else max(float(delay_seconds), 0)
         loop = self.loop
         if loop is not None and loop.is_running():
@@ -251,6 +285,37 @@ class TransferProgressTracker:
                     self._refresh_counts(int(task_id))
                 else:
                     self.diagnostic.warning(error_message)
+                if self._pikpak_archive_status_is_retryable(archive_status):
+                    remaining_window = self._pikpak_archive_remaining_window_seconds(transferred_at)
+                    retry_interval = self._pikpak_archive_retry_interval_seconds()
+                    if remaining_window > 0 and retry_interval > 0 and task_id and item_id:
+                        retry_delay = min(retry_interval, remaining_window)
+                        retry_message = (
+                            f'PikPak archive retry scheduled in {int(retry_delay)}s: '
+                            f'{file_name or source_link or item_id}'
+                        )
+                        if store:
+                            store.add_event(
+                                int(task_id),
+                                retry_message,
+                                level='info',
+                                item_id=int(item_id)
+                            )
+                        else:
+                            self.diagnostic.info(retry_message)
+                        self._schedule_deferred_upload_archive(
+                            task_id=task_id,
+                            item_id=item_id,
+                            target_profile=target_profile,
+                            source_link=source_link,
+                            source_folder=source_folder,
+                            file_name=file_name,
+                            file_size=file_size,
+                            transferred_at=transferred_at,
+                            match_original_name=match_original_name,
+                            delay_seconds=retry_delay,
+                            reset_archive_status=True
+                        )
                 return
             if task_id:
                 self._refresh_counts(int(task_id))

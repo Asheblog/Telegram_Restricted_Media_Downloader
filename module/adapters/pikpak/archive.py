@@ -16,11 +16,12 @@ DEFAULT_ARCHIVE_CONFIG = {
     'remote': '',
     'source_directory': 'My Telegram',
     'root_directory': 'Telegram',
-    'poll_seconds': 60,
+    'poll_seconds': 180,
     'poll_interval_seconds': 5,
     'match_window_seconds': 3600,
     'poll_cap_seconds': 1800,
-    'archive_delay_seconds': 600
+    'archive_delay_seconds': 600,
+    'archive_retry_interval_seconds': 300
 }
 
 
@@ -295,7 +296,7 @@ class RclonePikPakArchiveClient:
 
     def _run(self, args: list[str]):
         command = ['rclone', *args]
-        result = self.runner(command, capture_output=True, text=True, timeout=120)
+        result = self.runner(command, capture_output=True, text=True, timeout=300)
         if getattr(result, 'returncode', 0) != 0:
             stderr = getattr(result, 'stderr', '') or ''
             raise RuntimeError(stderr.strip() or f'Command failed: {command}')
@@ -317,7 +318,14 @@ def normalize_archive_config(config: Optional[dict]) -> dict:
     result['remote'] = str(result.get('remote') or '').strip().rstrip(':')
     result['source_directory'] = clean_remote_path(str(result.get('source_directory') or ''))
     result['root_directory'] = clean_remote_path(str(result.get('root_directory') or ''))
-    for key in ('poll_seconds', 'poll_interval_seconds', 'match_window_seconds', 'poll_cap_seconds', 'archive_delay_seconds'):
+    for key in (
+            'poll_seconds',
+            'poll_interval_seconds',
+            'match_window_seconds',
+            'poll_cap_seconds',
+            'archive_delay_seconds',
+            'archive_retry_interval_seconds'
+    ):
         try:
             result[key] = max(float(result.get(key)), 0)
         except (TypeError, ValueError):

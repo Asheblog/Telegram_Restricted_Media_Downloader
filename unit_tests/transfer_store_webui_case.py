@@ -538,9 +538,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual('pikpak', archive['remote'])
         self.assertEqual('My Telegram', archive['source_directory'])
         self.assertEqual('Telegram', archive['root_directory'])
-        self.assertEqual(60, archive['poll_seconds'])
+        self.assertEqual(180, archive['poll_seconds'])
         self.assertEqual(5, archive['poll_interval_seconds'])
         self.assertEqual(3600, archive['match_window_seconds'])
+        self.assertEqual(300, archive['archive_retry_interval_seconds'])
 
     def test_transfer_task_persists_discussion_reply_inclusion(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2565,7 +2566,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
                         'archive': {
                             'enable': True,
                             'remote': 'pikpak',
-                            'archive_delay_seconds': 0
+                            'archive_delay_seconds': 0,
+                            'match_window_seconds': 0
                         }
                     }
                 }

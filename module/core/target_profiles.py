@@ -13,11 +13,12 @@ DEFAULT_TARGET_PROFILES = {
             'remote': 'pikpak',
             'source_directory': 'My Telegram',
             'root_directory': 'Telegram',
-            'poll_seconds': 60,
+            'poll_seconds': 180,
             'poll_interval_seconds': 5,
             'match_window_seconds': 3600,
             'poll_cap_seconds': 1800,
-            'archive_delay_seconds': 600
+            'archive_delay_seconds': 600,
+            'archive_retry_interval_seconds': 300
         }
     }
 }

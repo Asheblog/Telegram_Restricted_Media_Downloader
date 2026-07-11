@@ -52,9 +52,9 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.103'
+__version__ = '0.2.104'
 __license__ = 'MIT License'
-__update_date__ = '2026/07/10 23:59:00'
+__update_date__ = '2026/07/11 10:56:00'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
 SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
 SOFTWARE_SHORT_NAME = 'TRMD'
@@ -178,11 +178,12 @@ target_profiles:
       remote: pikpak # rclone中的PikPak remote名称。
       source_directory: My Telegram # PikPak bot入库后的默认目录。
       root_directory: Telegram # PikPak归档根目录。
-      poll_seconds: 60 # 等待PikPak入库的最长轮询秒数。
+      poll_seconds: 180 # 每次归档尝试在My Telegram中轮询匹配的最长秒数。
       poll_interval_seconds: 5 # 轮询间隔秒数。
-      match_window_seconds: 3600 # 按时间匹配入库文件的窗口秒数。
+      match_window_seconds: 3600 # 按时间匹配入库文件的窗口秒数（窗口内失败会自动重试）。
       poll_cap_seconds: 1800 # 大文件入库轮询上限秒数。
-      archive_delay_seconds: 600 # 上传完成后延迟多久再执行PikPak归档（秒）。
+      archive_delay_seconds: 600 # 上传完成后延迟多久再执行首次PikPak归档（秒）。
+      archive_retry_interval_seconds: 300 # 归档失败后再次尝试的间隔秒数（在匹配窗口内有效）。
 proxy: # 代理部分，如不使用请全部填null注意冒号后面有空格，否则不生效导致报错。
   enable_proxy: true # 是否开启代理。支持的参数：true,false。
   hostname: 127.0.0.1 # 代理的ip地址。
