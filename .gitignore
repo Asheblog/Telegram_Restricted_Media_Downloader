@@ -34,4 +34,5 @@ AGENTS.md
 !rar.exe
 !requirements.txt
 .venv
-.cursor/
+.cursor/.worktrees/
+.worktrees/
