@@ -1533,6 +1533,13 @@ def _coerce_type(target_val, new_val):
         if isinstance(new_val, str):
             return new_val.lower() in ('true', '1', 'yes', 'on')
         return bool(new_val)
+    if target_type is list and isinstance(new_val, str):
+        # textarea / comma fields: avoid list("a\\nb") character-splitting
+        return [
+            part.strip()
+            for part in new_val.replace(',', '\n').split('\n')
+            if part.strip()
+        ]
     try:
         return target_type(new_val)
     except (TypeError, ValueError):

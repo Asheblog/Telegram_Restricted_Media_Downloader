@@ -157,6 +157,13 @@
             <input type="checkbox" name="include_comment">
             <span data-i18n="new.includeComment">包含评论区</span>
           </label>
+          <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+            <input type="checkbox" name="resolve_deep_link">
+            <span data-i18n="new.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="new.create">创建任务</button>
           <p class="mob-empty hidden" id="mob-form-notice"></p>
         </form>
@@ -193,6 +200,13 @@
               <input type="checkbox" name="include_comment">
               <span data-i18n="watches.includeComment">包含评论区</span>
             </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="resolve_deep_link">
+              <span data-i18n="watches.resolveDeepLink">深链取片</span>
+            </label>
+            <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
+              勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+            </p>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
           <p class="mob-empty hidden" id="mob-watch-notice"></p>

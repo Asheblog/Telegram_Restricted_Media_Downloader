@@ -105,6 +105,13 @@
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="new.includeComment">包含评论区</span>
           </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <span data-i18n="new.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <p class="text-xs text-muted leading-[1.5] mb-2" data-i18n="new.hint">
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
@@ -199,6 +206,13 @@
             <input type="checkbox" name="include_comment" class="w-4 h-4">
             <span data-i18n="watches.includeComment">包含评论区</span>
           </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <span data-i18n="watches.resolveDeepLink">深链取片</span>
+          </label>
+          <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
+            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          </p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createForward">新增监听转发</span>
@@ -268,6 +282,13 @@
         <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
         <span data-i18n="watches.includeComment">包含评论区</span>
       </label>
+      <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+        <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
+        <span data-i18n="watches.resolveDeepLink">深链取片</span>
+      </label>
+      <p class="text-xs text-muted leading-[1.5] mb-3" data-i18n="watches.resolveDeepLinkHint">
+        勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+      </p>
       <div class="flex gap-2 justify-end">
         <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
         <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
@@ -697,6 +718,15 @@
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
           <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
+        <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
+        <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
+        <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
+          placeholder="每行一个，例如：&#10;a82bot"></textarea>
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkWhitelistHint">
+          每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。留空且任务未勾选时功能关闭。
+        </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout">取片超时（秒）</label>
+        <input class="form-input" name="global.deep_link.timeout_seconds" type="number" min="1" max="600">
       </section>
 
     <!-- PikPak Archive -->
