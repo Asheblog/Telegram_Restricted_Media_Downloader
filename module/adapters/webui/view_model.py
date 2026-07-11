@@ -140,6 +140,7 @@ class WebUiViewModel:
             'start_id': task.get('start_id'),
             'end_id': task.get('end_id'),
             'include_comment': bool(task.get('include_comment')),
+            'resolve_deep_link': bool(task.get('resolve_deep_link')),
             'status': status,
             'total_items': summary['total'],
             'completed_items': summary['completed'],
