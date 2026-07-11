@@ -175,6 +175,11 @@ const i18n = {
     'tasks.source': '来源',
     'tasks.target': '目标',
     'tasks.progress': '进度',
+    'tasks.progressIds': 'ID {done}/{total}',
+    'tasks.progressCurrentId': 'ID {id}',
+    'tasks.progressVideosCaptured': '已捕获 {count} 个视频',
+    'tasks.progressVideoIndex': '正在处理第 {index} 个',
+    'tasks.progressDownloading': '下载 {name} · {progress}',
     'tasks.actions': '操作',
     'tasks.pause': '暂停',
     'tasks.resume': '继续',
@@ -477,6 +482,11 @@ const i18n = {
     'tasks.source': 'Source',
     'tasks.target': 'Target',
     'tasks.progress': 'Progress',
+    'tasks.progressIds': 'ID {done}/{total}',
+    'tasks.progressCurrentId': 'ID {id}',
+    'tasks.progressVideosCaptured': '{count} videos captured',
+    'tasks.progressVideoIndex': 'Processing #{index}',
+    'tasks.progressDownloading': 'Download {name} · {progress}',
     'tasks.actions': 'Actions',
     'tasks.pause': 'Pause',
     'tasks.resume': 'Resume',
@@ -852,13 +862,63 @@ function selectedKeys(value) {
   return [];
 }
 
+function taskUsesRangeProgress(task) {
+  return Boolean(task && task.uses_range_progress);
+}
+
 function taskProgressPercent(task) {
+  if (taskUsesRangeProgress(task)) {
+    return Number(task.range_progress_percent || 0);
+  }
   return Number(task && task.progress_percent || 0);
 }
 
 function taskCompletedLabel(task) {
   if (!task) return '0/0';
+  if (taskUsesRangeProgress(task)) {
+    return t('tasks.progressIds')
+      .replace('{done}', String(Number(task.range_completed_ids || 0)))
+      .replace('{total}', String(Number(task.range_total_ids || 0)));
+  }
   return String(Number(task.completed_items || 0)) + '/' + String(Number(task.total_items || 0));
+}
+
+function taskRangeDetailSummary(task) {
+  if (!task || !taskUsesRangeProgress(task)) return '';
+  const parts = [];
+  const currentId = task.current_range_message_id;
+  if (currentId) {
+    parts.push(t('tasks.progressCurrentId').replace('{id}', String(currentId)));
+  }
+  const captured = Number(task.current_range_video_total || task.current_range_video_captured || 0);
+  if (captured > 0) {
+    parts.push(t('tasks.progressVideosCaptured').replace('{count}', String(captured)));
+  }
+  const videoIndex = Number(task.current_range_video_index || 0);
+  if (videoIndex > 0) {
+    parts.push(t('tasks.progressVideoIndex').replace('{index}', String(videoIndex)));
+  }
+  return parts.join(' · ');
+}
+
+function taskFileTransferDetail(task) {
+  if (!task || !task.active_item_id) return '';
+  const phase = task.active_phase || '';
+  if (phase !== 'downloading' && phase !== 'uploading') return '';
+  const name = task.active_file_name || ('#' + task.active_item_id);
+  const progress = transferProgressLabel(task.active_progress_current, task.active_progress_total);
+  const speed = formatSpeed(task.active_speed_bps);
+  return t('tasks.progressDownloading')
+    .replace('{name}', name)
+    .replace('{progress}', progress + (speed !== '-' ? ' · ' + speed : ''));
+}
+
+function activeTransferSummary(task) {
+  if (!task) return '';
+  const rangeDetail = taskRangeDetailSummary(task);
+  const fileDetail = taskFileTransferDetail(task);
+  if (rangeDetail && fileDetail) return rangeDetail + ' · ' + fileDetail;
+  return rangeDetail || fileDetail || '';
 }
 
 function taskFailedCount(task) {
@@ -899,15 +959,6 @@ function transferProgressLabel(current, total) {
   if (!total) return current ? fmtSize(current) : '-';
   const percent = Math.min(100, Math.round((current / total) * 100));
   return fmtSize(current) + '/' + fmtSize(total) + ' · ' + percent + '%';
-}
-
-function activeTransferSummary(task) {
-  if (!task || !task.active_item_id) return '';
-  const phase = transferPhaseLabel(task.active_phase);
-  const name = task.active_file_name || ('#' + task.active_item_id);
-  const progress = transferProgressLabel(task.active_progress_current, task.active_progress_total);
-  const speed = formatSpeed(task.active_speed_bps);
-  return phase + ' · ' + name + ' · ' + progress + (speed !== '-' ? ' · ' + speed : '');
 }
 
 function itemTransferSummary(item) {

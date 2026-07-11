@@ -4104,6 +4104,71 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertGreater(disk['disk_free_bytes'], 0)
             self.assertEqual(directory, disk['disk_path'])
 
+    def test_range_transfer_progress_uses_message_id_counts_for_range_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source',
+                target_link='https://t.me/pikpak_bot',
+                start_id=100,
+                end_id=102,
+                include_comment=True
+            )
+            store.update_task_range_runtime(
+                task_id,
+                current_range_message_id=101,
+                current_range_video_captured=12,
+                current_range_video_index=8
+            )
+            for message_id in range(100, 101):
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source',
+                    source_message_id=message_id,
+                    range_message_id=message_id,
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS
+                )
+            for index in range(1, 8):
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='discussion',
+                    source_message_id=500 + index,
+                    range_message_id=101,
+                    source_link=f'https://t.me/discuss/{500 + index}',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS
+                )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='discussion',
+                source_message_id=508,
+                range_message_id=101,
+                source_link='https://t.me/discuss/508',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='clip.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+
+            task = store.get_task(task_id)
+            progress = store.range_transfer_progress(task)
+            task_model = WebUiViewModel(store).task_list()['tasks'][0]
+
+            self.assertTrue(progress['uses_range_progress'])
+            self.assertEqual(3, progress['range_total_ids'])
+            self.assertEqual(1, progress['range_completed_ids'])
+            self.assertEqual(33, progress['range_progress_percent'])
+            self.assertEqual(101, progress['current_range_message_id'])
+            self.assertEqual(12, progress['current_range_video_captured'])
+            self.assertEqual(8, progress['current_range_video_index'])
+            self.assertEqual(33, task_model['range_progress_percent'])
+            self.assertEqual('1/3', f"{task_model['range_completed_ids']}/{task_model['range_total_ids']}")
+
 
 if __name__ == '__main__':
     unittest.main()

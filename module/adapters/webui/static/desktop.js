@@ -87,7 +87,9 @@ function renderTasks() {
     const target = esc(task.target_profile || task.target_link || '-');
     const route = source + ' → ' + target;
     let progressHtml = '';
-    if (task.total_items > 0) {
+    if (task.uses_range_progress || task.total_items > 0) {
+      const rangeDetail = taskRangeDetailSummary(task);
+      const fileDetail = taskFileTransferDetail(task);
       progressHtml =
         '<div class="task-row-progress">' +
           '<span class="task-row-progress-pct">' + progressPct + '%</span>' +
@@ -96,7 +98,18 @@ function renderTasks() {
           '</div>' +
           '<span class="task-row-progress-count">' + taskCompletedLabel(task) + '</span>' +
         '</div>';
-      if (activeSummary) {
+      if (rangeDetail) {
+        progressHtml +=
+          '<div class="task-row-progress-summary task-row-progress-range" title="' + esc(rangeDetail) + '">' +
+            esc(rangeDetail) +
+          '</div>';
+      }
+      if (fileDetail) {
+        progressHtml +=
+          '<div class="task-row-progress-summary task-row-progress-file" title="' + esc(fileDetail) + '">' +
+            esc(fileDetail) +
+          '</div>';
+      } else if (!rangeDetail && activeSummary) {
         progressHtml +=
           '<div class="task-row-progress-summary" title="' + esc(activeSummary) + '">' +
             esc(activeSummary) +

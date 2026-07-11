@@ -132,6 +132,13 @@ class WebTransferRunner:
                                 f'Transfer task paused before message: {message_id}.'
                             )
                         return
+                    host.transfer_store.update_task_range_runtime(
+                        task_id,
+                        current_range_message_id=message_id,
+                        current_range_video_captured=0,
+                        current_range_video_index=0
+                    )
+                    range_video_seq = 0
                     if message_id in completed_message_ids:
                         continue
                     if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
@@ -145,7 +152,8 @@ class WebTransferRunner:
                                 await self.create_web_transfer_fallback_download(
                                     task=task,
                                     source_link=message_link,
-                                    message=message
+                                    message=message,
+                                    range_message_id=message_id
                                 )
                                 fallback_count += 1
                         except asyncio.CancelledError:
@@ -175,12 +183,20 @@ class WebTransferRunner:
                             )
                             continue
                         message_link = f'{source_prefix}/{getattr(message, "id", "")}'
+                        range_video_seq += 1
+                        host.transfer_store.update_task_range_runtime(
+                            task_id,
+                            current_range_message_id=message_id,
+                            current_range_video_captured=range_video_seq,
+                            current_range_video_index=range_video_seq
+                        )
                         used_fallback = await self._resolve_method('transfer_message_to_web_target')(
                             task=task,
                             message=message,
                             origin_chat_id=origin_chat_id,
                             target_chat_id=target_chat_id,
-                            source_link=message_link
+                            source_link=message_link,
+                            range_message_id=message_id
                         )
                         fallback_count += 1 if used_fallback else 0
                         if include_comment:
@@ -191,7 +207,8 @@ class WebTransferRunner:
                                 source_chat_id=origin_chat_id,
                                 source_message_id=message_id,
                                 target_chat_id=target_chat_id,
-                                expected_total=expected_total
+                                expected_total=expected_total,
+                                range_video_seq=range_video_seq
                             )
                             expected_total += reply_count
                             fallback_count += reply_fallback_count
@@ -242,7 +259,8 @@ class WebTransferRunner:
                             await self.create_web_transfer_fallback_download(
                                 task=task,
                                 source_link=source_link,
-                                message=message
+                                message=message,
+                                range_message_id=message_id
                             )
                             fallback_count = 1
                         except asyncio.CancelledError:
@@ -258,12 +276,19 @@ class WebTransferRunner:
                                 level='error'
                             )
                     else:
+                        host.transfer_store.update_task_range_runtime(
+                            task_id,
+                            current_range_message_id=message_id,
+                            current_range_video_captured=1,
+                            current_range_video_index=1
+                        )
                         fallback_count = 1 if await self._resolve_method('transfer_message_to_web_target')(
                             task=task,
                             message=message,
                             origin_chat_id=origin_chat_id,
                             target_chat_id=target_chat_id,
-                            source_link=source_link
+                            source_link=source_link,
+                            range_message_id=message_id
                         ) else 0
                     if include_comment:
                         reply_count, reply_fallback_count = await self._resolve_method(
@@ -273,7 +298,8 @@ class WebTransferRunner:
                             source_chat_id=origin_chat_id,
                             source_message_id=message_id,
                             target_chat_id=target_chat_id,
-                            expected_total=1
+                            expected_total=1,
+                            range_video_seq=1 if message_id not in completed_message_ids else 0
                         )
                         fallback_count += reply_fallback_count
                         expected_total += reply_count
@@ -311,7 +337,8 @@ class WebTransferRunner:
             self,
             task: dict,
             source_link: Optional[str] = None,
-            message: Optional[pyrogram.types.Message] = None
+            message: Optional[pyrogram.types.Message] = None,
+            range_message_id: Optional[int] = None
     ) -> None:
         host = self._host
         message_ids = message if message is not None else self.transfer_single_link(source_link)
@@ -319,7 +346,11 @@ class WebTransferRunner:
             message_ids=message_ids,
             retry=None,
             single_link=True,
-            with_upload=host.build_transfer_upload_meta(task=task, source_link=source_link),
+            with_upload=host.build_transfer_upload_meta(
+                task=task,
+                source_link=source_link,
+                range_message_id=range_message_id
+            ),
             diy_download_type=[_ for _ in DownloadType()]
         )
         if task_result.get('status') == DownloadStatus.FAILURE:
@@ -332,7 +363,8 @@ class WebTransferRunner:
             message,
             origin_chat_id,
             target_chat_id,
-            source_link: str
+            source_link: str,
+            range_message_id: Optional[int] = None
     ) -> bool:
         host = self._host
         message_id = getattr(message, 'id', None)
@@ -351,7 +383,8 @@ class WebTransferRunner:
                 message=message,
                 source_link=source_link,
                 origin_chat_id=origin_chat_id,
-                limit_error=limit_error
+                limit_error=limit_error,
+                range_message_id=range_message_id
             )
             return False
         while True:
@@ -375,6 +408,7 @@ class WebTransferRunner:
                     task_id=task_id,
                     source_chat_id=origin_chat_id,
                     source_message_id=message_id,
+                    range_message_id=range_message_id,
                     source_link=source_link,
                     target_link=task.get('target_link'),
                     media_type='forward',
@@ -468,7 +502,8 @@ class WebTransferRunner:
                 await self.create_web_transfer_fallback_download(
                     task=task,
                     source_link=fallback_link,
-                    message=None if fallback_link else message
+                    message=None if fallback_link else message,
+                    range_message_id=range_message_id
                 )
                 return True
 
@@ -478,7 +513,8 @@ class WebTransferRunner:
             source_chat_id,
             source_message_id: int,
             target_chat_id,
-            expected_total: int
+            expected_total: int,
+            range_video_seq: int = 0
     ) -> tuple[int, int]:
         host = self._host
         task_id = int(task.get('id'))
@@ -492,6 +528,13 @@ class WebTransferRunner:
                     include_message=self._resolve_method('check_type')
             ):
                 reply_count += 1
+                range_video_seq += 1
+                host.transfer_store.update_task_range_runtime(
+                    task_id,
+                    current_range_message_id=source_message_id,
+                    current_range_video_captured=range_video_seq,
+                    current_range_video_index=range_video_seq
+                )
                 host.transfer_store.refresh_task_counts(
                     task_id,
                     expected_total=expected_total + reply_count,
@@ -504,7 +547,8 @@ class WebTransferRunner:
                     message=comment,
                     origin_chat_id=comment_chat_id,
                     target_chat_id=target_chat_id,
-                    source_link=comment_link
+                    source_link=comment_link,
+                    range_message_id=source_message_id
                 )
                 fallback_count += 1 if used_fallback else 0
         except (ValueError, AttributeError, MsgIdInvalid):

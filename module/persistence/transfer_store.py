@@ -189,13 +189,17 @@ class TransferStore:
                 'transfer_tasks',
                 {
                     'assignment_completed': 'INTEGER NOT NULL DEFAULT 0',
-                    'include_comment': 'INTEGER NOT NULL DEFAULT 0'
+                    'include_comment': 'INTEGER NOT NULL DEFAULT 0',
+                    'current_range_message_id': 'INTEGER',
+                    'current_range_video_captured': 'INTEGER NOT NULL DEFAULT 0',
+                    'current_range_video_index': 'INTEGER NOT NULL DEFAULT 0',
                 }
             )
             self._ensure_columns(
                 conn,
                 'transfer_items',
                 {
+                    'range_message_id': 'INTEGER',
                     'source_chat_id': 'TEXT',
                     'file_name': 'TEXT',
                     'file_size': 'INTEGER',
@@ -511,6 +515,7 @@ class TransferStore:
             source_link: Optional[str],
             target_link: str,
             source_chat_id: Optional[str] = None,
+            range_message_id: Optional[int] = None,
             media_type: Optional[str] = None,
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
@@ -546,6 +551,7 @@ class TransferStore:
                         item_id=item_id,
                         status=status,
                         source_chat_id=source_chat_id,
+                        range_message_id=range_message_id,
                         media_type=media_type,
                         local_path=local_path,
                         temp_path=temp_path,
@@ -564,14 +570,14 @@ class TransferStore:
             cursor = conn.execute(
                 '''
                 INSERT INTO transfer_items (
-                    task_id, source_chat_id, source_message_id, source_link, target_link,
+                    task_id, source_chat_id, source_message_id, range_message_id, source_link, target_link,
                     media_type, file_name, file_size, local_path, temp_path, source_folder,
                     archive_path, archive_status, archive_error, archive_match_original_name, phase, status,
                     error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
-                    task_id, source_chat_id, source_message_id, source_link, target_link,
+                    task_id, source_chat_id, source_message_id, range_message_id, source_link, target_link,
                     media_type, file_name, file_size, local_path, temp_path, source_folder,
                     archive_path, archive_status, archive_error,
                     self._normalize_optional_bool(archive_match_original_name), phase, status,
@@ -637,6 +643,7 @@ class TransferStore:
             archive_status: Optional[str] = None,
             archive_error: Optional[str] = None,
             archive_match_original_name: Optional[bool] = None,
+            range_message_id: Optional[int] = None,
             phase: Optional[str] = None,
             error_message: Optional[str] = None
     ) -> None:
@@ -644,6 +651,7 @@ class TransferStore:
         optional_fields = {
             'status': status,
             'source_chat_id': source_chat_id,
+            'range_message_id': range_message_id,
             'media_type': media_type,
             'local_path': local_path,
             'temp_path': temp_path,
@@ -912,6 +920,133 @@ class TransferStore:
             finished=finished,
             assignment_completed=assigned
         )
+
+    def update_task_range_runtime(
+            self,
+            task_id: int,
+            *,
+            current_range_message_id: Optional[int] = None,
+            current_range_video_captured: Optional[int] = None,
+            current_range_video_index: Optional[int] = None
+    ) -> None:
+        task = self.get_task(task_id)
+        if not task:
+            return
+        fields: dict[str, Any] = {'updated_at': self.utc_now()}
+        if current_range_message_id is not None:
+            fields['current_range_message_id'] = int(current_range_message_id)
+        if current_range_video_captured is not None:
+            fields['current_range_video_captured'] = max(0, int(current_range_video_captured))
+        if current_range_video_index is not None:
+            fields['current_range_video_index'] = max(0, int(current_range_video_index))
+        if len(fields) <= 1:
+            return
+        set_clause = ', '.join([f'{key} = :{key}' for key in fields])
+        with self.connect() as conn:
+            conn.execute(
+                f'UPDATE transfer_tasks SET {set_clause} WHERE id = :task_id',
+                {**fields, 'task_id': int(task_id)}
+            )
+
+    def range_transfer_progress(self, task: dict[str, Any]) -> Optional[dict[str, int]]:
+        start_id = task.get('start_id')
+        end_id = task.get('end_id')
+        if start_id is None or end_id is None:
+            return None
+        start_id = int(start_id)
+        end_id = int(end_id)
+        if end_id < start_id:
+            return None
+
+        task_id = int(task.get('id') or 0)
+        terminal_statuses = {
+            TransferStatus.SUCCESS,
+            TransferStatus.SKIPPED,
+            TransferStatus.FAILURE,
+        }
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT
+                    COALESCE(
+                        range_message_id,
+                        CASE
+                            WHEN source_message_id BETWEEN ? AND ? THEN source_message_id
+                        END
+                    ) AS range_id,
+                    status,
+                    COUNT(*) AS count
+                FROM transfer_items
+                WHERE task_id = ?
+                GROUP BY range_id, status
+                HAVING range_id IS NOT NULL
+                ''',
+                (start_id, end_id, task_id)
+            ).fetchall()
+
+        counts_by_range: dict[int, dict[str, int]] = {}
+        for row in rows:
+            range_id = int(row['range_id'])
+            if not (start_id <= range_id <= end_id):
+                continue
+            counts_by_range.setdefault(range_id, {})[str(row['status'])] = int(row['count'])
+
+        total_ids = end_id - start_id + 1
+        completed_ids = 0
+        current_id: Optional[int] = None
+        video_total = 0
+        video_done = 0
+        video_index = 0
+
+        for message_id in range(start_id, end_id + 1):
+            status_counts = counts_by_range.get(message_id)
+            if not status_counts:
+                if completed_ids == message_id - start_id:
+                    current_id = message_id
+                break
+
+            total_videos = sum(status_counts.values())
+            done_videos = sum(status_counts.get(status, 0) for status in terminal_statuses)
+            if done_videos >= total_videos:
+                completed_ids += 1
+                continue
+
+            current_id = message_id
+            video_total = total_videos
+            video_done = done_videos
+            active_videos = (
+                status_counts.get(TransferStatus.RUNNING, 0)
+                + status_counts.get(TransferStatus.PENDING, 0)
+            )
+            video_index = done_videos + (1 if active_videos else 0)
+            break
+        else:
+            completed_ids = total_ids
+
+        runtime_current_id = task.get('current_range_message_id')
+        runtime_captured = int(task.get('current_range_video_captured') or 0)
+        runtime_index = int(task.get('current_range_video_index') or 0)
+        if runtime_current_id is not None:
+            runtime_current_id = int(runtime_current_id)
+            if current_id is None or runtime_current_id >= current_id:
+                current_id = runtime_current_id
+            if runtime_captured > video_total:
+                video_total = runtime_captured
+            if runtime_index > video_index:
+                video_index = runtime_index
+
+        progress_percent = min(100, round((completed_ids / total_ids) * 100)) if total_ids else 0
+        return {
+            'range_total_ids': total_ids,
+            'range_completed_ids': completed_ids,
+            'range_progress_percent': progress_percent,
+            'current_range_message_id': current_id,
+            'current_range_video_total': video_total,
+            'current_range_video_done': video_done,
+            'current_range_video_index': video_index,
+            'current_range_video_captured': runtime_captured,
+            'uses_range_progress': True,
+        }
 
     def retry_failed_items(self, task_id: int) -> int:
         task = self.get_task(task_id)

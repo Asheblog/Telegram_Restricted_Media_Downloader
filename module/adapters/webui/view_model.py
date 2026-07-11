@@ -130,6 +130,7 @@ class WebUiViewModel:
         status = str(task.get('status') or TransferStatus.PENDING)
         task_id = int(task.get('id') or 0)
         active = self.active_transfer_model(active_item)
+        range_progress = self.store.range_transfer_progress(task) or {}
         return {
             'id': task_id,
             'title': task.get('title') or f'#{task_id}',
@@ -160,6 +161,7 @@ class WebUiViewModel:
             'can_retry': summary['failed'] > 0,
             'can_delete': status in TASK_TERMINAL_STATUSES or status == TransferStatus.PAUSED,
             **active,
+            **range_progress,
         }
 
     @staticmethod
@@ -196,6 +198,7 @@ class WebUiViewModel:
             'task_id': int(item.get('task_id') or 0),
             'source_chat_id': item.get('source_chat_id'),
             'source_message_id': item.get('source_message_id'),
+            'range_message_id': item.get('range_message_id'),
             'source_link': item.get('source_link') or '',
             'target_link': item.get('target_link') or '',
             'target_path': item.get('target_path') or item.get('archive_path') or '',

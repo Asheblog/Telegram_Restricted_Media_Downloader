@@ -478,7 +478,31 @@
 
   .task-row-progress-summary {
     grid-column: 2 / -1;
-    @apply block text-[11px] text-muted overflow-hidden text-ellipsis whitespace-nowrap min-w-0;
+    @apply block text-[11px] text-muted min-w-0;
+  }
+
+  .task-row-progress-range {
+    @apply font-medium text-text-secondary overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+
+  .task-row-progress-file {
+    @apply overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+
+  @media (max-width: 768px) {
+    .task-row-progress {
+      @apply flex-wrap;
+    }
+
+    .task-row-progress-summary {
+      @apply whitespace-normal overflow-visible;
+      line-height: 1.35;
+    }
+
+    .task-row-progress-range,
+    .task-row-progress-file {
+      @apply whitespace-normal overflow-visible;
+    }
   }
 
   .task-icon-btn {
@@ -1203,6 +1227,17 @@
     min-width: 0;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+  .mob-card__row--stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .mob-card__row--stack span:last-child {
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
   }
   .mob-card__progress {
     margin: 6px 0;

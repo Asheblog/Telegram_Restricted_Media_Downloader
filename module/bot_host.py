@@ -78,11 +78,12 @@ class BotHostMixin:
             source_folder: Optional[str] = None,
             task_id: Optional[int] = None,
             media_type: Optional[str] = None,
-            send_as_media_group: Optional[bool] = None
+            send_as_media_group: Optional[bool] = None,
+            range_message_id: Optional[int] = None
     ) -> dict:
         return self.transfer_engine.build_download_upload_meta(
             target_link, target_profile, source_link, source_folder,
-            task_id, media_type, send_as_media_group
+            task_id, media_type, send_as_media_group, range_message_id
         )
 
     @staticmethod

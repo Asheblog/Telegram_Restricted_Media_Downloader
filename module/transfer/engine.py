@@ -207,6 +207,7 @@ class TransferEngine:
             task_id=task_id,
             source_chat_id=source_chat_id,
             source_message_id=getattr(message, 'id', None),
+            range_message_id=task_with_upload.get('range_message_id'),
             source_link=getattr(message, 'link', None) or link,
             target_link=task_with_upload.get('link'),
             media_type=media_type,
@@ -272,7 +273,8 @@ class TransferEngine:
         source_folder: Optional[str] = None,
         task_id: Optional[int] = None,
         media_type: Optional[str] = None,
-        send_as_media_group: Optional[bool] = None
+        send_as_media_group: Optional[bool] = None,
+        range_message_id: Optional[int] = None
     ) -> dict:
         profile = self.infer_target_profile(target_link, target_profile)
         return {
@@ -285,6 +287,7 @@ class TransferEngine:
             'source_folder': source_folder or source_folder_from_link(source_link),
             'target_profile': profile,
             'media_type': media_type,
+            'range_message_id': range_message_id,
             'on_file_ready': self.ports.on_transfer_file_ready,
             'status_callback': self.ports.on_transfer_upload_status,
             'progress_callback': self.ports.on_transfer_upload_progress,
@@ -369,13 +372,15 @@ class TransferEngine:
         message,
         source_link: str,
         origin_chat_id,
-        limit_error: dict
+        limit_error: dict,
+        range_message_id: Optional[int] = None
     ) -> int:
         task_id = int(task.get('id'))
         item_id = self.transfer_store.add_item(
             task_id=task_id,
             source_chat_id=origin_chat_id,
             source_message_id=getattr(message, 'id', None),
+            range_message_id=range_message_id,
             source_link=source_link,
             target_link=task.get('target_link'),
             media_type=limit_error.get('media_type'),
@@ -413,6 +418,7 @@ class TransferEngine:
             task_id=task_id,
             source_chat_id=origin_chat_id,
             source_message_id=message_id,
+            range_message_id=message_id,
             source_link=message_link,
             target_link=task.get('target_link'),
             phase='skipped',

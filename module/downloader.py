@@ -426,7 +426,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             log.warning(f'无法创建监听转存进度消息,{_t(KeyWord.REASON)}:"{e}"')
             return None
 
-    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict:
+    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None, range_message_id: Optional[int] = None) -> dict:
         source_link = source_link or task.get('source_link')
         return self.build_download_upload_meta(
             target_link=task.get('target_link'),
@@ -434,7 +434,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             source_link=source_link,
             source_folder=source_folder_from_link(source_link),
             task_id=task.get('id'),
-            media_type=media_type
+            media_type=media_type,
+            range_message_id=range_message_id
         )
 
 

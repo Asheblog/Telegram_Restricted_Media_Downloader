@@ -449,15 +449,17 @@ function renderMobTasks() {
   var html = '';
   window.state.tasks.forEach(function(t) {
     var progressPct = taskProgressPercent(t);
-    var activeSummary = activeTransferSummary(t);
+    var rangeDetail = taskRangeDetailSummary(t);
+    var fileDetail = taskFileTransferDetail(t);
     html += '<div class="mob-card status-' + esc(t.status) + '" data-task-id="' + t.id + '">' +
       '<div class="mob-card__head">' +
         '<span class="mob-card__title">' + esc(t.title || t.source_link || '#' + t.id) + '</span>' +
         mobBadge(t.status) +
       '</div>' +
       '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(t.source_link || '-') + '</span></div>' +
-      '<div class="mob-card__row"><span class="label">进度</span><span>' + taskCompletedLabel(t) + (taskFailedCount(t) ? ' · 失败 ' + taskFailedCount(t) : '') + '</span></div>' +
-      (activeSummary ? '<div class="mob-card__row"><span class="label">当前</span><span>' + esc(activeSummary) + '</span></div>' : '') +
+      '<div class="mob-card__row"><span class="label">进度</span><span>' + esc(taskCompletedLabel(t)) + (taskFailedCount(t) ? ' · 失败 ' + taskFailedCount(t) : '') + '</span></div>' +
+      (rangeDetail ? '<div class="mob-card__row mob-card__row--stack"><span class="label">当前 ID</span><span>' + esc(rangeDetail) + '</span></div>' : '') +
+      (fileDetail ? '<div class="mob-card__row mob-card__row--stack"><span class="label">文件</span><span>' + esc(fileDetail) + '</span></div>' : '') +
       '<div class="mob-card__progress"><div class="mob-card__progress-fill" style="width:' + progressPct + '%"></div></div>' +
       '<div class="mob-card__actions">' +
         (t.can_pause ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-pause="' + t.id + '">暂停</button>' : '') +
