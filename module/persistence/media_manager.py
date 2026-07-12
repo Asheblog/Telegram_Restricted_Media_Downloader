@@ -4,6 +4,7 @@
 清理策略：
   A) 基于 TransferStore transfer_items 状态 — status ∈ {success,failure,skipped} 且 local_path 存在
   A2) 幽灵 item — 已标记 local_file_deleted 但磁盘仍有对应文件
+  A3) 僵尸活跃 item — 任务已终结但 item 仍 pending/running/paused
   B) 基于文件时间 — save/temp/TransferStore 目录下超过保留天数的文件，不在任何活跃 transfer_item 中
 """
 
@@ -13,6 +14,17 @@ from typing import Optional, List, Dict, Any
 
 from module.path_tool import safe_delete
 from module.persistence.transfer_store import TransferStore, TransferStatus
+
+try:
+    from module.enums import SaveDirectoryPrefix
+except ImportError:  # pragma: no cover
+    class SaveDirectoryPrefix:  # type: ignore
+        CHAT_ID = '%CHAT_ID%'
+        CHAT_NAME = '%CHAT_NAME%'
+        MIME_TYPE = '%MIME_TYPE%'
+
+        def __iter__(self):
+            yield from (self.CHAT_ID, self.CHAT_NAME, self.MIME_TYPE)
 
 
 class MediaManager:
@@ -45,15 +57,30 @@ class MediaManager:
     def retention_days(self) -> int:
         return self._retention_days
 
+    @staticmethod
+    def _placeholder_scan_root(directory: str) -> str:
+        """将含 %CHAT_ID% 等占位符的配置路径收束为可扫描的真实父目录。"""
+        if not directory:
+            return ''
+        root = directory
+        for placeholder in SaveDirectoryPrefix():
+            if placeholder in root:
+                root = root.split(placeholder, 1)[0]
+        root = root.rstrip('\\/') or directory
+        return os.path.abspath(root)
+
     def _allowed_directories(self) -> List[str]:
         """扫描与安全删除允许的根目录（含 TransferStore 实际所在目录）。"""
         directories = []
         seen = set()
         for directory in (self._save_directory, self._temp_directory, self._store_directory):
-            if not directory or directory in seen:
+            if not directory:
                 continue
-            seen.add(directory)
-            directories.append(directory)
+            for candidate in (directory, self._placeholder_scan_root(directory)):
+                if not candidate or candidate in seen:
+                    continue
+                seen.add(candidate)
+                directories.append(candidate)
         return directories
 
     def _is_within_allowed_path(self, file_path: str) -> bool:
@@ -218,6 +245,12 @@ class MediaManager:
                 continue
             seen_ids.add(item_id)
             rows.append(item)
+        for item in self._store.list_stale_active_items(task_id=task_id):
+            item_id = item.get('id')
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            rows.append(item)
         for item in self._store.list_ghost_items(task_id=task_id):
             item_id = item.get('id')
             if item_id in seen_ids:
@@ -305,7 +338,10 @@ class MediaManager:
         return filename in cls.INTERNAL_FILE_NAMES
 
     def _get_active_local_paths(self) -> set:
-        """收集所有活跃（pending/running/paused）transfer_item 的 local_path。"""
+        """收集仍需保留的活跃 item 路径（pending/running/paused）。
+
+        已终结 item 即使挂在仍在跑的任务下，也不应挡住孤儿扫描。
+        """
         active = set()
         if self._store is None:
             return active
@@ -316,8 +352,15 @@ class MediaManager:
                 for t in tasks
                 if t.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.PAUSED)
             }
+            active_item_statuses = {
+                TransferStatus.PENDING,
+                TransferStatus.RUNNING,
+                TransferStatus.PAUSED,
+            }
             for task_id in active_task_ids:
                 for item in self._store.list_items(task_id):
+                    if item.get('status') not in active_item_statuses:
+                        continue
                     for path in self._item_cleanup_paths(item):
                         active.add(os.path.abspath(path))
         except Exception:

@@ -1515,6 +1515,56 @@ class TransferStore:
                 ).fetchall()
             return [dict(row) for row in rows]
 
+    def list_stale_active_items(self, task_id: int = None) -> List[Dict[str, Any]]:
+        """返回挂在已终结任务上、但仍为 pending/running/paused 的残留 item。
+
+        常见于 watch_inline 下载回退重复建 item 后留下的僵尸记录；本地文件可能仍占盘，
+        媒体管理需要把它们当作可清理项。
+        """
+        active_statuses = (
+            TransferStatus.PENDING,
+            TransferStatus.RUNNING,
+            TransferStatus.PAUSED,
+        )
+        terminal_task_statuses = (
+            TransferStatus.SUCCESS,
+            TransferStatus.FAILURE,
+            TransferStatus.SKIPPED,
+        )
+        with self.connect() as conn:
+            if task_id:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.task_id = ?
+                      AND ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 0
+                      AND ti.status IN (?, ?, ?)
+                      AND tt.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (int(task_id), *active_statuses, *terminal_task_statuses)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    '''
+                    SELECT ti.*, tt.source_link AS task_source_link, tt.target_link AS task_target_link
+                    FROM transfer_items ti
+                    JOIN transfer_tasks tt ON tt.id = ti.task_id
+                    WHERE ti.local_path IS NOT NULL
+                      AND ti.local_path != ''
+                      AND ti.local_file_deleted = 0
+                      AND ti.status IN (?, ?, ?)
+                      AND tt.status IN (?, ?, ?)
+                    ORDER BY ti.updated_at DESC
+                    ''',
+                    (*active_statuses, *terminal_task_statuses)
+                ).fetchall()
+            return [dict(row) for row in rows]
+
     def list_ghost_items(self, task_id: int = None) -> List[Dict[str, Any]]:
         """返回已标记 local_file_deleted 但 local_path 仍非空的终结态 item（磁盘可能仍有残留）。"""
         with self.connect() as conn:

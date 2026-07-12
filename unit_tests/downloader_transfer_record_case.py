@@ -13,7 +13,7 @@ install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
 from module.downloader import TelegramRestrictedMediaDownloader
-from module.transfer_store import TransferStore
+from module.transfer_store import TransferStatus, TransferStore
 from module.local_storage_guard import LocalStorageGuard
 from module.enums import UploadStatus
 from module.task import DownloadTask
@@ -492,6 +492,75 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
         self.assertEqual(0, item_id)
         self.assertEqual([], add_item_calls)
+
+    def test_on_transfer_file_ready_reuses_existing_download_item(self):
+        """即使 message 键对不上，也应按 item_id 复用，避免 watch_inline 留下僵尸 running item。"""
+        from module.transfer.progress import TransferProgressTracker
+
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'ctuxas', 'media.bin')
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/ctuxas/7',
+                target_link='https://t.me/pikpak_bot',
+            )
+            store.update_task(task_id, status=TransferStatus.RUNNING, total_items=1, assignment_completed=True)
+            existing_item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='-100123',
+                source_message_id=7,
+                source_link='https://t.me/ctuxas/7',
+                target_link='https://t.me/pikpak_bot',
+                media_type='document',
+                file_name='media.bin',
+                file_size=5,
+                local_path=file_path,
+                temp_path=os.path.join(directory, 'tmp', 'media.bin'),
+                source_folder='ctuxas',
+                phase='downloaded',
+                status=TransferStatus.RUNNING,
+            )
+            tracker = TransferProgressTracker(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                app_getter=lambda: None,
+                gc_getter=lambda: None,
+                loop_getter=lambda: None,
+                pb_getter=lambda: None,
+                release_storage=lambda *a: None,
+                release_window=lambda *a: None,
+                start_download_upload=lambda **kw: False,
+                archive_pikpak_item=lambda *a: None,
+                fail_transfer_item=lambda *a: None,
+                refresh_counts=store.refresh_task_counts,
+            )
+
+            # 故意不传 source_message_id / source_chat_id，迫使旧逻辑走 INSERT 新行。
+            item_id = tracker.on_transfer_file_ready(
+                file_path,
+                {
+                    'task_id': task_id,
+                    'item_id': existing_item_id,
+                    'link': 'https://t.me/pikpak_bot',
+                    'target_profile': 'pikpak',
+                    'media_type': 'document',
+                    'file_name': 'media.bin',
+                    'file_size': 5,
+                    'temp_path': os.path.join(directory, 'tmp', 'media.bin'),
+                    'source_folder': 'ctuxas',
+                },
+            )
+
+            self.assertEqual(existing_item_id, item_id)
+            self.assertEqual(1, len(store.list_items(task_id)))
+            item = store.get_item(existing_item_id)
+            self.assertEqual('uploading', item['phase'])
+            self.assertEqual(file_path, item['local_path'])
+            self.assertEqual(TransferStatus.RUNNING, store.get_task(task_id)['status'])
 
     def test_pikpak_download_upload_meta_uses_profile_defaults_even_when_media_group_requested(self):
         downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)

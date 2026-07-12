@@ -21,11 +21,17 @@
 - `pending`、`running`、`paused` 的 Transfer Item 保留本地缓存，避免破坏续传
 - 下载缓存恢复前按传输块大小截断到安全 checkpoint，最多重下一个块，避免重复字节导致文件损坏
 - MediaManager 的自动清理和手动清理使用同一套路径规则，避免 WebUI 媒体管理与后台行为不一致
+- `on_transfer_file_ready` 必须复用已有 `item_id`，不得再为同一下载回退新建 item（防止任务已终结后留下僵尸 `running` item）
+- 媒体扫描额外收录「任务已终结但 item 仍 pending/running/paused」的僵尸 item，使其可被 WebUI 清理
+- 孤儿扫描只保护真正活跃的 item 路径，不因同任务下已终结 item 而整表屏蔽
+- `save_directory` 含 `%CHAT_ID%` 等占位符时，扫描根收束到占位符前的真实父目录，避免展开路径扫不到
 
 ## Consequences
 
 - ✅ 失败和异常终结不会长期占用本地磁盘
 - ✅ 暂停恢复仍可复用安全的临时缓存
 - ✅ WebUI 可显示单个 Transfer Item 的下载/上传进度与速度
+- ✅ 监听转发下载回退的历史僵尸残留可被媒体管理扫到
 - ⚠️ 非对齐缓存恢复时会丢弃最后一个不完整块并重新下载
 - ⚠️ 暂停中的任务仍会占用已下载缓存空间，直到恢复完成、失败、跳过或删除任务
+- ⚠️ 占位符父目录收束会扩大允许扫描范围到该父目录下；仍受 `_is_within_allowed_path` 约束

@@ -726,6 +726,36 @@ class TransferProgressTracker:
         if raw_task_id is None:
             return 0
         task_id = int(raw_task_id)
+        file_name = with_upload.get('file_name') or os.path.basename(file_path)
+        file_size = with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None)
+        temp_path = with_upload.get('temp_path')
+        source_folder = with_upload.get('source_folder')
+        archive_status = 'pending' if with_upload.get('target_profile') == 'pikpak' else None
+        archive_match_original_name = False if with_upload.get('target_profile') == 'pikpak' else None
+
+        existing_item_id = with_upload.get('item_id')
+        if existing_item_id is not None:
+            item_id = int(existing_item_id)
+            store.update_item(
+                item_id,
+                source_chat_id=with_upload.get('source_chat_id'),
+                media_type=with_upload.get('media_type'),
+                file_name=file_name,
+                file_size=file_size,
+                local_path=file_path,
+                temp_path=temp_path,
+                source_folder=source_folder,
+                archive_status=archive_status,
+                archive_match_original_name=archive_match_original_name,
+                range_message_id=with_upload.get('range_message_id'),
+                phase='uploading',
+                status=TransferStatus.RUNNING,
+                error_message='',
+            )
+            store.add_event(task_id, f'File ready for target upload: {file_name}', item_id=item_id)
+            self._refresh_counts(task_id)
+            return item_id
+
         item_id = store.add_item(
             task_id=task_id,
             source_chat_id=with_upload.get('source_chat_id'),
@@ -734,13 +764,13 @@ class TransferProgressTracker:
             source_link=with_upload.get('source_link'),
             target_link=with_upload.get('link'),
             media_type=with_upload.get('media_type'),
-            file_name=with_upload.get('file_name') or os.path.basename(file_path),
-            file_size=with_upload.get('file_size') or (os.path.getsize(file_path) if os.path.isfile(file_path) else None),
+            file_name=file_name,
+            file_size=file_size,
             local_path=file_path,
-            temp_path=with_upload.get('temp_path'),
-            source_folder=with_upload.get('source_folder'),
-            archive_status='pending' if with_upload.get('target_profile') == 'pikpak' else None,
-            archive_match_original_name=False if with_upload.get('target_profile') == 'pikpak' else None,
+            temp_path=temp_path,
+            source_folder=source_folder,
+            archive_status=archive_status,
+            archive_match_original_name=archive_match_original_name,
             phase='uploading',
             status=TransferStatus.RUNNING
         )

@@ -86,6 +86,55 @@ class MediaManagerCase(unittest.TestCase):
             self.assertIn(orphan_path, paths)
             self.assertNotIn(paused_path, paths)
 
+    def test_scan_orphan_files_does_not_protect_terminal_item_paths_on_running_task(self):
+        """同一任务下已终结 item 的残留不应再被活跃任务整表保护。"""
+        with tempfile.TemporaryDirectory() as directory:
+            leftover_path = os.path.join(directory, 'done.bin')
+            active_path = os.path.join(directory, 'active.bin')
+            for path in (leftover_path, active_path):
+                with open(path, 'wb') as file:
+                    file.write(b'12345')
+                old = time.time() - 3 * 86400
+                os.utime(path, (old, old))
+
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/20', 'https://t.me/pikpak_bot')
+            store.update_task(task_id, status=TransferStatus.RUNNING, total_items=2, assignment_completed=False)
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=20,
+                source_link='https://t.me/source/20',
+                target_link='https://t.me/pikpak_bot',
+                file_name='done.bin',
+                local_path=leftover_path,
+                status=TransferStatus.SUCCESS,
+                phase='sent',
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=21,
+                source_link='https://t.me/source/21',
+                target_link='https://t.me/pikpak_bot',
+                file_name='active.bin',
+                local_path=active_path,
+                status=TransferStatus.RUNNING,
+                phase='uploading',
+            )
+            manager = MediaManager(
+                store,
+                save_directory=directory,
+                temp_directory=directory,
+                retention_days=1,
+            )
+
+            result = manager.scan_orphan_files()
+            paths = {item['path'] for item in result['files']}
+
+            self.assertIn(leftover_path, paths)
+            self.assertNotIn(active_path, paths)
+
     def test_cleanup_task_files_deletes_item_paths_before_task_delete(self):
         with tempfile.TemporaryDirectory() as directory:
             final_path = os.path.join(directory, 'media.bin')
@@ -146,6 +195,43 @@ class MediaManagerCase(unittest.TestCase):
             self.assertTrue(result['items'][0]['ghost'])
             self.assertTrue(result['items'][0]['file_exists'])
 
+    def test_scan_transfer_items_includes_zombie_running_item_on_terminal_task(self):
+        """任务已终结但 item 仍 running 时，媒体管理应能扫到并清理其本地文件。"""
+        with tempfile.TemporaryDirectory() as directory:
+            leftover_path = os.path.join(directory, 'zombie.bin')
+            with open(leftover_path, 'wb') as file:
+                file.write(b'12345')
+
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/5', 'https://t.me/pikpak_bot')
+            store.update_task(
+                task_id,
+                status=TransferStatus.SUCCESS,
+                total_items=1,
+                completed_items=1,
+                assignment_completed=True,
+                finished=True,
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=5,
+                source_link='https://t.me/source/5',
+                target_link='https://t.me/pikpak_bot',
+                file_name='zombie.bin',
+                local_path=leftover_path,
+                status=TransferStatus.RUNNING,
+                phase='downloaded',
+            )
+            manager = MediaManager(store, save_directory=directory, temp_directory=directory)
+
+            result = manager.scan_transfer_items()
+
+            self.assertEqual(1, result['total_count'])
+            self.assertEqual(leftover_path, result['items'][0]['local_path'])
+            self.assertTrue(result['items'][0]['file_exists'])
+            self.assertEqual(TransferStatus.RUNNING, result['items'][0]['status'])
+
     def test_scan_orphan_files_includes_store_directory_when_temp_directory_changed(self):
         with tempfile.TemporaryDirectory() as save_directory, tempfile.TemporaryDirectory() as old_temp_directory:
             orphan_path = os.path.join(old_temp_directory, 'leftover.bin')
@@ -188,6 +274,41 @@ class MediaManagerCase(unittest.TestCase):
             self.assertEqual(1, result['total_deleted_count'])
             self.assertEqual(1, result['scanned_count'])
             self.assertFalse(os.path.exists(orphan_path))
+
+    def test_scan_transfer_items_allows_expanded_placeholder_save_paths(self):
+        """save_directory 含 %CHAT_ID% 时，展开后的实际文件仍应可被扫描清理。"""
+        with tempfile.TemporaryDirectory() as save_root, tempfile.TemporaryDirectory() as store_root:
+            save_template = os.path.join(save_root, 'media', '%CHAT_ID%')
+            expanded_dir = os.path.join(save_root, 'media', '-100123')
+            os.makedirs(expanded_dir, exist_ok=True)
+            final_path = os.path.join(expanded_dir, 'movie.mp4')
+            with open(final_path, 'wb') as file:
+                file.write(b'12345')
+
+            store = TransferStore(directory=store_root)
+            task_id = store.create_task('https://t.me/source/6', 'https://t.me/pikpak_bot')
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='-100123',
+                source_message_id=6,
+                source_link='https://t.me/source/6',
+                target_link='https://t.me/pikpak_bot',
+                file_name='movie.mp4',
+                local_path=final_path,
+                status=TransferStatus.SUCCESS,
+                phase='sent',
+            )
+            manager = MediaManager(
+                store,
+                save_directory=save_template,
+                temp_directory=store_root,
+            )
+
+            result = manager.scan_transfer_items()
+
+            self.assertEqual(1, result['total_count'])
+            self.assertTrue(result['items'][0]['file_exists'])
+            self.assertEqual(final_path, result['items'][0]['local_path'])
 
 
 if __name__ == '__main__':
