@@ -994,6 +994,10 @@
     @apply flex items-center gap-2 min-w-0 flex-wrap;
   }
 
+  .watch-status-cell {
+    @apply inline-flex items-center gap-2 text-sm;
+  }
+
   .watch-status-dot {
     @apply inline-block w-2 h-2 rounded-full flex-shrink-0;
   }

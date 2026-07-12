@@ -1023,11 +1023,11 @@ function renderWatches() {
       : '';
     return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
-      '<td class="text-xs font-mono text-muted text-left max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(source) + '">' + esc(sourceShort) + '</td>' +
-      '<td class="text-xs text-left max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(targetShort) + '</td>' +
+      '<td class="font-mono text-left max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(source) + '">' + esc(sourceShort) + '</td>' +
+      '<td class="font-mono text-left max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(targetShort) + '</td>' +
       '<td><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></td>' +
-      '<td class="text-xs font-semibold">' + esc(String(todayCount)) + '</td>' +
-      '<td class="text-xs font-semibold text-primary">' + esc(String(eventCount)) + '</td>' +
+      '<td class="font-semibold tabular-nums">' + esc(String(todayCount)) + '</td>' +
+      '<td class="font-semibold tabular-nums text-primary">' + esc(String(eventCount)) + '</td>' +
       '<td class="watch-col-actions">' +
         '<div class="table-actions flex gap-1 whitespace-nowrap justify-end">' +
           primaryButton +
