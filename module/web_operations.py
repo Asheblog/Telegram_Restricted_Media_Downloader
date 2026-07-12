@@ -20,7 +20,7 @@ from module.live_watch_applicator import LiveWatchApplicator
 from module.enums import DownloadType, UploadStatus, KeyWord
 from module.language import _t
 from module.task import DownloadTask, UploadTask
-from module.transfer_store import TransferStore, TransferStatus
+from module.transfer_store import DeferredDiscussionCaptureStatus, TransferStore, TransferStatus
 from module.transfer.comment_delay import CommentDelayScheduler
 
 
@@ -95,14 +95,41 @@ class WebOperationsMixin:
                 )
             return count
 
+        def on_cancel(capture: dict):
+            self._cancel_derived_tasks_for_deferred_capture(capture)
+
         scheduler = CommentDelayScheduler(
             store=store,
             delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
             executor=executor,
+            on_cancel=on_cancel,
         )
         self.comment_delay_scheduler = scheduler
         scheduler.start()
         return scheduler
+
+    def _cancel_derived_tasks_for_deferred_capture(self, capture: dict) -> None:
+        """Best-effort cancel web transfer tasks spawned by a running deferred capture."""
+        if not capture or capture.get('status') != DeferredDiscussionCaptureStatus.RUNNING:
+            return
+        watch_id = capture.get('watch_id')
+        if not watch_id:
+            return
+        store = self._ensure_transfer_store()
+        started_at = str(capture.get('updated_at') or '')
+        for task in store.list_tasks(limit=500, watch_id=watch_id):
+            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
+                continue
+            created_at = str(task.get('created_at') or '')
+            if started_at and created_at and created_at < started_at:
+                continue
+            task_id = task.get('id')
+            if task_id is None:
+                continue
+            try:
+                self.delete_web_task(int(task_id))
+            except Exception:
+                log.exception('取消延迟评论区派生转存失败: task_id=%s', task_id)
 
     async def schedule_or_forward_discussion_replies(
             self,
@@ -369,6 +396,12 @@ class WebOperationsMixin:
         return self.watch_manager.create_watch(payload)
 
     def delete_watch(self, watch_id: str) -> bool:
+        scheduler = self.__dict__.get('comment_delay_scheduler')
+        if scheduler is not None:
+            try:
+                scheduler.cancel_for_watch(watch_id)
+            except Exception:
+                log.exception('删除监听时取消延迟评论区失败: %s', watch_id)
         return self.watch_manager.delete_watch(watch_id)
 
     def update_watch(self, watch_id: str, payload: dict) -> dict:
@@ -1185,12 +1218,25 @@ class WebOperationsMixin:
         future = asyncio.run_coroutine_threadsafe(scheduler.run_now(int(capture_id)), loop)
         return bool(future.result(timeout=180))
 
+    def retry_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
+        store = self._ensure_transfer_store()
+        capture = store.get_deferred_discussion_capture(int(capture_id))
+        if not capture or capture.get('watch_id') != watch_id:
+            return False
+        scheduler = self._ensure_comment_delay_scheduler()
+        loop = getattr(self, 'loop', None)
+        if loop is None:
+            return False
+        future = asyncio.run_coroutine_threadsafe(scheduler.retry(int(capture_id)), loop)
+        return bool(future.result(timeout=180))
+
 
 _WEB_UI_DELEGATE_METHODS = (
     'should_continue_web_transfer_task', 'cancel_task_uploads', 'pause_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
     'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
     'list_deferred_discussion_captures', 'cancel_deferred_discussion_capture', 'run_deferred_discussion_capture_now',
+    'retry_deferred_discussion_capture',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',

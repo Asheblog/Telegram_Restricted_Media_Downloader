@@ -13,9 +13,12 @@ log = logging.getLogger('logger_stdout')
 
 Executor = Callable[[dict], Awaitable[Any]]
 DelayGetter = Callable[[], int]
+CancelHook = Callable[[dict], Any]
 
 
 class CommentDelayScheduler:
+    DEFAULT_RUNNING_TIMEOUT_SECONDS = 30 * 60
+
     def __init__(
             self,
             store,
@@ -24,14 +27,19 @@ class CommentDelayScheduler:
             *,
             sleep_seconds: float = 5.0,
             time_fn=time.time,
+            on_cancel: Optional[CancelHook] = None,
+            running_timeout_seconds: float = DEFAULT_RUNNING_TIMEOUT_SECONDS,
     ):
         self.store = store
         self.delay_minutes_getter = delay_minutes_getter
         self.executor = executor
         self.sleep_seconds = float(sleep_seconds)
         self.time_fn = time_fn
+        self.on_cancel = on_cancel
+        self.running_timeout_seconds = float(running_timeout_seconds)
         self._task: Optional[asyncio.Task] = None
         self._stopped = False
+        self._inflight: dict[int, asyncio.Task] = {}
 
     def start(self) -> None:
         self._stopped = False
@@ -49,6 +57,9 @@ class CommentDelayScheduler:
         self._task = None
         if task and not task.done():
             task.cancel()
+        for inflight in list(self._inflight.values()):
+            if not inflight.done():
+                inflight.cancel()
 
     async def schedule(
             self,
@@ -84,10 +95,39 @@ class CommentDelayScheduler:
         )
 
     def cancel(self, capture_id: int) -> bool:
-        return self.store.cancel_deferred_discussion_capture(int(capture_id))
+        capture = self.store.get_deferred_discussion_capture(int(capture_id))
+        if not capture:
+            return False
+        status = capture.get('status')
+        if status not in (
+                DeferredDiscussionCaptureStatus.PENDING,
+                DeferredDiscussionCaptureStatus.RUNNING,
+        ):
+            return False
+        ok = self.store.cancel_deferred_discussion_capture(int(capture_id))
+        if not ok:
+            return False
+        inflight = self._inflight.get(int(capture_id))
+        if inflight and not inflight.done():
+            inflight.cancel()
+        if self.on_cancel:
+            try:
+                self.on_cancel(capture)
+            except Exception:
+                log.exception('Deferred discussion cancel hook failed: %s', capture_id)
+        return True
 
     def cancel_for_watch(self, watch_id: str) -> int:
-        return self.store.cancel_deferred_discussion_captures_for_watch(watch_id)
+        captures = self.store.list_deferred_discussion_captures(watch_id=watch_id, limit=500)
+        cancelled = 0
+        for capture in captures:
+            if capture.get('status') in (
+                    DeferredDiscussionCaptureStatus.PENDING,
+                    DeferredDiscussionCaptureStatus.RUNNING,
+            ):
+                if self.cancel(int(capture['id'])):
+                    cancelled += 1
+        return cancelled
 
     async def run_now(self, capture_id: int) -> bool:
         capture = self.store.get_deferred_discussion_capture(int(capture_id))
@@ -110,7 +150,41 @@ class CommentDelayScheduler:
         await self._execute_capture(capture)
         return True
 
+    async def retry(self, capture_id: int) -> bool:
+        capture = self.store.get_deferred_discussion_capture(int(capture_id))
+        if not capture:
+            return False
+        if capture.get('status') not in (
+                DeferredDiscussionCaptureStatus.FAILURE,
+                DeferredDiscussionCaptureStatus.CANCELLED,
+        ):
+            return False
+        if not self.store.requeue_deferred_discussion_capture(
+                int(capture_id),
+                due_at=self.time_fn(),
+        ):
+            return False
+        return await self.run_now(int(capture_id))
+
     async def tick_once(self) -> int:
+        timed_out = self.store.fail_stale_running_deferred_discussion_captures(
+            now=self.time_fn(),
+            timeout_seconds=self.running_timeout_seconds,
+        )
+        for capture in timed_out:
+            capture_id = int(capture['id'])
+            inflight = self._inflight.get(capture_id)
+            if inflight and not inflight.done():
+                inflight.cancel()
+            if self.on_cancel:
+                try:
+                    # Snapshot still has running so derived-task cleanup applies.
+                    self.on_cancel(capture)
+                except Exception:
+                    log.exception(
+                        'Deferred discussion timeout cancel hook failed: %s',
+                        capture_id,
+                    )
         claimed = self.store.claim_due_deferred_discussion_captures(now=self.time_fn())
         for capture in claimed:
             await self._execute_capture(capture)
@@ -118,21 +192,41 @@ class CommentDelayScheduler:
 
     async def _execute_capture(self, capture: dict) -> None:
         capture_id = int(capture['id']) if capture.get('id') is not None else None
-        try:
+        if capture_id is None:
             await self.executor(capture)
-            if capture_id is not None:
-                self.store.mark_deferred_discussion_capture(
-                    capture_id,
-                    DeferredDiscussionCaptureStatus.DONE,
-                )
+            return
+
+        async def _run() -> None:
+            await self.executor(capture)
+
+        task = asyncio.create_task(_run(), name=f'deferred-discussion-{capture_id}')
+        self._inflight[capture_id] = task
+        try:
+            await task
+        except asyncio.CancelledError:
+            current = self.store.get_deferred_discussion_capture(capture_id)
+            if current and current.get('status') == DeferredDiscussionCaptureStatus.RUNNING:
+                self.store.cancel_deferred_discussion_capture(capture_id)
+            # Per-capture cancel must not abort the scheduler tick loop.
+            return
         except Exception as exc:
             log.exception('Deferred discussion capture failed: %s', capture_id)
-            if capture_id is not None:
+            current = self.store.get_deferred_discussion_capture(capture_id)
+            if current and current.get('status') == DeferredDiscussionCaptureStatus.RUNNING:
                 self.store.mark_deferred_discussion_capture(
                     capture_id,
                     DeferredDiscussionCaptureStatus.FAILURE,
                     error_message=str(exc),
                 )
+        else:
+            current = self.store.get_deferred_discussion_capture(capture_id)
+            if current and current.get('status') == DeferredDiscussionCaptureStatus.RUNNING:
+                self.store.mark_deferred_discussion_capture(
+                    capture_id,
+                    DeferredDiscussionCaptureStatus.DONE,
+                )
+        finally:
+            self._inflight.pop(capture_id, None)
 
     async def _loop(self) -> None:
         while not self._stopped:

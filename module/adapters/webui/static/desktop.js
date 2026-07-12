@@ -1013,11 +1013,11 @@ function renderWatches() {
       '</tr>' : '';
     return '<tr' + rowAttrs + '>' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
-      '<td class="text-xs max-w-[7.5rem] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted" title="' + esc(source) + '">' + esc(source) + '</td>' +
-      '<td class="text-xs max-w-[7.5rem] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(target) + '</td>' +
+      '<td class="text-xs max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted" title="' + esc(source) + '">' + esc(source) + '</td>' +
+      '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(target) + '</td>' +
       '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span></td>' +
       '<td class="text-xs font-semibold">' + todayCount + '</td>' +
-      '<td><div class="table-actions flex gap-1 flex-wrap">' +
+      '<td class="watch-col-actions"><div class="table-actions flex gap-1 whitespace-nowrap">' +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-history="' + esc(w.id) + '">' + esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
         (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-downloads="' + esc(w.id) + '">' + esc(t('watches.downloadRecords')) + '</button>' : '') +
@@ -1421,6 +1421,10 @@ document.addEventListener('click', async function(e) {
   if (cancelDeferredBtn) {
     await postDeferredAction(cancelDeferredBtn.dataset.watchId, cancelDeferredBtn.dataset.deferredCancel, 'cancel');
   }
+  const retryDeferredBtn = e.target.closest('[data-deferred-retry]');
+  if (retryDeferredBtn) {
+    await postDeferredAction(retryDeferredBtn.dataset.watchId, retryDeferredBtn.dataset.deferredRetry, 'retry');
+  }
 });
 
 function deferredStatusLabel(status) {
@@ -1472,12 +1476,21 @@ function renderDeferredCommentRows(watchId, items) {
     '</tr></thead><tbody>' +
     items.map(item => {
       const due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
-      const actions = item.status === 'pending'
-        ? '<div class="table-actions flex gap-1">' +
+      let actions = '<span class="text-xs text-muted">—</span>';
+      if (item.status === 'pending') {
+        actions = '<div class="table-actions flex gap-1">' +
           '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
           '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>' +
-          '</div>'
-        : '<span class="text-xs text-muted">—</span>';
+          '</div>';
+      } else if (item.status === 'running') {
+        actions = '<div class="table-actions flex gap-1">' +
+          '<button class="btn btn-sm btn-danger" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>' +
+          '</div>';
+      } else if (item.status === 'failure' || item.status === 'cancelled') {
+        actions = '<div class="table-actions flex gap-1">' +
+          '<button class="btn btn-sm" data-watch-id="' + esc(watchId) + '" data-deferred-retry="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRetry')) + '</button>' +
+          '</div>';
+      }
       const statusCls = item.status === 'pending' ? 'badge-warning'
         : item.status === 'running' ? 'badge-running'
         : item.status === 'done' ? 'badge-success'

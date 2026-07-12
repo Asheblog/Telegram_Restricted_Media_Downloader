@@ -128,6 +128,92 @@ class CommentDelaySchedulerCase(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_cancel_running_invokes_callback_and_stops_inflight(self):
+        cancelled_ids = []
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_executor(capture):
+            started.set()
+            await release.wait()
+            self.executed.append(capture)
+
+        self.scheduler = CommentDelayScheduler(
+            store=self.store,
+            delay_minutes_getter=self.gc.get_comment_delay_minutes,
+            executor=slow_executor,
+            sleep_seconds=0.01,
+            time_fn=time.time,
+            on_cancel=lambda capture: cancelled_ids.append(int(capture['id'])),
+            running_timeout_seconds=1800,
+        )
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=12,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() - 1,
+        )
+
+        async def run():
+            tick = asyncio.create_task(self.scheduler.tick_once())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            self.assertTrue(self.scheduler.cancel(row['id']))
+            release.set()
+            await tick
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.CANCELLED, fetched['status'])
+            self.assertEqual([row['id']], cancelled_ids)
+            self.assertEqual(0, len(self.executed))
+
+        asyncio.run(run())
+
+    def test_retry_requeues_cancelled_and_runs(self):
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=13,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() + 3600,
+        )
+        self.scheduler.cancel(row['id'])
+
+        async def run():
+            ok = await self.scheduler.retry(row['id'])
+            self.assertTrue(ok)
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.DONE, fetched['status'])
+            self.assertEqual(1, len(self.executed))
+
+        asyncio.run(run())
+
+    def test_tick_fails_stale_running(self):
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=14,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() - 1,
+        )
+        self.store.claim_due_deferred_discussion_captures(now=time.time())
+        with self.store.connect() as conn:
+            conn.execute(
+                'UPDATE deferred_discussion_captures SET updated_at = ? WHERE id = ?',
+                ('2020-01-01T00:00:00+00:00', row['id']),
+            )
+        self.scheduler.running_timeout_seconds = 60
+
+        async def run():
+            await self.scheduler.tick_once()
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.FAILURE, fetched['status'])
+            self.assertEqual(0, len(self.executed))
+
+        asyncio.run(run())
+
 
 if __name__ == '__main__':
     unittest.main()

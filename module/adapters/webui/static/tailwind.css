@@ -374,6 +374,13 @@
     @apply justify-center;
   }
 
+  /* 操作列按按钮内容收窄，避免挤占来源/目标频道 */
+  .data-table th.watch-col-actions,
+  .data-table td.watch-col-actions {
+    width: 1%;
+    white-space: nowrap;
+  }
+
   .data-table tbody tr {
     @apply cursor-pointer transition-colors duration-75;
   }

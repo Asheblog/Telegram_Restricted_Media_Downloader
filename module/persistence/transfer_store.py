@@ -2053,13 +2053,14 @@ class TransferStore:
                 '''
                 UPDATE deferred_discussion_captures
                 SET status = ?, updated_at = ?
-                WHERE id = ? AND status = ?
+                WHERE id = ? AND status IN (?, ?)
                 ''',
                 (
                     DeferredDiscussionCaptureStatus.CANCELLED,
                     self.utc_now(),
                     int(capture_id),
                     DeferredDiscussionCaptureStatus.PENDING,
+                    DeferredDiscussionCaptureStatus.RUNNING,
                 )
             )
             return cursor.rowcount > 0
@@ -2070,13 +2071,82 @@ class TransferStore:
                 '''
                 UPDATE deferred_discussion_captures
                 SET status = ?, updated_at = ?
-                WHERE watch_id = ? AND status = ?
+                WHERE watch_id = ? AND status IN (?, ?)
                 ''',
                 (
                     DeferredDiscussionCaptureStatus.CANCELLED,
                     self.utc_now(),
                     watch_id,
                     DeferredDiscussionCaptureStatus.PENDING,
+                    DeferredDiscussionCaptureStatus.RUNNING,
                 )
             )
             return int(cursor.rowcount)
+
+    def requeue_deferred_discussion_capture(
+            self,
+            capture_id: int,
+            *,
+            due_at: float,
+    ) -> bool:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                UPDATE deferred_discussion_captures
+                SET status = ?, due_at = ?, error_message = NULL, updated_at = ?
+                WHERE id = ? AND status IN (?, ?)
+                ''',
+                (
+                    DeferredDiscussionCaptureStatus.PENDING,
+                    float(due_at),
+                    self.utc_now(),
+                    int(capture_id),
+                    DeferredDiscussionCaptureStatus.FAILURE,
+                    DeferredDiscussionCaptureStatus.CANCELLED,
+                )
+            )
+            return cursor.rowcount > 0
+
+    def fail_stale_running_deferred_discussion_captures(
+            self,
+            *,
+            now: float,
+            timeout_seconds: float,
+    ) -> List[Dict[str, Any]]:
+        """Mark long-running captures as failure so they can be retried.
+
+        Returns the captures that were timed out (pre-update snapshots).
+        """
+        if timeout_seconds <= 0:
+            return []
+        cutoff = datetime.datetime.fromtimestamp(
+            float(now) - float(timeout_seconds),
+            tz=datetime.UTC,
+        ).isoformat(timespec='seconds')
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT * FROM deferred_discussion_captures
+                WHERE status = ? AND updated_at <= ?
+                ORDER BY id ASC
+                ''',
+                (DeferredDiscussionCaptureStatus.RUNNING, cutoff)
+            ).fetchall()
+            timed_out = [self._deferred_discussion_capture_row(row) for row in rows]
+            if not timed_out:
+                return []
+            conn.execute(
+                '''
+                UPDATE deferred_discussion_captures
+                SET status = ?, error_message = ?, updated_at = ?
+                WHERE status = ? AND updated_at <= ?
+                ''',
+                (
+                    DeferredDiscussionCaptureStatus.FAILURE,
+                    f'running timeout after {int(timeout_seconds)}s',
+                    self.utc_now(),
+                    DeferredDiscussionCaptureStatus.RUNNING,
+                    cutoff,
+                )
+            )
+            return timed_out

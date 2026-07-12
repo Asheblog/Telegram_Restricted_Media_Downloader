@@ -628,10 +628,15 @@ async function loadMobileDeferredComments(watchId, sanitized) {
     }
     panel.innerHTML = items.map(function(item) {
       var due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
-      var actions = item.status === 'pending'
-        ? '<button class="mob-btn mob-btn-sm" data-run-deferred="' + esc(String(item.id)) + '">立即执行</button>' +
-          '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>'
-        : '';
+      var actions = '';
+      if (item.status === 'pending') {
+        actions = '<button class="mob-btn mob-btn-sm" data-run-deferred="' + esc(String(item.id)) + '">立即执行</button>' +
+          '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>';
+      } else if (item.status === 'running') {
+        actions = '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>';
+      } else if (item.status === 'failure' || item.status === 'cancelled') {
+        actions = '<button class="mob-btn mob-btn-sm" data-retry-deferred="' + esc(String(item.id)) + '">重试</button>';
+      }
       return '<div style="padding:8px;border-top:1px solid var(--color-border);">' +
         '<div>#' + esc(String(item.source_message_id || '')) + ' · ' + esc(item.status || '') + '</div>' +
         '<div style="color:var(--color-muted);font-size:12px;">计划: ' + esc(due) + '</div>' +
@@ -648,6 +653,13 @@ async function loadMobileDeferredComments(watchId, sanitized) {
     panel.querySelectorAll('[data-cancel-deferred]').forEach(function(btn) {
       btn.addEventListener('click', async function() {
         await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.cancelDeferred) + '/cancel', {});
+        loadMobileDeferredComments(watchId, sanitized);
+        if (typeof loadWatches === 'function') loadWatches();
+      });
+    });
+    panel.querySelectorAll('[data-retry-deferred]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.retryDeferred) + '/retry', {});
         loadMobileDeferredComments(watchId, sanitized);
         if (typeof loadWatches === 'function') loadWatches();
       });

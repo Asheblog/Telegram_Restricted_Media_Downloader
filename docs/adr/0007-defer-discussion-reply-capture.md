@@ -4,4 +4,4 @@
 
 **Considered Options:** 主贴与评论区一并延迟；到期后轮询直到有内容；仅内存 `asyncio.sleep` 不落库。
 
-**Consequences:** 需调度器恢复与删规则时取消 pending；改延迟分钟数只影响新任务。
+**Consequences:** 需调度器恢复与删规则时取消 pending/running；改延迟分钟数只影响新任务。执行中可手动取消（尽力中断派生转存）；失败/已取消可手动重试；running 超过 30 分钟自动标失败以便重试。

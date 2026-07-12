@@ -749,12 +749,21 @@ class WebUiServer:
                         )
                     return
                 if parsed.path.startswith('/api/watches/') and (
-                        parsed.path.endswith('/cancel') or parsed.path.endswith('/run-now')
+                        parsed.path.endswith('/cancel')
+                        or parsed.path.endswith('/run-now')
+                        or parsed.path.endswith('/retry')
                 ):
-                    # /api/watches/{watch_id}/deferred-comments/{id}/cancel|run-now
+                    # /api/watches/{watch_id}/deferred-comments/{id}/cancel|run-now|retry
                     body_path = parsed.path[len('/api/watches/'):]
-                    action = 'cancel' if body_path.endswith('/cancel') else 'run-now'
-                    suffix = '/cancel' if action == 'cancel' else '/run-now'
+                    if body_path.endswith('/cancel'):
+                        action = 'cancel'
+                        suffix = '/cancel'
+                    elif body_path.endswith('/run-now'):
+                        action = 'run-now'
+                        suffix = '/run-now'
+                    else:
+                        action = 'retry'
+                        suffix = '/retry'
                     remainder = body_path[:-len(suffix)]
                     marker = '/deferred-comments/'
                     if marker not in remainder:
@@ -769,8 +778,10 @@ class WebUiServer:
                     try:
                         if action == 'cancel':
                             ok = server.cancel_deferred_discussion_capture(watch_id, capture_id)
-                        else:
+                        elif action == 'run-now':
                             ok = server.run_deferred_discussion_capture_now(watch_id, capture_id)
+                        else:
+                            ok = server.retry_deferred_discussion_capture(watch_id, capture_id)
                         if not ok:
                             self._send_error('deferred_comment_not_found', 'Deferred comment job not found.', HTTPStatus.NOT_FOUND)
                             return
@@ -1183,6 +1194,12 @@ class WebUiServer:
 
     def run_deferred_discussion_capture_now(self, watch_id: str, capture_id: int) -> bool:
         op = self._operation('run_deferred_discussion_capture_now')
+        if not op:
+            return False
+        return bool(op(watch_id, capture_id))
+
+    def retry_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
+        op = self._operation('retry_deferred_discussion_capture')
         if not op:
             return False
         return bool(op(watch_id, capture_id))
