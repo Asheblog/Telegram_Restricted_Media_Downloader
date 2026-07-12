@@ -63,7 +63,12 @@ class DeepLinkResolverCase(unittest.TestCase):
                 result = await resolver.resolve(
                     client, source, whitelist=['a82bot'],
                 )
-                start_bot.assert_awaited_once_with(client, 'a82bot', 'v_abc')
+                start_bot.assert_awaited_once()
+                self.assertEqual(
+                    (client, 'a82bot', 'v_abc'),
+                    start_bot.await_args.args,
+                )
+                self.assertIn('deadline', start_bot.await_args.kwargs)
 
             self.assertIs(result, video_msg)
             self.assertEqual(
@@ -105,14 +110,14 @@ class DeepLinkResolverCase(unittest.TestCase):
                 date=started,
             )
             client = _make_history_client([[video_msg]])
-            resolver = DeepLinkResolver(timeout_seconds=0.5, poll_interval=0.05)
+            resolver = DeepLinkResolver(timeout_seconds=2.0, poll_interval=0.05)
             source = _source_message_with_deep_link()
 
             order = []
             first_hold = asyncio.Event()
             second_may_enter = asyncio.Event()
 
-            async def slow_start_bot(client, bot_username, start_param):
+            async def slow_start_bot(client, bot_username, start_param, deadline=None):
                 order.append(('start', bot_username))
                 first_hold.set()
                 await second_may_enter.wait()
@@ -179,6 +184,104 @@ class DeepLinkResolverCase(unittest.TestCase):
                 await resolver._wait_min_interval()
 
             self.assertEqual([1.5], sleeps)
+
+        asyncio.run(run_case())
+
+    def test_resolve_times_out_when_chat_history_hangs(self):
+        async def run_case():
+            async def hung_history(bot_username, limit=10):
+                await asyncio.Event().wait()
+                if False:
+                    yield None
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=hung_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            t0 = time.time()
+            with self.assertRaises(DeepLinkResolveError):
+                await asyncio.wait_for(
+                    resolver.resolve(
+                        client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                    ),
+                    timeout=2.0,
+                )
+            self.assertLess(time.time() - t0, 1.5)
+
+        asyncio.run(run_case())
+
+    def test_resolve_times_out_when_flood_wait_exceeds_budget(self):
+        async def run_case():
+            from pyrogram.errors import FloodWait
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(side_effect=FloodWait(30)),
+                get_chat_history=AsyncMock(),
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            real_sleep = asyncio.sleep
+
+            async def yield_sleep(seconds):
+                await real_sleep(0)
+
+            t0 = time.time()
+            with patch('module.transfer.deep_link.asyncio.sleep', new=yield_sleep):
+                with self.assertRaises(DeepLinkResolveError):
+                    await asyncio.wait_for(
+                        resolver.resolve(
+                            client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                        ),
+                        timeout=2.0,
+                    )
+            self.assertLess(time.time() - t0, 1.5)
+
+        asyncio.run(run_case())
+
+    def test_resolve_releases_lock_after_hung_history_timeout(self):
+        async def run_case():
+            entered = asyncio.Event()
+            hang = True
+
+            async def history(bot_username, limit=10):
+                if hang:
+                    entered.set()
+                    await asyncio.Event().wait()
+                    if False:
+                        yield None
+                    return
+                started = time.time()
+                yield SimpleNamespace(
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    outgoing=False,
+                    date=started,
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(timeout_seconds=0.25, poll_interval=0.05, min_interval_seconds=0)
+            first = asyncio.create_task(
+                resolver.resolve(client, _source_message_with_deep_link(), whitelist=['a82bot']),
+            )
+            await entered.wait()
+            with self.assertRaises(DeepLinkResolveError):
+                await asyncio.wait_for(first, timeout=2.0)
+            hang = False
+            result = await asyncio.wait_for(
+                resolver.resolve(client, _source_message_with_deep_link(), whitelist=['a82bot']),
+                timeout=1.5,
+            )
+            self.assertTrue(getattr(result, 'video', None))
 
         asyncio.run(run_case())
 

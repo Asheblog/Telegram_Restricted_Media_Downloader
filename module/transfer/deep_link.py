@@ -122,12 +122,20 @@ class DeepLinkResolver:
         if remaining > 0:
             await asyncio.sleep(remaining)
 
-    async def start_bot(self, client, bot_username: str, start_param: str):
+    async def start_bot(
+            self,
+            client,
+            bot_username: str,
+            start_param: str,
+            deadline: Optional[float] = None,
+    ):
         from pyrogram import raw
         from pyrogram.errors import FloodWait, FloodPremiumWait
         peer = await client.resolve_peer(bot_username)
         random_id = getattr(client, 'rnd_id', None)
         while True:
+            if deadline is not None and time.time() >= deadline:
+                raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
             rid = random_id() if callable(random_id) else secrets.randbits(63)
             try:
                 await client.invoke(
@@ -142,12 +150,37 @@ class DeepLinkResolver:
                 return
             except (FloodWait, FloodPremiumWait) as e:
                 amount = max(0, int(getattr(e, 'value', 0) or 0))
+                if deadline is not None:
+                    remaining = deadline - time.time()
+                    if remaining <= 0 or amount > remaining:
+                        raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
                 await asyncio.sleep(amount)
 
-    async def wait_for_media(self, client, bot_username: str, started_at: float):
-        deadline = started_at + self.timeout_seconds
+    @staticmethod
+    async def _collect_chat_history(client, bot_username: str, limit: int = 10) -> list:
+        return [message async for message in client.get_chat_history(bot_username, limit=limit)]
+
+    async def wait_for_media(
+            self,
+            client,
+            bot_username: str,
+            started_at: float,
+            deadline: Optional[float] = None,
+    ):
+        if deadline is None:
+            deadline = started_at + self.timeout_seconds
         while time.time() < deadline:
-            async for message in client.get_chat_history(bot_username, limit=10):
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            try:
+                history = await asyncio.wait_for(
+                    self._collect_chat_history(client, bot_username, limit=10),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                break
+            for message in history:
                 msg_date = getattr(message, 'date', None)
                 ts = msg_date.timestamp() if hasattr(msg_date, 'timestamp') else float(msg_date or 0)
                 if ts + 2 < started_at:  # allow small skew
@@ -156,7 +189,10 @@ class DeepLinkResolver:
                     continue
                 if self.message_has_resolvable_media(message):
                     return message
-            await asyncio.sleep(self.poll_interval)
+            sleep_for = min(self.poll_interval, max(0.0, deadline - time.time()))
+            if sleep_for <= 0:
+                break
+            await asyncio.sleep(sleep_for)
         raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
 
     async def resolve(
@@ -179,7 +215,15 @@ class DeepLinkResolver:
                 self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
             await self._wait_min_interval()
             started_at = time.time()
-            await self.start_bot(client, bot, param)
-            media_msg = await self.wait_for_media(client, bot, started_at)
+            deadline = started_at + self.timeout_seconds
+
+            async def _fetch():
+                await self.start_bot(client, bot, param, deadline=deadline)
+                return await self.wait_for_media(client, bot, started_at, deadline=deadline)
+
+            try:
+                media_msg = await asyncio.wait_for(_fetch(), timeout=self.timeout_seconds)
+            except asyncio.TimeoutError as e:
+                raise DeepLinkResolveError('资源 bot 未在超时内返回媒体') from e
             media_msg._deep_link_meta = {'bot': bot, 'start_param': param}
             return media_msg
