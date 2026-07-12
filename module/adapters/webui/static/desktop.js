@@ -1008,12 +1008,14 @@ function renderWatches() {
     const route = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.formatWatchRoute === 'function'
       ? globalThis.WatchUiHelpers.formatWatchRoute(source, target)
       : source + ' → ' + target;
-    const primaryMode = w.type === 'forward' ? 'history' : 'downloads';
-    const primaryLabel = w.type === 'forward' ? t('watches.history') : t('watches.downloadRecords');
-    const primaryCount = w.type === 'forward' && eventCount ? ' ' + eventCount : '';
-    const deferredBadge = w.type === 'forward' && w.include_comment
+    const deferredBadge = w.type === 'forward' && w.include_comment && deferredCount > 0
       ? '<button class="watch-deferred-badge" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="deferred">' +
-          esc(t('watches.deferredComments')) + (deferredCount ? ' ' + deferredCount : '') +
+          esc(t('watches.deferredComments')) + ' ' + deferredCount +
+        '</button>'
+      : '';
+    const primaryButton = w.type === 'forward'
+      ? '<button class="btn btn-sm btn-primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history">' +
+          esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') +
         '</button>'
       : '';
     return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
@@ -1031,7 +1033,7 @@ function renderWatches() {
       '</td>' +
       '<td class="watch-col-actions">' +
         '<div class="table-actions flex gap-1 whitespace-nowrap justify-end">' +
-          '<button class="btn btn-sm btn-primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="' + primaryMode + '">' + esc(primaryLabel) + primaryCount + '</button>' +
+          primaryButton +
           '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
         '</div>' +
       '</td>' +
@@ -1070,17 +1072,13 @@ function sanitizeWatchId(id) {
 
 function buildWatchMenuItems(watch) {
   const items = [];
-  const eventCount = Number(watch && watch.event_count || 0);
   const deferredCount = Number(watch && watch.deferred_comment_count || 0);
   if (watch && watch.type === 'forward') {
     items.push({ action: 'edit', label: t('watches.edit') });
-    items.push({ action: 'history', label: t('watches.history') + (eventCount ? ' ' + eventCount : '') });
     items.push({ action: 'downloads', label: t('watches.downloadRecords') });
     if (watch.include_comment) {
       items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
     }
-  } else {
-    items.push({ action: 'downloads', label: t('watches.downloadRecords') });
   }
   items.push({ action: 'delete', label: t('tasks.delete'), danger: true });
   return items;
