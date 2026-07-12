@@ -970,8 +970,8 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <h3 data-i18n="systemLogs.title">系统日志</h3>
         <p class="text-xs text-muted mt-1" id="system-logs-retention" data-i18n="systemLogs.retentionHint">链路调试日志，自动保留 2 天</p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <select class="input input-sm" id="system-logs-category">
+      <div class="flex items-center gap-2 flex-wrap text-xs">
+        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-category">
           <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
           <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
           <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
@@ -979,22 +979,23 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
           <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
         </select>
-        <select class="input input-sm" id="system-logs-level">
+        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-level">
           <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
           <option value="info">INFO</option>
           <option value="warning">WARNING</option>
           <option value="error">ERROR</option>
         </select>
-        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
           <input type="checkbox" id="system-logs-today">
           <span data-i18n="systemLogs.todayOnly">仅今天</span>
         </label>
-        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
           <input type="checkbox" id="system-logs-auto-refresh">
           <span data-i18n="systemLogs.autoRefresh">自动刷新</span>
         </label>
         <button class="btn btn-sm" id="system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
         <button class="btn btn-sm btn-primary" id="system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
+        <button class="btn btn-sm" id="system-logs-download-btn" data-i18n="systemLogs.downloadAll">下载日志</button>
       </div>
     </div>
     <div class="overflow-auto">
@@ -1634,6 +1635,10 @@ const i18n = {
     'systemLogs.todayOnly': '仅今天',
     'systemLogs.autoRefresh': '自动刷新',
     'systemLogs.copyPage': '复制本页',
+    'systemLogs.downloadAll': '下载日志',
+    'systemLogs.downloading': '下载中…',
+    'systemLogs.downloadEmpty': '没有可下载的日志。',
+    'systemLogs.downloadFailed': '日志下载失败。',
     'systemLogs.copied': '已复制本页日志到剪贴板。',
     'systemLogs.detailTitle': '日志详情',
     'systemLogs.time': '时间',
@@ -2003,6 +2008,10 @@ const i18n = {
     'systemLogs.todayOnly': 'Today only',
     'systemLogs.autoRefresh': 'Auto refresh',
     'systemLogs.copyPage': 'Copy page',
+    'systemLogs.downloadAll': 'Download logs',
+    'systemLogs.downloading': 'Downloading…',
+    'systemLogs.downloadEmpty': 'No logs to download.',
+    'systemLogs.downloadFailed': 'Failed to download logs.',
     'systemLogs.copied': 'Page logs copied to clipboard.',
     'systemLogs.detailTitle': 'Log Detail',
     'systemLogs.time': 'Time',
@@ -3346,10 +3355,64 @@ function copySystemLogsPage() {
   });
 }
 
+function systemLogsFilterQuery() {
+  const category = $('#system-logs-category')?.value || '';
+  const level = $('#system-logs-level')?.value || '';
+  const todayOnly = $('#system-logs-today')?.checked ? '1' : '0';
+  return '?today=' + todayOnly
+    + (category ? '&category=' + encodeURIComponent(category) : '')
+    + (level ? '&level=' + encodeURIComponent(level) : '');
+}
+
+async function downloadSystemLogsAll() {
+  const btn = $('#system-logs-download-btn');
+  if (btn && btn.disabled) return;
+  const originalLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t('systemLogs.downloading');
+  }
+  try {
+    const query = withClientTzQuery('/api/system-logs/export' + systemLogsFilterQuery());
+    const resp = await fetch(query, { credentials: 'same-origin' });
+    if (resp.status === 401) {
+      redirectToLoginPage();
+      return;
+    }
+    if (!resp.ok) throw new Error('download_failed');
+    const text = await resp.text();
+    if (!text.trim()) {
+      alert(t('systemLogs.downloadEmpty'));
+      return;
+    }
+    const disposition = resp.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename=\"([^\"]+)\"/);
+    const filename = match ? match[1] : ('system-logs-' + Date.now() + '.txt');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') redirectToLoginPage();
+    else alert(t('systemLogs.downloadFailed'));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel || t('systemLogs.downloadAll');
+    }
+  }
+}
+
 syncSystemLogsAutoRefreshUI();
 
 $('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(1); });
 $('#system-logs-copy-btn')?.addEventListener('click', copySystemLogsPage);
+$('#system-logs-download-btn')?.addEventListener('click', downloadSystemLogsAll);
 $('#system-logs-category')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-level')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-today')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
@@ -5686,6 +5749,10 @@ const i18n = {
     'systemLogs.todayOnly': '仅今天',
     'systemLogs.autoRefresh': '自动刷新',
     'systemLogs.copyPage': '复制本页',
+    'systemLogs.downloadAll': '下载日志',
+    'systemLogs.downloading': '下载中…',
+    'systemLogs.downloadEmpty': '没有可下载的日志。',
+    'systemLogs.downloadFailed': '日志下载失败。',
     'systemLogs.copied': '已复制本页日志到剪贴板。',
     'systemLogs.detailTitle': '日志详情',
     'systemLogs.time': '时间',
@@ -6055,6 +6122,10 @@ const i18n = {
     'systemLogs.todayOnly': 'Today only',
     'systemLogs.autoRefresh': 'Auto refresh',
     'systemLogs.copyPage': 'Copy page',
+    'systemLogs.downloadAll': 'Download logs',
+    'systemLogs.downloading': 'Downloading…',
+    'systemLogs.downloadEmpty': 'No logs to download.',
+    'systemLogs.downloadFailed': 'Failed to download logs.',
     'systemLogs.copied': 'Page logs copied to clipboard.',
     'systemLogs.detailTitle': 'Log Detail',
     'systemLogs.time': 'Time',

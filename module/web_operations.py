@@ -814,6 +814,28 @@ class WebOperationsMixin:
             'retention_days': self.transfer_store.SYSTEM_LOGS_RETENTION_DAYS
         }
 
+    def export_system_logs(
+            self,
+            category: str | None = None,
+            level: str | None = None,
+            trace_id: str | None = None,
+            watch_id: str | None = None,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> str:
+        from module.persistence.system_log import build_system_logs_export_text
+        if not self.transfer_store:
+            return ''
+        return build_system_logs_export_text(
+            self.transfer_store,
+            category=category,
+            level=level,
+            trace_id=trace_id,
+            watch_id=watch_id,
+            today_only=today_only,
+            tz_offset_minutes=tz_offset_minutes
+        )
+
     def get_web_settings(self) -> dict:
         return {
             'user': {
@@ -1171,7 +1193,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'list_deferred_discussion_captures', 'cancel_deferred_discussion_capture', 'run_deferred_discussion_capture_now',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
-    'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs',
+    'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
 )
 
 

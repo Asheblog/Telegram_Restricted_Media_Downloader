@@ -61,6 +61,7 @@ class WebUiAssetsCase(unittest.TestCase):
             '/api/media/cleanup',
             '/api/media/cleanup-logs',
             '/api/tables/export',
+            '/api/system-logs/export',
         ):
             self.assertIn(endpoint, WEB_UI_HTML)
         # /api/auth/login is only in the standalone login page

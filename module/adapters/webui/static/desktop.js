@@ -880,10 +880,64 @@ function copySystemLogsPage() {
   });
 }
 
+function systemLogsFilterQuery() {
+  const category = $('#system-logs-category')?.value || '';
+  const level = $('#system-logs-level')?.value || '';
+  const todayOnly = $('#system-logs-today')?.checked ? '1' : '0';
+  return '?today=' + todayOnly
+    + (category ? '&category=' + encodeURIComponent(category) : '')
+    + (level ? '&level=' + encodeURIComponent(level) : '');
+}
+
+async function downloadSystemLogsAll() {
+  const btn = $('#system-logs-download-btn');
+  if (btn && btn.disabled) return;
+  const originalLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t('systemLogs.downloading');
+  }
+  try {
+    const query = withClientTzQuery('/api/system-logs/export' + systemLogsFilterQuery());
+    const resp = await fetch(query, { credentials: 'same-origin' });
+    if (resp.status === 401) {
+      redirectToLoginPage();
+      return;
+    }
+    if (!resp.ok) throw new Error('download_failed');
+    const text = await resp.text();
+    if (!text.trim()) {
+      alert(t('systemLogs.downloadEmpty'));
+      return;
+    }
+    const disposition = resp.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename=\"([^\"]+)\"/);
+    const filename = match ? match[1] : ('system-logs-' + Date.now() + '.txt');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') redirectToLoginPage();
+    else alert(t('systemLogs.downloadFailed'));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel || t('systemLogs.downloadAll');
+    }
+  }
+}
+
 syncSystemLogsAutoRefreshUI();
 
 $('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(1); });
 $('#system-logs-copy-btn')?.addEventListener('click', copySystemLogsPage);
+$('#system-logs-download-btn')?.addEventListener('click', downloadSystemLogsAll);
 $('#system-logs-category')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-level')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-today')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });

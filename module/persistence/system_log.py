@@ -2,8 +2,79 @@
 """全链路系统日志记录器，持久化到 TransferStore.system_logs。"""
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Optional
+
+
+def format_system_log_export_line(entry: dict[str, Any]) -> str:
+    """Format one system log row to match WebUI「复制本页」line style."""
+    time_text = entry.get('created_at') or '-'
+    level = str(entry.get('level') or 'info').upper()
+    category = entry.get('category') or '-'
+    stage = entry.get('stage') or '-'
+    message = entry.get('message') or ''
+    parts: list[str] = []
+    if entry.get('trace_id'):
+        parts.append(f"Trace: {entry['trace_id']}")
+    if entry.get('watch_id'):
+        parts.append(f"Watch: {entry['watch_id']}")
+    if entry.get('source_chat_id'):
+        parts.append(f"chat: {entry['source_chat_id']}")
+    if entry.get('source_message_id') is not None:
+        parts.append(f"msg: {entry['source_message_id']}")
+    if entry.get('target_link'):
+        parts.append(f"target: {entry['target_link']}")
+    details = entry.get('details')
+    if details:
+        try:
+            parsed = json.loads(details) if isinstance(details, str) else details
+            parts.append(json.dumps(parsed, ensure_ascii=False))
+        except Exception:
+            parts.append(str(details))
+    context = ' | '.join(parts)
+    line = f'[{time_text}] [{level}] [{category}/{stage}] {message}'
+    if context:
+        line = f'{line} | {context}'
+    return line
+
+
+def build_system_logs_export_text(
+        store,
+        *,
+        category: str | None = None,
+        level: str | None = None,
+        trace_id: str | None = None,
+        watch_id: str | None = None,
+        today_only: bool = False,
+        tz_offset_minutes: int | None = None
+) -> str:
+    """Export all matching system logs (not just one page) as plain text."""
+    if store is None or not hasattr(store, 'list_system_logs'):
+        return ''
+    _, total = store.list_system_logs(
+        limit=1,
+        offset=0,
+        category=category,
+        level=level,
+        trace_id=trace_id,
+        watch_id=watch_id,
+        today_only=today_only,
+        tz_offset_minutes=tz_offset_minutes
+    )
+    if not total:
+        return ''
+    logs, _ = store.list_system_logs(
+        limit=int(total),
+        offset=0,
+        category=category,
+        level=level,
+        trace_id=trace_id,
+        watch_id=watch_id,
+        today_only=today_only,
+        tz_offset_minutes=tz_offset_minutes
+    )
+    return '\n'.join(format_system_log_export_line(entry) for entry in logs)
 
 
 class SystemLogTracer:

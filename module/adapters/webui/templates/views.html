@@ -547,8 +547,8 @@
         <h3 data-i18n="systemLogs.title">系统日志</h3>
         <p class="text-xs text-muted mt-1" id="system-logs-retention" data-i18n="systemLogs.retentionHint">链路调试日志，自动保留 2 天</p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <select class="input input-sm" id="system-logs-category">
+      <div class="flex items-center gap-2 flex-wrap text-xs">
+        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-category">
           <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
           <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
           <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
@@ -556,22 +556,23 @@
           <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
           <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
         </select>
-        <select class="input input-sm" id="system-logs-level">
+        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-level">
           <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
           <option value="info">INFO</option>
           <option value="warning">WARNING</option>
           <option value="error">ERROR</option>
         </select>
-        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
           <input type="checkbox" id="system-logs-today">
           <span data-i18n="systemLogs.todayOnly">仅今天</span>
         </label>
-        <label class="flex items-center gap-1.5 text-sm text-muted cursor-pointer">
+        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
           <input type="checkbox" id="system-logs-auto-refresh">
           <span data-i18n="systemLogs.autoRefresh">自动刷新</span>
         </label>
         <button class="btn btn-sm" id="system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
         <button class="btn btn-sm btn-primary" id="system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
+        <button class="btn btn-sm" id="system-logs-download-btn" data-i18n="systemLogs.downloadAll">下载日志</button>
       </div>
     </div>
     <div class="overflow-auto">

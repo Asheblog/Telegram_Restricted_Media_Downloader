@@ -373,6 +373,20 @@ class WebUiServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _send_text_download(self, content: str, filename: str):
+                data = (content or '').encode('utf-8')
+                self.send_response(HTTPStatus.OK)
+                self._write_pending_cookie()
+                self.send_header('content-type', 'text/plain; charset=utf-8')
+                self.send_header(
+                    'content-disposition',
+                    f'attachment; filename="{filename}"'
+                )
+                self.send_header('cache-control', 'no-store')
+                self.send_header('content-length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
             def _send_error(self, error_code, fallback, status):
                 self._send_json(
                     {
@@ -657,6 +671,25 @@ class WebUiServer:
                         today_only=today_only,
                         tz_offset_minutes=tz_offset
                     ))
+                    return
+                if parsed.path == '/api/system-logs/export':
+                    query = parse_qs(parsed.query)
+                    category = (query.get('category') or [None])[0]
+                    level = (query.get('level') or [None])[0]
+                    trace_id = (query.get('trace_id') or [None])[0]
+                    watch_id = (query.get('watch_id') or [None])[0]
+                    today_only = (query.get('today') or ['0'])[0] in ('1', 'true', 'yes')
+                    tz_offset = self._query_int(query, 'tz_offset', None)
+                    content = server.export_system_logs(
+                        category=category,
+                        level=level,
+                        trace_id=trace_id,
+                        watch_id=watch_id,
+                        today_only=today_only,
+                        tz_offset_minutes=tz_offset
+                    )
+                    stamp = time.strftime('%Y%m%d-%H%M%S')
+                    self._send_text_download(content, f'system-logs-{stamp}.txt')
                     return
                 self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
@@ -1401,6 +1434,38 @@ class WebUiServer:
                 'retention_days': self.store.SYSTEM_LOGS_RETENTION_DAYS
             }
         return {'logs': [], 'total': 0, 'limit': limit, 'offset': offset}
+
+    def export_system_logs(
+            self,
+            category: str | None = None,
+            level: str | None = None,
+            trace_id: str | None = None,
+            watch_id: str | None = None,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> str:
+        export_system_logs = self._operation('export_system_logs')
+        if export_system_logs:
+            return export_system_logs(
+                category=category,
+                level=level,
+                trace_id=trace_id,
+                watch_id=watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
+        from module.persistence.system_log import build_system_logs_export_text
+        if self.store and hasattr(self.store, 'list_system_logs'):
+            return build_system_logs_export_text(
+                self.store,
+                category=category,
+                level=level,
+                trace_id=trace_id,
+                watch_id=watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
+        return ''
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())

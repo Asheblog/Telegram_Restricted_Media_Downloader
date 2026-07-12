@@ -382,6 +382,39 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(3, page_total)
             self.assertEqual(1, len(page))
 
+    def test_export_system_logs_text_exports_all_matching_rows(self):
+        from module.persistence.system_log import build_system_logs_export_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            store.add_system_log(
+                'watch', 'message_received', 'watch log',
+                level='info', trace_id='t1', watch_id='w1'
+            )
+            store.add_system_log(
+                'filter', 'filter_reject', 'filter log A',
+                level='warning', trace_id='t2'
+            )
+            store.add_system_log(
+                'filter', 'filter_reject', 'filter log B',
+                level='warning', source_chat_id='-1001', source_message_id=42
+            )
+
+            text = build_system_logs_export_text(
+                store,
+                category='filter',
+            )
+            lines = text.splitlines()
+            self.assertEqual(2, len(lines))
+            self.assertTrue(all('[WARNING]' in line for line in lines))
+            self.assertTrue(all('[filter/filter_reject]' in line for line in lines))
+            self.assertIn('filter log A', text)
+            self.assertIn('filter log B', text)
+            self.assertIn('Trace: t2', text)
+            self.assertIn('chat: -1001', text)
+            self.assertIn('msg: 42', text)
+            self.assertNotIn('watch log', text)
+
     def test_transfer_store_maintenance_vacuums_and_marks_last_run(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
