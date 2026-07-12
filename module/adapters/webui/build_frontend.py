@@ -54,12 +54,13 @@ def build_login_page(tailwind_css: str, fonts_css: str) -> str:
 def build_desktop_html(tailwind_css: str, fonts_css: str) -> str:
     base = read_text(TEMPLATES_DIR / "base.html")
     views = read_text(TEMPLATES_DIR / "views.html")
+    helpers_js = read_text(STATIC_DIR / "watch_ui_helpers.js")
     shared_js = read_text(STATIC_DIR / "shared.js")
     desktop_js = read_text(STATIC_DIR / "desktop.js")
 
     html = _inject_css(base, fonts_css, tailwind_css)
     html = html.replace("<!-- VIEWS PLACEHOLDER -->", views)
-    html = html.replace("/* shared.js */", shared_js)
+    html = html.replace("/* shared.js */", helpers_js + "\n" + shared_js)
     html = html.replace("/* desktop.js */", desktop_js)
     return html
 
@@ -67,6 +68,7 @@ def build_desktop_html(tailwind_css: str, fonts_css: str) -> str:
 def build_mobile_html(tailwind_css: str, fonts_css: str) -> str:
     """Build mobile HTML — single Tailwind build for all platforms."""
     mobile_body = read_text(TEMPLATES_DIR / "mobile_body.html")
+    helpers_js = read_text(STATIC_DIR / "watch_ui_helpers.js")
     shared_js = read_text(STATIC_DIR / "shared.js")
     mobile_script = read_text(STATIC_DIR / "mobile_script.js")
 
@@ -81,7 +83,8 @@ def build_mobile_html(tailwind_css: str, fonts_css: str) -> str:
 </head>
 <body class="mob-body bg-bg text-text">
 {mobile_body}
-<script>{shared_js}</script>
+<script>{helpers_js}
+{shared_js}</script>
 <script>{mobile_script}</script>
 </body>
 </html>"""
