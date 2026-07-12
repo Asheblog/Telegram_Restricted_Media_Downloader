@@ -1042,32 +1042,7 @@ function renderWatches() {
 }
 
 function hasExpandedWatch() {
-  return false;
-}
-
-function refreshWatchesAfterCollapse() {
-  if (!hasExpandedWatch()) {
-    loadWatches().catch(function() {});
-  }
-}
-
-function setExpandedWatch(watchId, mode) {
-  if (!state.expandedWatches) state.expandedWatches = {};
-  const sanitized = sanitizeWatchId(watchId);
-  if (!mode) {
-    delete state.expandedWatches[sanitized];
-    return;
-  }
-  state.expandedWatches[sanitized] = { watchId: watchId, mode: mode };
-}
-
-function restoreExpandedWatches() {
-  state.expandedWatches = {};
-}
-
-/* ====== Watch Events (expandable forwarding log) ====== */
-function sanitizeWatchId(id) {
-  return (id || '').replace(/:/g, '_');
+  return Boolean(state.watchDetail);
 }
 
 function buildWatchMenuItems(watch) {
@@ -1075,6 +1050,7 @@ function buildWatchMenuItems(watch) {
   const deferredCount = Number(watch && watch.deferred_comment_count || 0);
   if (watch && watch.type === 'forward') {
     items.push({ action: 'edit', label: t('watches.edit') });
+    items.push({ action: 'history', label: t('watches.history') });
     items.push({ action: 'downloads', label: t('watches.downloadRecords') });
     if (watch.include_comment) {
       items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
@@ -1132,171 +1108,216 @@ function openWatchOverflowMenu(watchId, anchor) {
 
 async function openWatchDetail(watchId, mode) {
   closeWatchOverflowMenu();
-  // Stub until Task 4 — keep old entry points working where possible
-  if (mode === 'history' && typeof openWatchHistoryModal === 'function') {
-    return openWatchHistoryModal(watchId, 1);
+  const overlay = $('#watch-detail-overlay');
+  const body = $('#watch-detail-body');
+  if (!overlay || !body) return;
+  stopWatchDownloadPolling();
+  const watch = findWatchById(watchId);
+  const detailMode = mode || 'history';
+  state.watchDetail = {
+    watchId: watchId,
+    mode: detailMode,
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    filter: 'all',
+    items: [],
+  };
+  if (detailMode === 'downloads') {
+    state.watchDownload = { watchId: watchId, tasks: [], counts: {} };
   }
-  if (mode === 'downloads' && typeof openWatchDownloadModal === 'function') {
-    return openWatchDownloadModal(watchId);
+  renderWatchDetailShell(watch, detailMode);
+  overlay.classList.add('open');
+  await loadWatchDetail(false);
+  if (detailMode === 'downloads') startWatchDownloadPolling();
+}
+
+function findWatchById(watchId) {
+  return (state.watches || []).find(function(watch) {
+    return String(watch.id) === String(watchId);
+  }) || null;
+}
+
+function watchDetailHelpers() {
+  return globalThis.WatchUiHelpers || {};
+}
+
+function formatWatchRouteForDetail(source, target) {
+  const helpers = watchDetailHelpers();
+  if (typeof helpers.formatWatchRoute === 'function') {
+    return helpers.formatWatchRoute(source, target);
   }
-  if (mode === 'deferred' && typeof toggleWatchDeferred === 'function') {
-    return toggleWatchDeferred(watchId);
+  return (source || '-') + ' → ' + (target || '本地');
+}
+
+function summarizeWatchEventForDetail(evt) {
+  const helpers = watchDetailHelpers();
+  if (typeof helpers.summarizeWatchEvent === 'function') {
+    return helpers.summarizeWatchEvent(evt);
   }
+  if (evt && evt.status === 'success') return { kind: 'success', titleKey: 'watches.eventForwarded', detail: '' };
+  if (evt && evt.status === 'skipped') return { kind: 'filtered', titleKey: 'watches.eventSkipped', detail: evt.message || '' };
+  return { kind: 'failure', titleKey: 'watches.eventFailed', detail: evt && evt.message || '' };
 }
 
-function setWatchExpandMode(sanitized, mode) {
-  const eventsPanel = document.getElementById('watch-events-panel-' + sanitized);
-  const deferredPanel = document.getElementById('watch-deferred-panel-' + sanitized);
-  if (eventsPanel) eventsPanel.classList.toggle('hidden', mode !== 'events');
-  if (deferredPanel) deferredPanel.classList.toggle('hidden', mode !== 'deferred');
+function filterWatchEventsForDetail(items, filter) {
+  const helpers = watchDetailHelpers();
+  if (typeof helpers.filterWatchEventsByStatus === 'function') {
+    return helpers.filterWatchEventsByStatus(items, filter);
+  }
+  if (!filter || filter === 'all') return (items || []).slice();
+  return (items || []).filter(function(evt) {
+    return summarizeWatchEventForDetail(evt).kind === filter;
+  });
 }
 
-function watchExpandShell(title, bodyHtml) {
-  return '<div class="watch-expand-header">' + esc(title) + '</div>' +
-    '<div class="watch-expand-body">' + bodyHtml + '</div>';
+function watchDetailModeTitle(mode) {
+  if (mode === 'downloads') return t('watches.downloadRecordsTitle');
+  if (mode === 'deferred') return t('watches.deferredComments');
+  return t('watches.historyTitle');
 }
 
-function watchExpandEmpty(message) {
-  return '<div class="watch-expand-empty">' + esc(message) + '</div>';
+function renderWatchDetailShell(watch, mode) {
+  const source = watch && watch.source_link || '-';
+  const target = watch && (watch.target_link || '本地') || '本地';
+  const title = $('#watch-detail-title');
+  const subtitle = $('#watch-detail-subtitle');
+  const summary = $('#watch-detail-summary');
+  const filters = $('#watch-detail-filters');
+  const body = $('#watch-detail-body');
+  const footer = $('#watch-detail-footer');
+  if (title) title.textContent = watchDetailModeTitle(mode);
+  if (subtitle) subtitle.textContent = formatWatchRouteForDetail(source, target);
+  if (summary) summary.textContent = '';
+  if (filters) filters.innerHTML = '';
+  if (body) body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
+  if (footer) footer.innerHTML = '';
 }
 
-function toggleWatchEvents(watchId) {
-  const sanitized = sanitizeWatchId(watchId);
-  const row = document.getElementById('watch-events-' + sanitized);
-  if (!row) return;
-  const eventsPanel = document.getElementById('watch-events-panel-' + sanitized);
-  const isOpen = row.classList.contains('open') && eventsPanel && !eventsPanel.classList.contains('hidden');
-  if (isOpen) {
-    row.classList.remove('open');
-    setWatchExpandMode(sanitized, null);
-    setExpandedWatch(watchId, null);
-    refreshWatchesAfterCollapse();
+async function loadWatchDetail(silent) {
+  const detail = state.watchDetail;
+  if (!detail || !detail.watchId) return;
+  if (detail.mode === 'downloads') {
+    await loadWatchDownloadRecords(silent);
     return;
   }
-  row.classList.add('open');
-  setWatchExpandMode(sanitized, 'events');
-  setExpandedWatch(watchId, 'events');
-  loadWatchEvents(watchId, 0, true);
-}
-
-async function loadWatchEvents(watchId, offset, todayOnly) {
-  const sanitized = sanitizeWatchId(watchId);
-  const panel = document.getElementById('watch-events-panel-' + sanitized);
-  if (!panel) return;
-  const title = todayOnly ? t('watches.todayEvents') : t('watches.events');
-  if (offset === 0) panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.eventLoading')));
-  try {
-    const todayQuery = todayOnly ? '&today=1' : '';
-    const res = await fetch(withClientTzQuery('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=50&offset=' + offset + todayQuery));
-    const data = await res.json();
-    if (!res.ok) {
-      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(data.error || t('form.requestFailed')));
-      return;
-    }
-    const items = data.events || [];
-    if (!items.length && offset === 0) {
-      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.noEvents')));
-      return;
-    }
-    panel.querySelector('.watch-events-load-more')?.remove();
-    if (offset === 0) {
-      panel.innerHTML = watchExpandShell(title,
-        '<div class="watch-expand-scroll">' + renderWatchEventTable(items) + '</div>');
-    } else {
-      const tbody = panel.querySelector('tbody');
-      if (tbody) tbody.insertAdjacentHTML('beforeend', renderWatchEventTbodyRows(items));
-    }
-    if (data.has_more) {
-      const body = panel.querySelector('.watch-expand-body');
-      if (body) {
-        const btn = document.createElement('button');
-        btn.className = 'watch-events-load-more btn btn-sm';
-        btn.textContent = t('watches.loadMore');
-        btn.onclick = function() { loadWatchEvents(watchId, offset + items.length, todayOnly); };
-        body.appendChild(btn);
-      }
-    }
-  } catch (e) {
-    panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('form.requestFailed')));
+  if (detail.mode === 'deferred') {
+    await loadWatchDeferred(detail.watchId, silent);
+    return;
   }
+  await loadWatchDetailHistory(silent);
 }
 
-function renderWatchEventTbodyRows(items) {
-  return items.map(evt => {
-    const statusLabel = evt.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
-    const badgeCls = evt.status === 'success' ? 'badge-success' : 'badge-warning';
-    return '<tr>' +
-      '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.message || '') + '">' + esc(evt.message || '-') + '</td>' +
-      '<td><span class="badge ' + badgeCls + '">' + esc(statusLabel) + '</span></td>' +
-      '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
-      '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
-      '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
-    '</tr>';
-  }).join('');
-}
-
-function renderWatchEventTable(items, tableClass) {
-  return '<table class="data-table ' + (tableClass || 'watch-expand-table') + '"><thead><tr>' +
-    '<th>' + esc(t('events.title')) + '</th>' +
-    '<th>' + esc(t('tasks.status')) + '</th>' +
-    '<th>' + esc(t('watches.source')) + '</th>' +
-    '<th>' + esc(t('watches.target')) + '</th>' +
-    '<th>' + esc(t('records.updated')) + '</th>' +
-    '</tr></thead><tbody>' +
-    renderWatchEventTbodyRows(items) +
-    '</tbody></table>';
-}
-
-function renderWatchEventRows(items) {
-  if (!items.length) {
-    return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
-  }
-  return renderWatchEventTable(items, 'watch-history-table');
-}
-
-async function openWatchHistoryModal(watchId, page) {
-  state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
-  const overlay = $('#watch-history-overlay');
-  const body = $('#watch-history-body');
-  if (!overlay || !body) return;
-  overlay.classList.add('open');
-  await loadWatchHistoryPage();
-}
-
-async function loadWatchHistoryPage() {
-  const body = $('#watch-history-body');
-  const pagination = $('#watch-history-pagination');
-  if (!body || !pagination || !state.watchHistory.watchId) return;
-  const page = state.watchHistory.page || 1;
-  const pageSize = state.watchHistory.pageSize || 20;
+async function loadWatchDetailHistory(silent) {
+  const detail = state.watchDetail;
+  const body = $('#watch-detail-body');
+  const footer = $('#watch-detail-footer');
+  if (!body || !footer || !detail || !detail.watchId) return;
+  const page = detail.page || 1;
+  const pageSize = detail.pageSize || 20;
   const offset = (page - 1) * pageSize;
-  body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
-  pagination.innerHTML = '';
+  if (!silent) body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
+  footer.innerHTML = '';
   try {
-    const data = await fetchJson('/api/watches/' + encodeURIComponent(state.watchHistory.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    const data = await fetchJson('/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
     const items = data.events || [];
     const total = Number(data.total || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    state.watchHistory.total = total;
-    body.innerHTML = renderWatchEventRows(items);
-    pagination.innerHTML = renderPaginationBar({
-      prefix: 'watch-history',
+    detail.items = items;
+    detail.total = total;
+    renderWatchDetailHistorySummary(total);
+    renderWatchDetailHistoryFilters(items);
+    body.innerHTML = renderWatchHistoryList(filterWatchEventsForDetail(items, detail.filter));
+    footer.innerHTML = renderPaginationBar({
+      prefix: 'watch-detail-history',
       page: page,
       pageSize: pageSize,
       total: total,
       pageInfoKey: 'watches.pageInfo'
     });
-    bindPaginationBar('watch-history', page, totalPages, function(newPage) {
-      state.watchHistory.page = newPage;
-      loadWatchHistoryPage();
+    bindPaginationBar('watch-detail-history', page, totalPages, function(newPage) {
+      if (!state.watchDetail) return;
+      state.watchDetail.page = newPage;
+      loadWatchDetailHistory(false);
     });
   } catch(e) {
     body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(t('form.requestFailed')) + '</div>';
   }
 }
 
-function closeWatchHistoryModal() {
-  $('#watch-history-overlay')?.classList.remove('open');
+function renderWatchDetailHistorySummary(total) {
+  const summary = $('#watch-detail-summary');
+  const watch = findWatchById(state.watchDetail && state.watchDetail.watchId);
+  const today = watch ? Number(watch.today_count || 0) : 0;
+  if (summary) summary.textContent = '今日 ' + today + ' · 全部 ' + total;
+}
+
+function renderWatchDetailHistoryFilters(items) {
+  const filters = $('#watch-detail-filters');
+  const detail = state.watchDetail;
+  if (!filters || !detail) return;
+  const chips = [
+    { key: 'all', label: t('watches.filterAll') },
+    { key: 'success', label: t('watches.filterSuccess') },
+    { key: 'filtered', label: t('watches.filterFiltered') },
+    { key: 'failure', label: t('watches.filterFailure') },
+  ];
+  filters.innerHTML = chips.map(function(chip) {
+    const count = filterWatchEventsForDetail(items, chip.key).length;
+    return '<button type="button" class="panel-tab' + (detail.filter === chip.key ? ' active' : '') + '" data-watch-detail-filter="' + chip.key + '">' +
+      esc(chip.label) + ' (' + count + ')' +
+      '</button>';
+  }).join('');
+}
+
+function watchHistoryStatusBadge(summary) {
+  const cls = summary.kind === 'success' ? 'badge-success'
+    : summary.kind === 'filtered' ? 'badge-warning'
+    : 'badge-failed';
+  return '<span class="badge ' + cls + '">' + esc(t(summary.titleKey)) + '</span>';
+}
+
+function renderWatchHistoryList(items) {
+  if (!items.length) {
+    return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
+  }
+  return '<table class="data-table watch-history-table"><thead><tr>' +
+    '<th>' + esc(t('tasks.status')) + '</th>' +
+    '<th>' + esc(t('events.title')) + '</th>' +
+    '<th>' + esc(t('watches.source')) + '</th>' +
+    '<th>' + esc(t('watches.target')) + '</th>' +
+    '<th>' + esc(t('records.updated')) + '</th>' +
+    '</tr></thead><tbody>' +
+    items.map(function(evt, index) {
+      const summary = summarizeWatchEventForDetail(evt);
+      const detail = summary.detail || evt.message || '';
+      const message = evt.message || t(summary.titleKey);
+      const canExpand = Boolean(detail);
+      return '<tr class="watch-history-row' + (canExpand ? ' cursor-pointer' : '') + '" data-watch-history-row="' + index + '" aria-expanded="false">' +
+        '<td>' + watchHistoryStatusBadge(summary) + '</td>' +
+        '<td class="text-xs max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(detail || message) + '">' + esc(message || '-') + '</td>' +
+        '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
+        '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
+        '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
+      '</tr>' +
+      (canExpand
+        ? '<tr class="watch-history-reason-row hidden" data-watch-history-reason="' + index + '"><td colspan="5"><div class="watch-expand-empty text-left">' + esc(detail) + '</div></td></tr>'
+        : '');
+    }).join('') +
+    '</tbody></table>';
+}
+
+function closeWatchDetail() {
+  stopWatchDownloadPolling();
+  state.watchDetail = null;
+  state.watchDownload = { watchId: null, tasks: [], counts: {} };
+  $('#watch-detail-overlay')?.classList.remove('open');
+  const body = $('#watch-detail-body');
+  const filters = $('#watch-detail-filters');
+  const footer = $('#watch-detail-footer');
+  if (body) body.innerHTML = '';
+  if (filters) filters.innerHTML = '';
+  if (footer) footer.innerHTML = '';
 }
 
 /* ====== Watch Download Records Modal ====== */
@@ -1310,9 +1331,7 @@ function watchDownloadBucket(status) {
 
 function renderWatchDownloadTaskRow(task) {
   const progressPct = taskProgressPercent(task);
-  const source = esc(task.source_link || '-');
-  const target = esc(task.target_profile || task.target_link || '-');
-  const route = source + ' → ' + target;
+  const route = esc(formatWatchRouteForDetail(task.source_link || '-', task.target_profile || task.target_link || '-'));
   let progressHtml = '';
   if (task.uses_range_progress || task.total_items > 0) {
     progressHtml =
@@ -1361,19 +1380,8 @@ function renderWatchDownloadSections(tasks) {
   return html;
 }
 
-async function openWatchDownloadModal(watchId) {
-  state.watchDownload = { watchId: watchId, tasks: [], counts: {} };
-  const overlay = $('#watch-download-overlay');
-  const body = $('#watch-download-body');
-  if (!overlay || !body) return;
-  overlay.classList.add('open');
-  body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
-  await loadWatchDownloadRecords(false);
-  startWatchDownloadPolling();
-}
-
 async function loadWatchDownloadRecords(silent) {
-  const body = $('#watch-download-body');
+  const body = $('#watch-detail-body');
   if (!body || !state.watchDownload || !state.watchDownload.watchId) return;
   if (!silent) {
     body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
@@ -1382,10 +1390,7 @@ async function loadWatchDownloadRecords(silent) {
     const data = await fetchJson('/api/watches/' + encodeURIComponent(state.watchDownload.watchId) + '/download-tasks');
     state.watchDownload.tasks = data.tasks || [];
     state.watchDownload.counts = data.counts || {};
-    if (!(state.watchDownload.tasks || []).length) {
-      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
-      return;
-    }
+    renderWatchDownloadSummary(state.watchDownload.tasks, state.watchDownload.counts);
     body.innerHTML = renderWatchDownloadSections(state.watchDownload.tasks);
   } catch (e) {
     if (!silent) {
@@ -1397,8 +1402,8 @@ async function loadWatchDownloadRecords(silent) {
 function startWatchDownloadPolling() {
   stopWatchDownloadPolling();
   watchDownloadPollTimer = setInterval(function() {
-    const overlay = $('#watch-download-overlay');
-    if (!overlay || !overlay.classList.contains('open')) {
+    const overlay = $('#watch-detail-overlay');
+    if (!overlay || !overlay.classList.contains('open') || !state.watchDetail || state.watchDetail.mode !== 'downloads') {
       stopWatchDownloadPolling();
       return;
     }
@@ -1413,10 +1418,20 @@ function stopWatchDownloadPolling() {
   }
 }
 
-function closeWatchDownloadModal() {
-  stopWatchDownloadPolling();
-  state.watchDownload = { watchId: null, tasks: [], counts: {} };
-  $('#watch-download-overlay')?.classList.remove('open');
+function renderWatchDownloadSummary(tasks, counts) {
+  const summary = $('#watch-detail-summary');
+  if (!summary) return;
+  const bucketCounts = { active: 0, completed: 0, failed: 0 };
+  (tasks || []).forEach(function(task) {
+    bucketCounts[watchDownloadBucket(task.status)] += 1;
+  });
+  counts = counts || {};
+  const active = Number(counts.active != null ? counts.active : bucketCounts.active);
+  const completed = Number(counts.completed != null ? counts.completed : bucketCounts.completed);
+  const failed = Number(counts.failed != null ? counts.failed : bucketCounts.failed);
+  summary.textContent = t('watches.downloadActive') + ' ' + active +
+    ' · ' + t('watches.downloadCompleted') + ' ' + completed +
+    ' · ' + t('watches.downloadFailed') + ' ' + failed;
 }
 
 /* watch form */
@@ -1553,32 +1568,7 @@ function deferredStatusLabel(status) {
 }
 
 function toggleWatchDeferred(watchId) {
-  const sanitized = sanitizeWatchId(watchId);
-  const row = document.getElementById('watch-events-' + sanitized);
-  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
-  if (!row || !panel) return;
-  const isOpen = row.classList.contains('open') && !panel.classList.contains('hidden');
-  if (isOpen) {
-    row.classList.remove('open');
-    setWatchExpandMode(sanitized, null);
-    setExpandedWatch(watchId, null);
-    refreshWatchesAfterCollapse();
-    return;
-  }
-  // Close other watches' expand rows, then show deferred for this one.
-  document.querySelectorAll('.watch-events-row.open').forEach(el => {
-    if (el.id !== 'watch-events-' + sanitized) el.classList.remove('open');
-  });
-  document.querySelectorAll('.watch-events-panel, .watch-deferred-panel').forEach(el => el.classList.add('hidden'));
-  if (state.expandedWatches) {
-    Object.keys(state.expandedWatches).forEach(function(key) {
-      if (key !== sanitized) delete state.expandedWatches[key];
-    });
-  }
-  row.classList.add('open');
-  setWatchExpandMode(sanitized, 'deferred');
-  setExpandedWatch(watchId, 'deferred');
-  loadWatchDeferred(watchId);
+  return openWatchDetail(watchId, 'deferred');
 }
 
 function renderDeferredCommentRows(watchId, items) {
@@ -1620,29 +1610,45 @@ function renderDeferredCommentRows(watchId, items) {
     '</tbody></table>';
 }
 
-async function loadWatchDeferred(watchId) {
-  const sanitized = sanitizeWatchId(watchId);
-  const panel = document.getElementById('watch-deferred-panel-' + sanitized);
-  if (!panel) return;
-  const title = t('watches.deferredComments');
-  panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.eventLoading')));
+async function loadWatchDeferred(watchId, silent) {
+  const body = $('#watch-detail-body');
+  const filters = $('#watch-detail-filters');
+  const footer = $('#watch-detail-footer');
+  if (!body) return;
+  if (filters) filters.innerHTML = '';
+  if (footer) footer.innerHTML = '';
+  if (!silent) body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
   try {
     const res = await fetch('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
     const data = await res.json();
     if (!res.ok) {
-      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(data.error || t('form.requestFailed')));
+      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(data.error || t('form.requestFailed')) + '</div>';
       return;
     }
     const items = data.captures || [];
+    renderWatchDeferredSummary(items);
     if (!items.length) {
-      panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('watches.noDeferredComments')));
+      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noDeferredComments')) + '</div>';
       return;
     }
-    panel.innerHTML = watchExpandShell(title,
-      '<div class="watch-expand-scroll">' + renderDeferredCommentRows(watchId, items) + '</div>');
+    body.innerHTML = '<div class="watch-expand-scroll">' + renderDeferredCommentRows(watchId, items) + '</div>';
   } catch (err) {
-    panel.innerHTML = watchExpandShell(title, watchExpandEmpty(t('form.requestFailed')));
+    body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + esc(t('form.requestFailed')) + '</div>';
   }
+}
+
+function renderWatchDeferredSummary(items) {
+  const summary = $('#watch-detail-summary');
+  if (!summary) return;
+  const counts = { pending: 0, running: 0, done: 0, cancelled: 0, failure: 0 };
+  (items || []).forEach(function(item) {
+    if (counts[item.status] === undefined) counts[item.status] = 0;
+    counts[item.status] += 1;
+  });
+  summary.textContent = '全部 ' + (items || []).length +
+    ' · ' + t('watches.deferredPending') + ' ' + counts.pending +
+    ' · ' + t('watches.deferredRunning') + ' ' + counts.running +
+    ' · ' + t('watches.deferredFailure') + ' ' + counts.failure;
 }
 
 async function postDeferredAction(watchId, captureId, action) {
@@ -1656,7 +1662,9 @@ async function postDeferredAction(watchId, captureId, action) {
       alert(data.error || t('form.requestFailed'));
       return;
     }
-    await loadWatchDeferred(watchId);
+    if (state.watchDetail && String(state.watchDetail.watchId) === String(watchId) && state.watchDetail.mode === 'deferred') {
+      await loadWatchDeferred(watchId, true);
+    }
     await loadWatches();
   } catch (err) {
     alert(t('form.requestFailed'));
@@ -1682,13 +1690,50 @@ $('#watch-edit-overlay')?.addEventListener('click', function(e) {
   if (e.target === this) closeEditWatchModal();
 });
 
-$('#watch-history-overlay')?.addEventListener('click', function(e) {
-  if (e.target === this) closeWatchHistoryModal();
+$('#watch-detail-close')?.addEventListener('click', closeWatchDetail);
+$('#watch-detail-overlay')?.addEventListener('click', function(e) {
+  if (e.target === this) closeWatchDetail();
 });
-$('#watch-download-overlay')?.addEventListener('click', function(e) {
-  if (e.target === this) closeWatchDownloadModal();
+$('#watch-detail-filters')?.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-watch-detail-filter]');
+  if (!btn || !state.watchDetail || state.watchDetail.mode !== 'history') return;
+  state.watchDetail.filter = btn.dataset.watchDetailFilter || 'all';
+  renderWatchDetailHistoryFilters(state.watchDetail.items || []);
+  const body = $('#watch-detail-body');
+  if (body) body.innerHTML = renderWatchHistoryList(filterWatchEventsForDetail(state.watchDetail.items || [], state.watchDetail.filter));
 });
-$('#watch-download-body')?.addEventListener('click', async function(e) {
+$('#watch-detail-body')?.addEventListener('click', async function(e) {
+  const historyRow = e.target.closest('[data-watch-history-row]');
+  if (historyRow) {
+    const rowIndex = historyRow.dataset.watchHistoryRow;
+    const reasonRow = document.querySelector('[data-watch-history-reason="' + rowIndex + '"]');
+    if (reasonRow) {
+      const willOpen = reasonRow.classList.contains('hidden');
+      reasonRow.classList.toggle('hidden', !willOpen);
+      historyRow.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    }
+    return;
+  }
+
+  const runNowBtn = e.target.closest('[data-deferred-run-now]');
+  if (runNowBtn) {
+    e.stopPropagation();
+    await postDeferredAction(runNowBtn.dataset.watchId, runNowBtn.dataset.deferredRunNow, 'run-now');
+    return;
+  }
+  const cancelDeferredBtn = e.target.closest('[data-deferred-cancel]');
+  if (cancelDeferredBtn) {
+    e.stopPropagation();
+    await postDeferredAction(cancelDeferredBtn.dataset.watchId, cancelDeferredBtn.dataset.deferredCancel, 'cancel');
+    return;
+  }
+  const retryDeferredBtn = e.target.closest('[data-deferred-retry]');
+  if (retryDeferredBtn) {
+    e.stopPropagation();
+    await postDeferredAction(retryDeferredBtn.dataset.watchId, retryDeferredBtn.dataset.deferredRetry, 'retry');
+    return;
+  }
+
   const btn = e.target.closest('[data-watch-download-delete]');
   if (!btn) return;
   e.stopPropagation();
