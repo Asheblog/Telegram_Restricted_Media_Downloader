@@ -1416,6 +1416,7 @@ class WebUiServer:
             'comment_delay_minutes': {'min': 0, 'max': 1440},
             'deep_link': {
                 'timeout_seconds': {'min': 1, 'max': 600},
+                'min_interval_seconds': {'min': 0, 'max': 600},
             },
             'target_profiles': {
                 'pikpak': {

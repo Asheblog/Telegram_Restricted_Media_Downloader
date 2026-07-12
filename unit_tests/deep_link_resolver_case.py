@@ -1,11 +1,17 @@
 # coding=UTF-8
 import asyncio
+import sys
 import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from unit_tests.pyrogram_stub import install_pyrogram_stub
+install_pyrogram_stub()
+_ORIGINAL_ARGV = sys.argv
+sys.argv = [_ORIGINAL_ARGV[0]]
 from module.transfer.deep_link import DeepLinkResolveError, DeepLinkResolver
+sys.argv = _ORIGINAL_ARGV
 
 
 def _source_message_with_deep_link(bot='a82bot', param='v_abc'):
@@ -134,6 +140,45 @@ class DeepLinkResolverCase(unittest.TestCase):
                  ('start', 'a82bot'), ('start_done', 'a82bot')],
                 order,
             )
+
+        asyncio.run(run_case())
+
+    def test_start_bot_waits_and_retries_flood_wait(self):
+        async def run_case():
+            from pyrogram.errors import FloodWait
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(side_effect=[FloodWait(3), None]),
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+
+            with patch('module.transfer.deep_link.asyncio.sleep', new=AsyncMock()) as sleep_mock:
+                await resolver.start_bot(client, 'a82bot', 'v_abc')
+
+            self.assertEqual(2, client.invoke.await_count)
+            sleep_mock.assert_awaited_once_with(3)
+
+        asyncio.run(run_case())
+
+    def test_resolve_enforces_min_interval_between_start_bot_calls(self):
+        async def run_case():
+            resolver = DeepLinkResolver(min_interval_seconds=2.0)
+            sleeps = []
+
+            async def record_sleep(seconds):
+                sleeps.append(seconds)
+
+            with patch('module.transfer.deep_link.asyncio.sleep', new=AsyncMock(side_effect=record_sleep)), \
+                    patch('module.transfer.deep_link.time.time', return_value=100.5):
+                resolver._last_start_bot_at = 0.0
+                await resolver._wait_min_interval()
+                self.assertEqual([], sleeps)
+                resolver._last_start_bot_at = 100.0
+                await resolver._wait_min_interval()
+
+            self.assertEqual([1.5], sleeps)
 
         asyncio.run(run_case())
 

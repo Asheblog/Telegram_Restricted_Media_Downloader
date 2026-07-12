@@ -680,6 +680,7 @@ class GlobalConfig(BaseConfig):
         'deep_link': {
             'bot_whitelist': [],
             'timeout_seconds': 60,
+            'min_interval_seconds': 30,
         },
     }
 
@@ -713,6 +714,7 @@ class GlobalConfig(BaseConfig):
         self.deep_link: dict = self.config.get('deep_link', self.default_deep_link_nesting)
         self.deep_link_bot_whitelist: list = self.get_deep_link_bot_whitelist()
         self.deep_link_timeout_seconds: int = self.get_deep_link_timeout_seconds()
+        self.deep_link_min_interval_seconds: int = self.get_deep_link_min_interval_seconds()
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
         return self.config.get(param, default_nesting).get(nesting_param)
@@ -829,6 +831,18 @@ class GlobalConfig(BaseConfig):
             value = default_value
         return min(max(value, 1), 600)
 
+    def get_deep_link_min_interval_seconds(self) -> int:
+        default_value = int(self.default_deep_link_nesting.get('min_interval_seconds', 30))
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_deep_link_nesting,
+                param='deep_link',
+                nesting_param='min_interval_seconds'
+            ))
+        except (TypeError, ValueError, AttributeError):
+            value = default_value
+        return min(max(value, 0), 600)
+
     def save_config(self, config: dict) -> None:
         super().save_config(config)
         self.download_upload = self.get_nesting_config(
@@ -852,6 +866,7 @@ class GlobalConfig(BaseConfig):
         self.deep_link = self.config.get('deep_link', self.default_deep_link_nesting)
         self.deep_link_bot_whitelist = self.get_deep_link_bot_whitelist()
         self.deep_link_timeout_seconds = self.get_deep_link_timeout_seconds()
+        self.deep_link_min_interval_seconds = self.get_deep_link_min_interval_seconds()
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')
         log.info(f'{p}{self.config}')

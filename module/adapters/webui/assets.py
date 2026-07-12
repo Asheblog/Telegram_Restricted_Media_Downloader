@@ -1140,6 +1140,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </p>
         <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout">取片超时（秒）</label>
         <input class="form-input" name="global.deep_link.timeout_seconds" type="number" min="1" max="600">
+        <label class="form-label mt-3" data-i18n="settings.deepLinkMinInterval">取片最小间隔（秒）</label>
+        <input class="form-input" name="global.deep_link.min_interval_seconds" type="number" min="0" max="600">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMinIntervalHint">
+          两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。
+        </p>
       </section>
 
     <!-- PikPak Archive -->
@@ -1547,6 +1552,8 @@ const i18n = {
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
     'settings.deepLinkTimeout': '取片超时（秒）',
+    'settings.deepLinkMinInterval': '取片最小间隔（秒）',
+    'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -1902,6 +1909,8 @@ const i18n = {
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
+    'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
+    'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -3893,6 +3902,7 @@ function renderSettings() {
     Array.isArray(deepLinkWhitelist) ? deepLinkWhitelist.join('\n') : (deepLinkWhitelist || '')
   );
   setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
+  setFieldVal('global.deep_link.min_interval_seconds', sg.deep_link?.min_interval_seconds ?? 30);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -5238,6 +5248,8 @@ const i18n = {
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
     'settings.deepLinkTimeout': '取片超时（秒）',
+    'settings.deepLinkMinInterval': '取片最小间隔（秒）',
+    'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -5593,6 +5605,8 @@ const i18n = {
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
+    'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
+    'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -7063,7 +7077,9 @@ function renderMobSettingsForm() {
     '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
-    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>';
+    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
+    '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');

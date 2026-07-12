@@ -969,7 +969,9 @@ function renderMobSettingsForm() {
     '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
-    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>';
+    '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
+    '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 
   // Archive
   var archiveFields = document.getElementById('mob-settings-archive-fields');

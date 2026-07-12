@@ -717,6 +717,11 @@
         </p>
         <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout">取片超时（秒）</label>
         <input class="form-input" name="global.deep_link.timeout_seconds" type="number" min="1" max="600">
+        <label class="form-label mt-3" data-i18n="settings.deepLinkMinInterval">取片最小间隔（秒）</label>
+        <input class="form-input" name="global.deep_link.min_interval_seconds" type="number" min="0" max="600">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMinIntervalHint">
+          两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。
+        </p>
       </section>
 
     <!-- PikPak Archive -->

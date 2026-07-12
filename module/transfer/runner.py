@@ -523,6 +523,7 @@ class WebTransferRunner:
                     message=message,
                     whitelist=host.gc.get_deep_link_bot_whitelist(),
                     timeout_seconds=host.gc.get_deep_link_timeout_seconds(),
+                    min_interval_seconds=host.gc.get_deep_link_min_interval_seconds(),
                 )
             except DeepLinkResolveError as e:
                 task_id = int(task.get('id'))

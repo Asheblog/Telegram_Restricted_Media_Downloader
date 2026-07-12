@@ -24,6 +24,7 @@ def _make_host(store, resolver=None, forward=None):
             download_upload=True,
             get_deep_link_bot_whitelist=lambda: ['a82bot'],
             get_deep_link_timeout_seconds=lambda: 60,
+            get_deep_link_min_interval_seconds=lambda: 0,
         ),
         transfer_store=store,
         forward_calls=forward_calls,

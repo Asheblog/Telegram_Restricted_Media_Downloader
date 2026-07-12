@@ -15,6 +15,7 @@ class DeepLinkConfigCase(unittest.TestCase):
     def test_template_defaults(self):
         self.assertEqual([], GlobalConfig.TEMPLATE['deep_link']['bot_whitelist'])
         self.assertEqual(60, GlobalConfig.TEMPLATE['deep_link']['timeout_seconds'])
+        self.assertEqual(30, GlobalConfig.TEMPLATE['deep_link']['min_interval_seconds'])
 
     def test_getters(self):
         gc = GlobalConfig.__new__(GlobalConfig)
@@ -25,9 +26,14 @@ class DeepLinkConfigCase(unittest.TestCase):
         self.assertEqual(1, gc.get_deep_link_timeout_seconds())  # clamp min 1
         gc.config = {'deep_link': {'timeout_seconds': 9999}}
         self.assertEqual(600, gc.get_deep_link_timeout_seconds())  # clamp max 600
+        gc.config = {'deep_link': {'min_interval_seconds': -1}}
+        self.assertEqual(0, gc.get_deep_link_min_interval_seconds())
+        gc.config = {'deep_link': {'min_interval_seconds': 9999}}
+        self.assertEqual(600, gc.get_deep_link_min_interval_seconds())
         gc.config = {}
         self.assertEqual([], gc.get_deep_link_bot_whitelist())
         self.assertEqual(60, gc.get_deep_link_timeout_seconds())
+        self.assertEqual(30, gc.get_deep_link_min_interval_seconds())
 
 
 if __name__ == '__main__':

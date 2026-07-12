@@ -1502,6 +1502,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 message=message,
                                 whitelist=self.gc.get_deep_link_bot_whitelist(),
                                 timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
+                                min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
                             )
                         except DeepLinkResolveError as e:
                             self._log_system_chain(

@@ -1490,6 +1490,7 @@ function renderSettings() {
     Array.isArray(deepLinkWhitelist) ? deepLinkWhitelist.join('\n') : (deepLinkWhitelist || '')
   );
   setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
+  setFieldVal('global.deep_link.min_interval_seconds', sg.deep_link?.min_interval_seconds ?? 30);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);

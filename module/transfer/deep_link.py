@@ -98,28 +98,51 @@ class DeepLinkResolveError(Exception):
 
 
 class DeepLinkResolver:
-    def __init__(self, timeout_seconds: int = 60, poll_interval: float = 1.5):
+    def __init__(
+            self,
+            timeout_seconds: int = 60,
+            poll_interval: float = 1.5,
+            min_interval_seconds: float = 30,
+    ):
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval
+        self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
         self._lock = asyncio.Lock()
+        self._last_start_bot_at: float = 0.0
 
     @staticmethod
     def message_has_resolvable_media(message) -> bool:
         return any(getattr(message, attr, None) for attr in ('video', 'document', 'animation'))
 
+    async def _wait_min_interval(self) -> None:
+        if self.min_interval_seconds <= 0 or self._last_start_bot_at <= 0:
+            return
+        elapsed = time.time() - self._last_start_bot_at
+        remaining = self.min_interval_seconds - elapsed
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
     async def start_bot(self, client, bot_username: str, start_param: str):
         from pyrogram import raw
+        from pyrogram.errors import FloodWait, FloodPremiumWait
         peer = await client.resolve_peer(bot_username)
         random_id = getattr(client, 'rnd_id', None)
-        rid = random_id() if callable(random_id) else secrets.randbits(63)
-        await client.invoke(
-            raw.functions.messages.StartBot(
-                bot=peer,
-                peer=peer,
-                random_id=rid,
-                start_param=start_param,
-            )
-        )
+        while True:
+            rid = random_id() if callable(random_id) else secrets.randbits(63)
+            try:
+                await client.invoke(
+                    raw.functions.messages.StartBot(
+                        bot=peer,
+                        peer=peer,
+                        random_id=rid,
+                        start_param=start_param,
+                    )
+                )
+                self._last_start_bot_at = time.time()
+                return
+            except (FloodWait, FloodPremiumWait) as e:
+                amount = max(0, int(getattr(e, 'value', 0) or 0))
+                await asyncio.sleep(amount)
 
     async def wait_for_media(self, client, bot_username: str, started_at: float):
         deadline = started_at + self.timeout_seconds
@@ -136,16 +159,26 @@ class DeepLinkResolver:
             await asyncio.sleep(self.poll_interval)
         raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
 
-    async def resolve(self, client, message, whitelist, timeout_seconds=None) -> Optional[object]:
+    async def resolve(
+            self,
+            client,
+            message,
+            whitelist,
+            timeout_seconds=None,
+            min_interval_seconds=None,
+    ) -> Optional[object]:
         """若命中白名单深链则返回 bot 媒体消息；无深链返回 None；失败抛 DeepLinkResolveError。"""
         picked = pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist)
         if not picked:
             return None
         bot, param = picked
         async with self._lock:
-            started_at = time.time()
             if timeout_seconds is not None:
                 self.timeout_seconds = int(timeout_seconds)
+            if min_interval_seconds is not None:
+                self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
+            await self._wait_min_interval()
+            started_at = time.time()
             await self.start_bot(client, bot, param)
             media_msg = await self.wait_for_media(client, bot, started_at)
             media_msg._deep_link_meta = {'bot': bot, 'start_param': param}

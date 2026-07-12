@@ -75,6 +75,7 @@
 | notice | GlobalConfig | `.CONFIG.yaml` |
 | `deep_link.bot_whitelist` | GlobalConfig | 资源 bot 白名单 |
 | `deep_link.timeout_seconds` | GlobalConfig | 取片超时秒数 |
+| `deep_link.min_interval_seconds` | GlobalConfig | 两次 StartBot 最小间隔秒数 |
 
 ## WebUI API → handler
 
