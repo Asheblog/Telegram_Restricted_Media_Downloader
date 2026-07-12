@@ -291,10 +291,10 @@ async function loadTaskItems(taskId, status, options) {
         '<th class="task-item-file">文件</th><th class="task-item-size">大小</th><th class="task-item-progress">进度/速度</th><th class="task-item-source">来源</th><th class="task-item-status">状态</th>' +
         '</tr></thead><tbody>' +
         items.map(item => '<tr>' +
-          '<td class="task-item-file text-xs" title="' + esc(item.file_name || item.local_path || '-') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
-          '<td class="task-item-size text-xs">' + fmtSize(item.file_size) + '</td>' +
-          '<td class="task-item-progress text-xs" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
-          '<td class="task-item-source text-xs" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
+          '<td class="task-item-file" title="' + esc(item.file_name || item.local_path || '-') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+          '<td class="task-item-size">' + fmtSize(item.file_size) + '</td>' +
+          '<td class="task-item-progress" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
+          '<td class="task-item-source" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
           '<td class="task-item-status">' + statusBadge(item.status) + '</td>' +
           '</tr>').join('') +
         '</tbody></table>';
@@ -632,11 +632,11 @@ async function loadRecords(page) {
     }
     empty.style.display = 'none';
     tbody.innerHTML = records.map(r => '<tr>' +
-      '<td class="text-xs font-mono text-muted">' + esc(String(r.source_chat_id || '-')) + '</td>' +
-      '<td class="text-xs font-mono text-muted">' + esc(String(r.source_message_id || '-')) + '</td>' +
-      '<td class="text-xs max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(r.file_path || r.file_name || '-') + '</td>' +
-      '<td class="text-xs">' + fmtSize(r.file_size) + '</td>' +
-      '<td class="text-xs text-muted">' + fmtTime(r.updated_at) + '</td>' +
+      '<td class="font-mono text-muted">' + esc(String(r.source_chat_id || '-')) + '</td>' +
+      '<td class="font-mono text-muted">' + esc(String(r.source_message_id || '-')) + '</td>' +
+      '<td class="max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(r.file_path || r.file_name || '-') + '</td>' +
+      '<td>' + fmtSize(r.file_size) + '</td>' +
+      '<td class="text-muted">' + fmtTime(r.updated_at) + '</td>' +
       '</tr>').join('');
 
     if (pagEl) {
@@ -1590,9 +1590,9 @@ function renderDeferredCommentRows(watchId, items) {
         : item.status === 'failure' ? 'badge-failed'
         : 'badge-paused';
       return '<tr>' +
-        '<td class="text-xs font-mono text-muted">#' + esc(String(item.source_message_id || '-')) + '</td>' +
+        '<td class="font-mono text-muted">#' + esc(String(item.source_message_id || '-')) + '</td>' +
         '<td><span class="badge ' + statusCls + '">' + esc(deferredStatusLabel(item.status)) + '</span></td>' +
-        '<td class="text-xs text-muted">' + esc(due) + '</td>' +
+        '<td class="text-muted">' + esc(due) + '</td>' +
         '<td>' + actions + '</td>' +
       '</tr>';
     }).join('') +
@@ -1856,12 +1856,12 @@ async function loadOperations() {
         ? (payload.chat_link || '-')
         : (payload.path || '-');
       return '<tr>' +
-        '<td class="font-mono text-xs text-muted">' + esc(String(op.id || '-')) + '</td>' +
+        '<td class="font-mono text-muted">' + esc(String(op.id || '-')) + '</td>' +
         '<td><span class="badge ' + (op.type === 'channel_download' ? 'badge-running' : 'badge-success') + '">' + esc(typeLabel) + '</span></td>' +
-        '<td class="text-xs max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(detail) + '</td>' +
+        '<td class="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">' + esc(detail) + '</td>' +
         '<td>' + statusBadge(op.status) + '</td>' +
-        '<td class="text-xs text-danger max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(op.error_message || '') + '">' + esc(op.error_message || '-') + '</td>' +
-        '<td class="text-xs text-muted">' + fmtTime(op.created_at) + '</td>' +
+        '<td class="text-danger max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(op.error_message || '') + '">' + esc(op.error_message || '-') + '</td>' +
+        '<td class="text-muted">' + fmtTime(op.created_at) + '</td>' +
         '</tr>';
     }).join('');
   } catch(e) {}
@@ -2369,13 +2369,13 @@ function renderMediaResult(data) {
     if (items.length) {
       $('#media-items-tbody').innerHTML = items.map(item => '<tr>' +
         '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '"></td>' +
-        '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc((item.paths || []).join('\\n') || item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
-        '<td class="text-xs text-right">' + fmtSize(item.file_size) + '</td>' +
+        '<td class="max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc((item.paths || []).join('\\n') || item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
+        '<td class="text-right">' + fmtSize(item.file_size) + '</td>' +
         '<td class="text-center">' + statusBadge(item.status || '') + '</td>' +
-        '<td class="text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
+        '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
         '</tr>').join('');
     } else {
-      $('#media-items-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
+      $('#media-items-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">暂无数据</td></tr>';
     }
     $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, ti.total_count || 0);
     bindMediaPagination('media-items', mediaItemsPage, totalItemsPages, function(newPage) {
@@ -2395,12 +2395,12 @@ function renderMediaResult(data) {
     if (files.length) {
       $('#media-orphans-tbody').innerHTML = files.map(f => '<tr>' +
         '<td><input type="checkbox" class="media-cb" data-type="orphan" data-path="' + esc(f.path) + '"></td>' +
-        '<td class="text-xs max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
-        '<td class="text-xs text-right">' + fmtSize(f.size) + '</td>' +
-        '<td class="text-xs text-muted">' + fmtTimestamp(f.mtime) + '</td>' +
+        '<td class="max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(f.path) + '">' + esc(f.path) + '</td>' +
+        '<td class="text-right">' + fmtSize(f.size) + '</td>' +
+        '<td class="text-muted">' + fmtTimestamp(f.mtime) + '</td>' +
         '</tr>').join('');
     } else {
-      $('#media-orphans-tbody').innerHTML = '<tr><td colspan="4" class="text-center text-muted text-xs py-4">暂无数据</td></tr>';
+      $('#media-orphans-tbody').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">暂无数据</td></tr>';
     }
     $('#media-orphans-pagination').innerHTML = renderMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, orph.total_count || 0);
     bindMediaPagination('media-orphans', mediaOrphansPage, totalOrphansPages, function(newPage) {

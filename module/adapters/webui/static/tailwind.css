@@ -48,7 +48,7 @@
 
   html {
     font-family: var(--font-body);
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.5;
     color: var(--color-text);
     background: var(--color-bg);
@@ -76,6 +76,41 @@
 
 /* Component layer */
 @layer components {
+  /* Semantic type scale — page 20 / title 16 / body 14 / caption 12
+     Standalone classes for HTML/JS; component rules expand to utilities (no @apply of these). */
+  .type-page {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.25;
+    font-family: var(--font-heading);
+  }
+
+  .type-title {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.25;
+    font-family: var(--font-heading);
+  }
+
+  .type-body {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .type-caption {
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .type-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-muted);
+  }
+
   /* Sidebar */
   .sidebar {
     @apply w-[250px] bg-white border-r border-line sticky top-0 h-screen z-50 flex flex-col px-4 py-6;
@@ -151,12 +186,12 @@
   }
 
   .topbar h1 {
-    @apply text-xl font-bold text-text leading-tight;
+    @apply text-xl font-bold leading-tight text-text;
     font-family: var(--font-heading);
   }
 
   .topbar p {
-    @apply text-sm text-muted mt-1;
+    @apply text-sm leading-normal text-muted mt-1;
   }
 
   /* Buttons */
@@ -235,12 +270,12 @@
   }
 
   .stat-card-value {
-    @apply text-base font-bold text-text leading-tight truncate;
+    @apply text-base font-bold leading-tight text-text truncate;
     font-family: var(--font-heading);
   }
 
   .stat-card-label {
-    @apply text-[11px] text-muted mt-0.5 font-medium truncate;
+    @apply text-xs leading-normal text-muted mt-0.5 font-medium truncate;
   }
 
   /* Panels */
@@ -253,7 +288,7 @@
   }
 
   .panel-header h3 {
-    @apply text-base font-semibold text-text;
+    @apply text-base font-semibold leading-tight text-text;
     font-family: var(--font-heading);
   }
 
@@ -275,7 +310,7 @@
   }
 
   .settings-section-title {
-    @apply text-base font-semibold mb-3 text-text;
+    @apply text-base font-semibold leading-tight mb-3 text-text;
     font-family: var(--font-heading);
   }
 
@@ -311,7 +346,7 @@
   }
 
   .form-label {
-    @apply block text-xs font-semibold text-muted mb-1.5 uppercase tracking-[0.04em];
+    @apply block text-xs font-semibold uppercase tracking-[0.04em] text-muted mb-1.5;
   }
 
   .form-input, .form-select {
@@ -356,9 +391,9 @@
     @apply bg-primary-dark;
   }
 
-  /* Tables */
+  /* Tables — compact: all cells caption (12px), no mixed sizes in a row */
   .data-table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse text-xs;
   }
 
   .data-table thead th {
@@ -367,7 +402,7 @@
   }
 
   .data-table tbody td {
-    @apply py-2.5 px-3 border-b border-line-light text-sm align-middle text-center;
+    @apply py-2.5 px-3 border-b border-line-light text-xs align-middle text-center;
   }
 
   .table-actions {
@@ -468,11 +503,11 @@
   }
 
   .task-row-progress-pct {
-    @apply text-[11px] font-semibold text-text whitespace-nowrap;
+    @apply text-xs font-semibold text-text whitespace-nowrap;
   }
 
   .task-row-progress-count {
-    @apply text-[11px] text-muted whitespace-nowrap;
+    @apply text-xs text-muted whitespace-nowrap;
   }
 
   .task-row-progress-bar {
@@ -481,7 +516,7 @@
 
   .task-row-progress-summary {
     grid-column: 2 / -1;
-    @apply block text-[11px] text-muted min-w-0;
+    @apply block text-xs text-muted min-w-0;
   }
 
   .task-row-progress-range {
@@ -649,7 +684,7 @@
   .stats-bar-seg-skip { @apply bg-slate-400; }
 
   .stats-bar-label {
-    @apply text-[10px] text-muted text-center truncate w-full;
+    @apply text-xs text-muted text-center truncate w-full;
   }
 
   .stats-chart-legend {
@@ -789,18 +824,18 @@
   }
 
   .login-brand-mark {
-    @apply w-12 h-12 rounded-xl inline-flex items-center justify-center text-white text-[22px] font-bold mb-3;
+    @apply w-12 h-12 rounded-xl inline-flex items-center justify-center text-white text-xl font-bold mb-3;
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
     font-family: var(--font-heading);
   }
 
   .login-brand h1 {
-    @apply text-xl font-extrabold text-text;
+    @apply text-xl font-extrabold leading-tight text-text;
     font-family: var(--font-heading);
   }
 
   .login-brand p {
-    @apply text-sm text-muted mt-1 max-sm:px-2 max-sm:leading-5;
+    @apply text-sm leading-normal text-muted mt-1 max-sm:px-2 max-sm:leading-5;
   }
 
   .login-overlay {
@@ -1017,7 +1052,7 @@
 
   .watch-deferred-badge {
     @apply inline-flex items-center rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5
-           text-[11px] font-semibold text-warning cursor-pointer transition-colors duration-150;
+           text-xs font-semibold text-warning cursor-pointer transition-colors duration-150;
   }
 
   .watch-deferred-badge:hover,
@@ -1065,11 +1100,7 @@
   }
   .watch-expand-header {
     padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-muted);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    @apply text-xs font-semibold text-muted uppercase tracking-[0.04em];
     border-bottom: 1px solid var(--color-line);
     background: color-mix(in srgb, var(--color-surface-alt) 70%, var(--color-line) 30%);
   }
@@ -1083,8 +1114,7 @@
   .watch-expand-empty {
     padding: 28px 16px;
     text-align: center;
-    color: var(--color-muted);
-    font-size: 13px;
+    @apply text-sm text-muted;
   }
   .watch-expand-table {
     min-width: 640px;
@@ -1095,7 +1125,7 @@
   .watch-events-load-more {
     display: block;
     margin: 8px auto 12px;
-    font-size: 13px;
+    @apply text-sm;
     cursor: pointer;
   }
   /* Legacy list item styles (mobile watch history) */
@@ -1105,7 +1135,7 @@
     gap: 8px;
     padding: 4px 0;
     border-bottom: 1px solid var(--color-line);
-    font-size: 13px;
+    @apply text-xs;
   }
   .watch-event-item:last-child { border-bottom: 0; }
   .watch-event-time { color: var(--color-muted); white-space: nowrap; min-width: 90px; }
@@ -1114,8 +1144,7 @@
 
   .system-logs-table td {
     vertical-align: top;
-    font-size: 12px;
-    line-height: 1.5;
+    @apply text-xs leading-normal;
   }
   .system-log-context {
     max-width: 360px;
@@ -1128,9 +1157,7 @@
     align-items: center;
     padding: 2px 8px;
     border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.03em;
+    @apply text-xs font-semibold tracking-[0.03em];
   }
   .system-log-level-info {
     color: var(--color-primary);
@@ -1159,8 +1186,7 @@
     grid-template-columns: 96px minmax(0, 1fr);
     gap: 12px;
     align-items: start;
-    font-size: 12px;
-    line-height: 1.5;
+    @apply text-xs leading-normal;
   }
   .system-log-detail-label {
     color: var(--color-muted);
@@ -1201,7 +1227,7 @@
   /* --- Mobile body defaults --- */
   .mob-body {
     font-family: var(--font-mob);
-    font-size: 15px;
+    @apply text-sm;
     display: block;
     width: 100%;
     min-height: 100svh;
@@ -1222,8 +1248,7 @@
     width: 100%;
     min-width: 0;
     color: var(--color-text-secondary);
-    font-size: 14px;
-    font-weight: 500;
+    @apply text-sm font-medium;
   }
   .mob-body form {
     width: 100%;
@@ -1285,7 +1310,7 @@
     background: var(--color-primary);
     color: #fff;
     font-weight: 600;
-    font-size: 15px;
+    @apply text-sm;
     cursor: pointer;
     transition: opacity .15s, background .15s;
     min-height: 44px;
@@ -1307,7 +1332,7 @@
   .mob-btn-danger:active { background: var(--color-danger-bg); }
   .mob-btn-sm {
     padding: 0 12px;
-    font-size: 14px;
+    @apply text-sm;
     min-height: 36px;
     min-width: auto;
   }
@@ -1345,7 +1370,7 @@
     border-radius: 8px;
     flex-shrink: 0;
     padding: 0;
-    font-size: 20px;
+    @apply text-xl;
     line-height: 1;
     font-family: inherit;
     min-width: 44px;
@@ -1353,10 +1378,8 @@
   }
   .mob-topbar__back:active { background: var(--color-primary-soft); }
   .mob-topbar__title {
-    font-weight: 700;
-    font-size: 17px;
+    @apply text-base font-bold leading-tight text-text;
     font-family: var(--font-heading);
-    color: var(--color-text);
   }
   /* sub-page mode */
   .mob-topbar.sub .mob-topbar__back { display: flex; }
@@ -1380,7 +1403,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    font-size: 11px;
+    @apply text-xs;
     color: var(--color-muted);
     min-width: 44px;
     cursor: pointer;
@@ -1476,9 +1499,8 @@
   }
   .mob-card__title {
     font-weight: 650;
-    font-size: 15px;
+    @apply text-base leading-tight;
     word-break: break-all;
-    line-height: 1.35;
     flex: 1;
     min-width: 0;
   }
@@ -1486,8 +1508,7 @@
     display: inline-block;
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
+    @apply text-xs font-semibold;
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -1503,7 +1524,7 @@
     align-items: flex-start;
     gap: 10px;
     padding: 2px 0;
-    font-size: 13px;
+    @apply text-xs;
   }
   .mob-card__row .label { color: var(--color-muted); }
   .mob-card__row span:last-child {
@@ -1518,8 +1539,7 @@
   }
   .mob-card__row--stack span:last-child {
     text-align: left;
-    font-size: 12px;
-    line-height: 1.4;
+    @apply text-xs leading-normal;
     color: var(--color-text-secondary);
   }
   .mob-card__progress {
@@ -1544,7 +1564,7 @@
   .mob-watch-events {
     margin-top: 8px;
     padding-top: 8px;
-    font-size: 12px;
+    @apply text-xs;
     border-top: 1px solid var(--color-line);
   }
   .mob-watch-events .watch-event-item {
@@ -1574,7 +1594,7 @@
     padding: 14px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 15px;
+    @apply text-base;
     user-select: none;
     color: var(--color-text);
     min-width: 0;
@@ -1583,7 +1603,7 @@
   .mob-collapse__arrow {
     color: var(--color-muted);
     transition: transform .2s ease;
-    font-size: 12px;
+    @apply text-xs;
     flex-shrink: 0;
   }
   .mob-collapse.open .mob-collapse__arrow {
@@ -1626,18 +1646,14 @@
   }
   .mob-menu-label {
     padding: 10px 14px 4px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
+    @apply text-xs font-semibold uppercase tracking-[0.04em] text-muted;
   }
   .mob-menu-item {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 14px;
-    font-size: 15px;
+    @apply text-sm;
     color: var(--color-text);
     border: 0;
     background: transparent;
@@ -1661,7 +1677,7 @@
   .mob-menu-item__arrow {
     margin-left: auto;
     color: var(--color-muted);
-    font-size: 14px;
+    @apply text-sm;
   }
   .mob-menu-item__label {
     flex: 1;
@@ -1719,10 +1735,9 @@
     to { transform: translateY(0); }
   }
   .mob-sheet__title {
-    font-size: 15px;
-    font-weight: 700;
-    margin: 0;
+    @apply text-base font-bold leading-tight;
     font-family: var(--font-heading);
+    margin: 0;
   }
 
   /* --- Toast --- */
@@ -1735,7 +1750,7 @@
     color: #fff;
     padding: 10px 20px;
     border-radius: 8px;
-    font-size: 13px;
+    @apply text-sm;
     z-index: 400;
     opacity: 0;
     pointer-events: none;
@@ -1755,13 +1770,12 @@
   }
   .mob-sheet__task-header .task-title {
     font-weight: 650;
-    font-size: 15px;
+    @apply text-base;
     word-break: break-all;
     margin-bottom: 4px;
   }
   .mob-sheet__task-header .task-meta {
-    font-size: 12px;
-    color: var(--color-muted);
+    @apply text-xs text-muted;
     margin-bottom: 6px;
   }
   .mob-sheet-tabs {
@@ -1773,8 +1787,7 @@
   .mob-sheet-tab {
     padding: 8px 12px;
     border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    @apply text-xs font-semibold;
     border: 1px solid var(--color-line);
     background: var(--color-surface);
     color: var(--color-muted);
@@ -1797,7 +1810,7 @@
     align-items: center;
     padding: 8px 0;
     gap: 6px;
-    font-size: 13px;
+    @apply text-xs;
     border-bottom: 1px solid var(--color-line);
   }
   .mob-item-row:last-child { border-bottom: 0; }
@@ -1813,15 +1826,14 @@
     display: block;
     margin-top: 2px;
     color: var(--color-muted);
-    font-size: 12px;
-    font-weight: 500;
+    @apply text-xs font-medium;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .mob-event-row {
     padding: 6px 0;
-    font-size: 12px;
+    @apply text-xs;
     border-bottom: 1px solid var(--color-line);
   }
   .mob-event-row:last-child { border-bottom: 0; }
@@ -1841,8 +1853,7 @@
     justify-content: space-between;
     align-items: center;
     padding-top: 6px;
-    font-size: 12px;
-    color: var(--color-muted);
+    @apply text-xs text-muted;
   }
 
   /* --- Empty State --- */
@@ -1850,21 +1861,16 @@
     text-align: center;
     color: var(--color-muted);
     padding: 32px 16px;
-    font-size: 13px;
-    line-height: 1.6;
+    @apply text-sm leading-normal;
   }
 
   /* --- Section Header --- */
   .mob-section-title {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--color-muted);
+    @apply text-xs font-semibold uppercase tracking-[0.04em] text-muted;
     padding: 4px 0;
   }
   .mob-media-scan-btn { margin: 8px 0; width: 100%; }
-  .mob-media-result { margin-top: 12px; font-size: 13px; }
+  .mob-media-result { margin-top: 12px; @apply text-sm; }
 
   /* --- Settings form dynamic fields --- */
   .mob-subpage .mob-collapse__body label {
@@ -1908,8 +1914,7 @@
     box-sizing: border-box;
   }
   .mob-check-group legend {
-    font-size: 13px;
-    color: var(--color-muted);
+    @apply text-sm text-muted;
     padding: 0 4px;
   }
 
@@ -1923,7 +1928,7 @@
   .mob-table-wrap table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    @apply text-xs;
   }
   .mob-table-wrap th,
   .mob-table-wrap td {
@@ -1968,22 +1973,18 @@
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 22px;
-    font-weight: 700;
+    @apply text-xl font-bold;
     font-family: var(--font-heading);
     margin-bottom: 12px;
   }
   .mob-login-brand h1 {
-    font-size: 22px;
-    font-weight: 800;
-    margin: 0;
-    color: var(--color-text);
+    @apply text-xl font-extrabold leading-tight text-text;
     font-family: var(--font-heading);
+    margin: 0;
     letter-spacing: -.02em;
   }
   .mob-login-brand p {
-    font-size: 13px;
-    color: var(--color-muted);
+    @apply text-sm text-muted;
     margin: 4px 0 0;
   }
   .mob-login-card {
@@ -1996,22 +1997,16 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.04);
   }
   .mob-login-card__step {
-    font-size: 12px;
-    color: var(--color-muted);
-    text-transform: uppercase;
-    letter-spacing: .06em;
+    @apply text-xs font-semibold uppercase tracking-[0.04em] text-muted;
     margin-bottom: 8px;
   }
   .mob-login-card__title {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0 0 6px;
-    color: var(--color-text);
+    @apply text-xl font-bold leading-tight text-text;
     font-family: var(--font-heading);
+    margin: 0 0 6px;
   }
   .mob-login-card__subtitle {
-    font-size: 14px;
-    color: var(--color-muted);
+    @apply text-sm text-muted;
     margin: 0 0 20px;
     line-height: 1.5;
   }
@@ -2020,9 +2015,7 @@
   }
   .mob-login-field label {
     display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--color-text);
+    @apply text-sm font-medium text-text;
     margin-bottom: 6px;
   }
   .mob-login-field input {
@@ -2031,7 +2024,8 @@
     border: 1px solid var(--color-line);
     border-radius: 8px;
     padding: 0 14px;
-    font-size: 15px;
+    /* iOS zoom prevention — only allowed raw 16px outside type scale */
+    font-size: 16px;
     background: var(--color-surface);
     color: var(--color-text);
     font-family: inherit;
@@ -2043,13 +2037,11 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
   }
   .mob-login-field__hint {
-    font-size: 12px;
-    color: var(--color-muted);
+    @apply text-xs text-muted;
     margin-top: 4px;
   }
   .mob-login-error {
-    font-size: 13px;
-    color: var(--color-danger);
+    @apply text-sm text-danger;
     background: var(--color-danger-bg);
     border: 1px solid rgba(239, 68, 68, .3);
     border-radius: 8px;
@@ -2087,9 +2079,7 @@
     margin-bottom: 12px;
   }
   .mob-login-success__text {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--color-success);
+    @apply text-sm font-semibold text-success;
     margin: 0;
   }
 

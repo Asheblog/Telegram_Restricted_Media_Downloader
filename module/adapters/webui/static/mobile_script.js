@@ -827,8 +827,8 @@ function renderMobileWatchHistoryList(items) {
       '<span class="mob-card__badge ' + badgeClass + '">' + esc(badgeText) + '</span>' +
       '<div class="mob-watch-detail-row-main">' +
         (title ? '<div style="font-weight:600;">' + esc(title) + '</div>' : '') +
-        '<div style="color:var(--color-muted);font-size:12px;">#' + esc(String(ev.source_message_id || '-')) + ' · ' + esc(fmtTime(ev.created_at)) + (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') + '</div>' +
-        (canExpand ? '<div id="' + detailId + '" class="hidden" style="color:var(--color-muted);font-size:12px;margin-top:4px;word-break:break-all;">' + esc(sum.detail) + '</div>' : '') +
+        '<div class="text-xs text-muted">#' + esc(String(ev.source_message_id || '-')) + ' · ' + esc(fmtTime(ev.created_at)) + (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') + '</div>' +
+        (canExpand ? '<div id="' + detailId + '" class="hidden text-xs text-muted mt-1" style="word-break:break-all;">' + esc(sum.detail) + '</div>' : '') +
       '</div>' +
     '</div>';
   }).join('');
@@ -951,8 +951,8 @@ function renderMobileWatchDownloadSections(groups) {
           '<span class="mob-card__badge ' + (task.status === 'success' ? 'completed' : task.status === 'failure' ? 'failure' : 'running') + '">' + esc(task.status || '-') + '</span>' +
           '<div class="mob-watch-detail-row-main">' +
             '<div style="font-weight:600;">#' + esc(String(task.id)) + '</div>' +
-            '<div style="word-break:break-all;font-size:12px;color:var(--color-muted);">' + esc(route) + '</div>' +
-            '<div style="font-size:12px;color:var(--color-muted);">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
+            '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(route) + '</div>' +
+            '<div class="text-xs text-muted">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
             (task.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>' : '') +
           '</div>' +
         '</div>';
@@ -1060,7 +1060,7 @@ async function loadMobileWatchDeferred(watchId, silent) {
         '<span class="mob-card__badge ' + mobileDeferredStatusClass(item.status) + '">' + esc(mobileDeferredStatusLabel(item.status)) + '</span>' +
         '<div class="mob-watch-detail-row-main">' +
           '<div style="font-weight:600;">#' + esc(String(item.source_message_id || '-')) + '</div>' +
-          '<div style="font-size:12px;color:var(--color-muted);">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</div>' +
+          '<div class="text-xs text-muted">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</div>' +
           (actions ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">' + actions + '</div>' : '') +
         '</div>' +
       '</div>';
@@ -1358,7 +1358,7 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
-    '<h4 style="margin-top:16px;font-size:14px;font-weight:600;">深链取片</h4>' +
+    '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
@@ -1410,7 +1410,7 @@ function renderMobSettingsForm() {
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-      '<div style="margin-top:10px;"><span style="font-size:13px;font-weight:500;color:var(--color-text-secondary);">媒体类型</span><span style="font-size:11px;color:var(--color-muted);margin-left:4px;">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
+      '<div style="margin-top:10px;"><span class="text-sm font-medium text-text-secondary">媒体类型</span><span class="text-xs text-muted ml-1">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || [], selectedMediaTypes(glob), false) + '</div>' +
     '</div>' +
     '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
@@ -1468,11 +1468,11 @@ function renderCheckCards(baseName, types, selected, repeatName) {
   options.forEach(function(option) {
     var key = typeof option === 'string' ? option : option.value;
     var label = typeof option === 'string' ? option : (option.label || option.value);
-    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 0;">' +
+    html += '<label class="text-sm" style="display:flex;align-items:center;gap:6px;padding:4px 0;">' +
       '<input type="checkbox" name="' + (repeatName ? baseName : baseName + '.' + key) + '" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
       '<span>' + esc(label || key) + '</span></label>';
   });
-  return html || '<span style="font-size:13px;color:var(--color-muted);">无可用选项</span>';
+  return html || '<span class="text-sm text-muted">无可用选项</span>';
 }
 
 // ---------------------------------------------------------------------------
@@ -1490,11 +1490,11 @@ function mobInitDownloadTypes() {
   types.forEach(function(option) {
     var key = typeof option === 'string' ? option : option.value;
     var label = typeof option === 'string' ? option : (option.label || option.value);
-    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;">' +
+    html += '<label class="text-sm" style="display:flex;align-items:center;gap:6px;padding:3px 0;">' +
       '<input type="checkbox" name="download_types" value="' + escAttr(key) + '"' + (selSet[key] ? ' checked' : '') + '>' +
       '<span>' + esc(label || key) + '</span></label>';
   });
-  grid.innerHTML = html || '<span style="font-size:13px;color:var(--color-muted);">无可用类型</span>';
+  grid.innerHTML = html || '<span class="text-sm text-muted">无可用类型</span>';
 }
 
 async function loadMobileOperations() {
@@ -1658,7 +1658,7 @@ async function loadMediaMobile() {
     var transferItems = ((data.transfer_items || {}).items || []);
     var orphanFiles = ((data.orphan_files || {}).files || []);
 
-    var html = '<div style="font-size:13px;">' +
+    var html = '<div class="text-sm">' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
         '<div><strong>总文件</strong><br>' + (data.total_count || 0) + '</div>' +
         '<div><strong>总大小</strong><br>' + formatBytes(data.total_size || 0) + '</div>' +
@@ -1666,9 +1666,9 @@ async function loadMediaMobile() {
       '</div></div>';
 
     if (transferItems.length > 0) {
-      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">转存任务文件</strong></div>';
+      html += '<div style="margin-top:12px;"><strong class="type-title">转存任务文件</strong></div>';
       transferItems.forEach(function(item) {
-        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--color-line);">' +
+        html += '<div class="text-xs" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--color-line);">' +
           '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(item.file_name || item.local_path || '') + '</span>' +
           '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(item.file_size || 0) + '</span>' +
         '</div>';
@@ -1676,9 +1676,9 @@ async function loadMediaMobile() {
     }
 
     if (orphanFiles.length > 0) {
-      html += '<div style="margin-top:12px;"><strong style="font-size:14px;">遗留文件</strong></div>';
+      html += '<div style="margin-top:12px;"><strong class="type-title">遗留文件</strong></div>';
       orphanFiles.forEach(function(f) {
-        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--color-line);">' +
+        html += '<div class="text-xs" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--color-line);">' +
           '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(f.path || '') + '</span>' +
           '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(f.size || 0) + '</span>' +
         '</div>';

@@ -178,7 +178,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 | [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
 | rclone | — | PikPak 云盘归档（容器内安装） |
 | SQLite | — | 转存任务状态持久化 |
-| TailwindCSS | ^4.1.18 | WebUI 前端样式 |
+| TailwindCSS | ^4.1.18 | WebUI 前端样式（字号 token：page 20 / title 16 / body 14 / caption 12；根 16px；表格统一 caption；仅移动端输入允许 16px） |
 | Rich | 14.2.0 | 终端格式化输出 |
 | PyYAML | ≥6.0.3 | 配置文件读写 |
 | pymediainfo | 7.0.1 | 媒体文件元信息 |
