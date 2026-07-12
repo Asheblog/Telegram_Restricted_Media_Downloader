@@ -968,7 +968,11 @@
   .watch-event-badge { flex-shrink: 0; }
   .watch-event-info { flex: 1; word-break: break-all; }
 
-  .system-logs-table td { vertical-align: top; }
+  .system-logs-table td {
+    vertical-align: top;
+    font-size: 12px;
+    line-height: 1.5;
+  }
   .system-log-context {
     max-width: 360px;
     white-space: nowrap;
@@ -995,6 +999,45 @@
   .system-log-level-error {
     color: #b91c1c;
     background: color-mix(in srgb, #ef4444 16%, transparent);
+  }
+  .system-log-detail-dialog {
+    width: 640px;
+    max-height: 82vh;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .system-log-detail-body {
+    overflow: auto;
+    display: grid;
+    gap: 10px;
+  }
+  .system-log-detail-row {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .system-log-detail-label {
+    color: var(--color-muted);
+    font-weight: 600;
+  }
+  .system-log-detail-value {
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .system-log-detail-value.font-mono,
+  .system-log-detail-json {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+  .system-log-detail-json {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: var(--color-surface-alt);
+    overflow: auto;
+    max-height: 280px;
   }
 
   /* Responsive */

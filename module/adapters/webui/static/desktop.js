@@ -18,7 +18,12 @@ function switchView(view) {
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
   if (view === 'media') loadMedia();
-  if (view === 'system-logs') loadSystemLogs();
+  if (view === 'system-logs') {
+    loadSystemLogs();
+    startSystemLogsAutoRefresh();
+  } else {
+    stopSystemLogsAutoRefresh();
+  }
 }
 
 $$('[data-nav]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.nav)));
@@ -582,7 +587,7 @@ $('#refresh').addEventListener('click', () => {
   if (state.activeView === 'settings') loadSettings();
   if (state.activeView === 'statistics') loadStatistics();
   if (state.activeView === 'downloads-uploads') loadOperations();
-  if (state.activeView === 'system-logs') loadSystemLogs();
+  if (state.activeView === 'system-logs') loadSystemLogs(1);
 });
 
 /* ====== Logout ====== */
@@ -665,12 +670,58 @@ $('#records-clear-btn')?.addEventListener('click', async function() {
 
 /* ====== System Logs ====== */
 const SYSTEM_LOGS_PAGE_SIZE = 50;
+const SYSTEM_LOGS_AUTO_REFRESH_KEY = 'trmd-system-logs-auto-refresh';
+const SYSTEM_LOGS_AUTO_REFRESH_MS = 5000;
+let systemLogsAutoRefreshTimer = null;
 
 function systemLogLevelClass(level) {
   const value = String(level || 'info').toLowerCase();
   if (value === 'error') return 'system-log-level-error';
   if (value === 'warning') return 'system-log-level-warning';
   return 'system-log-level-info';
+}
+
+function isSystemLogsAutoRefreshEnabled() {
+  return localStorage.getItem(SYSTEM_LOGS_AUTO_REFRESH_KEY) === '1';
+}
+
+function setSystemLogsAutoRefreshEnabled(enabled) {
+  localStorage.setItem(SYSTEM_LOGS_AUTO_REFRESH_KEY, enabled ? '1' : '0');
+}
+
+function stopSystemLogsAutoRefresh() {
+  if (systemLogsAutoRefreshTimer) {
+    clearInterval(systemLogsAutoRefreshTimer);
+    systemLogsAutoRefreshTimer = null;
+  }
+}
+
+function startSystemLogsAutoRefresh() {
+  stopSystemLogsAutoRefresh();
+  if (!isSystemLogsAutoRefreshEnabled()) return;
+  if (state.activeView !== 'system-logs') return;
+  systemLogsAutoRefreshTimer = setInterval(function() {
+    if (state.activeView !== 'system-logs') {
+      stopSystemLogsAutoRefresh();
+      return;
+    }
+    loadSystemLogs(1);
+  }, SYSTEM_LOGS_AUTO_REFRESH_MS);
+}
+
+function syncSystemLogsAutoRefreshUI() {
+  const checkbox = $('#system-logs-auto-refresh');
+  if (checkbox) checkbox.checked = isSystemLogsAutoRefreshEnabled();
+}
+
+function formatSystemLogDetails(entry) {
+  if (entry.details == null || entry.details === '') return '';
+  try {
+    const parsed = typeof entry.details === 'string' ? JSON.parse(entry.details) : entry.details;
+    return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+  } catch (e) {
+    return String(entry.details);
+  }
 }
 
 function formatSystemLogContext(entry) {
@@ -697,6 +748,58 @@ function formatSystemLogCopyLine(entry) {
   return '[' + time + '] [' + (entry.level || 'info').toUpperCase() + '] '
     + '[' + (entry.category || '-') + '/' + (entry.stage || '-') + '] '
     + (entry.message || '') + (context ? ' | ' + context : '');
+}
+
+function renderSystemLogDetailRow(label, valueHtml, mono) {
+  return '<div class="system-log-detail-row">' +
+    '<div class="system-log-detail-label">' + esc(label) + '</div>' +
+    '<div class="system-log-detail-value' + (mono ? ' font-mono' : '') + '">' + valueHtml + '</div>' +
+  '</div>';
+}
+
+function openSystemLogDetailModal(entry) {
+  const overlay = $('#system-log-detail-overlay');
+  const body = $('#system-log-detail-body');
+  if (!overlay || !body || !entry) return;
+  const timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
+  const detailsText = formatSystemLogDetails(entry);
+  let html = '';
+  html += renderSystemLogDetailRow(t('systemLogs.time'), esc(timeText));
+  html += renderSystemLogDetailRow(
+    t('systemLogs.level'),
+    '<span class="system-log-level ' + systemLogLevelClass(entry.level) + '">' +
+      esc((entry.level || 'info').toUpperCase()) + '</span>'
+  );
+  html += renderSystemLogDetailRow(t('systemLogs.category'), esc(entry.category || '-'));
+  html += renderSystemLogDetailRow(t('systemLogs.stage'), esc(entry.stage || '-'), true);
+  html += renderSystemLogDetailRow(t('systemLogs.message'), esc(entry.message || '-'));
+  if (entry.trace_id) {
+    html += renderSystemLogDetailRow(t('systemLogs.trace'), esc(entry.trace_id), true);
+  }
+  if (entry.watch_id) {
+    html += renderSystemLogDetailRow(t('systemLogs.watch'), esc(entry.watch_id), true);
+  }
+  if (entry.source_chat_id) {
+    html += renderSystemLogDetailRow(t('systemLogs.sourceChat'), esc(String(entry.source_chat_id)), true);
+  }
+  if (entry.source_message_id != null && entry.source_message_id !== '') {
+    html += renderSystemLogDetailRow(t('systemLogs.sourceMessage'), esc(String(entry.source_message_id)), true);
+  }
+  if (entry.target_link) {
+    html += renderSystemLogDetailRow(t('systemLogs.target'), esc(entry.target_link), true);
+  }
+  if (detailsText) {
+    html += renderSystemLogDetailRow(
+      t('systemLogs.details'),
+      '<pre class="system-log-detail-json">' + esc(detailsText) + '</pre>'
+    );
+  }
+  body.innerHTML = html;
+  overlay.classList.add('open');
+}
+
+function closeSystemLogDetailModal() {
+  $('#system-log-detail-overlay')?.classList.remove('open');
 }
 
 async function loadSystemLogs(page) {
@@ -739,12 +842,12 @@ async function loadSystemLogs(page) {
       const timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
       const context = formatSystemLogContext(entry);
       return '<tr class="system-log-row" data-log-id="' + esc(String(entry.id || '')) + '">' +
-        '<td class="whitespace-nowrap text-xs">' + esc(timeText) + '</td>' +
+        '<td class="whitespace-nowrap">' + esc(timeText) + '</td>' +
         '<td><span class="system-log-level ' + systemLogLevelClass(entry.level) + '">' + esc((entry.level || 'info').toUpperCase()) + '</span></td>' +
-        '<td class="text-xs">' + esc(entry.category || '-') + '</td>' +
-        '<td class="text-xs font-mono">' + esc(entry.stage || '-') + '</td>' +
-        '<td class="text-sm">' + esc(entry.message || '') + '</td>' +
-        '<td class="text-xs text-muted font-mono system-log-context" title="' + esc(context) + '">' + esc(context) + '</td>' +
+        '<td>' + esc(entry.category || '-') + '</td>' +
+        '<td class="font-mono">' + esc(entry.stage || '-') + '</td>' +
+        '<td>' + esc(entry.message || '') + '</td>' +
+        '<td class="text-muted font-mono system-log-context" title="' + esc(context) + '">' + esc(context) + '</td>' +
       '</tr>';
     }).join('');
     if (pagEl) {
@@ -775,11 +878,31 @@ function copySystemLogsPage() {
   });
 }
 
-$('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(); });
+syncSystemLogsAutoRefreshUI();
+
+$('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(1); });
 $('#system-logs-copy-btn')?.addEventListener('click', copySystemLogsPage);
 $('#system-logs-category')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-level')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
 $('#system-logs-today')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
+$('#system-logs-auto-refresh')?.addEventListener('change', function() {
+  setSystemLogsAutoRefreshEnabled(this.checked);
+  if (this.checked) startSystemLogsAutoRefresh();
+  else stopSystemLogsAutoRefresh();
+});
+$('#system-logs-tbody')?.addEventListener('click', function(e) {
+  const row = e.target.closest('.system-log-row');
+  if (!row) return;
+  const logId = row.dataset.logId;
+  const entry = (state.systemLogs || []).find(function(item) {
+    return String(item.id) === String(logId);
+  });
+  if (entry) openSystemLogDetailModal(entry);
+});
+$('#system-log-detail-close')?.addEventListener('click', closeSystemLogDetailModal);
+$('#system-log-detail-overlay')?.addEventListener('click', function(e) {
+  if (e.target === this) closeSystemLogDetailModal();
+});
 
 /* ====== Watches ====== */
 async function loadWatches() {
