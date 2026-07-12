@@ -14,11 +14,10 @@ log = logging.getLogger('logger_stdout')
 Executor = Callable[[dict], Awaitable[Any]]
 DelayGetter = Callable[[], int]
 CancelHook = Callable[[dict], Any]
+ActiveDerivedChecker = Callable[[dict], bool]
 
 
 class CommentDelayScheduler:
-    DEFAULT_RUNNING_TIMEOUT_SECONDS = 30 * 60
-
     def __init__(
             self,
             store,
@@ -28,7 +27,7 @@ class CommentDelayScheduler:
             sleep_seconds: float = 5.0,
             time_fn=time.time,
             on_cancel: Optional[CancelHook] = None,
-            running_timeout_seconds: float = DEFAULT_RUNNING_TIMEOUT_SECONDS,
+            has_active_derived: Optional[ActiveDerivedChecker] = None,
     ):
         self.store = store
         self.delay_minutes_getter = delay_minutes_getter
@@ -36,7 +35,7 @@ class CommentDelayScheduler:
         self.sleep_seconds = float(sleep_seconds)
         self.time_fn = time_fn
         self.on_cancel = on_cancel
-        self.running_timeout_seconds = float(running_timeout_seconds)
+        self.has_active_derived = has_active_derived
         self._task: Optional[asyncio.Task] = None
         self._stopped = False
         self._inflight: dict[int, asyncio.Task] = {}
@@ -166,25 +165,46 @@ class CommentDelayScheduler:
             return False
         return await self.run_now(int(capture_id))
 
-    async def tick_once(self) -> int:
-        timed_out = self.store.fail_stale_running_deferred_discussion_captures(
-            now=self.time_fn(),
-            timeout_seconds=self.running_timeout_seconds,
+    def _reclaim_orphaned_running(self) -> int:
+        """Fail running rows with no live worker and no active derived transfers."""
+        running = self.store.list_deferred_discussion_captures(
+            statuses=[DeferredDiscussionCaptureStatus.RUNNING],
+            limit=500,
         )
-        for capture in timed_out:
+        keep_ids = {
+            capture_id
+            for capture_id, task in self._inflight.items()
+            if task is not None and not task.done()
+        }
+        orphan_ids: list[int] = []
+        orphan_snapshots: list[dict] = []
+        for capture in running:
             capture_id = int(capture['id'])
-            inflight = self._inflight.get(capture_id)
-            if inflight and not inflight.done():
-                inflight.cancel()
+            if capture_id in keep_ids:
+                continue
+            if self.has_active_derived and self.has_active_derived(capture):
+                continue
+            orphan_ids.append(capture_id)
+            orphan_snapshots.append(capture)
+        if not orphan_ids:
+            return 0
+        failed = self.store.fail_running_deferred_discussion_captures(
+            orphan_ids,
+            error_message='orphaned running capture',
+        )
+        for capture in orphan_snapshots:
             if self.on_cancel:
                 try:
-                    # Snapshot still has running so derived-task cleanup applies.
                     self.on_cancel(capture)
                 except Exception:
                     log.exception(
-                        'Deferred discussion timeout cancel hook failed: %s',
-                        capture_id,
+                        'Deferred discussion orphan cancel hook failed: %s',
+                        capture.get('id'),
                     )
+        return len(failed)
+
+    async def tick_once(self) -> int:
+        self._reclaim_orphaned_running()
         claimed = self.store.claim_due_deferred_discussion_captures(now=self.time_fn())
         for capture in claimed:
             await self._execute_capture(capture)

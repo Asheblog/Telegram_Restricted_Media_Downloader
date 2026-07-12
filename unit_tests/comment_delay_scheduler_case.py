@@ -145,7 +145,6 @@ class CommentDelaySchedulerCase(unittest.TestCase):
             sleep_seconds=0.01,
             time_fn=time.time,
             on_cancel=lambda capture: cancelled_ids.append(int(capture['id'])),
-            running_timeout_seconds=1800,
         )
         row = self.store.schedule_deferred_discussion_capture(
             watch_id='forward:a->b',
@@ -189,7 +188,7 @@ class CommentDelaySchedulerCase(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_tick_fails_stale_running(self):
+    def test_tick_fails_orphaned_running_without_inflight(self):
         row = self.store.schedule_deferred_discussion_capture(
             watch_id='forward:a->b',
             source_chat_id='-1001',
@@ -198,19 +197,74 @@ class CommentDelaySchedulerCase(unittest.TestCase):
             target_link='https://t.me/b',
             due_at=time.time() - 1,
         )
+        # Claim marks running but never starts an inflight worker (restart orphan).
         self.store.claim_due_deferred_discussion_captures(now=time.time())
-        with self.store.connect() as conn:
-            conn.execute(
-                'UPDATE deferred_discussion_captures SET updated_at = ? WHERE id = ?',
-                ('2020-01-01T00:00:00+00:00', row['id']),
-            )
-        self.scheduler.running_timeout_seconds = 60
 
         async def run():
             await self.scheduler.tick_once()
             fetched = self.store.get_deferred_discussion_capture(row['id'])
             self.assertEqual(DeferredDiscussionCaptureStatus.FAILURE, fetched['status'])
+            self.assertIn('orphan', (fetched.get('error_message') or '').lower())
             self.assertEqual(0, len(self.executed))
+
+        asyncio.run(run())
+
+    def test_tick_keeps_running_when_derived_active(self):
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=15,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() - 1,
+        )
+        self.store.claim_due_deferred_discussion_captures(now=time.time())
+        self.scheduler.has_active_derived = lambda capture: int(capture['id']) == row['id']
+
+        async def run():
+            await self.scheduler.tick_once()
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.RUNNING, fetched['status'])
+            self.assertEqual(0, len(self.executed))
+
+        asyncio.run(run())
+
+    def test_tick_keeps_running_with_live_inflight(self):
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_executor(capture):
+            started.set()
+            await release.wait()
+            self.executed.append(capture)
+
+        self.scheduler = CommentDelayScheduler(
+            store=self.store,
+            delay_minutes_getter=self.gc.get_comment_delay_minutes,
+            executor=slow_executor,
+            sleep_seconds=0.01,
+            time_fn=time.time,
+        )
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=16,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() - 1,
+        )
+
+        async def run():
+            tick = asyncio.create_task(self.scheduler.tick_once())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            # While worker is live, orphan reclaim must not kill it.
+            self.assertEqual(0, self.scheduler._reclaim_orphaned_running())
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.RUNNING, fetched['status'])
+            release.set()
+            await tick
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual(DeferredDiscussionCaptureStatus.DONE, fetched['status'])
 
         asyncio.run(run())
 

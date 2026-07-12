@@ -2107,46 +2107,38 @@ class TransferStore:
             )
             return cursor.rowcount > 0
 
-    def fail_stale_running_deferred_discussion_captures(
+    def fail_running_deferred_discussion_captures(
             self,
+            capture_ids: List[int],
             *,
-            now: float,
-            timeout_seconds: float,
+            error_message: str,
     ) -> List[Dict[str, Any]]:
-        """Mark long-running captures as failure so they can be retried.
-
-        Returns the captures that were timed out (pre-update snapshots).
-        """
-        if timeout_seconds <= 0:
+        """Mark specific running captures as failure. Returns pre-update snapshots."""
+        ids = [int(capture_id) for capture_id in capture_ids]
+        if not ids:
             return []
-        cutoff = datetime.datetime.fromtimestamp(
-            float(now) - float(timeout_seconds),
-            tz=datetime.UTC,
-        ).isoformat(timespec='seconds')
+        snapshots: List[Dict[str, Any]] = []
         with self.connect() as conn:
-            rows = conn.execute(
-                '''
-                SELECT * FROM deferred_discussion_captures
-                WHERE status = ? AND updated_at <= ?
-                ORDER BY id ASC
-                ''',
-                (DeferredDiscussionCaptureStatus.RUNNING, cutoff)
-            ).fetchall()
-            timed_out = [self._deferred_discussion_capture_row(row) for row in rows]
-            if not timed_out:
-                return []
-            conn.execute(
-                '''
-                UPDATE deferred_discussion_captures
-                SET status = ?, error_message = ?, updated_at = ?
-                WHERE status = ? AND updated_at <= ?
-                ''',
-                (
-                    DeferredDiscussionCaptureStatus.FAILURE,
-                    f'running timeout after {int(timeout_seconds)}s',
-                    self.utc_now(),
-                    DeferredDiscussionCaptureStatus.RUNNING,
-                    cutoff,
+            for capture_id in ids:
+                row = conn.execute(
+                    'SELECT * FROM deferred_discussion_captures WHERE id = ? AND status = ?',
+                    (capture_id, DeferredDiscussionCaptureStatus.RUNNING),
+                ).fetchone()
+                if not row:
+                    continue
+                snapshots.append(self._deferred_discussion_capture_row(row))
+                conn.execute(
+                    '''
+                    UPDATE deferred_discussion_captures
+                    SET status = ?, error_message = ?, updated_at = ?
+                    WHERE id = ? AND status = ?
+                    ''',
+                    (
+                        DeferredDiscussionCaptureStatus.FAILURE,
+                        error_message,
+                        self.utc_now(),
+                        capture_id,
+                        DeferredDiscussionCaptureStatus.RUNNING,
+                    ),
                 )
-            )
-            return timed_out
+        return snapshots

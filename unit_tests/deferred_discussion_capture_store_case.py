@@ -104,23 +104,25 @@ class DeferredDiscussionCaptureStoreCase(unittest.TestCase):
         self.store.claim_due_deferred_discussion_captures(now=time.time())
         self.assertFalse(self.store.requeue_deferred_discussion_capture(running['id'], due_at=due_at))
 
-    def test_fail_stale_running_captures(self):
+    def test_fail_orphaned_running_captures(self):
         row = self._schedule(due_at=time.time() - 1)
         self.store.claim_due_deferred_discussion_captures(now=time.time())
-        with self.store.connect() as conn:
-            conn.execute(
-                'UPDATE deferred_discussion_captures SET updated_at = ? WHERE id = ?',
-                ('2020-01-01T00:00:00+00:00', row['id']),
-            )
-        failed = self.store.fail_stale_running_deferred_discussion_captures(
-            now=time.time(),
-            timeout_seconds=60,
+        keep = self._schedule(source_message_id=88, due_at=time.time() - 1)
+        self.store.claim_due_deferred_discussion_captures(now=time.time())
+        failed = self.store.fail_running_deferred_discussion_captures(
+            [row['id']],
+            error_message='orphaned running capture',
         )
         self.assertEqual(1, len(failed))
         self.assertEqual(row['id'], failed[0]['id'])
-        fetched = self.store.get_deferred_discussion_capture(row['id'])
-        self.assertEqual('failure', fetched['status'])
-        self.assertIn('timeout', (fetched.get('error_message') or '').lower())
+        self.assertEqual(
+            'failure',
+            self.store.get_deferred_discussion_capture(row['id'])['status'],
+        )
+        self.assertEqual(
+            'running',
+            self.store.get_deferred_discussion_capture(keep['id'])['status'],
+        )
 
 
 if __name__ == '__main__':

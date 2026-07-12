@@ -103,10 +103,28 @@ class WebOperationsMixin:
             delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
             executor=executor,
             on_cancel=on_cancel,
+            has_active_derived=self._has_active_derived_tasks_for_deferred_capture,
         )
         self.comment_delay_scheduler = scheduler
         scheduler.start()
         return scheduler
+
+    def _has_active_derived_tasks_for_deferred_capture(self, capture: dict) -> bool:
+        if not capture:
+            return False
+        watch_id = capture.get('watch_id')
+        if not watch_id:
+            return False
+        store = self._ensure_transfer_store()
+        started_at = str(capture.get('updated_at') or '')
+        for task in store.list_tasks(limit=500, watch_id=watch_id):
+            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
+                continue
+            created_at = str(task.get('created_at') or '')
+            if started_at and created_at and created_at < started_at:
+                continue
+            return True
+        return False
 
     def _cancel_derived_tasks_for_deferred_capture(self, capture: dict) -> None:
         """Best-effort cancel web transfer tasks spawned by a running deferred capture."""
