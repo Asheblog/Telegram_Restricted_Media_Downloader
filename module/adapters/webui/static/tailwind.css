@@ -926,9 +926,79 @@
     min-width: 720px;
   }
 
+  /* Desktop watch list — compact task/actions rows */
+  .watch-row {
+    @apply cursor-default;
+  }
+
+  .watch-row:hover {
+    background: var(--color-surface-hover);
+  }
+
+  .watch-row td:first-child {
+    text-align: left;
+  }
+
+  .watch-task-main {
+    @apply flex flex-col gap-1 min-w-0 py-0.5;
+  }
+
+  .watch-task-head {
+    @apply flex items-center gap-2 min-w-0 flex-wrap;
+  }
+
+  .watch-status-dot {
+    @apply inline-block w-2 h-2 rounded-full flex-shrink-0;
+  }
+
+  .watch-status-dot.running {
+    background: var(--color-success);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+  }
+
+  .watch-status-dot.paused {
+    @apply bg-slate-300;
+  }
+
+  .watch-task-route {
+    @apply text-xs text-text-secondary font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-full;
+  }
+
+  .watch-deferred-badge {
+    @apply inline-flex items-center rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5
+           text-[11px] font-semibold text-warning cursor-pointer transition-colors duration-150;
+  }
+
+  .watch-deferred-badge:hover,
+  .watch-deferred-badge:focus-visible {
+    @apply border-warning bg-orange-50 outline-none;
+  }
+
+  .watch-overflow-menu {
+    @apply fixed z-[1001] min-w-[160px] rounded-[8px] border border-line bg-surface p-1 shadow-lg;
+  }
+
+  .watch-overflow-item {
+    @apply flex w-full items-center rounded-[6px] border-0 bg-transparent px-3 py-2 text-left
+           text-sm text-text cursor-pointer transition-colors duration-150;
+    font-family: inherit;
+  }
+
+  .watch-overflow-item:hover,
+  .watch-overflow-item:focus-visible {
+    @apply bg-surface-hover outline-none;
+  }
+
+  .watch-overflow-item.danger {
+    @apply text-danger;
+  }
+
+  .watch-overflow-item.danger:hover,
+  .watch-overflow-item.danger:focus-visible {
+    @apply bg-danger-bg text-danger;
+  }
+
   /* Watch events (expandable forwarding log) */
-  .watch-row { @apply cursor-pointer; }
-  .watch-row:hover { background: var(--color-surface-hover); }
   .watch-events-row { display: none; }
   .watch-events-row.open { display: table-row; }
   .watch-events-panel.hidden,

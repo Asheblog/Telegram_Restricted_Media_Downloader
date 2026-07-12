@@ -985,6 +985,7 @@ function updateWatchBadge() {
 
 function renderWatches() {
   if (state.activeView !== 'watches') return;
+  closeWatchOverflowMenu();
   const tbody = $('#watches-tbody');
   const empty = $('#watches-empty');
   const watches = state.watches || [];
@@ -997,40 +998,49 @@ function renderWatches() {
   tbody.innerHTML = watches.map(w => {
     const typeLabel = w.type === 'download' ? t('watches.download') : t('watches.forward');
     const typeCls = w.type === 'download' ? 'badge-success' : 'badge-running';
-    const statusCls = w.status === 'paused' ? 'badge-paused' : 'badge-success';
-    const statusLabel = w.status === 'paused' ? t('status.paused') : '● ' + t('status.running');
-    const eventCount = w.event_count || 0;
+    const statusCls = w.status === 'paused' ? 'paused' : 'running';
+    const statusLabel = w.status === 'paused' ? t('status.paused') : t('status.running');
+    const eventCount = Number(w.event_count || 0);
     const todayCount = w.today_count || 0;
-    const sanitized = sanitizeWatchId(w.id);
-    const deferredCount = w.deferred_comment_count || 0;
+    const deferredCount = Number(w.deferred_comment_count || 0);
     const source = w.source_link || '-';
     const target = w.target_link || '本地';
-    const rowAttrs = w.type === 'forward' ? ' class="watch-row" data-watch-id="' + esc(w.id) + '"' : '';
-    const eventsRow = w.type === 'forward' ?
-      '<tr class="watch-events-row" id="watch-events-' + sanitized + '">' +
-      '<td colspan="6"><div class="watch-events-panel" id="watch-events-panel-' + sanitized + '"></div>' +
-      '<div class="watch-deferred-panel hidden" id="watch-deferred-panel-' + sanitized + '"></div></td>' +
-      '</tr>' : '';
-    return '<tr' + rowAttrs + '>' +
-      '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
-      '<td class="text-xs max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-muted" title="' + esc(source) + '">' + esc(source) + '</td>' +
-      '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(target) + '</td>' +
-      '<td><span class="badge ' + statusCls + '">' + statusLabel + '</span></td>' +
-      '<td class="text-xs font-semibold">' + todayCount + '</td>' +
-      '<td class="watch-col-actions"><div class="table-actions flex gap-1 whitespace-nowrap">' +
-        (w.type === 'forward' ? '<button class="btn btn-sm" data-edit-watch="' + esc(w.id) + '">✎</button>' : '') +
-        (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-history="' + esc(w.id) + '">' + esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
-        (w.type === 'forward' ? '<button class="btn btn-sm" data-watch-downloads="' + esc(w.id) + '">' + esc(t('watches.downloadRecords')) + '</button>' : '') +
-        (w.type === 'forward' && w.include_comment ? '<button class="btn btn-sm" data-watch-deferred="' + esc(w.id) + '">' + esc(t('watches.deferredComments')) + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
-        '<button class="btn btn-sm btn-danger" data-delete-watch="' + esc(w.id) + '">✕</button>' +
-      '</div></td>' +
-      '</tr>' + eventsRow;
+    const route = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.formatWatchRoute === 'function'
+      ? globalThis.WatchUiHelpers.formatWatchRoute(source, target)
+      : source + ' → ' + target;
+    const primaryMode = w.type === 'forward' ? 'history' : 'downloads';
+    const primaryLabel = w.type === 'forward' ? t('watches.history') : t('watches.downloadRecords');
+    const primaryCount = w.type === 'forward' && eventCount ? ' ' + eventCount : '';
+    const deferredBadge = w.type === 'forward' && w.include_comment
+      ? '<button class="watch-deferred-badge" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="deferred">' +
+          esc(t('watches.deferredComments')) + (deferredCount ? ' ' + deferredCount : '') +
+        '</button>'
+      : '';
+    return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
+      '<td colspan="5">' +
+        '<div class="watch-task-main">' +
+          '<div class="watch-task-head">' +
+            '<span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' +
+            '<span class="badge ' + typeCls + '">' + typeLabel + '</span>' +
+            '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
+            '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + esc(String(todayCount)) + '</span>' +
+            deferredBadge +
+          '</div>' +
+          '<div class="watch-task-route" title="' + esc(source + ' → ' + target) + '">' + esc(route) + '</div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="watch-col-actions">' +
+        '<div class="table-actions flex gap-1 whitespace-nowrap justify-end">' +
+          '<button class="btn btn-sm btn-primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="' + primaryMode + '">' + esc(primaryLabel) + primaryCount + '</button>' +
+          '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
+        '</div>' +
+      '</td>' +
+      '</tr>';
   }).join('');
-  restoreExpandedWatches();
 }
 
 function hasExpandedWatch() {
-  return !!(state.expandedWatches && Object.keys(state.expandedWatches).length);
+  return false;
 }
 
 function refreshWatchesAfterCollapse() {
@@ -1050,23 +1060,7 @@ function setExpandedWatch(watchId, mode) {
 }
 
 function restoreExpandedWatches() {
-  if (!state.expandedWatches) return;
-  Object.keys(state.expandedWatches).forEach(function(sanitized) {
-    const entry = state.expandedWatches[sanitized];
-    if (!entry || !entry.watchId) return;
-    const row = document.getElementById('watch-events-' + sanitized);
-    if (!row) {
-      delete state.expandedWatches[sanitized];
-      return;
-    }
-    row.classList.add('open');
-    setWatchExpandMode(sanitized, entry.mode);
-    if (entry.mode === 'deferred') {
-      loadWatchDeferred(entry.watchId);
-    } else {
-      loadWatchEvents(entry.watchId, 0, true);
-    }
-  });
+  state.expandedWatches = {};
 }
 
 /* ====== Watch Events (expandable forwarding log) ====== */
@@ -1074,12 +1068,83 @@ function sanitizeWatchId(id) {
   return (id || '').replace(/:/g, '_');
 }
 
-document.addEventListener('click', function(e) {
-  const row = e.target.closest('.watch-row');
-  if (!row) return;
-  if (e.target.closest('button, a')) return;
-  toggleWatchEvents(row.dataset.watchId);
-});
+function buildWatchMenuItems(watch) {
+  const items = [];
+  const eventCount = Number(watch && watch.event_count || 0);
+  const deferredCount = Number(watch && watch.deferred_comment_count || 0);
+  if (watch && watch.type === 'forward') {
+    items.push({ action: 'edit', label: t('watches.edit') });
+    items.push({ action: 'history', label: t('watches.history') + (eventCount ? ' ' + eventCount : '') });
+    items.push({ action: 'downloads', label: t('watches.downloadRecords') });
+    if (watch.include_comment) {
+      items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
+    }
+  } else {
+    items.push({ action: 'downloads', label: t('watches.downloadRecords') });
+  }
+  items.push({ action: 'delete', label: t('tasks.delete'), danger: true });
+  return items;
+}
+
+function closeWatchOverflowMenu() {
+  const menu = document.querySelector('.watch-overflow-menu');
+  if (menu) menu.remove();
+  state.watchOverflowMenu = null;
+  $$('[data-watch-menu][aria-expanded="true"]').forEach(function(btn) {
+    btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function openWatchOverflowMenu(watchId, anchor) {
+  const watch = (state.watches || []).find(function(item) { return item.id === watchId; });
+  if (!watch || !anchor) return;
+  if (state.watchOverflowMenu && state.watchOverflowMenu.watchId === watchId) {
+    closeWatchOverflowMenu();
+    return;
+  }
+  closeWatchOverflowMenu();
+  const menu = document.createElement('div');
+  menu.className = 'watch-overflow-menu';
+  menu.setAttribute('role', 'menu');
+  menu.dataset.watchId = watchId;
+  menu.innerHTML = buildWatchMenuItems(watch).map(function(item) {
+    return '<button class="watch-overflow-item' + (item.danger ? ' danger' : '') + '" role="menuitem" data-watch-menu-action="' + item.action + '" data-watch-id="' + esc(watchId) + '">' +
+      esc(item.label) +
+      '</button>';
+  }).join('');
+  document.body.appendChild(menu);
+
+  const rect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const viewportPadding = 8;
+  const left = Math.min(
+    Math.max(viewportPadding, rect.right - menuRect.width),
+    window.innerWidth - menuRect.width - viewportPadding
+  );
+  const below = rect.bottom + 6;
+  const above = rect.top - menuRect.height - 6;
+  const top = below + menuRect.height <= window.innerHeight - viewportPadding
+    ? below
+    : Math.max(viewportPadding, above);
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  anchor.setAttribute('aria-expanded', 'true');
+  state.watchOverflowMenu = { watchId: watchId };
+}
+
+async function openWatchDetail(watchId, mode) {
+  closeWatchOverflowMenu();
+  // Stub until Task 4 — keep old entry points working where possible
+  if (mode === 'history' && typeof openWatchHistoryModal === 'function') {
+    return openWatchHistoryModal(watchId, 1);
+  }
+  if (mode === 'downloads' && typeof openWatchDownloadModal === 'function') {
+    return openWatchDownloadModal(watchId);
+  }
+  if (mode === 'deferred' && typeof toggleWatchDeferred === 'function') {
+    return toggleWatchDeferred(watchId);
+  }
+}
 
 function setWatchExpandMode(sanitized, mode) {
   const eventsPanel = document.getElementById('watch-events-panel-' + sanitized);
@@ -1389,8 +1454,58 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
 });
 
 document.addEventListener('click', async function(e) {
+  const menuBtn = e.target.closest('[data-watch-menu]');
+  if (menuBtn) {
+    e.stopPropagation();
+    openWatchOverflowMenu(menuBtn.dataset.watchMenu, menuBtn);
+    return;
+  }
+
+  const menuActionBtn = e.target.closest('[data-watch-menu-action]');
+  if (menuActionBtn) {
+    e.stopPropagation();
+    const watchId = menuActionBtn.dataset.watchId;
+    const action = menuActionBtn.dataset.watchMenuAction;
+    if (action === 'edit') {
+      closeWatchOverflowMenu();
+      openEditWatchModal(watchId);
+      return;
+    }
+    if (action === 'history' || action === 'downloads' || action === 'deferred') {
+      await openWatchDetail(watchId, action);
+      return;
+    }
+    if (action === 'delete') {
+      closeWatchOverflowMenu();
+      if (!confirm('确定移除这个监听？')) return;
+      try {
+        const resp = await fetch('/api/watches/' + encodeURIComponent(watchId), { method: 'DELETE' });
+        if (!resp.ok) {
+          let data = {};
+          try { data = await resp.json(); } catch(err) {}
+          alert(data.detail || data.error || data.message || t('form.requestFailed'));
+          return;
+        }
+        await loadWatches();
+      } catch(err) {}
+      return;
+    }
+  }
+
+  const detailBtn = e.target.closest('[data-watch-detail]');
+  if (detailBtn) {
+    e.stopPropagation();
+    await openWatchDetail(detailBtn.dataset.watchDetail, detailBtn.dataset.watchDetailMode);
+    return;
+  }
+
+  if (!e.target.closest('.watch-overflow-menu')) {
+    closeWatchOverflowMenu();
+  }
+
   const delBtn = e.target.closest('[data-delete-watch]');
   if (delBtn) {
+    closeWatchOverflowMenu();
     if (!confirm('确定移除这个监听？')) return;
     try {
       await fetch('/api/watches/' + encodeURIComponent(delBtn.dataset.deleteWatch), { method: 'DELETE' });
@@ -1399,19 +1514,20 @@ document.addEventListener('click', async function(e) {
   }
   const editBtn = e.target.closest('[data-edit-watch]');
   if (editBtn) {
+    closeWatchOverflowMenu();
     openEditWatchModal(editBtn.dataset.editWatch);
   }
   const historyBtn = e.target.closest('[data-watch-history]');
   if (historyBtn) {
-    openWatchHistoryModal(historyBtn.dataset.watchHistory, 1);
+    await openWatchDetail(historyBtn.dataset.watchHistory, 'history');
   }
   const downloadsBtn = e.target.closest('[data-watch-downloads]');
   if (downloadsBtn) {
-    openWatchDownloadModal(downloadsBtn.dataset.watchDownloads);
+    await openWatchDetail(downloadsBtn.dataset.watchDownloads, 'downloads');
   }
   const deferredBtn = e.target.closest('[data-watch-deferred]');
   if (deferredBtn) {
-    toggleWatchDeferred(deferredBtn.dataset.watchDeferred);
+    await openWatchDetail(deferredBtn.dataset.watchDeferred, 'deferred');
   }
   const runNowBtn = e.target.closest('[data-deferred-run-now]');
   if (runNowBtn) {
