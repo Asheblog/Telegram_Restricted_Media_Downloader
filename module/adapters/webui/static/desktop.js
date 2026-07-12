@@ -1005,9 +1005,12 @@ function renderWatches() {
     const deferredCount = Number(w.deferred_comment_count || 0);
     const source = w.source_link || '-';
     const target = w.target_link || '本地';
-    const route = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.formatWatchRoute === 'function'
-      ? globalThis.WatchUiHelpers.formatWatchRoute(source, target)
-      : source + ' → ' + target;
+    const sourceShort = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.shortTelegramLink === 'function'
+      ? globalThis.WatchUiHelpers.shortTelegramLink(source)
+      : source;
+    const targetShort = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.shortTelegramLink === 'function'
+      ? globalThis.WatchUiHelpers.shortTelegramLink(target)
+      : target;
     const deferredBadge = w.type === 'forward' && w.include_comment && deferredCount > 0
       ? '<button class="watch-deferred-badge" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="deferred">' +
           esc(t('watches.deferredComments')) + ' ' + deferredCount +
@@ -1015,25 +1018,20 @@ function renderWatches() {
       : '';
     const primaryButton = w.type === 'forward'
       ? '<button class="btn btn-sm btn-primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history">' +
-          esc(t('watches.history')) + (eventCount ? ' ' + eventCount : '') +
+          esc(t('watches.history')) +
         '</button>'
       : '';
     return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
-      '<td colspan="5">' +
-        '<div class="watch-task-main">' +
-          '<div class="watch-task-head">' +
-            '<span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' +
-            '<span class="badge ' + typeCls + '">' + typeLabel + '</span>' +
-            '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
-            '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + esc(String(todayCount)) + '</span>' +
-            deferredBadge +
-          '</div>' +
-          '<div class="watch-task-route" title="' + esc(source + ' → ' + target) + '">' + esc(route) + '</div>' +
-        '</div>' +
-      '</td>' +
+      '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
+      '<td class="text-xs font-mono text-muted text-left max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(source) + '">' + esc(sourceShort) + '</td>' +
+      '<td class="text-xs text-left max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(targetShort) + '</td>' +
+      '<td><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></td>' +
+      '<td class="text-xs font-semibold">' + esc(String(todayCount)) + '</td>' +
+      '<td class="text-xs font-semibold text-primary">' + esc(String(eventCount)) + '</td>' +
       '<td class="watch-col-actions">' +
         '<div class="table-actions flex gap-1 whitespace-nowrap justify-end">' +
           primaryButton +
+          deferredBadge +
           '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
         '</div>' +
       '</td>' +
@@ -1278,14 +1276,17 @@ function renderWatchHistoryList(items) {
     const badgeCls = sum.kind === 'success' ? 'badge-success'
       : sum.kind === 'filtered' ? 'badge-warning'
       : 'badge-failed';
-    const title = t(sum.titleKey);
+    const badgeText = sum.badgeKey ? t(sum.badgeKey) : (sum.titleKey ? t(sum.titleKey) : '');
+    const title = (sum.title != null && sum.title !== '')
+      ? sum.title
+      : (sum.titleKey ? t(sum.titleKey) : '');
     const meta = '#' + (evt.source_message_id || '-') + ' · ' + fmtTime(evt.created_at);
     const detailId = 'watch-evt-detail-' + idx;
     const canExpand = Boolean(sum.detail);
     return '<div class="watch-detail-row"' + (canExpand ? ' data-expand-detail="' + detailId + '"' : '') + '>' +
-      '<span class="badge ' + badgeCls + '">' + esc(title) + '</span>' +
+      '<span class="badge ' + badgeCls + '">' + esc(badgeText) + '</span>' +
       '<div class="watch-detail-row-main">' +
-        '<div class="font-medium">' + esc(title) + '</div>' +
+        (title ? '<div class="font-medium">' + esc(title) + '</div>' : '') +
         '<div class="text-xs text-muted">' + esc(meta) +
           (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') +
         '</div>' +

@@ -621,6 +621,26 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         except Exception as e:
             log.debug(f'记录实时监听事件失败(watch_id={watch_id}, status={status}): {e}')
 
+    def _watch_forward_media_label(self, message, media_group=None) -> str:
+        if media_group:
+            return '媒体组'
+        dtype = next((_ for _ in DownloadType() if getattr(message, _, None)), None)
+        if dtype is None and getattr(message, 'text', None):
+            return '文本'
+        labels = {
+            'video': '视频',
+            'photo': '图片',
+            'document': '文件',
+            'audio': '音频',
+            'voice': '语音',
+            'animation': '动图',
+            'video_note': '视频留言',
+        }
+        return labels.get(dtype, '消息')
+
+    def _forward_success_event_message(self, message, media_group=None) -> str:
+        return f'转发成功：{self._watch_forward_media_label(message, media_group)}'
+
     def _message_chain_context(
             self,
             message: pyrogram.types.Message,
@@ -840,7 +860,15 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     )
                 )
             if watch_id:
-                self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'success', '转发成功。')
+                self._record_watch_event(
+                    watch_id,
+                    origin_chat_id,
+                    message_id,
+                    target_chat_id,
+                    target_link,
+                    'success',
+                    self._forward_success_event_message(message, media_group),
+                )
             self._log_system_chain(
                 category='forward',
                 stage='forward_success',

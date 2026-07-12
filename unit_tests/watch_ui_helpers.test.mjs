@@ -21,7 +21,11 @@ assert.equal(
 
 assert.deepEqual(
   h.summarizeWatchEvent({ status: 'success', message: '转发成功。' }),
-  { kind: 'success', titleKey: 'watches.eventForwarded', detail: '' }
+  { kind: 'success', badgeKey: 'watches.badgeSuccess', title: '', titleKey: null, detail: '' }
+);
+assert.deepEqual(
+  h.summarizeWatchEvent({ status: 'success', message: '转发成功：视频' }),
+  { kind: 'success', badgeKey: 'watches.badgeSuccess', title: '视频', titleKey: null, detail: '' }
 );
 assert.equal(
   h.summarizeWatchEvent({

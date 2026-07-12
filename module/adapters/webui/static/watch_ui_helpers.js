@@ -15,14 +15,51 @@
     const status = evt && evt.status;
     const message = (evt && evt.message) || '';
     if (status === 'success') {
-      return { kind: 'success', titleKey: 'watches.eventForwarded', detail: '' };
+      var typed = message.match(/^转发成功[。.]?\s*[：:]\s*(.+)$/);
+      if (typed) {
+        return {
+          kind: 'success',
+          badgeKey: 'watches.badgeSuccess',
+          title: String(typed[1] || '').trim(),
+          titleKey: null,
+          detail: '',
+        };
+      }
+      if (/^转发成功/.test(message)) {
+        return {
+          kind: 'success',
+          badgeKey: 'watches.badgeSuccess',
+          title: '',
+          titleKey: null,
+          detail: '',
+        };
+      }
+      return {
+        kind: 'success',
+        badgeKey: 'watches.badgeSuccess',
+        title: message.replace(/[。.]$/, ''),
+        titleKey: null,
+        detail: '',
+      };
     }
     if (status === 'skipped' || /过滤|filter/i.test(message)) {
       var titleKey = 'watches.eventSkipped';
       if (/关键词|keyword/i.test(message)) titleKey = 'watches.eventFilterKeyword';
-      return { kind: 'filtered', titleKey: titleKey, detail: message };
+      return {
+        kind: 'filtered',
+        badgeKey: 'watches.badgeFiltered',
+        title: null,
+        titleKey: titleKey,
+        detail: message,
+      };
     }
-    return { kind: 'failure', titleKey: 'watches.eventFailed', detail: message };
+    return {
+      kind: 'failure',
+      badgeKey: 'watches.badgeFailure',
+      title: null,
+      titleKey: 'watches.eventFailed',
+      detail: message,
+    };
   }
 
   function filterWatchEventsByStatus(events, filter) {

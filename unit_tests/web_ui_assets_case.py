@@ -292,8 +292,13 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('id="watch-download-overlay"', WEB_UI_HTML)
 
     def test_watches_table_compact_headers(self):
-        self.assertIn('data-i18n="watches.task"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.type"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.source"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.target"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.todayEvents"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.totalEvents"', WEB_UI_HTML)
         self.assertIn('data-watch-menu', WEB_UI_HTML)
+        self.assertIn('watches.badgeSuccess', WEB_UI_HTML)
 
     def test_desktop_and_mobile_use_unified_webui_contract(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML

@@ -593,7 +593,7 @@ function renderMobWatches() {
       : '';
     var primaryButton = w.type === 'forward'
       ? '<button class="mob-btn mob-btn-sm mob-btn--primary watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history">' +
-          esc(t('watches.history')) + ' ' + eventCount +
+          esc(t('watches.history')) +
         '</button>'
       : '';
     html += '<div class="mob-card status-' + statusClass + ' mob-watch-card" data-watch-id="' + esc(w.id) + '">' +
@@ -817,13 +817,16 @@ function renderMobileWatchHistoryList(items) {
   return items.map(function(ev, idx) {
     var sum = mobSummarizeWatchEvent(ev);
     var badgeClass = sum.kind === 'success' ? 'completed' : (sum.kind === 'filtered' ? 'pending' : 'failure');
-    var title = t(sum.titleKey);
+    var badgeText = sum.badgeKey ? t(sum.badgeKey) : (sum.titleKey ? t(sum.titleKey) : '');
+    var title = (sum.title != null && sum.title !== '')
+      ? sum.title
+      : (sum.titleKey ? t(sum.titleKey) : '');
     var detailId = 'mob-watch-evt-detail-' + idx;
     var canExpand = Boolean(sum.detail);
     return '<div class="mob-event-row mob-watch-detail-row"' + (canExpand ? ' data-mob-expand-detail="' + detailId + '"' : '') + '>' +
-      '<span class="mob-card__badge ' + badgeClass + '">' + esc(title) + '</span>' +
+      '<span class="mob-card__badge ' + badgeClass + '">' + esc(badgeText) + '</span>' +
       '<div class="mob-watch-detail-row-main">' +
-        '<div style="font-weight:600;">' + esc(title) + '</div>' +
+        (title ? '<div style="font-weight:600;">' + esc(title) + '</div>' : '') +
         '<div style="color:var(--color-muted);font-size:12px;">#' + esc(String(ev.source_message_id || '-')) + ' · ' + esc(fmtTime(ev.created_at)) + (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') + '</div>' +
         (canExpand ? '<div id="' + detailId + '" class="hidden" style="color:var(--color-muted);font-size:12px;margin-top:4px;word-break:break-all;">' + esc(sum.detail) + '</div>' : '') +
       '</div>' +
