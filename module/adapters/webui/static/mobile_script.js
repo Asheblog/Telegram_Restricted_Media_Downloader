@@ -162,8 +162,6 @@ async function submitAuth(payload) {
 var pollTimer = null;
 var initialLoadDone = false;
 var mobileSettingsLoadPromise = null;
-var mobExpandedWatchEvents = {};
-var mobExpandedWatchDeferred = {};
 var mobWatchDownloadPollTimer = null;
 var mobWatchDownloadState = { watchId: null };
 
@@ -171,16 +169,6 @@ function hasActiveTasks() {
   return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) {
     return t.status === 'pending' || t.status === 'running';
   }));
-}
-
-function hasMobExpandedWatch() {
-  return Object.keys(mobExpandedWatchEvents).length > 0 || Object.keys(mobExpandedWatchDeferred).length > 0;
-}
-
-function refreshMobWatchesAfterCollapse() {
-  if (!hasMobExpandedWatch()) {
-    loadMobileWatches();
-  }
 }
 
 function resetTaskPolling() {
@@ -223,7 +211,7 @@ async function loadCurrentView() {
     await refreshOpenTaskSheet();
   }
   else if (id === 'mob-view-watches') {
-    if (!hasMobExpandedWatch()) await loadMobileWatches();
+    await loadMobileWatches();
   }
   else if (id === 'mob-view-downloads-uploads') { await loadMobileDownloadsUploads(); }
   // profile sub-pages load on demand
@@ -513,6 +501,69 @@ function bindTaskCardEvents(container) {
 // ---------------------------------------------------------------------------
 // Watch rendering
 // ---------------------------------------------------------------------------
+function mobFindWatchById(watchId) {
+  return (window.state && Array.isArray(window.state.watches) ? window.state.watches : []).find(function(watch) {
+    return String(watch.id) === String(watchId);
+  }) || null;
+}
+
+function mobWatchHelpers() {
+  return globalThis.WatchUiHelpers || {};
+}
+
+function mobWatchSource(watch) {
+  if (!watch) return '-';
+  if (watch.source_link) return watch.source_link;
+  if (Array.isArray(watch.source_links) && watch.source_links.length) return watch.source_links[0];
+  return '-';
+}
+
+function mobWatchRoute(watch) {
+  var source = mobWatchSource(watch);
+  var target = watch && (watch.target_link || '本地') || '本地';
+  var helpers = mobWatchHelpers();
+  var route = typeof helpers.formatWatchRoute === 'function'
+    ? helpers.formatWatchRoute(source, target)
+    : source + ' → ' + target;
+  var extraSources = watch && Array.isArray(watch.source_links) ? watch.source_links.length - 1 : 0;
+  return extraSources > 0 ? route + ' +' + extraSources : route;
+}
+
+function mobSummarizeWatchEvent(evt) {
+  var helpers = mobWatchHelpers();
+  if (typeof helpers.summarizeWatchEvent === 'function') return helpers.summarizeWatchEvent(evt);
+  if (evt && evt.status === 'success') return { kind: 'success', titleKey: 'watches.eventForwarded', detail: '' };
+  if (evt && evt.status === 'skipped') return { kind: 'filtered', titleKey: 'watches.eventSkipped', detail: evt.message || '' };
+  return { kind: 'failure', titleKey: 'watches.eventFailed', detail: evt && evt.message || '' };
+}
+
+function mobFilterWatchEvents(items, filter) {
+  var helpers = mobWatchHelpers();
+  if (typeof helpers.filterWatchEventsByStatus === 'function') return helpers.filterWatchEventsByStatus(items, filter);
+  if (!filter || filter === 'all') return (items || []).slice();
+  return (items || []).filter(function(evt) { return mobSummarizeWatchEvent(evt).kind === filter; });
+}
+
+function mobWatchModeTitle(mode) {
+  if (mode === 'downloads') return t('watches.downloadRecordsTitle');
+  if (mode === 'deferred') return t('watches.deferredComments');
+  return t('watches.historyTitle');
+}
+
+function mobileWatchMenuItems(watch) {
+  var items = [];
+  var deferredCount = Number(watch && watch.deferred_comment_count || 0);
+  if (watch && watch.type === 'forward') {
+    items.push({ action: 'edit', label: t('watches.edit') });
+    items.push({ action: 'downloads', label: t('watches.downloadRecords') });
+    if (watch.include_comment) {
+      items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
+    }
+  }
+  items.push({ action: 'delete', label: t('tasks.delete'), danger: true });
+  return items;
+}
+
 function renderMobWatches() {
   var container = document.getElementById('mob-watches-list');
   if (!container) return;
@@ -525,185 +576,312 @@ function renderMobWatches() {
     return;
   }
 
-  var typeLabels = { download: '下载监听', forward: '转发监听' };
   var html = '';
   window.state.watches.forEach(function(w) {
     var statusClass = w.status === 'paused' ? 'paused' : 'running';
-    var statusLabel = w.status === 'paused' ? '已暂停' : '运行中';
-    var sanitized = esc(w.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    var statusLabel = w.status === 'paused' ? t('status.paused') : t('status.running');
+    var typeLabel = w.type === 'download' ? t('watches.download') : t('watches.forward');
+    var typeClass = w.type === 'download' ? 'completed' : 'running';
     var eventCount = Number(w.event_count || 0);
+    var todayCount = Number(w.today_count || 0);
     var deferredCount = Number(w.deferred_comment_count || 0);
-    html += '<div class="mob-card status-' + statusClass + '">' +
+    var route = mobWatchRoute(w);
+    var deferredBadge = w.type === 'forward' && w.include_comment && deferredCount > 0
+      ? '<button class="watch-deferred-badge watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="deferred">' +
+          esc(t('watches.deferredComments')) + ' ' + deferredCount +
+        '</button>'
+      : '';
+    var primaryButton = w.type === 'forward'
+      ? '<button class="mob-btn mob-btn-sm mob-btn--primary watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history">' +
+          esc(t('watches.history')) + ' ' + eventCount +
+        '</button>'
+      : '';
+    html += '<div class="mob-card status-' + statusClass + ' mob-watch-card" data-watch-id="' + esc(w.id) + '">' +
       '<div class="mob-card__head">' +
-        '<span class="mob-card__title">' + esc(typeLabels[w.type] || w.type || '监听') + '</span>' +
-        '<span class="mob-card__badge ' + statusClass + '">' + statusLabel + '</span>' +
+        '<div class="watch-task-main">' +
+          '<div class="watch-task-head">' +
+            '<span class="watch-status-dot ' + statusClass + '" aria-hidden="true"></span>' +
+            '<span class="mob-card__badge ' + typeClass + '">' + esc(typeLabel) + '</span>' +
+            '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
+            '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</span>' +
+            deferredBadge +
+          '</div>' +
+          '<div class="watch-task-route" title="' + esc((mobWatchSource(w) || '-') + ' → ' + (w.target_link || '本地')) + '">' + esc(route) + '</div>' +
+        '</div>' +
       '</div>' +
-      '<div class="mob-card__row"><span class="label">来源</span><span>' + esc(Array.isArray(w.source_links) ? w.source_links.join(', ') : (w.source_link || '-')) + '</span></div>' +
-      (w.target_link ? '<div class="mob-card__row"><span class="label">目标</span><span>' + esc(w.target_link) + '</span></div>' : '') +
-      '<div class="mob-card__row"><span class="label">今日</span><span>' + (w.today_count || 0) + '</span></div>' +
       '<div class="mob-card__actions">' +
-        '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
-        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">今日</button>' : '') +
-        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-history="' + esc(w.id) + '">记录' + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
-        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-downloads="' + esc(w.id) + '">' + esc(t('watches.downloadRecords')) + '</button>' : '') +
-        (w.type === 'forward' && w.include_comment ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-deferred="' + esc(w.id) + '" data-sanitized="' + sanitized + '">待抓评论区' + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
+        primaryButton +
+        '<button class="mob-btn mob-btn-sm mob-btn-muted watch-touch-btn" data-mob-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
       '</div>' +
-      '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
-      '<div class="mob-watch-deferred hidden" id="mob-watch-deferred-' + sanitized + '"></div>' +
     '</div>';
   });
   container.innerHTML = html || mobEmptyHtml('还没有实时监听。', 'watches.empty');
+  bindMobWatchCardEvents(container);
+}
 
-  container.querySelectorAll('[data-delete-watch]').forEach(function(btn) {
-    btn.addEventListener('click', function() { deleteWatch(btn.dataset.deleteWatch); });
-  });
-  container.querySelectorAll('[data-events-watch]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var panel = document.getElementById('mob-watch-events-' + btn.dataset.sanitized);
-      if (!panel) return;
-      var isHidden = panel.classList.contains('hidden');
-      panel.classList.toggle('hidden');
-      if (isHidden) {
-        mobExpandedWatchEvents[btn.dataset.sanitized] = btn.dataset.eventsWatch;
-        loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
-      } else {
-        delete mobExpandedWatchEvents[btn.dataset.sanitized];
-        refreshMobWatchesAfterCollapse();
-      }
+function bindMobWatchCardEvents(container) {
+  container.querySelectorAll('[data-mob-watch-detail]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openMobileWatchDetail(btn.dataset.mobWatchDetail, btn.dataset.mobWatchDetailMode || 'history');
     });
   });
-  Object.keys(mobExpandedWatchEvents).forEach(function(sanitized) {
-    var panel = document.getElementById('mob-watch-events-' + sanitized);
-    var watchId = mobExpandedWatchEvents[sanitized];
-    if (panel && watchId) {
-      panel.classList.remove('hidden');
-      loadMobileWatchEvents(watchId, sanitized);
-    }
-  });
-  Object.keys(mobExpandedWatchDeferred).forEach(function(sanitized) {
-    var panel = document.getElementById('mob-watch-deferred-' + sanitized);
-    var watchId = mobExpandedWatchDeferred[sanitized];
-    if (panel && watchId) {
-      panel.classList.remove('hidden');
-      loadMobileDeferredComments(watchId, sanitized);
-    }
-  });
-  container.querySelectorAll('[data-watch-history]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      openMobileWatchHistory(btn.dataset.watchHistory, 1);
-    });
-  });
-  container.querySelectorAll('[data-watch-downloads]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      openMobileWatchDownloads(btn.dataset.watchDownloads);
-    });
-  });
-  container.querySelectorAll('[data-watch-deferred]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var panel = document.getElementById('mob-watch-deferred-' + btn.dataset.sanitized);
-      if (!panel) return;
-      var isHidden = panel.classList.contains('hidden');
-      panel.classList.toggle('hidden');
-      if (isHidden) {
-        mobExpandedWatchDeferred[btn.dataset.sanitized] = btn.dataset.watchDeferred;
-        loadMobileDeferredComments(btn.dataset.watchDeferred, btn.dataset.sanitized);
-      } else {
-        delete mobExpandedWatchDeferred[btn.dataset.sanitized];
-        refreshMobWatchesAfterCollapse();
-      }
+  container.querySelectorAll('[data-mob-watch-menu]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      openMobileWatchActionSheet(btn.dataset.mobWatchMenu);
     });
   });
 }
 
-async function loadMobileDeferredComments(watchId, sanitized) {
-  var panel = document.getElementById('mob-watch-deferred-' + sanitized);
-  if (!panel) return;
-  panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
-  try {
-    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
-    var items = (data && data.captures) || [];
-    if (!items.length) {
-      panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无待抓评论区任务</div>';
-      return;
-    }
-    panel.innerHTML = items.map(function(item) {
-      var due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
-      var actions = '';
-      if (item.status === 'pending') {
-        actions = '<button class="mob-btn mob-btn-sm" data-run-deferred="' + esc(String(item.id)) + '">立即执行</button>' +
-          '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>';
-      } else if (item.status === 'running') {
-        actions = '<button class="mob-btn mob-btn-sm mob-btn-danger" data-cancel-deferred="' + esc(String(item.id)) + '">取消</button>';
-      } else if (item.status === 'failure' || item.status === 'cancelled') {
-        actions = '<button class="mob-btn mob-btn-sm" data-retry-deferred="' + esc(String(item.id)) + '">重试</button>';
-      }
-      return '<div style="padding:8px;border-top:1px solid var(--color-border);">' +
-        '<div>#' + esc(String(item.source_message_id || '')) + ' · ' + esc(item.status || '') + '</div>' +
-        '<div style="color:var(--color-muted);font-size:12px;">计划: ' + esc(due) + '</div>' +
-        '<div style="display:flex;gap:6px;margin-top:6px;" data-deferred-watch="' + esc(watchId) + '" data-deferred-sanitized="' + esc(sanitized) + '">' + actions + '</div>' +
-        '</div>';
-    }).join('');
-    panel.querySelectorAll('[data-run-deferred]').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.runDeferred) + '/run-now', {});
-        loadMobileDeferredComments(watchId, sanitized);
-        if (typeof loadWatches === 'function') loadWatches();
-      });
-    });
-    panel.querySelectorAll('[data-cancel-deferred]').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.cancelDeferred) + '/cancel', {});
-        loadMobileDeferredComments(watchId, sanitized);
-        if (typeof loadWatches === 'function') loadWatches();
-      });
-    });
-    panel.querySelectorAll('[data-retry-deferred]').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(btn.dataset.retryDeferred) + '/retry', {});
-        loadMobileDeferredComments(watchId, sanitized);
-        if (typeof loadWatches === 'function') loadWatches();
-      });
-    });
-  } catch (e) {
-    panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载失败</div>';
-  }
-}
-
-async function loadMobileWatchEvents(watchId, sanitized) {
-  var panel = document.getElementById('mob-watch-events-' + sanitized);
-  if (!panel) return;
-  panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">加载中...</div>';
-  try {
-    var data = await fetchJson(withClientTzQuery('/api/watches/' + encodeURIComponent(watchId) + '/events?limit=20&today=1'));
-    if (!data || !data.events || data.events.length === 0) {
-      panel.innerHTML = '<div style="padding:8px;color:var(--color-muted);">暂无事件</div>';
-      return;
-    }
-    var html = '';
-    data.events.forEach(function(ev) {
-      var statusLabel = ev.status === 'success' ? '转发成功' : '已过滤';
-      html += '<div class="watch-event-item">' +
-        '<span class="watch-event-time">' + esc(fmtTime(ev.created_at)) + '</span>' +
-        '<span class="watch-event-badge badge ' + (ev.status === 'success' ? 'badge-success' : 'badge-warning') + '">' + esc(statusLabel) + '</span>' +
-        '<span class="watch-event-info">' + esc(ev.message || '') + '</span>' +
-      '</div>';
-    });
-    panel.innerHTML = html;
-  } catch (e) {
-    panel.innerHTML = '<div style="padding:8px;color:var(--color-danger);">加载失败</div>';
-  }
-}
-
-async function openMobileWatchHistory(watchId, page) {
+function openMobileWatchActionSheet(watchId) {
   stopMobWatchDownloadPolling();
-  sheetState.sheetType = 'watch-history';
-  state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
+  sheetState.sheetType = 'watch-menu';
+  sheetState.watchId = watchId;
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  var watch = mobFindWatchById(watchId);
+  if (!overlay || !sheet || !watch) return;
+  sheet.className = 'mob-sheet';
+  var items = mobileWatchMenuItems(watch);
+  var html = '<div class="mob-sheet__title">' + esc(t('watches.moreActions')) + '</div>' +
+    '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(mobWatchRoute(watch)) + '</div>' +
+    '<div class="mob-menu-group" role="menu">';
+  items.forEach(function(item) {
+    html += '<button class="mob-menu-item' + (item.danger ? ' mob-menu-item--danger' : '') + '" type="button" role="menuitem" data-mob-watch-menu-action="' + item.action + '" data-watch-id="' + esc(watchId) + '">' +
+      '<span class="mob-menu-item__label">' + esc(item.label) + '</span>' +
+    '</button>';
+  });
+  html += '</div>' +
+    '<button class="mob-btn mob-btn-muted watch-touch-btn" type="button" id="mob-watch-menu-cancel">' + esc(t('action.cancel')) + '</button>';
+  sheet.innerHTML = html;
+  overlay.classList.add('open');
+  document.getElementById('mob-watch-menu-cancel')?.addEventListener('click', closeSheet);
+  sheet.querySelectorAll('[data-mob-watch-menu-action]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      handleMobileWatchMenuAction(btn.dataset.watchId, btn.dataset.mobWatchMenuAction);
+    });
+  });
+}
+
+async function handleMobileWatchMenuAction(watchId, action) {
+  if (action === 'edit') {
+    openMobileWatchEditSheet(watchId);
+    return;
+  }
+  if (action === 'downloads' || action === 'deferred') {
+    await openMobileWatchDetail(watchId, action);
+    return;
+  }
+  if (action === 'delete') {
+    closeSheet();
+    try {
+      await deleteWatch(watchId);
+    } catch (e) {
+      alert(typeof translateApiError === 'function' ? translateApiError(e, 'form.requestFailed') : '删除失败');
+    }
+  }
+}
+
+function openMobileWatchEditSheet(watchId) {
+  var watch = mobFindWatchById(watchId);
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  if (!overlay || !sheet || !watch) return;
+  sheetState.sheetType = 'watch-edit';
+  sheetState.watchId = watchId;
+  sheet.className = 'mob-sheet';
+  sheet.innerHTML = '<div class="mob-sheet__title">' + esc(t('watches.edit')) + '</div>' +
+    '<form id="mob-watch-edit-form">' +
+      '<label><span>' + esc(t('watches.source')) + '</span><input name="source_link" required value="' + escAttr(watch.source_link || '') + '"></label>' +
+      '<label><span>' + esc(t('watches.target')) + '</span><input name="target_link" required value="' + escAttr(watch.target_link || '') + '"></label>' +
+      '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
+      '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
+      '<div style="display:flex;gap:8px;margin-top:6px;">' +
+        '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
+        '<button class="mob-btn mob-btn-muted watch-touch-btn" type="button" id="mob-watch-edit-cancel">' + esc(t('action.cancel')) + '</button>' +
+      '</div>' +
+    '</form>';
+  overlay.classList.add('open');
+  document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', function() { openMobileWatchActionSheet(watchId); });
+  document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    var form = event.currentTarget;
+    var payload = {
+      source_link: form.querySelector('[name="source_link"]').value.trim(),
+      target_link: form.querySelector('[name="target_link"]').value.trim(),
+      include_comment: form.querySelector('[name="include_comment"]').checked,
+      resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked
+    };
+    try {
+      var resp = await fetch('/api/watches/' + encodeURIComponent(watchId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        var data = {};
+        try { data = await resp.json(); } catch (e) {}
+        alert(data.detail || data.error || data.message || t('form.requestFailed'));
+        return;
+      }
+      closeSheet();
+      await loadMobileWatches();
+      if (typeof loadWatches === 'function') loadWatches();
+    } catch (e) {
+      alert(t('form.requestFailed'));
+    }
+  });
+}
+
+async function openMobileWatchDetail(watchId, mode) {
+  stopMobWatchDownloadPolling();
+  var detailMode = mode || 'history';
+  sheetState.sheetType = 'watch-detail';
+  state.watchDetail = {
+    watchId: watchId,
+    mode: detailMode,
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    filter: 'all',
+    items: []
+  };
+  if (detailMode === 'downloads') mobWatchDownloadState = { watchId: watchId };
   var overlay = document.getElementById('mob-sheet-overlay');
   var sheet = document.getElementById('mob-sheet');
   if (!overlay || !sheet) return;
-  sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
+  sheet.className = 'mob-sheet mob-sheet--task-detail mob-sheet--watch-detail';
+  renderMobileWatchDetailShell(mobFindWatchById(watchId), detailMode);
   overlay.classList.add('open');
-  await loadMobileWatchHistoryPage();
+  await loadMobileWatchDetail(false);
+  if (detailMode === 'downloads') startMobWatchDownloadPolling();
+}
+
+function renderMobileWatchDetailShell(watch, mode) {
+  var sheet = document.getElementById('mob-sheet');
+  if (!sheet) return;
+  sheet.innerHTML = '<div class="mob-sheet__sticky">' +
+      '<div class="mob-sheet__title">' + esc(mobWatchModeTitle(mode)) + '</div>' +
+      '<div class="mob-sheet__task-header">' +
+        '<div class="task-title">' + esc(mobWatchRoute(watch || {})) + '</div>' +
+        '<div class="task-meta" id="mob-watch-detail-summary"></div>' +
+      '</div>' +
+      '<div class="mob-sheet-tabs" id="mob-watch-detail-filters"></div>' +
+    '</div>' +
+    '<div class="mob-sheet__scroll-body" id="mob-watch-detail-body"><div class="mob-empty">加载中...</div></div>' +
+    '<div class="mob-sheet__footer">' +
+      '<div id="mob-watch-detail-pagination"></div>' +
+      '<button class="mob-btn mob-btn-muted mob-btn-sm watch-touch-btn" style="align-self:flex-end;" id="mob-watch-detail-close">关闭</button>' +
+    '</div>';
+  document.getElementById('mob-watch-detail-close')?.addEventListener('click', closeSheet);
+}
+
+async function loadMobileWatchDetail(silent) {
+  var detail = state.watchDetail;
+  if (!detail || !detail.watchId) return;
+  if (detail.mode === 'downloads') return loadMobileWatchDownloads(silent);
+  if (detail.mode === 'deferred') return loadMobileWatchDeferred(detail.watchId, silent);
+  return loadMobileWatchHistoryPage(silent);
+}
+
+function renderMobileWatchHistoryFilters(items) {
+  var filters = document.getElementById('mob-watch-detail-filters');
+  var detail = state.watchDetail;
+  if (!filters || !detail) return;
+  var chips = [
+    { key: 'all', label: t('watches.filterAll') },
+    { key: 'success', label: t('watches.filterSuccess') },
+    { key: 'filtered', label: t('watches.filterFiltered') },
+    { key: 'failure', label: t('watches.filterFailure') }
+  ];
+  filters.innerHTML = chips.map(function(chip) {
+    var count = mobFilterWatchEvents(items, chip.key).length;
+    return '<button type="button" class="mob-sheet-tab' + (detail.filter === chip.key ? ' active' : '') + '" data-mob-watch-filter="' + chip.key + '">' +
+      esc(chip.label) + '<span class="count">' + count + '</span>' +
+    '</button>';
+  }).join('');
+  filters.querySelectorAll('[data-mob-watch-filter]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      state.watchDetail.filter = btn.dataset.mobWatchFilter || 'all';
+      renderMobileWatchHistoryFilters(state.watchDetail.items || []);
+      var body = document.getElementById('mob-watch-detail-body');
+      if (body) body.innerHTML = renderMobileWatchHistoryList(mobFilterWatchEvents(state.watchDetail.items || [], state.watchDetail.filter));
+      bindMobileWatchHistoryRows();
+    });
+  });
+}
+
+function renderMobileWatchHistoryList(items) {
+  if (!items.length) return '<div class="mob-empty">' + esc(t('watches.noEvents')) + '</div>';
+  return items.map(function(ev, idx) {
+    var sum = mobSummarizeWatchEvent(ev);
+    var badgeClass = sum.kind === 'success' ? 'completed' : (sum.kind === 'filtered' ? 'pending' : 'failure');
+    var title = t(sum.titleKey);
+    var detailId = 'mob-watch-evt-detail-' + idx;
+    var canExpand = Boolean(sum.detail);
+    return '<div class="mob-event-row mob-watch-detail-row"' + (canExpand ? ' data-mob-expand-detail="' + detailId + '"' : '') + '>' +
+      '<span class="mob-card__badge ' + badgeClass + '">' + esc(title) + '</span>' +
+      '<div class="mob-watch-detail-row-main">' +
+        '<div style="font-weight:600;">' + esc(title) + '</div>' +
+        '<div style="color:var(--color-muted);font-size:12px;">#' + esc(String(ev.source_message_id || '-')) + ' · ' + esc(fmtTime(ev.created_at)) + (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') + '</div>' +
+        (canExpand ? '<div id="' + detailId + '" class="hidden" style="color:var(--color-muted);font-size:12px;margin-top:4px;word-break:break-all;">' + esc(sum.detail) + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function bindMobileWatchHistoryRows() {
+  var body = document.getElementById('mob-watch-detail-body');
+  if (!body) return;
+  body.querySelectorAll('[data-mob-expand-detail]').forEach(function(row) {
+    row.addEventListener('click', function() {
+      var detail = document.getElementById(row.dataset.mobExpandDetail);
+      if (detail) detail.classList.toggle('hidden');
+    });
+  });
+}
+
+async function loadMobileWatchHistoryPage(silent) {
+  var detail = state.watchDetail || state.watchHistory;
+  var body = document.getElementById('mob-watch-detail-body');
+  var summary = document.getElementById('mob-watch-detail-summary');
+  var pagination = document.getElementById('mob-watch-detail-pagination');
+  if (!detail || !detail.watchId || !body) return;
+  var page = detail.page || 1;
+  var pageSize = detail.pageSize || 20;
+  var offset = (page - 1) * pageSize;
+  if (!silent) body.innerHTML = '<div class="mob-empty">加载中...</div>';
+  if (pagination) pagination.innerHTML = '';
+  try {
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    var items = data.events || [];
+    var total = Number(data.total || 0);
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    detail.items = items;
+    detail.total = total;
+    var watch = mobFindWatchById(detail.watchId);
+    if (summary) summary.textContent = '今日 ' + Number(watch && watch.today_count || 0) + ' · 全部 ' + total;
+    renderMobileWatchHistoryFilters(items);
+    body.innerHTML = renderMobileWatchHistoryList(mobFilterWatchEvents(items, detail.filter));
+    bindMobileWatchHistoryRows();
+    if (pagination) {
+      pagination.innerHTML = renderPaginationBar({
+        prefix: 'mob-watch-history',
+        page: page,
+        pageSize: pageSize,
+        total: total,
+        variant: 'mobile',
+        pageInfoKey: 'watches.pageInfo'
+      });
+      bindPaginationBar('mob-watch-history', page, totalPages, function(newPage) {
+        state.watchDetail.page = newPage;
+        loadMobileWatchHistoryPage(false);
+      });
+    }
+  } catch (e) {
+    body.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
 }
 
 function mobWatchDownloadBucket(status) {
@@ -713,102 +891,102 @@ function mobWatchDownloadBucket(status) {
 }
 
 async function openMobileWatchDownloads(watchId) {
-  sheetState.sheetType = 'watch-downloads';
-  mobWatchDownloadState = { watchId: watchId };
-  var overlay = document.getElementById('mob-sheet-overlay');
-  var sheet = document.getElementById('mob-sheet');
-  if (!overlay || !sheet) return;
-  sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
-  overlay.classList.add('open');
-  await loadMobileWatchDownloads(false);
-  startMobWatchDownloadPolling();
+  return openMobileWatchDetail(watchId, 'downloads');
+}
+
+async function openMobileWatchHistory(watchId, page) {
+  await openMobileWatchDetail(watchId, 'history');
+  if (state.watchDetail && page && page > 1) {
+    state.watchDetail.page = page;
+    await loadMobileWatchHistoryPage(false);
+  }
 }
 
 async function loadMobileWatchDownloads(silent) {
-  var sheet = document.getElementById('mob-sheet');
-  if (!sheet || !mobWatchDownloadState.watchId || sheetState.sheetType !== 'watch-downloads') return;
-  if (!silent) {
-    sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
-  }
+  var body = document.getElementById('mob-watch-detail-body');
+  var summary = document.getElementById('mob-watch-detail-summary');
+  var filters = document.getElementById('mob-watch-detail-filters');
+  var pagination = document.getElementById('mob-watch-detail-pagination');
+  if (!body || !mobWatchDownloadState.watchId || !state.watchDetail || state.watchDetail.mode !== 'downloads') return;
+  if (filters) filters.innerHTML = '';
+  if (pagination) pagination.innerHTML = '';
+  if (!silent) body.innerHTML = '<div class="mob-empty">加载中...</div>';
   try {
     var data = await fetchJson('/api/watches/' + encodeURIComponent(mobWatchDownloadState.watchId) + '/download-tasks');
     var tasks = data.tasks || [];
     var groups = { active: [], completed: [], failed: [] };
-    tasks.forEach(function(task) {
-      groups[mobWatchDownloadBucket(task.status)].push(task);
-    });
-    var sections = [
-      { key: 'active', label: t('watches.downloadActive') },
-      { key: 'completed', label: t('watches.downloadCompleted') },
-      { key: 'failed', label: t('watches.downloadFailed') }
-    ];
-    var html = '<div class="mob-sheet__title">' + esc(t('watches.downloadRecordsTitle')) + '</div>';
-    if (!tasks.length) {
-      html += '<div class="mob-empty">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
+    tasks.forEach(function(task) { groups[mobWatchDownloadBucket(task.status)].push(task); });
+    var activeCount = data.counts && data.counts.active != null ? Number(data.counts.active) : groups.active.length;
+    var completedCount = data.counts && data.counts.completed != null ? Number(data.counts.completed) : groups.completed.length;
+    var failedCount = data.counts && data.counts.failed != null ? Number(data.counts.failed) : groups.failed.length;
+    if (summary) summary.textContent = t('watches.downloadActive') + ' ' + activeCount + ' · ' + t('watches.downloadCompleted') + ' ' + completedCount + ' · ' + t('watches.downloadFailed') + ' ' + failedCount;
+    body.innerHTML = renderMobileWatchDownloadSections(groups);
+    bindMobileWatchDownloadActions(body);
+  } catch (e) {
+    if (!silent) body.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
+}
+
+function renderMobileWatchDownloadSections(groups) {
+  var sections = [
+    { key: 'active', label: t('watches.downloadActive') },
+    { key: 'completed', label: t('watches.downloadCompleted') },
+    { key: 'failed', label: t('watches.downloadFailed') }
+  ];
+  var html = '';
+  sections.forEach(function(section) {
+    var items = groups[section.key] || [];
+    html += '<div class="watch-download-section">' +
+      '<div class="watch-download-section-title">' + esc(section.label) + ' (' + items.length + ')</div>';
+    if (!items.length) {
+      html += '<div class="mob-empty" style="padding:12px;">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
     } else {
-      sections.forEach(function(section) {
-        var items = groups[section.key] || [];
-        html += '<div style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--color-muted);">' +
-          esc(section.label) + ' (' + items.length + ')</div>';
-        if (!items.length) {
-          html += '<div class="mob-empty" style="padding:8px;">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
+      items.forEach(function(task) {
+        var pct = typeof taskProgressPercent === 'function' ? taskProgressPercent(task) : (task.progress_percent || 0);
+        var route = mobWatchHelpers().formatWatchRoute ? mobWatchHelpers().formatWatchRoute(task.source_link || '-', task.target_profile || task.target_link || '-') : (task.source_link || '-') + ' → ' + (task.target_profile || task.target_link || '-');
+        html += '<div class="mob-event-row mob-watch-detail-row" data-task-id="' + task.id + '">' +
+          '<span class="mob-card__badge ' + (task.status === 'success' ? 'completed' : task.status === 'failure' ? 'failure' : 'running') + '">' + esc(task.status || '-') + '</span>' +
+          '<div class="mob-watch-detail-row-main">' +
+            '<div style="font-weight:600;">#' + esc(String(task.id)) + '</div>' +
+            '<div style="word-break:break-all;font-size:12px;color:var(--color-muted);">' + esc(route) + '</div>' +
+            '<div style="font-size:12px;color:var(--color-muted);">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
+            (task.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>' : '') +
+          '</div>' +
+        '</div>';
+      });
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+function bindMobileWatchDownloadActions(body) {
+  body.querySelectorAll('[data-mob-watch-download-delete]').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      var taskId = parseInt(btn.dataset.mobWatchDownloadDelete, 10);
+      if (!confirm('确定删除任务 #' + taskId + '？')) return;
+      try {
+        var resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+        if (!resp.ok) {
+          var errData = {};
+          try { errData = await resp.json(); } catch (err) {}
+          alert(errData.detail || errData.error || errData.message || '删除失败');
           return;
         }
-        items.forEach(function(task) {
-          var pct = typeof taskProgressPercent === 'function' ? taskProgressPercent(task) : (task.progress_percent || 0);
-          var statusLabel = task.status === 'success' ? t('watches.downloadCompleted')
-            : (task.status === 'failure' ? t('watches.downloadFailed')
-            : (task.status === 'paused' ? t('status.paused') : t('watches.downloadActive')));
-          var badgeClass = task.status === 'success' ? 'completed' : (task.status === 'failure' ? 'paused' : 'running');
-          html += '<div class="mob-event-row" data-task-id="' + task.id + '">' +
-            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
-              '<strong>#' + task.id + '</strong>' +
-              '<span class="mob-card__badge ' + badgeClass + '">' + esc(statusLabel) + '</span>' +
-            '</div>' +
-            '<div style="margin-top:4px;word-break:break-all;font-size:12px;">' +
-              esc(task.source_link || '-') + ' → ' + esc(task.target_profile || task.target_link || '-') +
-            '</div>' +
-            '<div style="margin-top:6px;font-size:12px;color:var(--color-muted);">' + pct + '%</div>' +
-            (task.can_delete
-              ? '<button class="mob-btn mob-btn-sm mob-btn-danger" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>'
-              : '') +
-          '</div>';
-        });
-      });
-    }
-    html += '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:8px;" id="mob-watch-downloads-close">关闭</button>';
-    sheet.innerHTML = html;
-    document.getElementById('mob-watch-downloads-close')?.addEventListener('click', closeSheet);
-    sheet.querySelectorAll('[data-mob-watch-download-delete]').forEach(function(btn) {
-      btn.addEventListener('click', async function() {
-        var taskId = parseInt(btn.dataset.mobWatchDownloadDelete, 10);
-        if (!confirm('确定删除任务 #' + taskId + '？')) return;
-        try {
-          var resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
-          if (!resp.ok) {
-            var errData = {};
-            try { errData = await resp.json(); } catch (e) {}
-            alert(errData.detail || errData.error || errData.message || '删除失败');
-            return;
-          }
-          await loadMobileWatchDownloads(true);
-        } catch (e) {
-          alert('删除失败');
-        }
-      });
+        await loadMobileWatchDownloads(true);
+      } catch (err) {
+        alert('删除失败');
+      }
     });
-  } catch (e) {
-    if (!silent) {
-      sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
-    }
-  }
+  });
 }
 
 function startMobWatchDownloadPolling() {
   stopMobWatchDownloadPolling();
   mobWatchDownloadPollTimer = setInterval(function() {
     var overlay = document.getElementById('mob-sheet-overlay');
-    if (!overlay || !overlay.classList.contains('open') || sheetState.sheetType !== 'watch-downloads') {
+    if (!overlay || !overlay.classList.contains('open') || !state.watchDetail || state.watchDetail.mode !== 'downloads') {
       stopMobWatchDownloadPolling();
       return;
     }
@@ -823,50 +1001,93 @@ function stopMobWatchDownloadPolling() {
   }
 }
 
-async function loadMobileWatchHistoryPage() {
-  var sheet = document.getElementById('mob-sheet');
-  if (!sheet || !state.watchHistory.watchId) return;
-  var page = state.watchHistory.page || 1;
-  var pageSize = state.watchHistory.pageSize || 20;
-  var offset = (page - 1) * pageSize;
+function mobileDeferredStatusLabel(status) {
+  var map = {
+    pending: 'watches.deferredPending',
+    running: 'watches.deferredRunning',
+    done: 'watches.deferredDone',
+    cancelled: 'watches.deferredCancelled',
+    failure: 'watches.deferredFailure'
+  };
+  return t(map[status] || 'watches.deferredPending');
+}
+
+function mobileDeferredStatusClass(status) {
+  if (status === 'pending') return 'pending';
+  if (status === 'running') return 'running';
+  if (status === 'done') return 'completed';
+  if (status === 'failure') return 'failure';
+  return 'cancelled';
+}
+
+async function loadMobileWatchDeferred(watchId, silent) {
+  var body = document.getElementById('mob-watch-detail-body');
+  var summary = document.getElementById('mob-watch-detail-summary');
+  var filters = document.getElementById('mob-watch-detail-filters');
+  var pagination = document.getElementById('mob-watch-detail-pagination');
+  if (!body) return;
+  if (filters) filters.innerHTML = '';
+  if (pagination) pagination.innerHTML = '';
+  if (!silent) body.innerHTML = '<div class="mob-empty">加载中...</div>';
   try {
-    var data = await fetchJson('/api/watches/' + encodeURIComponent(state.watchHistory.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
-    var items = data.events || [];
-    var total = Number(data.total || 0);
-    var totalPages = Math.max(1, Math.ceil(total / pageSize));
-    var html = '<div class="mob-sheet__title">' + esc(t('watches.historyTitle')) + '</div>';
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments');
+    var items = data.captures || [];
+    var counts = { pending: 0, running: 0, done: 0, cancelled: 0, failure: 0 };
+    items.forEach(function(item) {
+      if (counts[item.status] === undefined) counts[item.status] = 0;
+      counts[item.status] += 1;
+    });
+    if (summary) summary.textContent = '全部 ' + items.length + ' · ' + t('watches.deferredPending') + ' ' + counts.pending + ' · ' + t('watches.deferredRunning') + ' ' + counts.running + ' · ' + t('watches.deferredFailure') + ' ' + counts.failure;
     if (!items.length) {
-      html += '<div class="mob-empty">' + esc(t('watches.noEvents')) + '</div>';
-    } else {
-      items.forEach(function(ev) {
-        var statusLabel = ev.status === 'success' ? t('watches.eventForwarded') : t('watches.eventSkipped');
-        html += '<div class="mob-event-row">' +
-          '<time>' + esc(fmtTime(ev.created_at)) + '</time>' +
-          '<span class="mob-card__badge ' + (ev.status === 'success' ? 'completed' : 'pending') + '">' + esc(statusLabel) + '</span>' +
-          '<div style="margin-top:4px;word-break:break-all;">' + esc(ev.message || '-') + '</div>' +
-        '</div>';
-      });
+      body.innerHTML = '<div class="mob-empty">' + esc(t('watches.noDeferredComments')) + '</div>';
+      return;
     }
-    html += '<div class="mob-sheet-pagination">' +
-      '<span>' + esc(t('watches.pageInfo').replace('{page}', page).replace('{pages}', totalPages).replace('{total}', total)) + '</span>' +
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-watch-history-prev" ' + (page <= 1 ? 'disabled' : '') + '>' + esc(t('items.page.previous')) + '</button>' +
-        '<button class="mob-btn mob-btn-sm mob-btn-muted" id="mob-watch-history-next" ' + (page >= totalPages ? 'disabled' : '') + '>' + esc(t('items.page.next')) + '</button>' +
-      '</div>' +
-    '</div>' +
-    '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:4px;" id="mob-watch-history-close">关闭</button>';
-    sheet.innerHTML = html;
-    document.getElementById('mob-watch-history-close')?.addEventListener('click', closeSheet);
-    document.getElementById('mob-watch-history-prev')?.addEventListener('click', function() {
-      state.watchHistory.page = Math.max(1, page - 1);
-      loadMobileWatchHistoryPage();
-    });
-    document.getElementById('mob-watch-history-next')?.addEventListener('click', function() {
-      state.watchHistory.page = page + 1;
-      loadMobileWatchHistoryPage();
-    });
+    body.innerHTML = items.map(function(item) {
+      var due = item.due_at ? new Date(Number(item.due_at) * 1000).toLocaleString() : '-';
+      var actions = '';
+      if (item.status === 'pending') {
+        actions = '<button class="mob-btn mob-btn-sm watch-touch-btn" data-watch-id="' + esc(watchId) + '" data-deferred-run-now="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRunNow')) + '</button>' +
+          '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>';
+      } else if (item.status === 'running') {
+        actions = '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-watch-id="' + esc(watchId) + '" data-deferred-cancel="' + esc(String(item.id)) + '">' + esc(t('watches.deferredCancel')) + '</button>';
+      } else if (item.status === 'failure' || item.status === 'cancelled') {
+        actions = '<button class="mob-btn mob-btn-sm watch-touch-btn" data-watch-id="' + esc(watchId) + '" data-deferred-retry="' + esc(String(item.id)) + '">' + esc(t('watches.deferredRetry')) + '</button>';
+      }
+      return '<div class="mob-event-row mob-watch-detail-row">' +
+        '<span class="mob-card__badge ' + mobileDeferredStatusClass(item.status) + '">' + esc(mobileDeferredStatusLabel(item.status)) + '</span>' +
+        '<div class="mob-watch-detail-row-main">' +
+          '<div style="font-weight:600;">#' + esc(String(item.source_message_id || '-')) + '</div>' +
+          '<div style="font-size:12px;color:var(--color-muted);">' + esc(t('watches.deferredDue')) + ': ' + esc(due) + '</div>' +
+          (actions ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">' + actions + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    bindMobileDeferredActions(body);
   } catch (e) {
-    sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
+    body.innerHTML = '<div class="mob-empty">加载失败</div>';
+  }
+}
+
+function bindMobileDeferredActions(body) {
+  body.querySelectorAll('[data-deferred-run-now]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); postMobileDeferredAction(btn.dataset.watchId, btn.dataset.deferredRunNow, 'run-now'); });
+  });
+  body.querySelectorAll('[data-deferred-cancel]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); postMobileDeferredAction(btn.dataset.watchId, btn.dataset.deferredCancel, 'cancel'); });
+  });
+  body.querySelectorAll('[data-deferred-retry]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) { e.stopPropagation(); postMobileDeferredAction(btn.dataset.watchId, btn.dataset.deferredRetry, 'retry'); });
+  });
+}
+
+async function postMobileDeferredAction(watchId, captureId, action) {
+  try {
+    await postJson('/api/watches/' + encodeURIComponent(watchId) + '/deferred-comments/' + encodeURIComponent(captureId) + '/' + action, {});
+    await loadMobileWatchDeferred(watchId, true);
+    await loadMobileWatches();
+    if (typeof loadWatches === 'function') loadWatches();
+  } catch (e) {
+    alert(t('form.requestFailed'));
   }
 }
 

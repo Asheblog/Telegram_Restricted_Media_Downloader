@@ -1260,6 +1260,10 @@
     min-height: 36px;
     min-width: auto;
   }
+  .watch-touch-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
   .mob-btn svg {
     width: 18px; height: 18px;
     flex-shrink: 0;
@@ -1771,6 +1775,16 @@
   }
   .mob-event-row:last-child { border-bottom: 0; }
   .mob-event-row time { color: var(--color-muted); margin-right: 6px; }
+  .mob-watch-detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .mob-watch-detail-row-main {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
   .mob-sheet-pagination {
     display: flex;
     justify-content: space-between;
