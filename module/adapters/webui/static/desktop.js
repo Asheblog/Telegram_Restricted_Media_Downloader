@@ -1050,7 +1050,6 @@ function buildWatchMenuItems(watch) {
   const deferredCount = Number(watch && watch.deferred_comment_count || 0);
   if (watch && watch.type === 'forward') {
     items.push({ action: 'edit', label: t('watches.edit') });
-    items.push({ action: 'history', label: t('watches.history') });
     items.push({ action: 'downloads', label: t('watches.downloadRecords') });
     if (watch.include_comment) {
       items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
@@ -1270,41 +1269,30 @@ function renderWatchDetailHistoryFilters(items) {
   }).join('');
 }
 
-function watchHistoryStatusBadge(summary) {
-  const cls = summary.kind === 'success' ? 'badge-success'
-    : summary.kind === 'filtered' ? 'badge-warning'
-    : 'badge-failed';
-  return '<span class="badge ' + cls + '">' + esc(t(summary.titleKey)) + '</span>';
-}
-
 function renderWatchHistoryList(items) {
   if (!items.length) {
     return '<div class="p-8 text-center text-muted text-sm">' + esc(t('watches.noEvents')) + '</div>';
   }
-  return '<table class="data-table watch-history-table"><thead><tr>' +
-    '<th>' + esc(t('tasks.status')) + '</th>' +
-    '<th>' + esc(t('events.title')) + '</th>' +
-    '<th>' + esc(t('watches.source')) + '</th>' +
-    '<th>' + esc(t('watches.target')) + '</th>' +
-    '<th>' + esc(t('records.updated')) + '</th>' +
-    '</tr></thead><tbody>' +
-    items.map(function(evt, index) {
-      const summary = summarizeWatchEventForDetail(evt);
-      const detail = summary.detail || evt.message || '';
-      const message = evt.message || t(summary.titleKey);
-      const canExpand = Boolean(detail);
-      return '<tr class="watch-history-row' + (canExpand ? ' cursor-pointer' : '') + '" data-watch-history-row="' + index + '" aria-expanded="false">' +
-        '<td>' + watchHistoryStatusBadge(summary) + '</td>' +
-        '<td class="text-xs max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(detail || message) + '">' + esc(message || '-') + '</td>' +
-        '<td class="text-xs font-mono text-muted">#' + esc(String(evt.source_message_id || '-')) + '</td>' +
-        '<td class="text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(evt.target_link || evt.target_chat_id || '') + '">' + esc(evt.target_link || evt.target_chat_id || '-') + '</td>' +
-        '<td class="text-xs text-muted">' + fmtTime(evt.created_at) + '</td>' +
-      '</tr>' +
-      (canExpand
-        ? '<tr class="watch-history-reason-row hidden" data-watch-history-reason="' + index + '"><td colspan="5"><div class="watch-expand-empty text-left">' + esc(detail) + '</div></td></tr>'
-        : '');
-    }).join('') +
-    '</tbody></table>';
+  return '<div class="watch-detail-list">' + items.map(function(evt, idx) {
+    const sum = summarizeWatchEventForDetail(evt);
+    const badgeCls = sum.kind === 'success' ? 'badge-success'
+      : sum.kind === 'filtered' ? 'badge-warning'
+      : 'badge-failed';
+    const title = t(sum.titleKey);
+    const meta = '#' + (evt.source_message_id || '-') + ' · ' + fmtTime(evt.created_at);
+    const detailId = 'watch-evt-detail-' + idx;
+    const canExpand = Boolean(sum.detail);
+    return '<div class="watch-detail-row"' + (canExpand ? ' data-expand-detail="' + detailId + '"' : '') + '>' +
+      '<span class="badge ' + badgeCls + '">' + esc(title) + '</span>' +
+      '<div class="watch-detail-row-main">' +
+        '<div class="font-medium">' + esc(title) + '</div>' +
+        '<div class="text-xs text-muted">' + esc(meta) +
+          (canExpand ? ' · ' + esc(t('watches.detailExpandReason')) : '') +
+        '</div>' +
+        (canExpand ? '<div id="' + detailId + '" class="watch-detail-reason hidden text-xs text-muted mt-1">' + esc(sum.detail) + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
 }
 
 function closeWatchDetail() {
@@ -1484,7 +1472,7 @@ document.addEventListener('click', async function(e) {
       openEditWatchModal(watchId);
       return;
     }
-    if (action === 'history' || action === 'downloads' || action === 'deferred') {
+    if (action === 'downloads' || action === 'deferred') {
       await openWatchDetail(watchId, action);
       return;
     }
@@ -1703,14 +1691,14 @@ $('#watch-detail-filters')?.addEventListener('click', function(e) {
   if (body) body.innerHTML = renderWatchHistoryList(filterWatchEventsForDetail(state.watchDetail.items || [], state.watchDetail.filter));
 });
 $('#watch-detail-body')?.addEventListener('click', async function(e) {
-  const historyRow = e.target.closest('[data-watch-history-row]');
-  if (historyRow) {
-    const rowIndex = historyRow.dataset.watchHistoryRow;
-    const reasonRow = document.querySelector('[data-watch-history-reason="' + rowIndex + '"]');
-    if (reasonRow) {
-      const willOpen = reasonRow.classList.contains('hidden');
-      reasonRow.classList.toggle('hidden', !willOpen);
-      historyRow.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  const expandRow = e.target.closest('[data-expand-detail]');
+  if (expandRow) {
+    const detailId = expandRow.dataset.expandDetail;
+    const detailEl = detailId ? document.getElementById(detailId) : null;
+    if (detailEl) {
+      const willOpen = detailEl.classList.contains('hidden');
+      detailEl.classList.toggle('hidden', !willOpen);
+      expandRow.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     }
     return;
   }
