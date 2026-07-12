@@ -286,10 +286,14 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_watches_detail_shell_present(self):
         self.assertIn('id="watch-detail-overlay"', WEB_UI_HTML)
         self.assertIn('id="watch-detail-body"', WEB_UI_HTML)
+        self.assertIn('watch-detail-dialog', WEB_UI_HTML)
+        self.assertIn('watch-detail-summary', WEB_UI_HTML)
+        self.assertIn('WatchUiHelpers', WEB_UI_HTML)
         self.assertNotIn('id="watch-download-overlay"', WEB_UI_HTML)
 
     def test_watches_table_compact_headers(self):
         self.assertIn('data-i18n="watches.task"', WEB_UI_HTML)
+        self.assertIn('data-watch-menu', WEB_UI_HTML)
 
     def test_desktop_and_mobile_use_unified_webui_contract(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
