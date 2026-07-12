@@ -77,11 +77,13 @@
 /* Component layer */
 @layer components {
   /* Semantic type scale — page 20 / title 16 / body 14 / caption 12
-     Standalone classes for HTML/JS; component rules expand to utilities (no @apply of these). */
+     Leading: title/page 1.25, body/caption/label 1.5.
+     Tracking: only uppercase labels use 0.04em; body stays normal. */
   .type-page {
     font-size: 1.25rem;
     font-weight: 700;
     line-height: 1.25;
+    letter-spacing: normal;
     font-family: var(--font-heading);
   }
 
@@ -89,17 +91,20 @@
     font-size: 1rem;
     font-weight: 600;
     line-height: 1.25;
+    letter-spacing: normal;
     font-family: var(--font-heading);
   }
 
   .type-body {
     font-size: 0.875rem;
     line-height: 1.5;
+    letter-spacing: normal;
   }
 
   .type-caption {
     font-size: 0.75rem;
     line-height: 1.5;
+    letter-spacing: normal;
   }
 
   .type-label {
@@ -132,7 +137,7 @@
   }
 
   .sidebar-nav-label {
-    @apply text-xs uppercase tracking-[0.08em] text-muted font-semibold pt-4 pb-2 px-2.5;
+    @apply text-xs uppercase tracking-[0.04em] text-muted font-semibold pt-4 pb-2 px-2.5;
   }
 
   .sidebar-nav-item {
@@ -397,7 +402,7 @@
   }
 
   .data-table thead th {
-    @apply text-center py-2.5 px-3 text-xs font-semibold text-muted uppercase tracking-[0.05em]
+    @apply text-center py-2.5 px-3 text-xs font-semibold text-muted uppercase tracking-[0.04em]
            border-b-2 border-line bg-surface-alt sticky top-0 whitespace-nowrap;
   }
 
@@ -534,7 +539,7 @@
 
     .task-row-progress-summary {
       @apply whitespace-normal overflow-visible;
-      line-height: 1.35;
+      line-height: 1.5;
     }
 
     .task-row-progress-range,
@@ -599,7 +604,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
-    line-height: 1.45;
+    line-height: 1.5;
   }
 
   .task-items-table .task-item-size,
@@ -776,7 +781,7 @@
 
   /* Activity feed */
   .activity-item {
-    @apply flex gap-2 py-1.5 border-b border-line-light text-xs leading-[1.5];
+    @apply flex gap-2 py-1.5 border-b border-line-light text-xs leading-normal;
   }
 
   .activity-item:last-child {
@@ -835,7 +840,7 @@
   }
 
   .login-brand p {
-    @apply text-sm leading-normal text-muted mt-1 max-sm:px-2 max-sm:leading-5;
+    @apply text-sm leading-normal text-muted mt-1 max-sm:px-2;
   }
 
   .login-overlay {
@@ -1157,7 +1162,7 @@
     align-items: center;
     padding: 2px 8px;
     border-radius: 999px;
-    @apply text-xs font-semibold tracking-[0.03em];
+    @apply text-xs font-semibold tracking-[0.04em];
   }
   .system-log-level-info {
     color: var(--color-primary);
@@ -1981,7 +1986,6 @@
     @apply text-xl font-extrabold leading-tight text-text;
     font-family: var(--font-heading);
     margin: 0;
-    letter-spacing: -.02em;
   }
   .mob-login-brand p {
     @apply text-sm text-muted;
