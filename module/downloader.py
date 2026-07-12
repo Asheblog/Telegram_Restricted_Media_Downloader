@@ -642,7 +642,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             origin_chat_id: Union[str, int],
             message_id: int,
             media_group: Optional[list] = None,
-            transferred_at: Optional[float] = None
+            transferred_at: Optional[float] = None,
+            source_folder: Optional[str] = None,
+            source_link: Optional[str] = None,
     ) -> None:
         transferred_at = transferred_at or datetime.datetime.now(datetime.UTC).timestamp()
         messages = [message]
@@ -655,18 +657,23 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             except Exception as e:
                 log.debug(f'Unable to resolve media group for PikPak archive: {e}')
         for group_message in messages:
-            group_source_link = getattr(group_message, 'link', None) or getattr(message, 'link', None)
+            group_source_link = (
+                source_link
+                or getattr(group_message, 'link', None)
+                or getattr(message, 'link', None)
+            )
+            archive_folder = source_folder or source_folder_from_message(
+                group_message,
+                fallback_chat_id=origin_chat_id,
+                fallback_link=group_source_link
+            )
             archive_result = self.archive_pikpak_item(
                 target_profile='pikpak',
                 item_id=None,
                 task_id=None,
                 message=group_message,
                 source_link=group_source_link,
-                source_folder=source_folder_from_message(
-                    group_message,
-                    fallback_chat_id=origin_chat_id,
-                    fallback_link=group_source_link
-                ),
+                source_folder=archive_folder,
                 transferred_at=transferred_at
             )
             if (
@@ -697,11 +704,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     target_link=group_source_link,
                     details={
                         'archive_path': getattr(archive_result, 'archive_path', None),
-                        'source_folder': source_folder_from_message(
-                            group_message,
-                            fallback_chat_id=origin_chat_id,
-                            fallback_link=group_source_link
-                        ),
+                        'source_folder': archive_folder,
                         'file_name': getattr(archive_result, 'file_name', None),
                     }
                 )
@@ -720,11 +723,19 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             ignore_type_filter: Optional[bool] = False,
             archive_after_success: Optional[bool] = True,
             watch_id: Optional[str] = None,
-            trace_id: Optional[str] = None
+            trace_id: Optional[str] = None,
+            source_folder: Optional[str] = None,
+            archive_source_link: Optional[str] = None,
     ):
         try:
             if trace_id is None:
                 trace_id, _, _ = self._message_chain_context(message, watch_id)
+            channel_source_folder = source_folder or source_folder_from_message(
+                message,
+                fallback_chat_id=origin_chat_id,
+                fallback_link=archive_source_link or getattr(message, 'link', None)
+            )
+            channel_source_link = archive_source_link or getattr(message, 'link', None)
             if not ignore_type_filter and not self.message_filter.should_pass(message):
                 reject_reason = self.message_filter.get_reject_reason(message) or '消息过滤器拒绝'
                 self._log_system_chain(
@@ -849,7 +860,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     message=message,
                     origin_chat_id=origin_chat_id,
                     message_id=message_id,
-                    media_group=media_group
+                    media_group=media_group,
+                    source_folder=channel_source_folder,
+                    source_link=channel_source_link,
                 )
             return forwarded_message
         except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
@@ -865,7 +878,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 ):
                     return None
                 raise
-            link = getattr(message, 'link', None)
+            link = channel_source_link or getattr(message, 'link', None)
             if not self.gc.download_upload:
                 self._log_system_chain(
                     category='forward',
@@ -893,11 +906,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             upload_meta = self.build_download_upload_meta(
                 target_link=target_link,
                 source_link=link,
-                source_folder=source_folder_from_message(
-                    message,
-                    fallback_chat_id=origin_chat_id,
-                    fallback_link=link
-                )
+                source_folder=channel_source_folder
             )
             self._log_system_chain(
                 category='transfer',
@@ -1493,6 +1502,12 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     )
                     forward_origin_chat_id = _listen_chat_id
                     forward_message_id = message.id
+                    channel_source_link = link
+                    channel_source_folder = source_folder_from_message(
+                        message,
+                        fallback_chat_id=_listen_chat_id,
+                        fallback_link=link,
+                    )
                     if resolve_deep_link:
                         from module.transfer.deep_link import DeepLinkResolveError
                         resolver = self.get_deep_link_resolver()
@@ -1578,7 +1593,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 download_upload=False,
                                 media_group=sorted(ids),
                                 watch_id=watch_id,
-                                trace_id=trace_id
+                                trace_id=trace_id,
+                                source_folder=channel_source_folder,
+                                archive_source_link=channel_source_link,
                             )
                             if include_comment:
                                 await self.schedule_or_forward_discussion_replies(
@@ -1611,7 +1628,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         target_link=target_link,
                         download_upload=True,
                         watch_id=watch_id,
-                        trace_id=trace_id
+                        trace_id=trace_id,
+                        source_folder=channel_source_folder,
+                        archive_source_link=channel_source_link,
                     )
                     if include_comment:
                         await self.schedule_or_forward_discussion_replies(

@@ -512,6 +512,11 @@ class WebTransferRunner:
             )
             return False
         channel_message = message
+        channel_source_folder = source_folder_from_message(
+            channel_message,
+            fallback_chat_id=origin_chat_id,
+            fallback_link=source_link
+        )
         forward_chat_id = origin_chat_id
         forward_message_id = message_id
         resolved_meta = None
@@ -595,11 +600,7 @@ class WebTransferRunner:
                     media_type='forward',
                     file_name=(media_meta or {}).get('file_name'),
                     file_size=(media_meta or {}).get('file_size'),
-                    source_folder=source_folder_from_message(
-                        channel_message,
-                        fallback_chat_id=origin_chat_id,
-                        fallback_link=source_link
-                    ),
+                    source_folder=channel_source_folder,
                     archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,
                     archive_match_original_name=(
                         archive_file_name is None
@@ -636,6 +637,7 @@ class WebTransferRunner:
                             task_id=task_id,
                             message=message,
                             source_link=source_link,
+                            source_folder=channel_source_folder,
                             transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
                         )
                         if bool(getattr(archive_result, 'ok', False)):
@@ -661,6 +663,7 @@ class WebTransferRunner:
                         task_id=task_id,
                         message=message,
                         source_link=source_link,
+                        source_folder=channel_source_folder,
                         transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
                     )
                     return False

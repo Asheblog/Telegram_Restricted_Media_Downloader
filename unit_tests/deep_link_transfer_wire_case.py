@@ -223,6 +223,199 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertIs(resolved, kwargs['message'])
             self.assertEqual('https://t.me/source/1', kwargs['source_link'])
 
+    def test_resolve_pikpak_archive_keeps_channel_source_folder_not_bot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/swag_vip',
+                'https://t.me/mypikpakbot',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolved = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+                _deep_link_meta={'bot': 'a82bot', 'start_param': 'v_abc'},
+            )
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+            archive_calls = []
+
+            host = _make_host(store, resolver=resolver)
+            host.is_pikpak_target = lambda *a, **k: True
+            host.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+            host.complete_forwarded_pikpak_item = lambda **kwargs: (
+                archive_calls.append(kwargs) or True
+            )
+            host.get_message_media_target_limit_meta = lambda message: (
+                {'file_name': 'video.mp4', 'file_size': 10}
+                if getattr(message, 'video', None) else None
+            )
+            runner = WebTransferRunner(host)
+            channel_msg = SimpleNamespace(
+                id=1,
+                empty=False,
+                link='https://t.me/swag_vip/1',
+                chat=SimpleNamespace(id='-1001', username='swag_vip'),
+                video=None,
+            )
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='-1001',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/swag_vip/1',
+            ))
+
+            item = store.list_items(task_id)[0]
+            self.assertEqual('swag_vip', item['source_folder'])
+            self.assertEqual(1, len(archive_calls))
+            self.assertEqual(
+                'swag_vip',
+                archive_calls[0].get('source_folder'),
+                archive_calls[0],
+            )
+
+
+class DeepLinkArchiveFolderCase(unittest.TestCase):
+    def test_archive_prefers_item_source_folder_over_bot_message_username(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/swag_vip', 'https://t.me/mypikpakbot')
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='-1001',
+                source_message_id=1,
+                source_link='https://t.me/swag_vip/1',
+                target_link='https://t.me/mypikpakbot',
+                source_folder='swag_vip',
+                status=TransferStatus.RUNNING,
+            )
+            archive_folders = []
+
+            class FakeArchive:
+                def archive_file(self, source_folder, **kwargs):
+                    archive_folders.append(source_folder)
+                    return SimpleNamespace(
+                        ok=True,
+                        status='moved',
+                        archive_path=f'Telegram/{source_folder}/video.mp4',
+                        message='',
+                    )
+
+                def ensure_source_folder(self, source_folder):
+                    archive_folders.append(source_folder)
+                    return SimpleNamespace(
+                        ok=True,
+                        status='folder_ready',
+                        archive_path=f'Telegram/{source_folder}',
+                        message='',
+                    )
+
+            manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: store,
+                pikpak_archive_client_getter=lambda: FakeArchive(),
+                diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+                gc_getter=lambda: None,
+                refresh_counts=lambda tid: None,
+            )
+            bot_message = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+            )
+
+            result = manager.archive_pikpak_item(
+                target_profile='pikpak',
+                item_id=item_id,
+                task_id=task_id,
+                message=bot_message,
+                source_link='https://t.me/swag_vip/1',
+                transferred_at=1.0,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(['swag_vip'], archive_folders)
+            self.assertEqual('swag_vip', store.get_item(item_id)['source_folder'])
+
+    def test_archive_prefers_source_link_over_bot_message_when_no_item_folder(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        archive_folders = []
+
+        class FakeArchive:
+            def archive_file(self, source_folder, **kwargs):
+                archive_folders.append(source_folder)
+                return SimpleNamespace(
+                    ok=True,
+                    status='moved',
+                    archive_path=f'Telegram/{source_folder}/video.mp4',
+                    message='',
+                )
+
+        manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: FakeArchive(),
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+        )
+        bot_message = SimpleNamespace(
+            id=99,
+            video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+            chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+            link=None,
+        )
+
+        result = manager.archive_pikpak_item(
+            target_profile='pikpak',
+            item_id=None,
+            task_id=None,
+            message=bot_message,
+            source_link='https://t.me/swag_vip/1',
+            transferred_at=1.0,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(['swag_vip'], archive_folders)
+
+
+class DeepLinkListenForwardFolderCase(unittest.TestCase):
+    def test_pikpak_archive_after_forward_uses_explicit_channel_source_folder(self):
+        from module.downloader import TelegramRestrictedMediaDownloader
+
+        archive_calls = []
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.archive_pikpak_item = lambda **kwargs: (
+            archive_calls.append(kwargs) or SimpleNamespace(ok=True, status='moved', archive_path='x', message='')
+        )
+        downloader._log_system_chain = lambda **kwargs: None
+
+        bot_message = SimpleNamespace(
+            id=99,
+            video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+            chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+            link=None,
+            get_media_group=None,
+        )
+
+        asyncio.run(downloader._run_pikpak_archive_after_forward(
+            message=bot_message,
+            origin_chat_id='bot-chat',
+            message_id=99,
+            source_folder='swag_vip',
+            source_link='https://t.me/swag_vip/1',
+        ))
+
+        self.assertEqual(1, len(archive_calls))
+        self.assertEqual('swag_vip', archive_calls[0]['source_folder'])
+        self.assertEqual('https://t.me/swag_vip/1', archive_calls[0]['source_link'])
+
 
 if __name__ == '__main__':
     unittest.main()

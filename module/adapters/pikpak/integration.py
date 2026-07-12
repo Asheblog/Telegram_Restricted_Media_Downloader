@@ -8,7 +8,7 @@ from module.diagnostics import RichDiagnosticAdapter
 from module.enums import DownloadType
 from module.transfer_store import TransferStatus
 from module.path_tool import extract_full_extension, is_compressed_file
-from module.source_folders import source_folder_from_message
+from module.source_folders import source_folder_from_link, source_folder_from_message
 from module.core.target_profiles import target_profile_limit, target_profile_size_error
 
 
@@ -57,11 +57,20 @@ class PikpakIntegrationManager:
     ):
         if target_profile != 'pikpak':
             return None
-        folder = source_folder or source_folder_from_message(
-            message,
-            fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
-            fallback_link=source_link
-        )
+        folder = source_folder
+        store = self.transfer_store
+        if not folder and store and item_id:
+            item = store.get_item(int(item_id))
+            if item:
+                folder = item.get('source_folder')
+        if not folder:
+            folder = source_folder_from_link(source_link)
+        if not folder:
+            folder = source_folder_from_message(
+                message,
+                fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
+                fallback_link=source_link
+            )
         media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
         title_file_name = self.get_message_media_archive_filename(message)
         file_name = file_name or title_file_name or (media_meta or {}).get('file_name')
@@ -84,7 +93,6 @@ class PikpakIntegrationManager:
         archive_path = getattr(result, 'archive_path', None)
         archive_message = getattr(result, 'message', '')
         archive_ok = bool(getattr(result, 'ok', False))
-        store = self.transfer_store
         if store and item_id:
             store.update_item(
                 int(item_id),
@@ -237,7 +245,8 @@ class PikpakIntegrationManager:
             task_id: int,
             message,
             source_link: str,
-            transferred_at: float
+            transferred_at: float,
+            source_folder: Optional[str] = None,
     ) -> bool:
         archive_result = self.archive_pikpak_item(
             target_profile=task.get('target_profile'),
@@ -245,6 +254,7 @@ class PikpakIntegrationManager:
             task_id=task_id,
             message=message,
             source_link=source_link,
+            source_folder=source_folder,
             transferred_at=transferred_at
         )
         if (
