@@ -283,6 +283,14 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn("if (e.error_code === 'auth_required') checkAuthStatus();", combined)
         self.assertIn("if (resp.status === 401) { redirectToLoginPage(); return; }", combined)
 
+    def test_watches_detail_shell_present(self):
+        self.assertIn('id="watch-detail-overlay"', WEB_UI_HTML)
+        self.assertIn('id="watch-detail-body"', WEB_UI_HTML)
+        self.assertNotIn('id="watch-download-overlay"', WEB_UI_HTML)
+
+    def test_watches_table_compact_headers(self):
+        self.assertIn('data-i18n="watches.task"', WEB_UI_HTML)
+
     def test_desktop_and_mobile_use_unified_webui_contract(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
         self.assertIn('completed_items', WEB_UI_HTML)
