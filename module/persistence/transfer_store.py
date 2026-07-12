@@ -16,6 +16,12 @@ class TransferStatus:
     FAILURE = 'failure'
 
 
+class ExecutionMode:
+    """Transfer Task 的执行归属：web 队列编排 vs 监听内联下载回退。"""
+    WEB_QUEUE = 'web_queue'
+    WATCH_INLINE = 'watch_inline'
+
+
 class DeferredDiscussionCaptureStatus:
     PENDING = 'pending'
     RUNNING = 'running'
@@ -223,6 +229,7 @@ class TransferStore:
                     'current_range_message_id': 'INTEGER',
                     'current_range_video_captured': 'INTEGER NOT NULL DEFAULT 0',
                     'current_range_video_index': 'INTEGER NOT NULL DEFAULT 0',
+                    'execution_mode': "TEXT NOT NULL DEFAULT 'web_queue'",
                 }
             )
             self._ensure_columns(
@@ -497,21 +504,25 @@ class TransferStore:
             start_id: Optional[int] = None,
             end_id: Optional[int] = None,
             include_comment: bool = False,
-            resolve_deep_link: bool = False
+            resolve_deep_link: bool = False,
+            execution_mode: str = ExecutionMode.WEB_QUEUE,
     ) -> int:
         now = self.utc_now()
+        mode = execution_mode or ExecutionMode.WEB_QUEUE
+        if mode not in (ExecutionMode.WEB_QUEUE, ExecutionMode.WATCH_INLINE):
+            mode = ExecutionMode.WEB_QUEUE
         with self.connect() as conn:
             cursor = conn.execute(
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
-                    include_comment, resolve_deep_link, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    include_comment, resolve_deep_link, execution_mode, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    TransferStatus.PENDING, now, now
+                    mode, TransferStatus.PENDING, now, now
                 )
             )
             task_id = int(cursor.lastrowid)
@@ -528,6 +539,8 @@ class TransferStore:
     def _task_row(row: sqlite3.Row) -> Dict[str, Any]:
         task = dict(row)
         task['resolve_deep_link'] = bool(task.get('resolve_deep_link'))
+        task['assignment_completed'] = bool(task.get('assignment_completed'))
+        task['execution_mode'] = task.get('execution_mode') or ExecutionMode.WEB_QUEUE
         return task
 
     def list_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:

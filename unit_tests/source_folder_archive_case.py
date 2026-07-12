@@ -650,6 +650,177 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual(300, scheduled[0]['delay_seconds'])
         self.assertTrue(scheduled[0]['reset_archive_status'])
 
+    def test_watch_download_fallback_archive_retries_without_task_id(self):
+        """监听下载回退没有 transfer task_id 时，not_found 仍应在匹配窗口内重试。"""
+        import time
+        from module.transfer.progress import TransferProgressTracker
+
+        scheduled = []
+        warnings = []
+
+        tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(
+                info=lambda m: None,
+                warning=lambda m: warnings.append(m)
+            ),
+            app_getter=lambda: None,
+            gc_getter=lambda: SimpleNamespace(config={
+                'target_profiles': {
+                    'pikpak': {
+                        'archive': {
+                            'enable': True,
+                            'remote': 'pikpak',
+                            'archive_retry_interval_seconds': 300,
+                            'match_window_seconds': 3600
+                        }
+                    }
+                }
+            }),
+            loop_getter=lambda: None,
+            pb_getter=lambda: None,
+            release_storage=lambda *a: None,
+            release_window=lambda *a: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: SimpleNamespace(
+                ok=False,
+                status='not_found',
+                message='missing'
+            ),
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda *a: None,
+        )
+        tracker._schedule_deferred_upload_archive = lambda **kwargs: scheduled.append(kwargs) or True
+
+        tracker._run_upload_archive_now(
+            task_id=None,
+            item_id=None,
+            target_profile='pikpak',
+            source_link='https://t.me/c/4209310295/5433',
+            source_folder='4209310295',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=time.time(),
+            match_original_name=False,
+            pending_key=None
+        )
+
+        self.assertEqual(
+            1,
+            len(scheduled),
+            'watch download-fallback archive not_found must retry without task_id'
+        )
+        self.assertEqual(300, scheduled[0]['delay_seconds'])
+
+    def test_deferred_upload_archive_emits_system_log_on_result(self):
+        """下载转存的延迟 rclone 归档结果应写入 system_logs（归档分类）。"""
+        import time
+        from module.transfer.progress import TransferProgressTracker
+
+        system_logs = []
+
+        tracker = TransferProgressTracker(
+            transfer_store_getter=lambda: None,
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            app_getter=lambda: None,
+            gc_getter=lambda: SimpleNamespace(config={
+                'target_profiles': {
+                    'pikpak': {
+                        'archive': {
+                            'enable': True,
+                            'remote': 'pikpak',
+                            'archive_retry_interval_seconds': 0,
+                            'match_window_seconds': 3600
+                        }
+                    }
+                }
+            }),
+            loop_getter=lambda: None,
+            pb_getter=lambda: None,
+            release_storage=lambda *a: None,
+            release_window=lambda *a: None,
+            start_download_upload=lambda **kw: False,
+            archive_pikpak_item=lambda **kw: SimpleNamespace(
+                ok=True,
+                status='success',
+                message='',
+                archive_path='Telegram/4209310295/video.mp4',
+                file_name='video.mp4'
+            ),
+            fail_transfer_item=lambda *a: None,
+            refresh_counts=lambda *a: None,
+        )
+        tracker._log_system_chain = lambda **kwargs: system_logs.append(kwargs)
+
+        tracker._run_upload_archive_now(
+            task_id=None,
+            item_id=None,
+            target_profile='pikpak',
+            source_link='https://t.me/c/4209310295/5433',
+            source_folder='4209310295',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=time.time(),
+            match_original_name=False,
+            pending_key=None
+        )
+
+        archive_logs = [log for log in system_logs if log.get('category') == 'archive']
+        self.assertEqual(
+            1,
+            len(archive_logs),
+            'deferred upload archive must emit archive category system log'
+        )
+        self.assertEqual('archive_success', archive_logs[0].get('stage'))
+
+    def test_create_task_persists_watch_inline_execution_mode(self):
+        from module.transfer_store import TransferStore, ExecutionMode
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/c/4209310295/5433',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+            task = store.get_task(task_id)
+            self.assertEqual(ExecutionMode.WATCH_INLINE, task['execution_mode'])
+
+    def test_watch_inline_task_is_not_web_queue_schedulable(self):
+        from module.transfer_store import TransferStore, TransferStatus, ExecutionMode
+        from module.adapters.webui.task_manager import WebUITaskManager
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/c/4209310295/5433',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+            store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+
+            manager = object.__new__(WebUITaskManager)
+            manager._transfer_store = lambda: store
+            self.assertFalse(manager.is_web_transfer_task_schedulable(task_id))
+
+    def test_ensure_download_fallback_transfer_task_marks_single_item_assignment(self):
+        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
+        from module.transfer.watch_inline import ensure_download_fallback_transfer_task
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = ensure_download_fallback_transfer_task(
+                store=store,
+                source_link='https://t.me/c/4209310295/5433',
+                target_link='https://t.me/pikpak_bot',
+                target_profile='pikpak',
+            )
+            task = store.get_task(task_id)
+            self.assertEqual(ExecutionMode.WATCH_INLINE, task['execution_mode'])
+            self.assertEqual(TransferStatus.RUNNING, task['status'])
+            self.assertEqual(1, task['total_items'])
+            self.assertTrue(bool(task.get('assignment_completed')))
+
 
 if __name__ == '__main__':
     unittest.main()

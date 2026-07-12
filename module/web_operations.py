@@ -898,8 +898,12 @@ class WebOperationsMixin:
             self.web_ui.set_auth_provider(self.web_ui_auth)
         self.web_ui.start(open_browser=True)
         for task in self.transfer_store.list_tasks():
-            if task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
-                self.submit_web_task(int(task.get('id')))
+            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
+                continue
+            from module.transfer.watch_inline import is_watch_inline_task
+            if is_watch_inline_task(task):
+                continue
+            self.submit_web_task(int(task.get('id')))
         recovered_archives = 0
         progress_tracker = getattr(self, 'progress_tracker', None)
         if progress_tracker is not None:
@@ -1107,10 +1111,12 @@ class WebOperationsMixin:
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
-        return bool(
-            task
-            and task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
-        )
+        if not task:
+            return False
+        from module.transfer.watch_inline import is_watch_inline_task
+        if is_watch_inline_task(task):
+            return False
+        return task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
         wm = getattr(self, 'web_task_manager', None)

@@ -908,6 +908,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 source_link=link,
                 source_folder=channel_source_folder
             )
+            if self.transfer_store and link and target_link:
+                from module.transfer.watch_inline import ensure_download_fallback_transfer_task
+                fallback_task_id = ensure_download_fallback_transfer_task(
+                    store=self.transfer_store,
+                    source_link=link,
+                    target_link=target_link,
+                    target_profile=upload_meta.get('target_profile') or 'pikpak',
+                )
+                if fallback_task_id:
+                    upload_meta['task_id'] = fallback_task_id
             self._log_system_chain(
                 category='transfer',
                 stage='download_fallback_start',

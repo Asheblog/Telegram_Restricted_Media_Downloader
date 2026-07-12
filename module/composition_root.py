@@ -149,6 +149,7 @@ class TrmdCompositionRoot:
             cleanup_local_file=lambda item_id: (
                 self._ensure_media_manager().try_cleanup_item_file(item_id)
             ),
+            system_log=self.system_log,
         )
         self.callback_handler = CallbackHandler(
             app_getter=lambda: self.app,

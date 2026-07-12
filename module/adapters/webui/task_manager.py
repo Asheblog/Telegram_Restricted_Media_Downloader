@@ -521,10 +521,12 @@ class WebUITaskManager:
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
-        return bool(
-            task
-            and task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
-        )
+        if not task:
+            return False
+        from module.transfer.watch_inline import is_watch_inline_task
+        if is_watch_inline_task(task):
+            return False
+        return task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
         if task_id is not None:

@@ -1,7 +1,6 @@
 # coding=UTF-8
 import asyncio
 import datetime
-import json
 import os
 import time
 from typing import Callable, Optional
@@ -40,6 +39,7 @@ class TransferProgressTracker:
             notify_status_override: Callable = None,
             notify_progress_override: Callable = None,
             cleanup_local_file: Callable = None,
+            system_log=None,
     ):
         self._transfer_store_getter = transfer_store_getter
         self.diagnostic = diagnostic
@@ -57,8 +57,17 @@ class TransferProgressTracker:
         self._notify_status_override = notify_status_override
         self._notify_progress_override = notify_progress_override
         self._cleanup_local_file = cleanup_local_file
+        self._system_log = system_log
         self._speed_samples = {}
         self._pending_archive_tasks: set[tuple[int, int]] = set()
+
+    def _log_system_chain(self, **kwargs) -> None:
+        tracer = self._system_log
+        if tracer is None:
+            return
+        log = getattr(tracer, 'log', None)
+        if callable(log):
+            log(**kwargs)
 
     def _pikpak_archive_config(self) -> dict:
         gc = self._gc_getter()
@@ -73,15 +82,24 @@ class TransferProgressTracker:
 
     def _pikpak_archive_delay_seconds(self, file_size: Optional[int] = None) -> float:
         archive = self._pikpak_archive_config()
-        return max(float(archive.get('archive_delay_seconds') or 600), 0)
+        value = archive.get('archive_delay_seconds')
+        if value is None:
+            return 600.0
+        return max(float(value), 0)
 
     def _pikpak_archive_match_window_seconds(self) -> float:
         archive = self._pikpak_archive_config()
-        return max(float(archive.get('match_window_seconds') or 3600), 0)
+        value = archive.get('match_window_seconds')
+        if value is None:
+            return 3600.0
+        return max(float(value), 0)
 
     def _pikpak_archive_retry_interval_seconds(self) -> float:
         archive = self._pikpak_archive_config()
-        return max(float(archive.get('archive_retry_interval_seconds') or 300), 0)
+        value = archive.get('archive_retry_interval_seconds')
+        if value is None:
+            return 300.0
+        return max(float(value), 0)
 
     def _pikpak_archive_remaining_window_seconds(self, transferred_at: float) -> float:
         return max(self._pikpak_archive_match_window_seconds() - max(time.time() - transferred_at, 0), 0)
@@ -268,6 +286,20 @@ class TransferProgressTracker:
                     f'PikPak archive {archive_status}: '
                     f'{archive_message or source_link or file_name}'
                 )
+                self._log_system_chain(
+                    category='archive',
+                    stage=f'archive_{archive_status}',
+                    message=f'rclone 归档失败({archive_status}): {archive_message or ""}',
+                    level='warning',
+                    target_link=source_link,
+                    details={
+                        'archive_path': getattr(archive_result, 'archive_path', None),
+                        'source_folder': source_folder,
+                        'file_name': file_name or getattr(archive_result, 'file_name', None),
+                        'task_id': task_id,
+                        'item_id': item_id,
+                    }
+                )
                 store = self.transfer_store
                 if store and task_id and item_id:
                     store.update_item(
@@ -288,13 +320,13 @@ class TransferProgressTracker:
                 if self._pikpak_archive_status_is_retryable(archive_status):
                     remaining_window = self._pikpak_archive_remaining_window_seconds(transferred_at)
                     retry_interval = self._pikpak_archive_retry_interval_seconds()
-                    if remaining_window > 0 and retry_interval > 0 and task_id and item_id:
+                    if remaining_window > 0 and retry_interval > 0:
                         retry_delay = min(retry_interval, remaining_window)
                         retry_message = (
                             f'PikPak archive retry scheduled in {int(retry_delay)}s: '
                             f'{file_name or source_link or item_id}'
                         )
-                        if store:
+                        if store and task_id and item_id:
                             store.add_event(
                                 int(task_id),
                                 retry_message,
@@ -303,6 +335,20 @@ class TransferProgressTracker:
                             )
                         else:
                             self.diagnostic.info(retry_message)
+                        self._log_system_chain(
+                            category='archive',
+                            stage='archive_retry_scheduled',
+                            message=retry_message,
+                            level='info',
+                            target_link=source_link,
+                            details={
+                                'delay_seconds': retry_delay,
+                                'source_folder': source_folder,
+                                'file_name': file_name,
+                                'task_id': task_id,
+                                'item_id': item_id,
+                            }
+                        )
                         self._schedule_deferred_upload_archive(
                             task_id=task_id,
                             item_id=item_id,
@@ -317,6 +363,28 @@ class TransferProgressTracker:
                             reset_archive_status=True
                         )
                 return
+            if (
+                    archive_result is not None
+                    and getattr(archive_result, 'status', None) != 'disabled'
+                    and bool(getattr(archive_result, 'ok', False))
+            ):
+                self._log_system_chain(
+                    category='archive',
+                    stage='archive_success',
+                    message=(
+                        f'rclone 归档成功: '
+                        f'{getattr(archive_result, "archive_path", "") or source_link or file_name}'
+                    ),
+                    level='info',
+                    target_link=source_link,
+                    details={
+                        'archive_path': getattr(archive_result, 'archive_path', None),
+                        'source_folder': source_folder,
+                        'file_name': file_name or getattr(archive_result, 'file_name', None),
+                        'task_id': task_id,
+                        'item_id': item_id,
+                    }
+                )
             if task_id:
                 self._refresh_counts(int(task_id))
         finally:
@@ -651,25 +719,6 @@ class TransferProgressTracker:
         return int(delta / elapsed)
 
     def on_transfer_file_ready(self, file_path: str, with_upload: dict) -> int:
-        # region agent log
-        try:
-            with open('/home/wanglinyu/project/tgbot/.cursor/debug-fc7e96.log', 'a', encoding='utf-8') as _dbg_f:
-                _dbg_f.write(json.dumps({
-                    'sessionId': 'fc7e96',
-                    'location': 'progress.py:on_transfer_file_ready:entry',
-                    'message': 'on_file_ready callback invoked',
-                    'data': {
-                        'task_id': with_upload.get('task_id'),
-                        'has_store': self.transfer_store is not None,
-                        'target_link': with_upload.get('link'),
-                        'file_name': os.path.basename(file_path) if file_path else None
-                    },
-                    'timestamp': int(time.time() * 1000),
-                    'hypothesisId': 'A'
-                }, ensure_ascii=False) + '\n')
-        except Exception:
-            pass
-        # endregion
         store = self.transfer_store
         if not store:
             return 0

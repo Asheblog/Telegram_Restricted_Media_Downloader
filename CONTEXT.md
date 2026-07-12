@@ -71,7 +71,8 @@ module/
     │       │
     │       ├── 成功 → [PikPak] 等待入库确认 → rclone 归档 → 完成
     │       └── 失败 (ChatForwardsRestricted 等)
-    │              └──→ 回退: 下载到本地 → 上传到目标
+    │              └──→ 回退: 创建 Watch Inline Transfer Task → 下载到本地 → 上传到目标
+    │                     → [PikPak] 延迟 rclone 归档（可重试，重启可恢复）
     │
     └── 下载→上传流程
             │
@@ -92,6 +93,12 @@ module/
 
 **Restricted Content Transfer** — Telegram 原生转发受限时的下载→重发回退流程。
 _Avoid_: Forward bypass, restricted forward, mirror
+
+**Execution Mode** — Transfer Task 的执行归属：`web_queue` 由 Web 转存队列串行编排；`watch_inline` 由监听 Restricted Content Transfer 内联执行，不入 Web 队列，但可出现在转存任务列表，并参与 PikPak Archive 延迟重试与重启恢复。
+_Avoid_: Task queue type, hidden task, second queue
+
+**Watch Inline Transfer Task** — 监听命中 Restricted Content Transfer 时自动创建的 Transfer Task（Execution Mode = `watch_inline`），单条消息一个 Task；下载/上传走既有并发窗口，归档走与 Web 任务相同的延迟重试与恢复路径。
+_Avoid_: Listen queue job, ghost task
 
 **Transfer Task** — 一条持久化的转存请求（来源链接 → 目标链接，含可选 ID 范围）。存储在 SQLite 的 `transfer_tasks` 表。
 _Avoid_: Download task, forward job
@@ -192,6 +199,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0005](docs/adr/0005-unify-webui-view-model-contract.md) — 统一 WebUI 桌面端与移动端数据契约
 - [ADR-0007](docs/adr/0007-defer-discussion-reply-capture.md) — 监听转发评论区延迟一次抓取
 - [ADR-0008](docs/adr/0008-deep-link-resolve.md) — 转存前深链取片（用户会话 StartBot）
+- [ADR-0009](docs/adr/0009-watch-inline-transfer-execution-mode.md) — 监听下载回退用 watch_inline，不入 Web 队列
 
 ---
 
