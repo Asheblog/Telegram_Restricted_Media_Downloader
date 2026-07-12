@@ -915,6 +915,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     source_link=link,
                     target_link=target_link,
                     target_profile=upload_meta.get('target_profile') or 'pikpak',
+                    watch_id=watch_id,
                 )
                 if fallback_task_id:
                     upload_meta['task_id'] = fallback_task_id

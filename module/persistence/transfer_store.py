@@ -230,6 +230,7 @@ class TransferStore:
                     'current_range_video_captured': 'INTEGER NOT NULL DEFAULT 0',
                     'current_range_video_index': 'INTEGER NOT NULL DEFAULT 0',
                     'execution_mode': "TEXT NOT NULL DEFAULT 'web_queue'",
+                    'watch_id': 'TEXT',
                 }
             )
             self._ensure_columns(
@@ -506,6 +507,7 @@ class TransferStore:
             include_comment: bool = False,
             resolve_deep_link: bool = False,
             execution_mode: str = ExecutionMode.WEB_QUEUE,
+            watch_id: Optional[str] = None,
     ) -> int:
         now = self.utc_now()
         mode = execution_mode or ExecutionMode.WEB_QUEUE
@@ -516,13 +518,14 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
-                    include_comment, resolve_deep_link, execution_mode, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    include_comment, resolve_deep_link, execution_mode, watch_id,
+                    status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    mode, TransferStatus.PENDING, now, now
+                    mode, watch_id or None, TransferStatus.PENDING, now, now
                 )
             )
             task_id = int(cursor.lastrowid)
@@ -541,17 +544,39 @@ class TransferStore:
         task['resolve_deep_link'] = bool(task.get('resolve_deep_link'))
         task['assignment_completed'] = bool(task.get('assignment_completed'))
         task['execution_mode'] = task.get('execution_mode') or ExecutionMode.WEB_QUEUE
+        task['watch_id'] = task.get('watch_id') or None
         return task
 
-    def list_tasks(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_tasks(
+            self,
+            limit: int = 100,
+            *,
+            execution_mode: Optional[str] = None,
+            exclude_execution_mode: Optional[str] = None,
+            watch_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if execution_mode:
+            clauses.append('execution_mode = ?')
+            params.append(execution_mode)
+        if exclude_execution_mode:
+            clauses.append("(COALESCE(execution_mode, 'web_queue') != ?)")
+            params.append(exclude_execution_mode)
+        if watch_id:
+            clauses.append('watch_id = ?')
+            params.append(watch_id)
+        where_sql = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        params.append(limit)
         with self.connect() as conn:
             rows = conn.execute(
-                '''
+                f'''
                 SELECT * FROM transfer_tasks
+                {where_sql}
                 ORDER BY id DESC
                 LIMIT ?
                 ''',
-                (limit,)
+                tuple(params)
             ).fetchall()
             return [self._task_row(row) for row in rows]
 

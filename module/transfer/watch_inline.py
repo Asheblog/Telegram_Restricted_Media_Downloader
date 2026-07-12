@@ -7,12 +7,27 @@ from typing import Optional
 from module.transfer_store import ExecutionMode, TransferStatus
 
 
+def source_link_belongs_to_watch(source_link: str, watch_source_link: str) -> bool:
+    """判断消息级 source_link 是否属于监听的频道来源。"""
+    if not source_link or not watch_source_link:
+        return False
+    src = str(source_link).rstrip('/')
+    watch = str(watch_source_link).rstrip('/')
+    if not src or not watch:
+        return False
+    if src == watch:
+        return True
+    # 避免 https://t.me/ctuxas 误匹配 https://t.me/ctuxas2/...
+    return src.startswith(watch + '/')
+
+
 def ensure_download_fallback_transfer_task(
         *,
         store,
         source_link: str,
         target_link: str,
         target_profile: str = 'pikpak',
+        watch_id: Optional[str] = None,
 ) -> Optional[int]:
     """为监听/转发下载回退创建可见的 watch_inline Transfer Task，不入 web 队列。"""
     if store is None or not source_link or not target_link:
@@ -22,6 +37,7 @@ def ensure_download_fallback_transfer_task(
         target_link=target_link,
         target_profile=target_profile or 'pikpak',
         execution_mode=ExecutionMode.WATCH_INLINE,
+        watch_id=watch_id,
     )
     store.update_task(
         task_id,

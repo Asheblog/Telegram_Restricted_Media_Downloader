@@ -94,10 +94,10 @@ module/
 **Restricted Content Transfer** — Telegram 原生转发受限时的下载→重发回退流程。
 _Avoid_: Forward bypass, restricted forward, mirror
 
-**Execution Mode** — Transfer Task 的执行归属：`web_queue` 由 Web 转存队列串行编排；`watch_inline` 由监听 Restricted Content Transfer 内联执行，不入 Web 队列，但可出现在转存任务列表，并参与 PikPak Archive 延迟重试与重启恢复。
+**Execution Mode** — Transfer Task 的执行归属：`web_queue` 由 Web 转存队列串行编排；`watch_inline` 由监听 Restricted Content Transfer 内联执行，不入 Web 队列，不出现在转存任务列表，改在对应监听的「下载记录」中查看，并参与 PikPak Archive 延迟重试与重启恢复。
 _Avoid_: Task queue type, hidden task, second queue
 
-**Watch Inline Transfer Task** — 监听命中 Restricted Content Transfer 时自动创建的 Transfer Task（Execution Mode = `watch_inline`），单条消息一个 Task；下载/上传走既有并发窗口，归档走与 Web 任务相同的延迟重试与恢复路径。
+**Watch Inline Transfer Task** — 监听命中 Restricted Content Transfer 时自动创建的 Transfer Task（Execution Mode = `watch_inline`），单条消息一个 Task，创建时写入 `watch_id`；下载/上传走既有并发窗口，归档走与 Web 任务相同的延迟重试与恢复路径。WebUI 按监听展示进行中 / 已完成 / 失败。
 _Avoid_: Listen queue job, ghost task
 
 **Transfer Task** — 一条持久化的转存请求（来源链接 → 目标链接，含可选 ID 范围）。存储在 SQLite 的 `transfer_tasks` 表。

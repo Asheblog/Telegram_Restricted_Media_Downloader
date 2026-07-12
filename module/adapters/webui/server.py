@@ -568,6 +568,20 @@ class WebUiServer:
                         return
                     self._send_json(result)
                     return
+                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/download-tasks'):
+                    watch_path = parsed.path[len('/api/watches/'):][:-len('/download-tasks')]
+                    watch_id = unquote(watch_path)
+                    if not watch_id:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    query = parse_qs(parsed.query)
+                    limit = self._query_int(query, 'limit', 200)
+                    payload = server.view_model.watch_download_tasks(watch_id, limit=limit)
+                    if payload is None:
+                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
+                        return
+                    self._send_json(payload)
+                    return
                 if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/deferred-comments'):
                     watch_path = parsed.path[len('/api/watches/'):][:-len('/deferred-comments')]
                     watch_id = unquote(watch_path)

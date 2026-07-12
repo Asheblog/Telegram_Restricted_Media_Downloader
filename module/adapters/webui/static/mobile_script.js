@@ -163,11 +163,24 @@ var pollTimer = null;
 var initialLoadDone = false;
 var mobileSettingsLoadPromise = null;
 var mobExpandedWatchEvents = {};
+var mobExpandedWatchDeferred = {};
+var mobWatchDownloadPollTimer = null;
+var mobWatchDownloadState = { watchId: null };
 
 function hasActiveTasks() {
   return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) {
     return t.status === 'pending' || t.status === 'running';
   }));
+}
+
+function hasMobExpandedWatch() {
+  return Object.keys(mobExpandedWatchEvents).length > 0 || Object.keys(mobExpandedWatchDeferred).length > 0;
+}
+
+function refreshMobWatchesAfterCollapse() {
+  if (!hasMobExpandedWatch()) {
+    loadMobileWatches();
+  }
 }
 
 function resetTaskPolling() {
@@ -209,7 +222,9 @@ async function loadCurrentView() {
     await loadMobileTasks();
     await refreshOpenTaskSheet();
   }
-  else if (id === 'mob-view-watches') { await loadMobileWatches(); }
+  else if (id === 'mob-view-watches') {
+    if (!hasMobExpandedWatch()) await loadMobileWatches();
+  }
   else if (id === 'mob-view-downloads-uploads') { await loadMobileDownloadsUploads(); }
   // profile sub-pages load on demand
   var subActive = document.querySelector('.mob-subpage.active');
@@ -530,6 +545,7 @@ function renderMobWatches() {
         '<button class="mob-btn mob-btn-sm mob-btn-muted" data-delete-watch="' + esc(w.id) + '">删除</button>' +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-events-watch="' + esc(w.id) + '" data-sanitized="' + sanitized + '">今日</button>' : '') +
         (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-history="' + esc(w.id) + '">记录' + (eventCount ? ' ' + eventCount : '') + '</button>' : '') +
+        (w.type === 'forward' ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-downloads="' + esc(w.id) + '">' + esc(t('watches.downloadRecords')) + '</button>' : '') +
         (w.type === 'forward' && w.include_comment ? '<button class="mob-btn mob-btn-sm mob-btn-muted" data-watch-deferred="' + esc(w.id) + '" data-sanitized="' + sanitized + '">待抓评论区' + (deferredCount ? ' ' + deferredCount : '') + '</button>' : '') +
       '</div>' +
       '<div class="mob-watch-events hidden" id="mob-watch-events-' + sanitized + '"></div>' +
@@ -552,6 +568,7 @@ function renderMobWatches() {
         loadMobileWatchEvents(btn.dataset.eventsWatch, btn.dataset.sanitized);
       } else {
         delete mobExpandedWatchEvents[btn.dataset.sanitized];
+        refreshMobWatchesAfterCollapse();
       }
     });
   });
@@ -563,9 +580,22 @@ function renderMobWatches() {
       loadMobileWatchEvents(watchId, sanitized);
     }
   });
+  Object.keys(mobExpandedWatchDeferred).forEach(function(sanitized) {
+    var panel = document.getElementById('mob-watch-deferred-' + sanitized);
+    var watchId = mobExpandedWatchDeferred[sanitized];
+    if (panel && watchId) {
+      panel.classList.remove('hidden');
+      loadMobileDeferredComments(watchId, sanitized);
+    }
+  });
   container.querySelectorAll('[data-watch-history]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       openMobileWatchHistory(btn.dataset.watchHistory, 1);
+    });
+  });
+  container.querySelectorAll('[data-watch-downloads]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      openMobileWatchDownloads(btn.dataset.watchDownloads);
     });
   });
   container.querySelectorAll('[data-watch-deferred]').forEach(function(btn) {
@@ -574,7 +604,13 @@ function renderMobWatches() {
       if (!panel) return;
       var isHidden = panel.classList.contains('hidden');
       panel.classList.toggle('hidden');
-      if (isHidden) loadMobileDeferredComments(btn.dataset.watchDeferred, btn.dataset.sanitized);
+      if (isHidden) {
+        mobExpandedWatchDeferred[btn.dataset.sanitized] = btn.dataset.watchDeferred;
+        loadMobileDeferredComments(btn.dataset.watchDeferred, btn.dataset.sanitized);
+      } else {
+        delete mobExpandedWatchDeferred[btn.dataset.sanitized];
+        refreshMobWatchesAfterCollapse();
+      }
     });
   });
 }
@@ -647,6 +683,7 @@ async function loadMobileWatchEvents(watchId, sanitized) {
 }
 
 async function openMobileWatchHistory(watchId, page) {
+  stopMobWatchDownloadPolling();
   sheetState.sheetType = 'watch-history';
   state.watchHistory = { watchId: watchId, page: page || 1, pageSize: 20, total: 0 };
   var overlay = document.getElementById('mob-sheet-overlay');
@@ -655,6 +692,123 @@ async function openMobileWatchHistory(watchId, page) {
   sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
   overlay.classList.add('open');
   await loadMobileWatchHistoryPage();
+}
+
+function mobWatchDownloadBucket(status) {
+  if (status === 'failure') return 'failed';
+  if (status === 'success' || status === 'skipped') return 'completed';
+  return 'active';
+}
+
+async function openMobileWatchDownloads(watchId) {
+  sheetState.sheetType = 'watch-downloads';
+  mobWatchDownloadState = { watchId: watchId };
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  if (!overlay || !sheet) return;
+  sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
+  overlay.classList.add('open');
+  await loadMobileWatchDownloads(false);
+  startMobWatchDownloadPolling();
+}
+
+async function loadMobileWatchDownloads(silent) {
+  var sheet = document.getElementById('mob-sheet');
+  if (!sheet || !mobWatchDownloadState.watchId || sheetState.sheetType !== 'watch-downloads') return;
+  if (!silent) {
+    sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-muted);">加载中...</div>';
+  }
+  try {
+    var data = await fetchJson('/api/watches/' + encodeURIComponent(mobWatchDownloadState.watchId) + '/download-tasks');
+    var tasks = data.tasks || [];
+    var groups = { active: [], completed: [], failed: [] };
+    tasks.forEach(function(task) {
+      groups[mobWatchDownloadBucket(task.status)].push(task);
+    });
+    var sections = [
+      { key: 'active', label: t('watches.downloadActive') },
+      { key: 'completed', label: t('watches.downloadCompleted') },
+      { key: 'failed', label: t('watches.downloadFailed') }
+    ];
+    var html = '<div class="mob-sheet__title">' + esc(t('watches.downloadRecordsTitle')) + '</div>';
+    if (!tasks.length) {
+      html += '<div class="mob-empty">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
+    } else {
+      sections.forEach(function(section) {
+        var items = groups[section.key] || [];
+        html += '<div style="margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--color-muted);">' +
+          esc(section.label) + ' (' + items.length + ')</div>';
+        if (!items.length) {
+          html += '<div class="mob-empty" style="padding:8px;">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
+          return;
+        }
+        items.forEach(function(task) {
+          var pct = typeof taskProgressPercent === 'function' ? taskProgressPercent(task) : (task.progress_percent || 0);
+          var statusLabel = task.status === 'success' ? t('watches.downloadCompleted')
+            : (task.status === 'failure' ? t('watches.downloadFailed')
+            : (task.status === 'paused' ? t('status.paused') : t('watches.downloadActive')));
+          var badgeClass = task.status === 'success' ? 'completed' : (task.status === 'failure' ? 'paused' : 'running');
+          html += '<div class="mob-event-row" data-task-id="' + task.id + '">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
+              '<strong>#' + task.id + '</strong>' +
+              '<span class="mob-card__badge ' + badgeClass + '">' + esc(statusLabel) + '</span>' +
+            '</div>' +
+            '<div style="margin-top:4px;word-break:break-all;font-size:12px;">' +
+              esc(task.source_link || '-') + ' → ' + esc(task.target_profile || task.target_link || '-') +
+            '</div>' +
+            '<div style="margin-top:6px;font-size:12px;color:var(--color-muted);">' + pct + '%</div>' +
+            (task.can_delete
+              ? '<button class="mob-btn mob-btn-sm mob-btn-danger" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>'
+              : '') +
+          '</div>';
+        });
+      });
+    }
+    html += '<button class="mob-btn mob-btn-muted mob-btn-sm" style="align-self:flex-end;margin-top:8px;" id="mob-watch-downloads-close">关闭</button>';
+    sheet.innerHTML = html;
+    document.getElementById('mob-watch-downloads-close')?.addEventListener('click', closeSheet);
+    sheet.querySelectorAll('[data-mob-watch-download-delete]').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var taskId = parseInt(btn.dataset.mobWatchDownloadDelete, 10);
+        if (!confirm('确定删除任务 #' + taskId + '？')) return;
+        try {
+          var resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+          if (!resp.ok) {
+            var errData = {};
+            try { errData = await resp.json(); } catch (e) {}
+            alert(errData.detail || errData.error || errData.message || '删除失败');
+            return;
+          }
+          await loadMobileWatchDownloads(true);
+        } catch (e) {
+          alert('删除失败');
+        }
+      });
+    });
+  } catch (e) {
+    if (!silent) {
+      sheet.innerHTML = '<div style="padding:20px;text-align:center;color:var(--color-danger);">加载失败</div>';
+    }
+  }
+}
+
+function startMobWatchDownloadPolling() {
+  stopMobWatchDownloadPolling();
+  mobWatchDownloadPollTimer = setInterval(function() {
+    var overlay = document.getElementById('mob-sheet-overlay');
+    if (!overlay || !overlay.classList.contains('open') || sheetState.sheetType !== 'watch-downloads') {
+      stopMobWatchDownloadPolling();
+      return;
+    }
+    loadMobileWatchDownloads(true);
+  }, 3000);
+}
+
+function stopMobWatchDownloadPolling() {
+  if (mobWatchDownloadPollTimer) {
+    clearInterval(mobWatchDownloadPollTimer);
+    mobWatchDownloadPollTimer = null;
+  }
 }
 
 async function loadMobileWatchHistoryPage() {
@@ -826,6 +980,8 @@ function updateSheetContent(data) {
 }
 
 function closeSheet() {
+  stopMobWatchDownloadPolling();
+  mobWatchDownloadState = { watchId: null };
   var overlay = document.getElementById('mob-sheet-overlay');
   if (overlay) overlay.classList.remove('open');
   var sheet = document.getElementById('mob-sheet');

@@ -17,6 +17,21 @@ TASK_ACTIVE_STATUSES = {
     TransferStatus.RUNNING,
 }
 
+WATCH_DOWNLOAD_ACTIVE_STATUSES = {
+    TransferStatus.PENDING,
+    TransferStatus.RUNNING,
+    TransferStatus.PAUSED,
+}
+
+WATCH_DOWNLOAD_COMPLETED_STATUSES = {
+    TransferStatus.SUCCESS,
+    TransferStatus.SKIPPED,
+}
+
+WATCH_DOWNLOAD_FAILED_STATUSES = {
+    TransferStatus.FAILURE,
+}
+
 
 class WebUiViewModel:
     """Builds the single public data contract consumed by all WebUI clients."""
@@ -25,7 +40,12 @@ class WebUiViewModel:
         self.store = store
 
     def task_list(self, limit: int = 100) -> dict[str, Any]:
-        tasks = self.store.list_tasks(limit=limit)
+        from module.transfer_store import ExecutionMode
+
+        tasks = self.store.list_tasks(
+            limit=limit,
+            exclude_execution_mode=ExecutionMode.WATCH_INLINE,
+        )
         task_ids = [int(task['id']) for task in tasks]
         counts_by_task = self._status_counts_by_task(task_ids)
         active_items_by_task = self._active_items_by_task(task_ids)
@@ -39,6 +59,73 @@ class WebUiViewModel:
                 for task in tasks
             ]
         }
+
+    def watch_download_tasks(self, watch_id: str, limit: int = 200) -> Optional[dict[str, Any]]:
+        """返回某条监听触发的 watch_inline 下载/转存任务（含无 watch_id 的历史启发式归属）。"""
+        from module.transfer.watch_inline import is_watch_inline_task, source_link_belongs_to_watch
+        from module.transfer_store import ExecutionMode
+
+        if not watch_id:
+            return None
+        watch = self.store.get_live_transfer_watch(watch_id)
+        watch_source = (watch or {}).get('source_link') or ''
+        # 也尝试从 watch_id 解析来源（pending 内存监听可能尚未落库）
+        if not watch_source and watch_id.startswith('forward:'):
+            rule = watch_id[len('forward:'):]
+            if '->' in rule:
+                watch_source = rule.split('->', 1)[0].strip()
+
+        candidates = self.store.list_tasks(
+            limit=max(limit * 3, 300),
+            execution_mode=ExecutionMode.WATCH_INLINE,
+        )
+        matched = []
+        for task in candidates:
+            if not is_watch_inline_task(task):
+                continue
+            task_watch_id = task.get('watch_id') or None
+            if task_watch_id == watch_id:
+                matched.append(task)
+            elif (
+                not task_watch_id
+                and watch_source
+                and source_link_belongs_to_watch(task.get('source_link') or '', watch_source)
+            ):
+                matched.append(task)
+            if len(matched) >= limit:
+                break
+
+        task_ids = [int(task['id']) for task in matched]
+        counts_by_task = self._status_counts_by_task(task_ids)
+        active_items_by_task = self._active_items_by_task(task_ids)
+        models = [
+            self.task_model(
+                task,
+                counts_by_task.get(int(task['id']), {}),
+                active_items_by_task.get(int(task['id']))
+            )
+            for task in matched
+        ]
+        counts = {'active': 0, 'completed': 0, 'failed': 0}
+        for model in models:
+            bucket = self.watch_download_status_bucket(model.get('status'))
+            counts[bucket] = counts.get(bucket, 0) + 1
+        return {
+            'watch_id': watch_id,
+            'tasks': models,
+            'counts': counts,
+        }
+
+    @staticmethod
+    def watch_download_status_bucket(status: Optional[str]) -> str:
+        value = str(status or TransferStatus.PENDING)
+        if value in WATCH_DOWNLOAD_FAILED_STATUSES:
+            return 'failed'
+        if value in WATCH_DOWNLOAD_COMPLETED_STATUSES:
+            return 'completed'
+        if value in WATCH_DOWNLOAD_ACTIVE_STATUSES:
+            return 'active'
+        return 'active'
 
     def task_detail(
             self,
@@ -141,6 +228,8 @@ class WebUiViewModel:
             'end_id': task.get('end_id'),
             'include_comment': bool(task.get('include_comment')),
             'resolve_deep_link': bool(task.get('resolve_deep_link')),
+            'execution_mode': task.get('execution_mode') or 'web_queue',
+            'watch_id': task.get('watch_id') or None,
             'status': status,
             'total_items': summary['total'],
             'completed_items': summary['completed'],
