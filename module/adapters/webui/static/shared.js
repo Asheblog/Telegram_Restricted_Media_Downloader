@@ -721,7 +721,7 @@ const i18n = {
 const state = {
   lang: localStorage.getItem('trmd-lang') || 'zh',
   activeView: 'transfers',
-  activeItemStatus: 'running',
+  activeItemStatus: 'active',
   selectedTaskId: null,
   tasks: [],
   watches: [],
@@ -739,6 +739,7 @@ const state = {
   eventData: {},
   taskPollTimer: null,
   watchEventCache: {},
+  expandedWatches: {},
   watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
   recordsPage: 1,
   recordsPageSize: 50,

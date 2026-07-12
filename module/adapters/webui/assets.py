@@ -2020,7 +2020,7 @@ const i18n = {
 const state = {
   lang: localStorage.getItem('trmd-lang') || 'zh',
   activeView: 'transfers',
-  activeItemStatus: 'running',
+  activeItemStatus: 'active',
   selectedTaskId: null,
   tasks: [],
   watches: [],
@@ -2038,6 +2038,7 @@ const state = {
   eventData: {},
   taskPollTimer: null,
   watchEventCache: {},
+  expandedWatches: {},
   watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
   recordsPage: 1,
   recordsPageSize: 50,
@@ -2620,12 +2621,24 @@ async function loadTaskDetail(taskId) {
     const data = await fetchJson('/api/tasks/' + taskId + '/summary');
     state.itemData[taskId] = data;
     state.eventData[taskId] = data.events || [];
-    state.itemPages = { running: 1, success: 1, skipped: 1, failure: 1 };
-    state.activeItemStatus = 'running';
+    state.itemPages = { active: 1, success: 1, skipped: 1, failure: 1 };
+    state.activeItemStatus = 'active';
     renderTaskDetail(taskId, data);
   } catch(e) {
     container.innerHTML = '<div class="p-8 text-center text-muted text-sm">加载失败</div>';
   }
+}
+
+function taskItemTabCount(summary, status) {
+  summary = summary || {};
+  if (status === 'active') return (summary.running || 0) + (summary.pending || 0);
+  if (status === 'failure') return summary.failed || 0;
+  return summary[status] || 0;
+}
+
+function taskItemTabLabel(status) {
+  if (status === 'active') return t('items.tab.running');
+  return t('items.tab.' + status);
 }
 
 function renderTaskDetail(taskId, data) {
@@ -2636,17 +2649,17 @@ function renderTaskDetail(taskId, data) {
   let html = '<div class="panel-header">' +
     '<h3>任务 #' + taskId + ' · ' + esc(task ? (task.source_link || '') : '') + ' → ' + esc(task ? (task.target_profile || task.target_link || '') : '') + '</h3>' +
     '<div class="panel-tabs">' +
-      '<button class="panel-tab active" data-item-tab="running">' + t('items.tab.running') + ' (' + (summary.running || 0) + ')</button>' +
-      '<button class="panel-tab" data-item-tab="success">' + t('items.tab.success') + ' (' + (summary.success || 0) + ')</button>' +
-      '<button class="panel-tab" data-item-tab="skipped">' + t('items.tab.skipped') + ' (' + (summary.skipped || 0) + ')</button>' +
-      '<button class="panel-tab" data-item-tab="failure">' + t('items.tab.failure') + ' (' + (summary.failed || 0) + ')</button>' +
+      '<button class="panel-tab active" data-item-tab="active">' + taskItemTabLabel('active') + ' (' + taskItemTabCount(summary, 'active') + ')</button>' +
+      '<button class="panel-tab" data-item-tab="success">' + taskItemTabLabel('success') + ' (' + taskItemTabCount(summary, 'success') + ')</button>' +
+      '<button class="panel-tab" data-item-tab="skipped">' + taskItemTabLabel('skipped') + ' (' + taskItemTabCount(summary, 'skipped') + ')</button>' +
+      '<button class="panel-tab" data-item-tab="failure">' + taskItemTabLabel('failure') + ' (' + taskItemTabCount(summary, 'failure') + ')</button>' +
     '</div>' +
     '</div>' +
     '<div id="task-items-body" class="overflow-auto max-h-[300px]"></div>' +
     '<div class="flex items-center justify-between px-[18px] py-2 pb-[14px] gap-3 flex-wrap" id="task-items-pagination"></div>';
 
   detailEl.innerHTML = html;
-  loadTaskItems(taskId, 'running');
+  loadTaskItems(taskId, 'active');
 
   /* tab switching */
   $$('#task-detail [data-item-tab]').forEach(btn => {
@@ -2677,7 +2690,8 @@ async function loadTaskItems(taskId, status, options) {
     state.itemData[taskId] = data;
 
     if (!items.length) {
-      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + status) + '</div>';
+      const emptyStatus = status === 'active' ? 'running' : status;
+      body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + emptyStatus) + '</div>';
     } else {
       body.innerHTML = '<table class="data-table task-items-table"><colgroup>' +
         '<col class="task-item-col-file"><col class="task-item-col-size"><col class="task-item-col-progress"><col class="task-item-col-source"><col class="task-item-col-status">' +
@@ -2694,9 +2708,7 @@ async function loadTaskItems(taskId, status, options) {
         '</tbody></table>';
     }
 
-    const statusToSummaryKey = { running: 'running', success: 'success', skipped: 'skipped', failure: 'failed' };
-    const summaryKey = statusToSummaryKey[status] || status;
-    const totalItems = state.itemData[taskId] ? (state.itemData[taskId].summary || {})[summaryKey] || 0 : 0;
+    const totalItems = taskItemTabCount(state.itemData[taskId] ? state.itemData[taskId].summary : {}, status);
     const totalPages = Math.max(1, Math.ceil(totalItems / 50));
     pagEl.innerHTML = renderPaginationBar({
       prefix: 'items',
@@ -2726,21 +2738,15 @@ async function refreshSelectedTaskDetail() {
     if (!selectedTaskStillVisible(taskId)) return;
     state.itemData[taskId] = data;
     renderTaskDetailTabs(data.summary || {});
-    await loadTaskItems(taskId, state.activeItemStatus || 'running', { silent: true });
+    await loadTaskItems(taskId, state.activeItemStatus || 'active', { silent: true });
   } catch(e) {}
 }
 
 function renderTaskDetailTabs(summary) {
-  const tabs = {
-    running: summary.running || 0,
-    success: summary.success || 0,
-    skipped: summary.skipped || 0,
-    failure: summary.failed || 0,
-  };
-  Object.keys(tabs).forEach(status => {
+  ['active', 'success', 'skipped', 'failure'].forEach(status => {
     const btn = $('#task-detail [data-item-tab="' + status + '"]');
     if (!btn) return;
-    btn.textContent = t('items.tab.' + status) + ' (' + tabs[status] + ')';
+    btn.textContent = taskItemTabLabel(status) + ' (' + taskItemTabCount(summary, status) + ')';
   });
 }
 
@@ -3251,6 +3257,37 @@ function renderWatches() {
       '</div></td>' +
       '</tr>' + eventsRow;
   }).join('');
+  restoreExpandedWatches();
+}
+
+function setExpandedWatch(watchId, mode) {
+  if (!state.expandedWatches) state.expandedWatches = {};
+  const sanitized = sanitizeWatchId(watchId);
+  if (!mode) {
+    delete state.expandedWatches[sanitized];
+    return;
+  }
+  state.expandedWatches[sanitized] = { watchId: watchId, mode: mode };
+}
+
+function restoreExpandedWatches() {
+  if (!state.expandedWatches) return;
+  Object.keys(state.expandedWatches).forEach(function(sanitized) {
+    const entry = state.expandedWatches[sanitized];
+    if (!entry || !entry.watchId) return;
+    const row = document.getElementById('watch-events-' + sanitized);
+    if (!row) {
+      delete state.expandedWatches[sanitized];
+      return;
+    }
+    row.classList.add('open');
+    setWatchExpandMode(sanitized, entry.mode);
+    if (entry.mode === 'deferred') {
+      loadWatchDeferred(entry.watchId);
+    } else {
+      loadWatchEvents(entry.watchId, 0, true);
+    }
+  });
 }
 
 /* ====== Watch Events (expandable forwarding log) ====== */
@@ -3290,10 +3327,12 @@ function toggleWatchEvents(watchId) {
   if (isOpen) {
     row.classList.remove('open');
     setWatchExpandMode(sanitized, null);
+    setExpandedWatch(watchId, null);
     return;
   }
   row.classList.add('open');
   setWatchExpandMode(sanitized, 'events');
+  setExpandedWatch(watchId, 'events');
   loadWatchEvents(watchId, 0, true);
 }
 
@@ -3500,6 +3539,7 @@ function toggleWatchDeferred(watchId) {
   if (isOpen) {
     row.classList.remove('open');
     setWatchExpandMode(sanitized, null);
+    setExpandedWatch(watchId, null);
     return;
   }
   // Close other watches' expand rows, then show deferred for this one.
@@ -3507,8 +3547,14 @@ function toggleWatchDeferred(watchId) {
     if (el.id !== 'watch-events-' + sanitized) el.classList.remove('open');
   });
   document.querySelectorAll('.watch-events-panel, .watch-deferred-panel').forEach(el => el.classList.add('hidden'));
+  if (state.expandedWatches) {
+    Object.keys(state.expandedWatches).forEach(function(key) {
+      if (key !== sanitized) delete state.expandedWatches[key];
+    });
+  }
   row.classList.add('open');
   setWatchExpandMode(sanitized, 'deferred');
+  setExpandedWatch(watchId, 'deferred');
   loadWatchDeferred(watchId);
 }
 
@@ -5716,7 +5762,7 @@ const i18n = {
 const state = {
   lang: localStorage.getItem('trmd-lang') || 'zh',
   activeView: 'transfers',
-  activeItemStatus: 'running',
+  activeItemStatus: 'active',
   selectedTaskId: null,
   tasks: [],
   watches: [],
@@ -5734,6 +5780,7 @@ const state = {
   eventData: {},
   taskPollTimer: null,
   watchEventCache: {},
+  expandedWatches: {},
   watchHistory: { watchId: null, page: 1, pageSize: 20, total: 0 },
   recordsPage: 1,
   recordsPageSize: 50,
