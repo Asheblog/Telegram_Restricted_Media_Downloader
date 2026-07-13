@@ -370,6 +370,25 @@
     resize: vertical;
   }
 
+  /* Watch create cards: equal height + submit buttons pinned to bottom */
+  #view-watches > .grid {
+    @apply items-stretch;
+  }
+
+  #view-watches > .grid > .panel > .panel-body {
+    @apply flex flex-col;
+  }
+
+  #watch-download-form,
+  #watch-forward-form {
+    @apply flex min-h-0 flex-1 flex-col;
+  }
+
+  #watch-download-form .form-submit,
+  #watch-forward-form .form-submit {
+    @apply mt-auto;
+  }
+
   .download-upload-align-spacer {
     @apply mb-3.5 flex min-h-[88px] items-center justify-center rounded-[8px]
            border border-dashed border-line bg-surface-alt px-4 text-center
