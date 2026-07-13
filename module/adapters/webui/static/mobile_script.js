@@ -963,12 +963,15 @@ function renderMobileWatchDownloadSections(groups) {
       html += '<div class="mob-empty" style="padding:12px;">' + esc(t('watches.downloadRecordsEmpty')) + '</div>';
     } else {
       items.forEach(function(task) {
-        var pct = typeof taskProgressPercent === 'function' ? taskProgressPercent(task) : (task.progress_percent || 0);
+        var pct = typeof watchDownloadProgressPercent === 'function' ? watchDownloadProgressPercent(task) : (typeof taskProgressPercent === 'function' ? taskProgressPercent(task) : (task.progress_percent || 0));
+        var title = typeof watchDownloadTitle === 'function' ? watchDownloadTitle(task) : ('#' + task.id);
         var route = mobWatchHelpers().formatWatchRoute ? mobWatchHelpers().formatWatchRoute(task.source_link || '-', task.target_profile || task.target_link || '-') : (task.source_link || '-') + ' → ' + (task.target_profile || task.target_link || '-');
+        var fileDetail = typeof taskFileTransferDetail === 'function' ? taskFileTransferDetail(task) : '';
         html += '<div class="mob-event-row mob-watch-detail-row" data-task-id="' + task.id + '">' +
           '<span class="mob-card__badge ' + (task.status === 'success' ? 'completed' : task.status === 'failure' ? 'failure' : 'running') + '">' + esc(task.status || '-') + '</span>' +
           '<div class="mob-watch-detail-row-main">' +
-            '<div style="font-weight:600;">#' + esc(String(task.id)) + '</div>' +
+            '<div style="font-weight:600;">' + esc(title) + ' <span class="text-muted">#' + esc(String(task.id)) + '</span></div>' +
+            (fileDetail ? '<div class="text-xs" style="word-break:break-all;">' + esc(fileDetail) + '</div>' : '') +
             '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(route) + '</div>' +
             '<div class="text-xs text-muted">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
             (task.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>' : '') +

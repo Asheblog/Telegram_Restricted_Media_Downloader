@@ -109,6 +109,81 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             self.assertEqual(1, payload['counts']['completed'])
             self.assertEqual(0, payload['counts']['failed'])
 
+    def test_watch_download_tasks_expose_display_file_name_and_active_progress(self):
+        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
+        from module.adapters.webui.view_model import WebUiViewModel
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            watch_id = 'forward:https://t.me/c/4209310295->https://t.me/pikpak_bot'
+            store.upsert_live_transfer_watch(
+                watch_id=watch_id,
+                watch_type='forward',
+                source_link='https://t.me/c/4209310295',
+                target_link='https://t.me/pikpak_bot',
+                status='running',
+            )
+            active_id = store.create_task(
+                'https://t.me/c/4209310295/5638',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+                watch_id=watch_id,
+            )
+            done_id = store.create_task(
+                'https://t.me/c/4209310295/5637',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+                watch_id=watch_id,
+            )
+            store.update_task(active_id, status=TransferStatus.RUNNING, total_items=1, started=True)
+            store.update_task(done_id, status=TransferStatus.SUCCESS, total_items=1, finished=True)
+            store.add_item(
+                task_id=active_id,
+                source_chat_id='4209310295',
+                source_message_id=5638,
+                source_link='https://t.me/c/4209310295/5638',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='clip.mp4',
+                file_size=1000,
+                phase='downloading',
+                status=TransferStatus.RUNNING,
+            )
+            active_item_id = store.list_items(active_id)[0]['id']
+            store.update_item_progress(
+                item_id=active_item_id,
+                phase='downloading',
+                download_current=420,
+                download_total=1000,
+                download_speed_bps=2048,
+                upload_current=0,
+                upload_total=1000,
+                upload_speed_bps=0,
+            )
+            store.add_item(
+                task_id=done_id,
+                source_chat_id='4209310295',
+                source_message_id=5637,
+                source_link='https://t.me/c/4209310295/5637',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                file_name='done.mp4',
+                file_size=500,
+                phase='uploaded',
+                status=TransferStatus.SUCCESS,
+            )
+
+            payload = WebUiViewModel(store).watch_download_tasks(watch_id)
+            by_id = {task['id']: task for task in payload['tasks']}
+
+            self.assertEqual('clip.mp4', by_id[active_id]['display_file_name'])
+            self.assertEqual('clip.mp4', by_id[active_id]['active_file_name'])
+            self.assertEqual(42, by_id[active_id]['active_progress_percent'])
+            self.assertEqual(2048, by_id[active_id]['active_speed_bps'])
+            self.assertEqual('done.mp4', by_id[done_id]['display_file_name'])
+
     def test_source_link_belongs_to_watch(self):
         from module.transfer.watch_inline import source_link_belongs_to_watch
 

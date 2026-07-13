@@ -58,12 +58,14 @@ class WebUiViewModel:
         task_ids = [int(task['id']) for task in tasks]
         counts_by_task = self._status_counts_by_task(task_ids)
         active_items_by_task = self._active_items_by_task(task_ids)
+        file_names_by_task = self._file_names_by_task(task_ids)
         return {
             'tasks': [
                 self.task_model(
                     task,
                     counts_by_task.get(int(task['id']), {}),
-                    active_items_by_task.get(int(task['id']))
+                    active_items_by_task.get(int(task['id'])),
+                    preferred_file_name=file_names_by_task.get(int(task['id'])),
                 )
                 for task in tasks
             ]
@@ -107,11 +109,13 @@ class WebUiViewModel:
         task_ids = [int(task['id']) for task in matched]
         counts_by_task = self._status_counts_by_task(task_ids)
         active_items_by_task = self._active_items_by_task(task_ids)
+        file_names_by_task = self._file_names_by_task(task_ids)
         models = [
             self.task_model(
                 task,
                 counts_by_task.get(int(task['id']), {}),
-                active_items_by_task.get(int(task['id']))
+                active_items_by_task.get(int(task['id'])),
+                preferred_file_name=file_names_by_task.get(int(task['id'])),
             )
             for task in matched
         ]
@@ -153,8 +157,14 @@ class WebUiViewModel:
         event_count = self._event_count(task_id)
         items = self._list_items(task_id, item_limit, item_offset, item_status=item_status)
         events = self._list_events(task_id, event_limit, event_offset)
+        preferred_file_name = self._file_names_by_task([task_id]).get(task_id)
         return {
-            'task': self.task_model(task, counts, self._active_item(task_id)),
+            'task': self.task_model(
+                task,
+                counts,
+                self._active_item(task_id),
+                preferred_file_name=preferred_file_name,
+            ),
             'summary': self.summary_model(task, counts),
             'items': [self.item_model(item) for item in items],
             'events': [self.event_model(event) for event in events],
@@ -178,8 +188,14 @@ class WebUiViewModel:
         counts = self._status_counts(task_id)
         event_count = self._event_count(task_id)
         events = self._list_events(task_id, recent_event_limit, 0)
+        preferred_file_name = self._file_names_by_task([task_id]).get(task_id)
         return {
-            'task': self.task_model(task, counts, self._active_item(task_id)),
+            'task': self.task_model(
+                task,
+                counts,
+                self._active_item(task_id),
+                preferred_file_name=preferred_file_name,
+            ),
             'summary': self.summary_model(task, counts),
             'recent_events': [self.event_model(event) for event in events],
             'page': {
@@ -219,7 +235,8 @@ class WebUiViewModel:
             self,
             task: dict[str, Any],
             counts: dict[str, int] = None,
-            active_item: Optional[dict[str, Any]] = None
+            active_item: Optional[dict[str, Any]] = None,
+            preferred_file_name: Optional[str] = None,
     ) -> dict[str, Any]:
         counts = counts or {}
         summary = self.summary_model(task, counts)
@@ -227,6 +244,9 @@ class WebUiViewModel:
         task_id = int(task.get('id') or 0)
         active = self.active_transfer_model(active_item)
         range_progress = self.store.range_transfer_progress(task) or {}
+        display_file_name = str(
+            active.get('active_file_name') or preferred_file_name or ''
+        ).strip()
         return {
             'id': task_id,
             'title': task.get('title') or f'#{task_id}',
@@ -249,6 +269,7 @@ class WebUiViewModel:
             'pending_items': summary['pending'],
             'terminal_items': summary['terminal'],
             'progress_percent': summary['progress_percent'],
+            'display_file_name': display_file_name,
             'error_message': task.get('error_message') or '',
             'assignment_completed': bool(task.get('assignment_completed')),
             'created_at': task.get('created_at'),
@@ -427,6 +448,32 @@ class WebUiViewModel:
         for row in rows:
             task_id = int(row['task_id'])
             result.setdefault(task_id, dict(row))
+        return result
+
+    def _file_names_by_task(self, task_ids: list[int]) -> dict[int, str]:
+        if not task_ids:
+            return {}
+        placeholders = ','.join(['?'] * len(task_ids))
+        with self.store.connect() as conn:
+            rows = conn.execute(
+                f'''
+                SELECT task_id, file_name
+                FROM transfer_items
+                WHERE task_id IN ({placeholders})
+                  AND file_name IS NOT NULL
+                  AND TRIM(file_name) != ''
+                ORDER BY updated_at DESC, id DESC
+                ''',
+                tuple(task_ids)
+            ).fetchall()
+        result: dict[int, str] = {}
+        for row in rows:
+            task_id = int(row['task_id'])
+            if task_id in result:
+                continue
+            name = str(row['file_name'] or '').strip()
+            if name:
+                result[task_id] = name
         return result
 
     @staticmethod

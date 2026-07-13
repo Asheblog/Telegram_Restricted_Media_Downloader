@@ -221,6 +221,7 @@ const i18n = {
     'tasks.progressVideosCaptured': '已捕获 {count} 个视频',
     'tasks.progressVideoIndex': '正在处理第 {index} 个',
     'tasks.progressDownloading': '下载 {name} · {progress}',
+    'tasks.progressUploading': '上传 {name} · {progress}',
     'tasks.actions': '操作',
     'tasks.pause': '暂停',
     'tasks.resume': '继续',
@@ -614,6 +615,7 @@ const i18n = {
     'tasks.progressVideosCaptured': '{count} videos captured',
     'tasks.progressVideoIndex': 'Processing #{index}',
     'tasks.progressDownloading': 'Download {name} · {progress}',
+    'tasks.progressUploading': 'Upload {name} · {progress}',
     'tasks.actions': 'Actions',
     'tasks.pause': 'Pause',
     'tasks.resume': 'Resume',
@@ -1078,12 +1080,31 @@ function taskFileTransferDetail(task) {
   if (!task || !task.active_item_id) return '';
   const phase = task.active_phase || '';
   if (phase !== 'downloading' && phase !== 'uploading') return '';
-  const name = task.active_file_name || ('#' + task.active_item_id);
+  const name = task.active_file_name || task.display_file_name || ('#' + task.active_item_id);
   const progress = transferProgressLabel(task.active_progress_current, task.active_progress_total);
   const speed = formatSpeed(task.active_speed_bps);
-  return t('tasks.progressDownloading')
+  const key = phase === 'uploading' ? 'tasks.progressUploading' : 'tasks.progressDownloading';
+  return t(key)
     .replace('{name}', name)
     .replace('{progress}', progress + (speed !== '-' ? ' · ' + speed : ''));
+}
+
+function watchDownloadTitle(task) {
+  const helpers = globalThis.WatchUiHelpers;
+  if (helpers && typeof helpers.watchDownloadTitle === 'function') {
+    return helpers.watchDownloadTitle(task);
+  }
+  if (!task) return '-';
+  return String(task.active_file_name || task.display_file_name || ('#' + (task.id || ''))).trim() || '-';
+}
+
+function watchDownloadProgressPercent(task) {
+  const helpers = globalThis.WatchUiHelpers;
+  const itemPct = taskProgressPercent(task);
+  if (helpers && typeof helpers.watchDownloadProgressPercent === 'function') {
+    return helpers.watchDownloadProgressPercent(task, itemPct);
+  }
+  return itemPct;
 }
 
 function activeTransferSummary(task) {

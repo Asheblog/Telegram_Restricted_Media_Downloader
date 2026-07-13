@@ -1353,10 +1353,15 @@ function watchDownloadBucket(status) {
 }
 
 function renderWatchDownloadTaskRow(task) {
-  const progressPct = taskProgressPercent(task);
-  const route = esc(formatWatchRouteForDetail(task.source_link || '-', task.target_profile || task.target_link || '-'));
+  const progressPct = watchDownloadProgressPercent(task);
+  const title = watchDownloadTitle(task);
+  const route = formatWatchRouteForDetail(task.source_link || '-', task.target_profile || task.target_link || '-');
+  const fileDetail = taskFileTransferDetail(task);
+  const activeSummary = activeTransferSummary(task);
+  const showProgress = task.uses_range_progress || task.total_items > 0 ||
+    Boolean(fileDetail) || Number(task.active_progress_total || 0) > 0;
   let progressHtml = '';
-  if (task.uses_range_progress || task.total_items > 0) {
+  if (showProgress) {
     progressHtml =
       '<div class="task-row-progress">' +
         '<span class="task-row-progress-pct">' + progressPct + '%</span>' +
@@ -1365,6 +1370,17 @@ function renderWatchDownloadTaskRow(task) {
         '</div>' +
         '<span class="task-row-progress-count">' + taskCompletedLabel(task) + '</span>' +
       '</div>';
+    if (fileDetail) {
+      progressHtml +=
+        '<div class="task-row-progress-summary task-row-progress-file" title="' + esc(fileDetail) + '">' +
+          esc(fileDetail) +
+        '</div>';
+    } else if (activeSummary) {
+      progressHtml +=
+        '<div class="task-row-progress-summary" title="' + esc(activeSummary) + '">' +
+          esc(activeSummary) +
+        '</div>';
+    }
   }
   const deleteBtn = task.can_delete
     ? '<button class="task-icon-btn btn-danger" data-watch-download-delete="' + task.id + '" title="' + t('tasks.delete') + '">' + TASK_ICON_DELETE + '</button>'
@@ -1372,7 +1388,10 @@ function renderWatchDownloadTaskRow(task) {
   return '<div class="task-row watch-download-row" data-task-id="' + task.id + '">' +
     '<div class="task-row-id">#' + task.id + '</div>' +
     '<div class="task-row-status">' + statusBadge(task.status) + '</div>' +
-    '<div class="task-row-route" title="' + esc(task.source_link || '') + ' → ' + esc(task.target_profile || task.target_link || '') + '">' + route + '</div>' +
+    '<div class="task-row-main" title="' + esc(title) + ' · ' + esc(route) + '">' +
+      '<div class="task-row-title">' + esc(title) + '</div>' +
+      '<div class="task-row-route">' + esc(route) + '</div>' +
+    '</div>' +
     '<div class="task-row-actions"><div class="task-row-actions-inner">' + deleteBtn + '</div></div>' +
     progressHtml +
   '</div>';

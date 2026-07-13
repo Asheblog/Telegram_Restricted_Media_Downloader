@@ -72,11 +72,39 @@
     });
   }
 
+  function watchDownloadTitle(task) {
+    if (!task) return '-';
+    var name = String(task.active_file_name || task.display_file_name || '').trim();
+    if (name) return name;
+    var link = String(task.source_link || '');
+    var match = link.match(/\/(\d+)\/?$/);
+    if (match) return '#' + match[1];
+    var title = String(task.title || '').trim();
+    if (title && title !== ('#' + task.id)) return title;
+    return task.id != null ? ('#' + task.id) : '-';
+  }
+
+  function watchDownloadProgressPercent(task, itemProgressPercent) {
+    var phase = task && task.active_phase;
+    if (
+      (phase === 'downloading' || phase === 'uploading') &&
+      Number(task.active_progress_total || 0) > 0
+    ) {
+      return Number(task.active_progress_percent || 0);
+    }
+    if (itemProgressPercent != null && itemProgressPercent !== '') {
+      return Number(itemProgressPercent || 0);
+    }
+    return Number(task && task.progress_percent || 0);
+  }
+
   var WatchUiHelpers = {
     shortTelegramLink: shortTelegramLink,
     formatWatchRoute: formatWatchRoute,
     summarizeWatchEvent: summarizeWatchEvent,
     filterWatchEventsByStatus: filterWatchEventsByStatus,
+    watchDownloadTitle: watchDownloadTitle,
+    watchDownloadProgressPercent: watchDownloadProgressPercent,
   };
 
   root.WatchUiHelpers = WatchUiHelpers;

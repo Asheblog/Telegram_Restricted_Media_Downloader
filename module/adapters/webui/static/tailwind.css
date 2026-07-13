@@ -507,6 +507,16 @@
     align-self: center;
   }
 
+  .task-row-main {
+    min-width: 0;
+    @apply flex flex-col gap-0.5;
+  }
+
+  .task-row-title {
+    min-width: 0;
+    @apply text-sm font-medium text-text overflow-hidden text-ellipsis whitespace-nowrap;
+  }
+
   .task-row-route {
     min-width: 0;
     @apply text-xs text-text-secondary overflow-hidden text-ellipsis whitespace-nowrap;

@@ -140,7 +140,8 @@ class WebUiAssetsCase(unittest.TestCase):
             "if (id === 'mob-view-transfers') {",
             "await loadMobileTasks();",
             "await refreshOpenTaskSheet();",
-            "else if (id === 'mob-view-watches') { await loadMobileWatches(); }",
+            "else if (id === 'mob-view-watches') {",
+            "await loadMobileWatches();",
             "else if (id === 'mob-view-downloads-uploads') { await loadMobileDownloadsUploads(); }",
             "if (view === 'transfers') { loadMobileTasks(); }",
             "else if (view === 'watches') { loadMobileWatches(); }",
@@ -213,7 +214,7 @@ class WebUiAssetsCase(unittest.TestCase):
         for fragment in (
             'stats-kpi-grid',
             'stats-chart-grid',
-            'statistics-tabs',
+            'statistics-detail-table',
             'statistics-export-btn',
             'renderStatisticsDashboard',
         ):
@@ -298,6 +299,17 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('mobWatchHistoryStatusQuery', WEB_UI_MOBILE_HTML)
         self.assertIn('overscroll-behavior:contain', WEB_UI_HTML)
         self.assertIn('document.body.style.overflow = \'hidden\'', WEB_UI_HTML)
+
+    def test_watch_download_records_show_file_and_byte_progress(self):
+        combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
+        self.assertIn('function watchDownloadTitle', combined)
+        self.assertIn('function watchDownloadProgressPercent', combined)
+        self.assertIn('watchDownloadTitle(task)', combined)
+        self.assertIn('watchDownloadProgressPercent(task)', combined)
+        self.assertIn('taskFileTransferDetail(task)', combined)
+        self.assertIn('tasks.progressUploading', combined)
+        self.assertIn('task-row-title', WEB_UI_HTML)
+        self.assertIn('display_file_name', combined)
 
     def test_watches_table_compact_headers(self):
         self.assertIn('data-i18n="watches.type"', WEB_UI_HTML)
