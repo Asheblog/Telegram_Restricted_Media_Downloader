@@ -12,6 +12,7 @@ import unittest
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from urllib.parse import quote
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
@@ -4019,6 +4020,105 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             all_events = manager.list_watch_events(watch_id, limit=50, offset=0)
             self.assertEqual(2, all_events['total'])
+
+    def test_live_watch_events_filter_by_status_and_return_status_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            watch_id = 'forward:https://t.me/source -> https://t.me/target'
+            store.upsert_live_transfer_watch(
+                watch_id=watch_id,
+                watch_type='forward',
+                source_link='https://t.me/source',
+                target_link='https://t.me/target',
+                include_comment=False,
+                status=TransferStatus.RUNNING,
+                error_message=None
+            )
+            store.add_live_watch_event(
+                watch_id, 'source', 1, 'target', 'https://t.me/target',
+                TransferStatus.SUCCESS, 'ok'
+            )
+            store.add_live_watch_event(
+                watch_id, 'source', 2, 'target', 'https://t.me/target',
+                TransferStatus.SKIPPED, 'filtered'
+            )
+            store.add_live_watch_event(
+                watch_id, 'source', 3, 'target', 'https://t.me/target',
+                TransferStatus.SKIPPED, 'filtered-2'
+            )
+            store.add_live_watch_event(
+                watch_id, 'source', 4, 'target', 'https://t.me/target',
+                TransferStatus.FAILURE, 'boom'
+            )
+
+            skipped, skipped_total = store.list_live_watch_events(
+                watch_id, limit=10, offset=0, status=TransferStatus.SKIPPED
+            )
+            self.assertEqual(2, skipped_total)
+            self.assertEqual([3, 2], [evt['source_message_id'] for evt in skipped])
+
+            failure, failure_total = store.list_live_watch_events(
+                watch_id, limit=10, offset=0, status=TransferStatus.FAILURE
+            )
+            self.assertEqual(1, failure_total)
+            self.assertEqual([4], [evt['source_message_id'] for evt in failure])
+
+            self.assertEqual(
+                {'all': 4, 'success': 1, 'skipped': 2, 'failure': 1},
+                store.count_live_watch_events_by_status(watch_id)
+            )
+
+            manager = LiveWatchManager(transfer_store_getter=lambda: store)
+            payload = manager.list_watch_events(
+                watch_id, limit=1, offset=0, status=TransferStatus.SKIPPED
+            )
+            self.assertEqual(2, payload['total'])
+            self.assertEqual(1, len(payload['events']))
+            self.assertEqual(3, payload['events'][0]['source_message_id'])
+            self.assertEqual(
+                {'all': 4, 'success': 1, 'skipped': 2, 'failure': 1},
+                payload['status_counts']
+            )
+            self.assertEqual(TransferStatus.SKIPPED, payload['status'])
+
+            with self.assertRaises(ValueError):
+                manager.list_watch_events(watch_id, status='nope')
+
+            server = WebUiServer(
+                store=store,
+                operations=SimpleNamespace(
+                    list_watch_events=lambda *args, **kwargs: manager.list_watch_events(*args, **kwargs)
+                ),
+                username='admin',
+                password='pass'
+            )
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(server)
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                path = f'/api/watches/{quote(watch_id, safe="")}/events?limit=10&offset=0&status=skipped'
+                conn.request('GET', path, headers=headers)
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(2, body['total'])
+                self.assertEqual(2, len(body['events']))
+                self.assertEqual(
+                    {'all': 4, 'success': 1, 'skipped': 2, 'failure': 1},
+                    body['status_counts']
+                )
+
+                conn.request(
+                    'GET',
+                    f'/api/watches/{quote(watch_id, safe="")}/events?status=bogus',
+                    headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(400, response.status)
+                self.assertEqual('invalid_status', body.get('error_code'))
+            finally:
+                server.stop()
 
     def test_live_watch_today_count_respects_client_timezone_offset(self):
         fixed_now = datetime.datetime(2026, 7, 10, 2, 0, 0, tzinfo=datetime.UTC)

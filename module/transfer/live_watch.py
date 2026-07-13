@@ -387,17 +387,20 @@ class LiveWatchManager:
             limit: int = 50,
             offset: int = 0,
             today_only: bool = False,
-            tz_offset_minutes: int | None = None
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
     ) -> Optional[dict]:
         store = self._transfer_store
         if not store:
             return None
+        normalized = (status or '').strip() or None
         events, total = store.list_live_watch_events(
             watch_id,
             limit=limit,
             offset=offset,
             today_only=today_only,
-            tz_offset_minutes=tz_offset_minutes
+            tz_offset_minutes=tz_offset_minutes,
+            status=normalized
         )
         return {
             'watch_id': watch_id,
@@ -406,5 +409,11 @@ class LiveWatchManager:
             'limit': limit,
             'offset': offset,
             'today_only': today_only,
+            'status': normalized,
+            'status_counts': store.count_live_watch_events_by_status(
+                watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            ),
             'has_more': (offset + len(events)) < total
         }

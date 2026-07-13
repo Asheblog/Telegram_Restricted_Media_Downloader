@@ -1128,12 +1128,15 @@ async function openWatchDetail(watchId, mode) {
     total: 0,
     filter: 'all',
     items: [],
+    statusCounts: null,
   };
   if (detailMode === 'downloads') {
     state.watchDownload = { watchId: watchId, tasks: [], counts: {} };
   }
   renderWatchDetailShell(watch, detailMode);
   overlay.classList.add('open');
+  document.body.dataset.watchDetailScrollLock = document.body.style.overflow || '';
+  document.body.style.overflow = 'hidden';
   await loadWatchDetail(false);
   if (detailMode === 'downloads') startWatchDownloadPolling();
 }
@@ -1175,6 +1178,13 @@ function filterWatchEventsForDetail(items, filter) {
   return (items || []).filter(function(evt) {
     return summarizeWatchEventForDetail(evt).kind === filter;
   });
+}
+
+function watchHistoryStatusQuery(filter) {
+  if (filter === 'success') return 'success';
+  if (filter === 'filtered') return 'skipped';
+  if (filter === 'failure') return 'failure';
+  return '';
 }
 
 function watchDetailModeTitle(mode) {
@@ -1225,15 +1235,25 @@ async function loadWatchDetailHistory(silent) {
   if (!silent) body.innerHTML = '<div class="p-8 text-center"><div class="spinner mx-auto"></div></div>';
   footer.innerHTML = '';
   try {
-    const data = await fetchJson('/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    const status = watchHistoryStatusQuery(detail.filter);
+    let url = '/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset;
+    if (status) url += '&status=' + encodeURIComponent(status);
+    const data = await fetchJson(url);
     const items = data.events || [];
     const total = Number(data.total || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const statusCounts = data.status_counts || {
+      all: total,
+      success: 0,
+      skipped: 0,
+      failure: 0,
+    };
     detail.items = items;
     detail.total = total;
-    renderWatchDetailHistorySummary(total);
-    renderWatchDetailHistoryFilters(items);
-    body.innerHTML = renderWatchHistoryList(filterWatchEventsForDetail(items, detail.filter));
+    detail.statusCounts = statusCounts;
+    renderWatchDetailHistorySummary(statusCounts);
+    renderWatchDetailHistoryFilters(statusCounts);
+    body.innerHTML = renderWatchHistoryList(items);
     footer.innerHTML = renderPaginationBar({
       prefix: 'watch-detail-history',
       page: page,
@@ -1251,27 +1271,28 @@ async function loadWatchDetailHistory(silent) {
   }
 }
 
-function renderWatchDetailHistorySummary(total) {
+function renderWatchDetailHistorySummary(statusCounts) {
   const summary = $('#watch-detail-summary');
   const watch = findWatchById(state.watchDetail && state.watchDetail.watchId);
   const today = watch ? Number(watch.today_count || 0) : 0;
+  const total = Number((statusCounts && statusCounts.all) || 0);
   if (summary) summary.textContent = '今日 ' + today + ' · 全部 ' + total;
 }
 
-function renderWatchDetailHistoryFilters(items) {
+function renderWatchDetailHistoryFilters(statusCounts) {
   const filters = $('#watch-detail-filters');
   const detail = state.watchDetail;
   if (!filters || !detail) return;
+  const counts = statusCounts || {};
   const chips = [
-    { key: 'all', label: t('watches.filterAll') },
-    { key: 'success', label: t('watches.filterSuccess') },
-    { key: 'filtered', label: t('watches.filterFiltered') },
-    { key: 'failure', label: t('watches.filterFailure') },
+    { key: 'all', label: t('watches.filterAll'), count: Number(counts.all || 0) },
+    { key: 'success', label: t('watches.filterSuccess'), count: Number(counts.success || 0) },
+    { key: 'filtered', label: t('watches.filterFiltered'), count: Number(counts.skipped || 0) },
+    { key: 'failure', label: t('watches.filterFailure'), count: Number(counts.failure || 0) },
   ];
   filters.innerHTML = chips.map(function(chip) {
-    const count = filterWatchEventsForDetail(items, chip.key).length;
     return '<button type="button" class="panel-tab' + (detail.filter === chip.key ? ' active' : '') + '" data-watch-detail-filter="' + chip.key + '">' +
-      esc(chip.label) + ' (' + count + ')' +
+      esc(chip.label) + ' (' + chip.count + ')' +
       '</button>';
   }).join('');
 }
@@ -1310,6 +1331,10 @@ function closeWatchDetail() {
   state.watchDetail = null;
   state.watchDownload = { watchId: null, tasks: [], counts: {} };
   $('#watch-detail-overlay')?.classList.remove('open');
+  if (Object.prototype.hasOwnProperty.call(document.body.dataset, 'watchDetailScrollLock')) {
+    document.body.style.overflow = document.body.dataset.watchDetailScrollLock;
+    delete document.body.dataset.watchDetailScrollLock;
+  }
   const body = $('#watch-detail-body');
   const filters = $('#watch-detail-filters');
   const footer = $('#watch-detail-footer');
@@ -1695,10 +1720,11 @@ $('#watch-detail-overlay')?.addEventListener('click', function(e) {
 $('#watch-detail-filters')?.addEventListener('click', function(e) {
   const btn = e.target.closest('[data-watch-detail-filter]');
   if (!btn || !state.watchDetail || state.watchDetail.mode !== 'history') return;
-  state.watchDetail.filter = btn.dataset.watchDetailFilter || 'all';
-  renderWatchDetailHistoryFilters(state.watchDetail.items || []);
-  const body = $('#watch-detail-body');
-  if (body) body.innerHTML = renderWatchHistoryList(filterWatchEventsForDetail(state.watchDetail.items || [], state.watchDetail.filter));
+  const nextFilter = btn.dataset.watchDetailFilter || 'all';
+  if (state.watchDetail.filter === nextFilter) return;
+  state.watchDetail.filter = nextFilter;
+  state.watchDetail.page = 1;
+  loadWatchDetailHistory(false);
 });
 $('#watch-detail-body')?.addEventListener('click', async function(e) {
   const expandRow = e.target.closest('[data-expand-detail]');

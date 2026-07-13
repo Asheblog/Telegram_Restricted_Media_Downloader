@@ -16,7 +16,8 @@ class IWatchOps(Protocol):
             limit: int = 50,
             offset: int = 0,
             today_only: bool = False,
-            tz_offset_minutes: int | None = None
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
     ) -> Optional[dict]: ...
 
 

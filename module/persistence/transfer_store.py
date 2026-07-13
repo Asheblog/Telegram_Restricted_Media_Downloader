@@ -1746,21 +1746,52 @@ class TransferStore:
             )
             return int(cursor.lastrowid)
 
+    _LIVE_WATCH_EVENT_STATUS_FILTERS = {
+        TransferStatus.SUCCESS,
+        TransferStatus.SKIPPED,
+        TransferStatus.FAILURE,
+    }
+
+    def _live_watch_event_where(
+            self,
+            watch_id: str,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
+    ) -> tuple[str, list[Any]]:
+        where_sql = 'watch_id = ?'
+        params: list[Any] = [watch_id]
+        if today_only:
+            start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
+            where_sql += ' AND created_at >= ? AND created_at < ?'
+            params.extend([start_at, end_at])
+        if status:
+            if status == TransferStatus.FAILURE:
+                where_sql += ' AND status NOT IN (?, ?)'
+                params.extend([TransferStatus.SUCCESS, TransferStatus.SKIPPED])
+            else:
+                where_sql += ' AND status = ?'
+                params.append(status)
+        return where_sql, params
+
     def list_live_watch_events(
             self,
             watch_id: str,
             limit: int = 50,
             offset: int = 0,
             today_only: bool = False,
-            tz_offset_minutes: int | None = None
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
     ) -> tuple:
+        if status is not None and status not in self._LIVE_WATCH_EVENT_STATUS_FILTERS:
+            raise ValueError('invalid_status')
         with self.connect() as conn:
-            where_sql = 'watch_id = ?'
-            params: list[Any] = [watch_id]
-            if today_only:
-                start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
-                where_sql += ' AND created_at >= ? AND created_at < ?'
-                params.extend([start_at, end_at])
+            where_sql, params = self._live_watch_event_where(
+                watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes,
+                status=status
+            )
             total = int(conn.execute(
                 f'SELECT COUNT(*) FROM live_watch_events WHERE {where_sql}',
                 params
@@ -1776,6 +1807,46 @@ class TransferStore:
             ).fetchall()
             return [dict(row) for row in rows], total
 
+    def count_live_watch_events_by_status(
+            self,
+            watch_id: str,
+            today_only: bool = False,
+            tz_offset_minutes: int | None = None
+    ) -> dict[str, int]:
+        with self.connect() as conn:
+            where_sql, params = self._live_watch_event_where(
+                watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
+            rows = conn.execute(
+                f'''
+                SELECT status, COUNT(*) AS cnt
+                FROM live_watch_events
+                WHERE {where_sql}
+                GROUP BY status
+                ''',
+                params
+            ).fetchall()
+        success = 0
+        skipped = 0
+        failure = 0
+        for row in rows:
+            status = row['status'] if isinstance(row, sqlite3.Row) else row[0]
+            count = int(row['cnt'] if isinstance(row, sqlite3.Row) else row[1])
+            if status == TransferStatus.SUCCESS:
+                success += count
+            elif status == TransferStatus.SKIPPED:
+                skipped += count
+            else:
+                failure += count
+        return {
+            'all': success + skipped + failure,
+            'success': success,
+            'skipped': skipped,
+            'failure': failure,
+        }
+
     def get_live_watch_event_count(
             self,
             watch_id: str,
@@ -1783,12 +1854,11 @@ class TransferStore:
             tz_offset_minutes: int | None = None
     ) -> int:
         with self.connect() as conn:
-            where_sql = 'watch_id = ?'
-            params: list[Any] = [watch_id]
-            if today_only:
-                start_at, end_at = self.local_today_utc_bounds(tz_offset_minutes)
-                where_sql += ' AND created_at >= ? AND created_at < ?'
-                params.extend([start_at, end_at])
+            where_sql, params = self._live_watch_event_where(
+                watch_id,
+                today_only=today_only,
+                tz_offset_minutes=tz_offset_minutes
+            )
             return int(conn.execute(
                 f'SELECT COUNT(*) FROM live_watch_events WHERE {where_sql}',
                 params

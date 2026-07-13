@@ -544,6 +544,13 @@ function mobFilterWatchEvents(items, filter) {
   return (items || []).filter(function(evt) { return mobSummarizeWatchEvent(evt).kind === filter; });
 }
 
+function mobWatchHistoryStatusQuery(filter) {
+  if (filter === 'success') return 'success';
+  if (filter === 'filtered') return 'skipped';
+  if (filter === 'failure') return 'failure';
+  return '';
+}
+
 function mobWatchModeTitle(mode) {
   if (mode === 'downloads') return t('watches.downloadRecordsTitle');
   if (mode === 'deferred') return t('watches.deferredComments');
@@ -745,7 +752,8 @@ async function openMobileWatchDetail(watchId, mode) {
     pageSize: 20,
     total: 0,
     filter: 'all',
-    items: []
+    items: [],
+    statusCounts: null
   };
   if (detailMode === 'downloads') mobWatchDownloadState = { watchId: watchId };
   var overlay = document.getElementById('mob-sheet-overlay');
@@ -785,29 +793,29 @@ async function loadMobileWatchDetail(silent) {
   return loadMobileWatchHistoryPage(silent);
 }
 
-function renderMobileWatchHistoryFilters(items) {
+function renderMobileWatchHistoryFilters(statusCounts) {
   var filters = document.getElementById('mob-watch-detail-filters');
   var detail = state.watchDetail;
   if (!filters || !detail) return;
+  var counts = statusCounts || {};
   var chips = [
-    { key: 'all', label: t('watches.filterAll') },
-    { key: 'success', label: t('watches.filterSuccess') },
-    { key: 'filtered', label: t('watches.filterFiltered') },
-    { key: 'failure', label: t('watches.filterFailure') }
+    { key: 'all', label: t('watches.filterAll'), count: Number(counts.all || 0) },
+    { key: 'success', label: t('watches.filterSuccess'), count: Number(counts.success || 0) },
+    { key: 'filtered', label: t('watches.filterFiltered'), count: Number(counts.skipped || 0) },
+    { key: 'failure', label: t('watches.filterFailure'), count: Number(counts.failure || 0) }
   ];
   filters.innerHTML = chips.map(function(chip) {
-    var count = mobFilterWatchEvents(items, chip.key).length;
     return '<button type="button" class="mob-sheet-tab' + (detail.filter === chip.key ? ' active' : '') + '" data-mob-watch-filter="' + chip.key + '">' +
-      esc(chip.label) + '<span class="count">' + count + '</span>' +
+      esc(chip.label) + '<span class="count">' + chip.count + '</span>' +
     '</button>';
   }).join('');
   filters.querySelectorAll('[data-mob-watch-filter]').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      state.watchDetail.filter = btn.dataset.mobWatchFilter || 'all';
-      renderMobileWatchHistoryFilters(state.watchDetail.items || []);
-      var body = document.getElementById('mob-watch-detail-body');
-      if (body) body.innerHTML = renderMobileWatchHistoryList(mobFilterWatchEvents(state.watchDetail.items || [], state.watchDetail.filter));
-      bindMobileWatchHistoryRows();
+      var nextFilter = btn.dataset.mobWatchFilter || 'all';
+      if (state.watchDetail.filter === nextFilter) return;
+      state.watchDetail.filter = nextFilter;
+      state.watchDetail.page = 1;
+      loadMobileWatchHistoryPage(false);
     });
   });
 }
@@ -857,16 +865,26 @@ async function loadMobileWatchHistoryPage(silent) {
   if (!silent) body.innerHTML = '<div class="mob-empty">加载中...</div>';
   if (pagination) pagination.innerHTML = '';
   try {
-    var data = await fetchJson('/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset);
+    var status = mobWatchHistoryStatusQuery(detail.filter);
+    var url = '/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset;
+    if (status) url += '&status=' + encodeURIComponent(status);
+    var data = await fetchJson(url);
     var items = data.events || [];
     var total = Number(data.total || 0);
     var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    var statusCounts = data.status_counts || {
+      all: total,
+      success: 0,
+      skipped: 0,
+      failure: 0
+    };
     detail.items = items;
     detail.total = total;
+    detail.statusCounts = statusCounts;
     var watch = mobFindWatchById(detail.watchId);
-    if (summary) summary.textContent = '今日 ' + Number(watch && watch.today_count || 0) + ' · 全部 ' + total;
-    renderMobileWatchHistoryFilters(items);
-    body.innerHTML = renderMobileWatchHistoryList(mobFilterWatchEvents(items, detail.filter));
+    if (summary) summary.textContent = '今日 ' + Number(watch && watch.today_count || 0) + ' · 全部 ' + Number(statusCounts.all || 0);
+    renderMobileWatchHistoryFilters(statusCounts);
+    body.innerHTML = renderMobileWatchHistoryList(items);
     bindMobileWatchHistoryRows();
     if (pagination) {
       pagination.innerHTML = renderPaginationBar({

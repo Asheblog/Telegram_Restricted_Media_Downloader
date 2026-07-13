@@ -90,6 +90,7 @@
 | `/api/tasks/<id>/retry-failed` | POST | 重试失败 Items |
 | `/api/watches` | GET/POST | 列出/创建监听规则 |
 | `/api/watches/<id>` | DELETE/PATCH | 删除/更新监听 |
+| `/api/watches/<id>/events` | GET | 监听转发记录；`limit`/`offset`/`today`/`tz_offset`/`status=success\|skipped\|failure`；响应含 `status_counts` |
 | `/api/statistics` | GET | 近 7 天按频道聚合的转存统计（`tz_offset` 可选） |
 | `/api/operations` | GET | 操作历史 |
 | `/api/transfer/detect-range` | POST | 检测频道消息范围 |

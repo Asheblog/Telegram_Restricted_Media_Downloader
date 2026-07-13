@@ -431,14 +431,16 @@ class WebOperationsMixin:
             limit: int = 50,
             offset: int = 0,
             today_only: bool = False,
-            tz_offset_minutes: int | None = None
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
     ):
         return self.watch_manager.list_watch_events(
             watch_id,
             limit=limit,
             offset=offset,
             today_only=today_only,
-            tz_offset_minutes=tz_offset_minutes
+            tz_offset_minutes=tz_offset_minutes,
+            status=status
         )
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:

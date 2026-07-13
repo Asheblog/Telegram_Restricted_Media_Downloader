@@ -570,13 +570,24 @@ class WebUiServer:
                     offset = self._query_int(query, 'offset', 0)
                     today_only = str((query.get('today') or [''])[0]).lower() in ('1', 'true', 'yes')
                     tz_offset = self._query_optional_int(query, 'tz_offset')
-                    result = server.list_watch_events(
-                        watch_id,
-                        limit=limit,
-                        offset=offset,
-                        today_only=today_only,
-                        tz_offset_minutes=tz_offset
-                    )
+                    status = str((query.get('status') or [''])[0]).strip() or None
+                    if status and status not in ('success', 'skipped', 'failure'):
+                        self._send_error('invalid_status', 'Invalid status filter.', HTTPStatus.BAD_REQUEST)
+                        return
+                    try:
+                        result = server.list_watch_events(
+                            watch_id,
+                            limit=limit,
+                            offset=offset,
+                            today_only=today_only,
+                            tz_offset_minutes=tz_offset,
+                            status=status
+                        )
+                    except ValueError as exc:
+                        if str(exc) == 'invalid_status':
+                            self._send_error('invalid_status', 'Invalid status filter.', HTTPStatus.BAD_REQUEST)
+                            return
+                        raise
                     if not result:
                         self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
                         return
@@ -1210,7 +1221,8 @@ class WebUiServer:
             limit: int = 50,
             offset: int = 0,
             today_only: bool = False,
-            tz_offset_minutes: int | None = None
+            tz_offset_minutes: int | None = None,
+            status: str | None = None
     ):
         list_watch_events = self._operation('list_watch_events')
         if list_watch_events:
@@ -1219,7 +1231,8 @@ class WebUiServer:
                 limit=limit,
                 offset=offset,
                 today_only=today_only,
-                tz_offset_minutes=tz_offset_minutes
+                tz_offset_minutes=tz_offset_minutes,
+                status=status
             )
         return None
 

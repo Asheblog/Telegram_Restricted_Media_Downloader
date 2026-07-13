@@ -292,6 +292,12 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('watch-detail-summary', WEB_UI_HTML)
         self.assertIn('WatchUiHelpers', WEB_UI_HTML)
         self.assertNotIn('id="watch-download-overlay"', WEB_UI_HTML)
+        self.assertIn('status_counts', WEB_UI_HTML)
+        self.assertIn('status_counts', WEB_UI_MOBILE_HTML)
+        self.assertIn('watchHistoryStatusQuery', WEB_UI_HTML)
+        self.assertIn('mobWatchHistoryStatusQuery', WEB_UI_MOBILE_HTML)
+        self.assertIn('overscroll-behavior:contain', WEB_UI_HTML)
+        self.assertIn('document.body.style.overflow = \'hidden\'', WEB_UI_HTML)
 
     def test_watches_table_compact_headers(self):
         self.assertIn('data-i18n="watches.type"', WEB_UI_HTML)
