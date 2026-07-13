@@ -132,6 +132,7 @@ class TrmdCompositionRoot:
                 self._ensure_media_manager().try_cleanup_item_file(item_id)
             ),
             app_getter=lambda: self.app,
+            system_log=self.system_log,
         )
         self.progress_tracker = TransferProgressTracker(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
@@ -298,6 +299,7 @@ class TrmdCompositionRoot:
                 self._ensure_media_manager().try_cleanup_item_file(item_id)
             ),
             app_getter=lambda: self.__dict__.get('app'),
+            system_log=self.__dict__.get('system_log'),
         )
 
     def _ensure_progress_tracker(self):

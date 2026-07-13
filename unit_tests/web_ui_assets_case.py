@@ -243,18 +243,20 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('refreshOpenTaskSheet();', WEB_UI_MOBILE_HTML)
 
     def test_task_items_table_uses_single_line_columns_except_file(self):
-        header = (
-            '<th class="task-item-file">文件</th><th class="task-item-size">大小</th>'
-            '<th class="task-item-progress">进度/速度</th><th class="task-item-source">来源</th>'
-            '<th class="task-item-status">状态</th>'
-        )
-        self.assertIn(header, WEB_UI_HTML)
+        self.assertIn("t('items.colFile')", WEB_UI_HTML)
+        self.assertIn("t('items.colSize')", WEB_UI_HTML)
+        self.assertIn("t('items.colProgress')", WEB_UI_HTML)
+        self.assertIn("t('items.colSource')", WEB_UI_HTML)
+        self.assertIn("t('items.colError')", WEB_UI_HTML)
+        self.assertIn("t('items.colStatus')", WEB_UI_HTML)
+        self.assertIn("'items.colError': '原因'", WEB_UI_HTML)
+        self.assertIn('task-item-col-error', WEB_UI_HTML)
+        self.assertIn('item.error_message', WEB_UI_HTML)
         self.assertNotIn('<th>文件</th><th>大小</th><th>进度/速度</th><th>来源</th><th>目标</th><th>状态</th>', WEB_UI_HTML)
         self.assertIn('.task-items-table{', WEB_UI_HTML)
-        self.assertIn('min-width:840px', WEB_UI_HTML)
+        self.assertIn('min-width:980px', WEB_UI_HTML)
         self.assertIn('table-layout:fixed', WEB_UI_HTML)
-        self.assertIn('.task-items-table .task-item-col-size{width:112px}', WEB_UI_HTML)
-        self.assertIn('.task-items-table .task-item-col-status{width:118px}', WEB_UI_HTML)
+        self.assertIn('.task-items-table .task-item-col-error{width:28%}', WEB_UI_HTML)
         self.assertIn('overflow-wrap:anywhere', WEB_UI_HTML)
 
     def test_auth_flow_js(self):

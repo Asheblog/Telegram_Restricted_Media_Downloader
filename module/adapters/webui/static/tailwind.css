@@ -584,15 +584,16 @@
   }
 
   .task-items-table {
-    min-width: 840px;
+    min-width: 980px;
     table-layout: fixed;
   }
 
-  .task-items-table .task-item-col-file { width: 34%; }
-  .task-items-table .task-item-col-size { width: 112px; }
-  .task-items-table .task-item-col-progress { width: 220px; }
-  .task-items-table .task-item-col-source { width: 220px; }
-  .task-items-table .task-item-col-status { width: 118px; }
+  .task-items-table .task-item-col-file { width: 26%; }
+  .task-items-table .task-item-col-size { width: 100px; }
+  .task-items-table .task-item-col-progress { width: 180px; }
+  .task-items-table .task-item-col-source { width: 180px; }
+  .task-items-table .task-item-col-error { width: 28%; }
+  .task-items-table .task-item-col-status { width: 100px; }
 
   .task-items-table th,
   .task-items-table td {
@@ -609,11 +610,12 @@
 
   .task-items-table .task-item-size,
   .task-items-table .task-item-status {
-    min-width: 112px;
+    min-width: 100px;
   }
 
   .task-items-table .task-item-progress,
-  .task-items-table .task-item-source {
+  .task-items-table .task-item-source,
+  .task-items-table .task-item-error {
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -1831,6 +1833,15 @@
     display: block;
     margin-top: 2px;
     color: var(--color-muted);
+    @apply text-xs font-medium;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mob-item-row__error {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-danger, #dc2626);
     @apply text-xs font-medium;
     overflow: hidden;
     text-overflow: ellipsis;

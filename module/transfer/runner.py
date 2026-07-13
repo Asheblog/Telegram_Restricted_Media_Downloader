@@ -550,6 +550,22 @@ class WebTransferRunner:
                     level='error',
                     item_id=item_id,
                 )
+                log_system = getattr(host, '_log_system_chain', None)
+                if callable(log_system):
+                    log_system(
+                        category='transfer',
+                        stage='item_failure',
+                        message=str(e),
+                        level='error',
+                        source_chat_id=origin_chat_id,
+                        source_message_id=message_id,
+                        target_link=task.get('target_link'),
+                        details={
+                            'task_id': task_id,
+                            'item_id': int(item_id),
+                            'source_link': source_link or '',
+                        },
+                    )
                 host.refresh_transfer_task_counts(task_id)
                 return False
             if resolved is not None:

@@ -22,6 +22,7 @@ class PikpakIntegrationManager:
             refresh_counts: Callable[[int], None],
             cleanup_item_file: Callable[[int], bool] = None,
             app_getter: Callable = None,
+            system_log=None,
     ):
         self._transfer_store_getter = transfer_store_getter
         self._pikpak_archive_client_getter = pikpak_archive_client_getter
@@ -30,6 +31,7 @@ class PikpakIntegrationManager:
         self._refresh_counts = refresh_counts
         self._cleanup_item_file = cleanup_item_file
         self._app_getter = app_getter
+        self._system_log = system_log
         self._pikpak_archive_client = None
 
     @property
@@ -182,6 +184,35 @@ class PikpakIntegrationManager:
         error_message = str(item.get('error_message') or '')
         return 'PikPak ingest confirmation' in error_message or 'PikPak archive' in error_message
 
+    def _log_item_failure_system_chain(
+            self,
+            *,
+            task_id: int,
+            item_id: int,
+            message: str,
+            item: Optional[dict] = None,
+    ) -> None:
+        tracer = self._system_log
+        if tracer is None or not callable(getattr(tracer, 'log', None)):
+            return
+        row = item or {}
+        if not row and self.transfer_store:
+            row = self.transfer_store.get_item(int(item_id)) or {}
+        tracer.log(
+            category='transfer',
+            stage='item_failure',
+            message=message,
+            level='error',
+            source_chat_id=row.get('source_chat_id'),
+            source_message_id=row.get('source_message_id'),
+            target_link=row.get('target_link'),
+            details={
+                'task_id': int(task_id),
+                'item_id': int(item_id),
+                'source_link': row.get('source_link') or '',
+            },
+        )
+
     def fail_transfer_item(
             self,
             task_id: int,
@@ -189,6 +220,7 @@ class PikpakIntegrationManager:
             message: str
     ) -> None:
         store = self.transfer_store
+        item = store.get_item(int(item_id)) if store else None
         store.update_item(
             item_id,
             phase='failure',
@@ -200,6 +232,12 @@ class PikpakIntegrationManager:
             message,
             level='error',
             item_id=item_id
+        )
+        self._log_item_failure_system_chain(
+            task_id=int(task_id),
+            item_id=int(item_id),
+            message=message,
+            item=item,
         )
         self._refresh_counts(task_id)
         if callable(self._cleanup_item_file):

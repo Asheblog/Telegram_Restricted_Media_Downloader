@@ -286,17 +286,26 @@ async function loadTaskItems(taskId, status, options) {
       body.innerHTML = '<div class="p-8 text-center text-muted text-sm">' + t('items.empty.' + emptyStatus) + '</div>';
     } else {
       body.innerHTML = '<table class="data-table task-items-table"><colgroup>' +
-        '<col class="task-item-col-file"><col class="task-item-col-size"><col class="task-item-col-progress"><col class="task-item-col-source"><col class="task-item-col-status">' +
+        '<col class="task-item-col-file"><col class="task-item-col-size"><col class="task-item-col-progress"><col class="task-item-col-source"><col class="task-item-col-error"><col class="task-item-col-status">' +
         '</colgroup><thead><tr>' +
-        '<th class="task-item-file">文件</th><th class="task-item-size">大小</th><th class="task-item-progress">进度/速度</th><th class="task-item-source">来源</th><th class="task-item-status">状态</th>' +
+        '<th class="task-item-file">' + t('items.colFile') + '</th>' +
+        '<th class="task-item-size">' + t('items.colSize') + '</th>' +
+        '<th class="task-item-progress">' + t('items.colProgress') + '</th>' +
+        '<th class="task-item-source">' + t('items.colSource') + '</th>' +
+        '<th class="task-item-error">' + t('items.colError') + '</th>' +
+        '<th class="task-item-status">' + t('items.colStatus') + '</th>' +
         '</tr></thead><tbody>' +
-        items.map(item => '<tr>' +
+        items.map(item => {
+          const errorText = item.error_message || '';
+          return '<tr>' +
           '<td class="task-item-file" title="' + esc(item.file_name || item.local_path || '-') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
           '<td class="task-item-size">' + fmtSize(item.file_size) + '</td>' +
           '<td class="task-item-progress" title="' + esc(itemTransferSummary(item)) + '">' + esc(itemTransferSummary(item)) + '</td>' +
           '<td class="task-item-source" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
+          '<td class="task-item-error' + (errorText ? ' text-danger' : '') + '" title="' + esc(errorText || '-') + '">' + esc(errorText || '-') + '</td>' +
           '<td class="task-item-status">' + statusBadge(item.status) + '</td>' +
-          '</tr>').join('') +
+          '</tr>';
+        }).join('') +
         '</tbody></table>';
     }
 

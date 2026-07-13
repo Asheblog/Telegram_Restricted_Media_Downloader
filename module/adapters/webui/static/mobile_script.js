@@ -1270,9 +1270,11 @@ async function loadSheetItemPage(options) {
       var html = '';
       page.forEach(function(item) {
         var summary = itemTransferSummary(item);
+        var errorText = item.error_message || '';
         html += '<div class="mob-item-row">' +
           '<span class="mob-item-row__name">' + esc(item.file_name || item.message_id || '#' + item.id) +
             '<small class="mob-item-row__progress">' + esc(summary) + '</small>' +
+            (errorText ? '<small class="mob-item-row__error">' + esc(errorText) + '</small>' : '') +
           '</span>' +
           '<span class="mob-card__badge ' + (item.status === 'success' ? 'completed' : item.status === 'failure' ? 'failure' : 'pending') + '">' + esc(item.status || '-') + '</span>' +
         '</div>';

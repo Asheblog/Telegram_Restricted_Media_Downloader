@@ -835,6 +835,20 @@ class TransferProgressTracker:
             error_message=message
         )
         store.add_event(task_id, message, level='error', item_id=item_id)
+        self._log_system_chain(
+            category='transfer',
+            stage='item_failure',
+            message=message,
+            level='error',
+            source_chat_id=with_upload.get('source_chat_id'),
+            source_message_id=with_upload.get('message_id'),
+            target_link=with_upload.get('link'),
+            details={
+                'task_id': task_id,
+                'item_id': int(item_id),
+                'source_link': with_upload.get('source_link') or '',
+            },
+        )
         self._refresh_counts(task_id)
         self._try_cleanup(item_id)
 
@@ -918,13 +932,34 @@ class TransferProgressTracker:
         elif upload_task.status == UploadStatus.FAILURE:
             store = self.transfer_store
             if store and task_id and item_id:
+                error_message = upload_task.error_msg or 'Upload failed'
+                item = store.get_item(int(item_id)) or {}
                 store.update_item(
                     item_id,
                     status=TransferStatus.FAILURE,
                     phase='failure',
-                    error_message=upload_task.error_msg
+                    error_message=error_message
                 )
-                store.add_event(task_id, f'Upload failed: {upload_task.error_msg}', level='error', item_id=item_id)
+                store.add_event(
+                    task_id,
+                    f'Upload failed: {error_message}',
+                    level='error',
+                    item_id=item_id
+                )
+                self._log_system_chain(
+                    category='transfer',
+                    stage='item_failure',
+                    message=error_message,
+                    level='error',
+                    source_chat_id=item.get('source_chat_id'),
+                    source_message_id=item.get('source_message_id'),
+                    target_link=item.get('target_link'),
+                    details={
+                        'task_id': int(task_id),
+                        'item_id': int(item_id),
+                        'source_link': item.get('source_link') or '',
+                    },
+                )
                 self._try_cleanup(int(item_id))
         store = self.transfer_store
         if store and task_id:
