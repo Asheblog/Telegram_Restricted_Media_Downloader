@@ -1,9 +1,15 @@
 # coding=UTF-8
+import datetime
 import os
 from typing import Any, Optional
 
 from module.local_storage_guard import LocalStorageGuard
 from module.transfer_store import TransferStatus, TransferStore
+
+# Progress callbacks stop updating download/upload_speed_bps when transfer stalls.
+# Exclude speeds whose item has not been touched within this window so the
+# dashboard does not freeze on the last sampled rate.
+SPEED_METRICS_STALE_SECONDS = 5
 
 
 TASK_TERMINAL_STATUSES = {
@@ -480,6 +486,10 @@ class WebUiViewModel:
         return [dict(row) for row in rows]
 
     def transfer_speed_metrics(self) -> dict[str, int]:
+        cutoff = (
+            datetime.datetime.now(datetime.UTC)
+            - datetime.timedelta(seconds=SPEED_METRICS_STALE_SECONDS)
+        ).isoformat(timespec='seconds')
         with self.store.connect() as conn:
             row = conn.execute(
                 '''
@@ -487,8 +497,9 @@ class WebUiViewModel:
                        COALESCE(SUM(upload_speed_bps), 0) AS upload_speed_bps
                 FROM transfer_items
                 WHERE status = ?
+                  AND updated_at >= ?
                 ''',
-                (TransferStatus.RUNNING,)
+                (TransferStatus.RUNNING, cutoff)
             ).fetchone()
         return {
             'download_speed_bps': int(row['download_speed_bps'] or 0),

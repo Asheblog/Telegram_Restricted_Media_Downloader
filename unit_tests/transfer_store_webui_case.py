@@ -4183,6 +4183,63 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertGreater(disk['disk_free_bytes'], 0)
             self.assertEqual(directory, disk['disk_path'])
 
+    def test_transfer_speed_metrics_ignores_stale_running_item_speeds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot'
+            )
+            stale_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=10,
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot',
+                file_name='stale.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+            fresh_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=11,
+                source_link='https://t.me/source/11',
+                target_link='https://t.me/pikpak_bot',
+                file_name='fresh.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+            store.update_item_progress(
+                item_id=stale_id,
+                phase='downloading',
+                download_current=40,
+                download_total=100,
+                download_speed_bps=3040870,
+                upload_speed_bps=0
+            )
+            store.update_item_progress(
+                item_id=fresh_id,
+                phase='downloading',
+                download_current=20,
+                download_total=100,
+                download_speed_bps=1024,
+                upload_speed_bps=512
+            )
+            stale_at = (
+                datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=30)
+            ).isoformat(timespec='seconds')
+            with store.connect() as conn:
+                conn.execute(
+                    'UPDATE transfer_items SET updated_at = ? WHERE id = ?',
+                    (stale_at, stale_id),
+                )
+
+            speeds = WebUiViewModel(store).transfer_speed_metrics()
+
+            self.assertEqual(1024, speeds['download_speed_bps'])
+            self.assertEqual(512, speeds['upload_speed_bps'])
+
     def test_range_transfer_progress_uses_message_id_counts_for_range_tasks(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
