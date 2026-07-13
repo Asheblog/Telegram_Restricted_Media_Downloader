@@ -300,6 +300,13 @@ const i18n = {
     'settings.keywordList': '关键词列表（逗号分隔）',
     'settings.keywordPlaceholder': '输入关键词,用逗号分隔',
     'settings.exports': '导出表格',
+    'settings.forwardWatchBackup': '监听转发备份',
+    'settings.forwardWatchBackupHint': '导出监听转发规则，迁移时可直接导入，无需逐条手动录入。',
+    'settings.forwardWatchExport': '导出 JSON',
+    'settings.forwardWatchImport': '导入 JSON',
+    'settings.forwardWatchExportFailed': '导出失败。',
+    'settings.forwardWatchImportFailed': '导入失败。',
+    'settings.forwardWatchImportResult': '导入完成：新增 {created} 条，跳过 {skipped} 条，失败 {failed} 条。',
     'settings.exportLink': '链接统计表',
     'settings.exportCount': '计数统计表',
     'settings.exportUpload': '上传统计表',
@@ -694,6 +701,13 @@ const i18n = {
     'settings.keywordList': 'Keywords (comma separated)',
     'settings.keywordPlaceholder': 'Enter keywords, separated by commas',
     'settings.exports': 'Export Tables',
+    'settings.forwardWatchBackup': 'Forward Watch Backup',
+    'settings.forwardWatchBackupHint': 'Export forward watch rules for migration; import them instead of re-entering one by one.',
+    'settings.forwardWatchExport': 'Export JSON',
+    'settings.forwardWatchImport': 'Import JSON',
+    'settings.forwardWatchExportFailed': 'Export failed.',
+    'settings.forwardWatchImportFailed': 'Import failed.',
+    'settings.forwardWatchImportResult': 'Import done: {created} added, {skipped} skipped, {failed} failed.',
     'settings.exportLink': 'Link table',
     'settings.exportCount': 'Count table',
     'settings.exportUpload': 'Upload table',
@@ -976,6 +990,53 @@ async function patchJson(url, payload) {
   const data = await resp.json();
   if (!resp.ok) throw data;
   return data;
+}
+
+async function patchJson(url, payload) {
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
+  const data = await resp.json();
+  if (!resp.ok) throw data;
+  return data;
+}
+
+function formatForwardWatchImportResult(result) {
+  return t('settings.forwardWatchImportResult')
+    .replace('{created}', String((result && result.created) || 0))
+    .replace('{skipped}', String((result && result.skipped) || 0))
+    .replace('{failed}', String((result && result.failed) || 0));
+}
+
+async function downloadForwardWatchBackup() {
+  const resp = await fetch('/api/watches/forward/export', { credentials: 'same-origin' });
+  if (resp.status === 401) {
+    redirectToLoginPage();
+    throw { error_code: 'auth_required' };
+  }
+  if (!resp.ok) throw new Error('export_failed');
+  const text = await resp.text();
+  const disposition = resp.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename=\"([^\"]+)\"/);
+  const filename = match ? match[1] : ('forward-watches-' + Date.now() + '.json');
+  const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function importForwardWatchBackupFile(file) {
+  const text = await file.text();
+  const payload = JSON.parse(text);
+  return postJson('/api/watches/forward/import', payload);
 }
 
 function translateApiError(data, fallbackKey) {

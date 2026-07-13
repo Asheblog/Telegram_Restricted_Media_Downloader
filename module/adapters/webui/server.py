@@ -387,6 +387,20 @@ class WebUiServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _send_json_download(self, payload, filename: str):
+                data = json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8')
+                self.send_response(HTTPStatus.OK)
+                self._write_pending_cookie()
+                self.send_header('content-type', 'application/json; charset=utf-8')
+                self.send_header(
+                    'content-disposition',
+                    f'attachment; filename="{filename}"'
+                )
+                self.send_header('cache-control', 'no-store')
+                self.send_header('content-length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
             def _send_error(self, error_code, fallback, status):
                 self._send_json(
                     {
@@ -553,6 +567,11 @@ class WebUiServer:
                     return
                 if parsed.path == '/api/operations':
                     self._send_json({'operations': server.list_operations()})
+                    return
+                if parsed.path == '/api/watches/forward/export':
+                    payload = server.export_forward_watches()
+                    stamp = time.strftime('%Y%m%d-%H%M%S')
+                    self._send_json_download(payload, f'forward-watches-{stamp}.json')
                     return
                 if parsed.path == '/api/watches':
                     query = parse_qs(parsed.query)
@@ -737,6 +756,23 @@ class WebUiServer:
                         self._send_json(
                             {
                                 'error_code': 'task_action_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/watches/forward/import':
+                    try:
+                        payload = self._read_json()
+                        result = server.import_forward_watches(payload)
+                        self._send_json(result)
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 导入监听转发失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'import_forward_watches_failed',
                                 'error': str(e)
                             },
                             HTTPStatus.BAD_REQUEST
@@ -1190,6 +1226,71 @@ class WebUiServer:
         if delete_watch:
             return bool(delete_watch(watch_id))
         return False
+
+    def export_forward_watches(self) -> dict:
+        export_forward_watches = self._operation('export_forward_watches')
+        if export_forward_watches:
+            return export_forward_watches()
+        raise WebUiApiError(
+            'watch_operations_unavailable',
+            'Watch operations are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE
+        )
+
+    def import_forward_watches(self, payload) -> dict:
+        from module.transfer.forward_watch_backup import (
+            normalize_forward_watch_entry,
+            parse_forward_watch_import_payload,
+        )
+
+        entries, parse_errors = parse_forward_watch_import_payload(payload)
+        fatal_codes = {
+            'invalid_payload',
+            'invalid_kind',
+            'unsupported_version',
+            'missing_watches',
+            'invalid_watches',
+        }
+        for code in parse_errors:
+            if code in fatal_codes:
+                raise WebUiApiError(
+                    code,
+                    'Invalid forward watch backup file.',
+                    HTTPStatus.BAD_REQUEST
+                )
+
+        result = {
+            'created': 0,
+            'skipped': 0,
+            'failed': 0,
+            'errors': [],
+            'watches': [],
+        }
+        for index, raw in enumerate(entries):
+            entry = normalize_forward_watch_entry(raw)
+            if not entry:
+                result['failed'] += 1
+                result['errors'].append({'index': index, 'code': 'invalid_entry'})
+                continue
+            try:
+                created = self.create_watch({'type': 'forward', **entry})
+            except WebUiApiError as exc:
+                if exc.error_code == 'watch_already_exists':
+                    result['skipped'] += 1
+                    continue
+                result['failed'] += 1
+                error = {
+                    'index': index,
+                    'code': exc.error_code,
+                    'message': exc.message,
+                }
+                if exc.error_code == 'watch_source_conflict':
+                    error['source_link'] = entry['source_link']
+                result['errors'].append(error)
+                continue
+            result['created'] += 1
+            result['watches'].extend(created.get('watches') or [])
+        return result
 
     def list_deferred_discussion_captures(self, watch_id: str) -> Optional[dict]:
         op = self._operation('list_deferred_discussion_captures')

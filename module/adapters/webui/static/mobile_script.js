@@ -1991,6 +1991,51 @@ async function loadMediaMobile() {
     });
   }
 
+  var mobForwardExportBtn = document.getElementById('mob-forward-watch-export-btn');
+  if (mobForwardExportBtn) {
+    mobForwardExportBtn.addEventListener('click', async function() {
+      if (mobForwardExportBtn.disabled) return;
+      mobForwardExportBtn.disabled = true;
+      try {
+        await downloadForwardWatchBackup();
+      } catch (e) {
+        if (e && e.error_code === 'auth_required') redirectToLoginPage();
+        else alert(t('settings.forwardWatchExportFailed'));
+      } finally {
+        mobForwardExportBtn.disabled = false;
+      }
+    });
+  }
+
+  var mobForwardImportInput = document.getElementById('mob-forward-watch-import-input');
+  if (mobForwardImportInput) {
+    mobForwardImportInput.addEventListener('change', async function() {
+      var file = mobForwardImportInput.files && mobForwardImportInput.files[0];
+      mobForwardImportInput.value = '';
+      if (!file) return;
+      var notice = document.getElementById('mob-forward-watch-import-notice');
+      try {
+        var result = await importForwardWatchBackupFile(file);
+        if (notice) {
+          notice.classList.remove('hidden');
+          notice.textContent = formatForwardWatchImportResult(result);
+          notice.style.color = 'var(--color-success)';
+        }
+        if (typeof loadMobileWatches === 'function') loadMobileWatches();
+      } catch (e) {
+        if (e && e.error_code === 'auth_required') {
+          redirectToLoginPage();
+          return;
+        }
+        if (notice) {
+          notice.classList.remove('hidden');
+          notice.textContent = translateApiError(e, 'settings.forwardWatchImportFailed');
+          notice.style.color = 'var(--color-danger)';
+        }
+      }
+    });
+  }
+
   // Media scan button
   var mediaBtn = document.getElementById('mob-media-scan-btn');
   if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);

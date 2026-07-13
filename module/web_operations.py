@@ -413,6 +413,9 @@ class WebOperationsMixin:
     def create_watch(self, payload: dict) -> dict:
         return self.watch_manager.create_watch(payload)
 
+    def export_forward_watches(self) -> dict:
+        return self.watch_manager.export_forward_watches()
+
     def delete_watch(self, watch_id: str) -> bool:
         scheduler = self.__dict__.get('comment_delay_scheduler')
         if scheduler is not None:
@@ -1254,7 +1257,7 @@ class WebOperationsMixin:
 _WEB_UI_DELEGATE_METHODS = (
     'should_continue_web_transfer_task', 'cancel_task_uploads', 'pause_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
-    'list_watches', 'create_watch', 'update_watch', 'delete_watch', 'list_watch_events',
+    'list_watches', 'create_watch', 'export_forward_watches', 'update_watch', 'delete_watch', 'list_watch_events',
     'list_deferred_discussion_captures', 'cancel_deferred_discussion_capture', 'run_deferred_discussion_capture_now',
     'retry_deferred_discussion_capture',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',

@@ -381,6 +381,15 @@ class LiveWatchManager:
             'resolve_deep_link': new_resolve_deep_link,
         })
 
+    def export_forward_watches(self) -> dict:
+        from module.transfer.forward_watch_backup import build_forward_watch_export_payload
+
+        watches = [
+            watch for watch in self.list_watches()
+            if watch.get('type') == 'forward'
+        ]
+        return build_forward_watch_export_payload(watches)
+
     def list_watch_events(
             self,
             watch_id: str,

@@ -863,6 +863,19 @@
 
     <!-- Export Tables -->
     <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.forwardWatchBackup">监听转发备份</h4>
+      <p class="text-xs text-muted mb-2" data-i18n="settings.forwardWatchBackupHint">导出监听转发规则，迁移时可直接导入，无需逐条手动录入。</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm" id="forward-watch-export-btn" data-i18n="settings.forwardWatchExport">导出 JSON</button>
+        <label class="btn btn-sm btn-secondary cursor-pointer">
+          <span data-i18n="settings.forwardWatchImport">导入 JSON</span>
+          <input type="file" id="forward-watch-import-input" accept=".json,application/json" hidden>
+        </label>
+      </div>
+      <div id="forward-watch-import-notice" class="text-xs hidden mt-2"></div>
+    </section>
+
+    <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.exports">导出表格</h4>
       <div class="settings-type-grid">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer">

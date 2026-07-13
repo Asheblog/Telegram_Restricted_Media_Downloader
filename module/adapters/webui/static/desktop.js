@@ -2207,6 +2207,46 @@ $('#settings-save').addEventListener('click', async function() {
   }
 });
 
+$('#forward-watch-export-btn')?.addEventListener('click', async function() {
+  const btn = this;
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await downloadForwardWatchBackup();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') redirectToLoginPage();
+    else alert(t('settings.forwardWatchExportFailed'));
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#forward-watch-import-input')?.addEventListener('change', async function() {
+  const file = this.files && this.files[0];
+  this.value = '';
+  if (!file) return;
+  const notice = $('#forward-watch-import-notice');
+  try {
+    const result = await importForwardWatchBackupFile(file);
+    if (notice) {
+      notice.className = 'text-xs text-success mt-2';
+      notice.textContent = formatForwardWatchImportResult(result);
+      notice.style.display = '';
+    }
+    if (typeof loadWatches === 'function') loadWatches();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') {
+      redirectToLoginPage();
+      return;
+    }
+    if (notice) {
+      notice.className = 'text-xs text-danger mt-2';
+      notice.textContent = translateApiError(e, 'settings.forwardWatchImportFailed');
+      notice.style.display = '';
+    }
+  }
+});
+
 function buildSettingsPayload() {
   /* rebuild full settings structure from form */
   const payload = { user: {}, global: {} };

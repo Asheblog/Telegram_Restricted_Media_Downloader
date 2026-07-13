@@ -369,6 +369,20 @@
         <div class="mob-collapse__head" data-i18n="settings.messageFilter">消息过滤 <span class="mob-collapse__arrow">&#9660;</span></div>
         <div class="mob-collapse__body" id="mob-settings-message-filter-fields"></div>
       </div>
+      <div class="mob-collapse" id="collapse-settings-forward-backup">
+        <div class="mob-collapse__head" data-i18n="settings.forwardWatchBackup">监听转发备份 <span class="mob-collapse__arrow">&#9660;</span></div>
+        <div class="mob-collapse__body">
+          <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="settings.forwardWatchBackupHint">导出监听转发规则，迁移时可直接导入，无需逐条手动录入。</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="mob-btn" id="mob-forward-watch-export-btn" data-i18n="settings.forwardWatchExport">导出 JSON</button>
+            <label class="mob-btn" style="cursor:pointer;">
+              <span data-i18n="settings.forwardWatchImport">导入 JSON</span>
+              <input type="file" id="mob-forward-watch-import-input" accept=".json,application/json" hidden>
+            </label>
+          </div>
+          <p class="mob-empty hidden" id="mob-forward-watch-import-notice" style="margin-top:8px;"></p>
+        </div>
+      </div>
       <div class="mob-collapse" id="collapse-settings-exports">
         <div class="mob-collapse__head" data-i18n="settings.exports">导出表格 <span class="mob-collapse__arrow">&#9660;</span></div>
         <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>

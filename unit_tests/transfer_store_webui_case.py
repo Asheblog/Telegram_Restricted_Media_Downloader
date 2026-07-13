@@ -69,13 +69,21 @@ class FakeWebUiOperations:
             target_link = payload.get('target_link')
             if self._has_download_source(source_link):
                 raise ValueError('watch_source_conflict')
+            for existing in self.watches.values():
+                if (
+                    existing.get('type') == 'forward'
+                    and existing.get('source_link') == source_link
+                    and existing.get('target_link') == target_link
+                ):
+                    raise ValueError('watch_already_exists')
             watch_id = f'forward:{source_link}->{target_link}'
             self.watches[watch_id] = {
                 'id': watch_id,
                 'type': 'forward',
                 'source_link': source_link,
                 'target_link': target_link,
-                'include_comment': bool(payload.get('include_comment'))
+                'include_comment': bool(payload.get('include_comment')),
+                'resolve_deep_link': bool(payload.get('resolve_deep_link')),
             }
             return {'watches': [self.watches[watch_id]]}
         raise ValueError('Unsupported watch type.')
@@ -130,6 +138,40 @@ class FakeWebUiOperations:
     def export_table(self, table_type):
         self.exported_tables.append(table_type)
         return {'exported': True, 'table_type': table_type, 'directory': 'form'}
+
+    def export_forward_watches(self):
+        from module.transfer.forward_watch_backup import build_forward_watch_export_payload
+
+        watches = [
+            {
+                'source_link': watch['source_link'],
+                'target_link': watch['target_link'],
+                'include_comment': bool(watch.get('include_comment')),
+                'resolve_deep_link': bool(watch.get('resolve_deep_link')),
+            }
+            for watch in self.watches.values()
+            if watch.get('type') == 'forward'
+        ]
+        return build_forward_watch_export_payload(watches)
+
+    def import_forward_watches(self, payload):
+        from module.transfer.forward_watch_backup import (
+            import_forward_watch_entries,
+            parse_forward_watch_import_payload,
+        )
+
+        entries, parse_errors = parse_forward_watch_import_payload(payload)
+        fatal_codes = {
+            'invalid_payload',
+            'invalid_kind',
+            'unsupported_version',
+            'missing_watches',
+            'invalid_watches',
+        }
+        for code in parse_errors:
+            if code in fatal_codes:
+                raise ValueError(code)
+        return import_forward_watch_entries(entries, self.create_watch, parse_errors=parse_errors)
 
     def delete_web_task(self, task_id: int) -> bool:
         return True
@@ -1599,6 +1641,75 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 body = json.loads(response.read().decode('utf-8'))
                 self.assertEqual(200, response.status)
                 self.assertTrue(body['deleted'])
+            finally:
+                server.stop()
+
+    def test_webui_exports_and_imports_forward_watches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            operations = FakeWebUiOperations()
+            server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(server)
+            try:
+                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+
+                conn.request(
+                    'POST',
+                    '/api/watches',
+                    body=json.dumps({
+                        'type': 'forward',
+                        'source_link': 'https://t.me/source-a',
+                        'target_link': 'https://t.me/target-a',
+                        'include_comment': True,
+                    }),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                response.read()
+                self.assertEqual(201, response.status)
+
+                conn.request('GET', '/api/watches/forward/export', headers=headers)
+                response = conn.getresponse()
+                export_body = response.read().decode('utf-8')
+                self.assertEqual(200, response.status)
+                self.assertIn('attachment; filename="forward-watches-', response.getheader('content-disposition') or '')
+                export_payload = json.loads(export_body)
+                self.assertEqual('live_forward_watches', export_payload['kind'])
+                self.assertEqual(1, len(export_payload['watches']))
+                self.assertTrue(export_payload['watches'][0]['include_comment'])
+
+                conn.request(
+                    'POST',
+                    '/api/watches/forward/import',
+                    body=export_body,
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                import_body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(0, import_body['created'])
+                self.assertEqual(1, import_body['skipped'])
+                self.assertEqual(0, import_body['failed'])
+
+                export_payload['watches'].append({
+                    'source_link': 'https://t.me/source-b',
+                    'target_link': 'https://t.me/target-b',
+                    'include_comment': False,
+                    'resolve_deep_link': False,
+                })
+                conn.request(
+                    'POST',
+                    '/api/watches/forward/import',
+                    body=json.dumps(export_payload),
+                    headers={**headers, 'Content-Type': 'application/json'}
+                )
+                response = conn.getresponse()
+                import_body = json.loads(response.read().decode('utf-8'))
+                self.assertEqual(200, response.status)
+                self.assertEqual(1, import_body['created'])
+                self.assertEqual(1, import_body['skipped'])
+                self.assertEqual(0, import_body['failed'])
             finally:
                 server.stop()
 
