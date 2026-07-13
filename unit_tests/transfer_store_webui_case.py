@@ -4283,6 +4283,46 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertGreater(disk['disk_free_bytes'], 0)
             self.assertEqual(directory, disk['disk_path'])
 
+    def test_transfer_speed_metrics_includes_slow_but_active_download(self):
+        """1MB download chunks at ~100KB/s update only every ~10s; must still count."""
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source/12',
+                target_link='https://t.me/pikpak_bot'
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='source',
+                source_message_id=12,
+                source_link='https://t.me/source/12',
+                target_link='https://t.me/pikpak_bot',
+                file_name='slow.mp4',
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
+            store.update_item_progress(
+                item_id=item_id,
+                phase='downloading',
+                download_current=2 * 1024 * 1024,
+                download_total=20 * 1024 * 1024,
+                download_speed_bps=102400,
+                upload_speed_bps=0
+            )
+            slow_active_at = (
+                datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=15)
+            ).isoformat(timespec='seconds')
+            with store.connect() as conn:
+                conn.execute(
+                    'UPDATE transfer_items SET updated_at = ? WHERE id = ?',
+                    (slow_active_at, item_id),
+                )
+
+            speeds = WebUiViewModel(store).transfer_speed_metrics()
+
+            self.assertEqual(102400, speeds['download_speed_bps'])
+            self.assertEqual(0, speeds['upload_speed_bps'])
+
     def test_transfer_speed_metrics_ignores_stale_running_item_speeds(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
@@ -4327,7 +4367,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 upload_speed_bps=512
             )
             stale_at = (
-                datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=30)
+                datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=120)
             ).isoformat(timespec='seconds')
             with store.connect() as conn:
                 conn.execute(

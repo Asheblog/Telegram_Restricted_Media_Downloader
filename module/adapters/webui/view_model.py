@@ -9,7 +9,10 @@ from module.transfer_store import TransferStatus, TransferStore
 # Progress callbacks stop updating download/upload_speed_bps when transfer stalls.
 # Exclude speeds whose item has not been touched within this window so the
 # dashboard does not freeze on the last sampled rate.
-SPEED_METRICS_STALE_SECONDS = 5
+# Download progress is reported per 1MiB stream chunk, so slow links (~100KB/s)
+# only refresh about every 10s; keep the window wide enough for active downloads
+# while still clearing abandoned rates (stall path also writes speed=0).
+SPEED_METRICS_STALE_SECONDS = 60
 
 
 TASK_TERMINAL_STATUSES = {

@@ -1839,6 +1839,22 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         f'下载流超过{progress_timeout_seconds}秒无进展,'
                         f'正在重建连接继续断点续传:{stall_retries}/{max_stall_retries}。'
                     )
+                    with_upload = progress_args[-1] if progress_args else None
+                    item_id = with_upload.get('item_id') if isinstance(with_upload, dict) else None
+                    if item_id:
+                        store = getattr(self, 'transfer_store', None)
+                        if store:
+                            store.update_item_progress(
+                                item_id=int(item_id),
+                                phase='downloading',
+                                download_current=downloaded,
+                                download_total=int(compare_size or 0),
+                                download_speed_bps=0
+                            )
+                        tracker = getattr(self, 'progress_tracker', None)
+                        samples = getattr(tracker, '_speed_samples', None) if tracker else None
+                        if isinstance(samples, dict):
+                            samples.pop(('download', int(item_id)), None)
                     if stall_retries > max_stall_retries:
                         break
                     skip_chunks = downloaded // chunk_size
