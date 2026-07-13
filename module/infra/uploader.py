@@ -78,7 +78,7 @@ class TelegramUploader:
         self.loop: asyncio.AbstractEventLoop = upload_context.loop
         self.event: asyncio.Event = asyncio.Event()
         self.pb: ProgressBar = upload_context.pb
-        self.is_premium: bool = self.client.me.is_premium
+        self.is_premium: bool = bool(getattr(getattr(self.client, 'me', None), 'is_premium', False))
         self.current_task_num: int = 0
         self.max_upload_task: int = self.app.max_upload_task
         self.max_upload_retries: int = self.app.max_upload_retries
