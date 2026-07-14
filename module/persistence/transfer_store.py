@@ -1096,7 +1096,15 @@ class TransferStore:
                 SELECT
                     CASE
                         WHEN source_folder IS NOT NULL AND TRIM(source_folder) != ''
-                            THEN TRIM(source_folder)
+                            THEN CASE
+                                WHEN INSTR(REPLACE(TRIM(source_folder), '\\', '/'), '/') > 0
+                                    THEN SUBSTR(
+                                        REPLACE(TRIM(source_folder), '\\', '/'),
+                                        1,
+                                        INSTR(REPLACE(TRIM(source_folder), '\\', '/'), '/') - 1
+                                    )
+                                ELSE TRIM(source_folder)
+                            END
                         WHEN source_chat_id IS NOT NULL AND TRIM(CAST(source_chat_id AS TEXT)) != ''
                             THEN TRIM(CAST(source_chat_id AS TEXT))
                         ELSE 'unknown'

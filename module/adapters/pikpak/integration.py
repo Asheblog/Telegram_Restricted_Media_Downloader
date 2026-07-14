@@ -8,7 +8,7 @@ from module.diagnostics import RichDiagnosticAdapter
 from module.enums import DownloadType
 from module.transfer_store import TransferStatus
 from module.path_tool import extract_full_extension, is_compressed_file
-from module.source_folders import source_folder_from_link, source_folder_from_message
+from module.source_folders import archive_source_folder, source_folder_from_link
 from module.core.target_profiles import target_profile_limit, target_profile_size_error
 
 
@@ -66,13 +66,15 @@ class PikpakIntegrationManager:
             if item:
                 folder = item.get('source_folder')
         if not folder:
-            folder = source_folder_from_link(source_link)
-        if not folder:
-            folder = source_folder_from_message(
-                message,
-                fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
-                fallback_link=source_link
-            )
+            # Prefer channel identity from source_link (deep-link/bot media must not become the folder).
+            if source_folder_from_link(source_link):
+                folder = archive_source_folder(fallback_link=source_link)
+            else:
+                folder = archive_source_folder(
+                    message,
+                    fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
+                    fallback_link=source_link,
+                )
         media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
         title_file_name = self.get_message_media_archive_filename(message)
         file_name = file_name or title_file_name or (media_meta or {}).get('file_name')

@@ -29,6 +29,107 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         self.assertEqual('bad__name__', source_folder_from_message(message))
 
+    def test_archive_source_folder_nests_post_id_and_caption(self):
+        from module.source_folders import archive_source_folder
+
+        message = SimpleNamespace(
+            id=3404,
+            caption='正文标题第一行\n第二行',
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(id=-1001, username='gokaidanbao', title='x'),
+            link='https://t.me/gokaidanbao/3404',
+        )
+
+        self.assertEqual(
+            'gokaidanbao/3404 - 正文标题第一行',
+            archive_source_folder(message),
+        )
+
+    def test_archive_source_folder_from_link_uses_message_id_without_title(self):
+        from module.source_folders import archive_source_folder
+
+        self.assertEqual(
+            'swag_vip/730',
+            archive_source_folder(fallback_link='https://t.me/swag_vip/730'),
+        )
+
+    def test_archive_source_folder_for_comment_uses_parent_post(self):
+        from module.source_folders import archive_source_folder
+
+        parent = SimpleNamespace(
+            id=100,
+            caption='主贴资源合集',
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(username='gokaidanbao'),
+            link='https://t.me/gokaidanbao/100',
+        )
+        comment = SimpleNamespace(
+            id=999,
+            caption=None,
+            text=None,
+            chat=SimpleNamespace(id=-200, username='discussion_group'),
+        )
+
+        self.assertEqual(
+            'gokaidanbao/100 - 主贴资源合集',
+            archive_source_folder(
+                comment,
+                post_message=parent,
+                post_message_id=100,
+                fallback_chat_id=-1001,
+            ),
+        )
+
+    def test_rclone_archive_supports_nested_source_folder(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-06-26T02:00:00Z'
+                        }
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'poll_interval_seconds': 0,
+                'match_window_seconds': 3600
+            },
+            runner=fake_runner,
+            now=lambda: 1782442800.0
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/3404 - title',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=1782439200.0
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual('Telegram/gokaidanbao/3404 - title/video.mp4', result.archive_path)
+        self.assertIn(['rclone', 'mkdir', 'pikpak:Telegram/gokaidanbao/3404 - title'], calls)
+
     def test_rclone_archive_creates_folder_and_moves_unique_candidate(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 

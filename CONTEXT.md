@@ -119,7 +119,7 @@ _Avoid_: Chapter cursor, runtime offset
 **PikPak Target** — 与 PikPak 官方 bot 的 Telegram 会话，作为接收转存媒体的目标。
 _Avoid_: PikPak API, cloud drive target
 
-**PikPak Archive** — 目标侧组织步骤：确认 Source Channel Folder 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到对应 Source Channel Folder。启用时，归档必须完成才算 Transfer Item 成功。
+**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，归档必须完成才算 Transfer Item 成功。
 _Avoid_: Local download folder, bot chat folder
 
 **PikPak Ingest Folder** — PikPak bot 入库后的默认目录（"My Telegram"），PikPak Archive 执行前文件暂存于此。
@@ -131,8 +131,11 @@ _Avoid_: Forward success, copy success
 **Target Profile** — 目标特定的配置预设（如 `pikpak`），控制：是否以文档发送、发送后是否删除本地文件、文件大小上限。
 _Avoid_: Preset, mode
 
-**Source Channel Folder** — 从来源链接提取的文件系统安全文件夹名，同一来源频道的媒体归入同一文件夹。
-_Avoid_: Target folder, chat title cache
+**Source Channel Folder** — 来源频道对应的顶层文件夹名（归档路径第一段）；频道统计与来源身份按此聚合。
+_Avoid_: Target folder, chat title cache, full archive path
+
+**Source Post Archive Path** — 相对归档路径 `{Source Channel Folder}/{message_id} - {正文摘要}`（无摘要则仅 message_id）。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。
+_Avoid_: Discussion group folder, bot chat folder, flat channel dump
 
 **Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。
 _Avoid_: Listen job, bot listener
@@ -146,8 +149,8 @@ _Avoid_: Auto dump, guessed range
 **Download Success Record** — 已成功下载消息的持久化记录（按来源会话+消息 ID），后续转存可复用，避免重复下载。
 _Avoid_: Cache hit, finished file
 
-**Channel Download Statistics** — WebUI 统计面板按 Source Channel Folder（缺省回退 `source_chat_id`）聚合近 7 个本地自然日的 Transfer Item 终端态（success / failure / skipped）；数据来自 TransferStore，进程重启不丢失。
-_Avoid_: In-memory link completion, upload task counters, media-type-only chart
+**Channel Download Statistics** — WebUI 统计面板按 Source Channel Folder（取 Source Post Archive Path 第一段；缺省回退 `source_chat_id`）聚合近 7 个本地自然日的 Transfer Item 终端态（success / failure / skipped）；数据来自 TransferStore，进程重启不丢失。
+_Avoid_: In-memory link completion, upload task counters, media-type-only chart, per-post stats
 
 **Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
 _Avoid_: Upload concurrency, temp cache size
@@ -214,6 +217,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0008](docs/adr/0008-deep-link-resolve.md) — 转存前深链取片（用户会话 StartBot）
 - [ADR-0009](docs/adr/0009-watch-inline-transfer-execution-mode.md) — 监听下载回退用 watch_inline，不入 Web 队列
 - [ADR-0010](docs/adr/0010-unified-media-type-allowlist.md) — 统一媒体类型白名单与任务级覆盖
+- [ADR-0011](docs/adr/0011-source-post-archive-path.md) — 按频道主贴嵌套归档路径
 
 ---
 

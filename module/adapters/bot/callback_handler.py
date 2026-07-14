@@ -26,7 +26,7 @@ from module.enums import (
     CalenderKeyboard,
 )
 from module.language import _t
-from module.source_folders import source_folder_from_link
+from module.source_folders import archive_source_folder
 from module.task import DownloadTask, UploadTask
 from module.util import (
     is_docker,
@@ -300,7 +300,7 @@ class CallbackHandler:
                     with_upload=self._downloader.build_download_upload_meta(
                         target_link=target_link,
                         source_link=origin_link,
-                        source_folder=source_folder_from_link(origin_link),
+                        source_folder=archive_source_folder(fallback_link=origin_link),
                         send_as_media_group=True
                     )
                 )

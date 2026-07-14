@@ -21,7 +21,7 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 
 from module import log
 from module.enums import DownloadStatus, DownloadType
-from module.source_folders import source_folder_from_message
+from module.source_folders import archive_source_folder
 from module.transfer.deep_link import (
     DeepLinkResolveError,
     message_has_whitelisted_deep_link,
@@ -479,19 +479,23 @@ class WebTransferRunner:
             task: dict,
             source_link: Optional[str] = None,
             message: Optional[pyrogram.types.Message] = None,
-            range_message_id: Optional[int] = None
+            range_message_id: Optional[int] = None,
+            source_folder: Optional[str] = None,
     ) -> None:
         host = self._host
         message_ids = message if message is not None else self.transfer_single_link(source_link)
+        with_upload = host.build_transfer_upload_meta(
+            task=task,
+            source_link=source_link,
+            range_message_id=range_message_id,
+        )
+        if source_folder:
+            with_upload['source_folder'] = source_folder
         task_result = await host.create_download_task(
             message_ids=message_ids,
             retry=None,
             single_link=True,
-            with_upload=host.build_transfer_upload_meta(
-                task=task,
-                source_link=source_link,
-                range_message_id=range_message_id
-            ),
+            with_upload=with_upload,
             diy_download_type=[_ for _ in DownloadType()]
         )
         if task_result.get('status') == DownloadStatus.FAILURE:
@@ -505,7 +509,9 @@ class WebTransferRunner:
             origin_chat_id,
             target_chat_id,
             source_link: str,
-            range_message_id: Optional[int] = None
+            range_message_id: Optional[int] = None,
+            source_folder: Optional[str] = None,
+            archive_post_message=None,
     ) -> bool:
         host = self._host
         message_id = getattr(message, 'id', None)
@@ -517,11 +523,12 @@ class WebTransferRunner:
                 message_id=message_id
             )
             return False
-        channel_message = message
-        channel_source_folder = source_folder_from_message(
+        channel_message = archive_post_message if archive_post_message is not None else message
+        channel_source_folder = source_folder or archive_source_folder(
             channel_message,
             fallback_chat_id=origin_chat_id,
-            fallback_link=source_link
+            fallback_link=source_link,
+            post_message_id=range_message_id if archive_post_message is not None else None,
         )
         resolved_list = None
         if bool(task.get('resolve_deep_link')):
@@ -768,7 +775,8 @@ class WebTransferRunner:
                             task=task,
                             source_link=source_link,
                             message=send_message,
-                            range_message_id=range_message_id
+                            range_message_id=range_message_id,
+                            source_folder=channel_source_folder,
                         )
                     else:
                         fallback_link = getattr(send_message, 'link', None) or source_link
@@ -776,7 +784,8 @@ class WebTransferRunner:
                             task=task,
                             source_link=fallback_link,
                             message=None if fallback_link else send_message,
-                            range_message_id=range_message_id
+                            range_message_id=range_message_id,
+                            source_folder=channel_source_folder,
                         )
                     used_fallback = True
                     break
@@ -836,6 +845,20 @@ class WebTransferRunner:
                 return check_type(item, media_types_override=media_types_override)
             except TypeError:
                 return check_type(item)
+
+        parent_message = await self.get_web_transfer_range_message(
+            source_chat_id,
+            source_message_id,
+            task_id,
+        )
+        if getattr(parent_message, 'empty', False):
+            parent_message = None
+        post_archive_folder = archive_source_folder(
+            post_message=parent_message,
+            fallback_chat_id=source_chat_id,
+            fallback_link=task.get('source_link'),
+            post_message_id=source_message_id,
+        )
 
         try:
             async for comment in iter_discussion_reply_messages(
@@ -911,7 +934,9 @@ class WebTransferRunner:
                     origin_chat_id=comment_chat_id,
                     target_chat_id=target_chat_id,
                     source_link=comment_link,
-                    range_message_id=source_message_id
+                    range_message_id=source_message_id,
+                    source_folder=post_archive_folder,
+                    archive_post_message=parent_message,
                 )
                 fallback_count += 1 if used_fallback else 0
         except (ValueError, AttributeError, MsgIdInvalid):

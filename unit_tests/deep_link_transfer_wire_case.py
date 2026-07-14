@@ -166,7 +166,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             item = store.list_items(task_id)[0]
             self.assertEqual('source-chat', item['source_chat_id'])
             self.assertEqual(1, item['source_message_id'])
-            self.assertEqual('source', item['source_folder'])
+            self.assertEqual('source/1 - teaser', item['source_folder'])
             events = store.list_events(task_id)
             self.assertTrue(
                 any('resolved_via=' in (event.get('message') or '') for event in events),
@@ -311,10 +311,10 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             ))
 
             item = store.list_items(task_id)[0]
-            self.assertEqual('swag_vip', item['source_folder'])
+            self.assertEqual('swag_vip/1 - teaser', item['source_folder'])
             self.assertEqual(1, len(archive_calls))
             self.assertEqual(
-                'swag_vip',
+                'swag_vip/1 - teaser',
                 archive_calls[0].get('source_folder'),
                 archive_calls[0],
             )
@@ -485,7 +485,7 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
         )
 
         self.assertTrue(result.ok)
-        self.assertEqual(['swag_vip'], archive_folders)
+        self.assertEqual(['swag_vip/1'], archive_folders)
 
 
 class DeepLinkListenForwardFolderCase(unittest.TestCase):

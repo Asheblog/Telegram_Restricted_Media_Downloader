@@ -54,19 +54,24 @@ class TransferStoreChannelStatsCase(unittest.TestCase):
         )
         self._add(message_id=6, status=TransferStatus.PENDING, source_folder='alpha')
         self._add(message_id=7, status=TransferStatus.RUNNING, source_folder='alpha')
+        self._add(
+            message_id=8,
+            status=TransferStatus.SUCCESS,
+            source_folder='alpha/100 - post title',
+        )
 
         rows = self.store.aggregate_channel_download_stats(days=7, tz_offset_minutes=0)
 
         by_channel = {row['channel']: row for row in rows}
         self.assertEqual({'alpha', 'beta', '-100123'}, set(by_channel))
-        self.assertEqual(2, by_channel['alpha']['success'])
+        self.assertEqual(3, by_channel['alpha']['success'])
         self.assertEqual(1, by_channel['alpha']['failure'])
         self.assertEqual(0, by_channel['alpha']['skip'])
-        self.assertEqual(3, by_channel['alpha']['total'])
+        self.assertEqual(4, by_channel['alpha']['total'])
         self.assertEqual(0, by_channel['beta']['success'])
         self.assertEqual(1, by_channel['beta']['skip'])
         self.assertEqual(1, by_channel['-100123']['success'])
-        self.assertEqual(3, rows[0]['total'])
+        self.assertEqual(4, rows[0]['total'])
 
     def test_aggregate_channel_download_stats_respects_local_calendar_window(self):
         # tz_offset=0 → local == UTC. Today start UTC; window is 7 local calendar days.

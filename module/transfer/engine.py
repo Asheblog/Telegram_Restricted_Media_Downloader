@@ -28,7 +28,7 @@ from module.path_tool import (
 )
 from module.stdio import MetaData
 from module.util import is_allow_upload, parse_link
-from module.source_folders import source_folder_from_link, source_folder_from_message
+from module.source_folders import archive_source_folder, join_local_source_folder
 from module.local_storage_guard import LocalStorageGuard
 from module.filter import MessageFilter
 
@@ -187,12 +187,17 @@ class TransferEngine:
         if not isinstance(task_with_upload, dict):
             return task_with_upload
         source_chat_id = str(getattr(getattr(message, 'chat', None), 'id', chat_id))
-        source_folder = task_with_upload.get('source_folder') or source_folder_from_message(
+        source_folder = task_with_upload.get('source_folder') or archive_source_folder(
             message,
             fallback_chat_id=chat_id,
-            fallback_link=link
+            fallback_link=link,
+            post_message_id=task_with_upload.get('range_message_id'),
         )
-        final_path = os.path.join(os.path.dirname(final_path), source_folder, os.path.basename(final_path))
+        file_base_name = os.path.basename(final_path)
+        final_path = os.path.join(
+            join_local_source_folder(os.path.dirname(final_path), source_folder),
+            file_base_name,
+        )
         task_with_upload['message_id'] = getattr(message, 'id', None)
         task_with_upload['source_chat_id'] = source_chat_id
         task_with_upload['source_link'] = getattr(message, 'link', None) or link
@@ -284,7 +289,10 @@ class TransferEngine:
             'send_as_media_group': (False if profile == 'pikpak' else True) if send_as_media_group is None else send_as_media_group,
             'task_id': task_id,
             'source_link': source_link,
-            'source_folder': source_folder or source_folder_from_link(source_link),
+            'source_folder': source_folder or archive_source_folder(
+                fallback_link=source_link,
+                post_message_id=range_message_id,
+            ),
             'target_profile': profile,
             'media_type': media_type,
             'range_message_id': range_message_id,

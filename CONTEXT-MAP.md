@@ -17,7 +17,7 @@
 | `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~350 |
 | `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotHost`、`IPikPakTarget` 等） | ~160 |
 | `module/live_watch_applicator.py` | 将 watch payload 应用到运行时监听 | ~85 |
-| `module/source_folders.py` | 来源频道文件夹名提取 | ~55 |
+| `module/source_folders.py` | 来源频道 / 帖级归档路径命名 | ~200 |
 
 ### 实现路径（子包）
 
@@ -131,6 +131,7 @@
 | Transfer Item | `persistence/transfer_store.py` → `transfer_items` 表 |
 | Transfer Progress | `persistence/transfer_store.py` → completed source_message_ids |
 | PikPak Archive | `adapters/pikpak/integration.py` → `archive_pikpak_item()` |
+| Source Channel Folder / Source Post Archive Path | `module/source_folders.py` → `archive_source_folder()` |
 | PikPak Ingest Confirmation | `adapters/pikpak/integration.py` / downloader 转发等待路径 |
 | Target Profile | `core/target_profiles.py` → `DEFAULT_TARGET_PROFILES` |
 | Live Transfer Watch | `transfer/live_watch.py` → `LiveWatchManager` |

@@ -35,7 +35,7 @@ from module.web_ui import (
 )
 from module.util import is_docker, make_forward_watch_rule, iter_discussion_reply_messages
 from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import source_folder_from_link
+from module.source_folders import archive_source_folder
 
 
 def _downloader():
@@ -473,7 +473,10 @@ class WebOperationsMixin:
             source_link=item.get('source_link') or task.get('source_link'),
             source_folder=(
                 item.get('source_folder')
-                or source_folder_from_link(item.get('source_link') or task.get('source_link'))
+                or archive_source_folder(
+                    fallback_link=item.get('source_link') or task.get('source_link'),
+                    post_message_id=item.get('range_message_id') or item.get('source_message_id'),
+                )
             ),
             file_name=item.get('file_name'),
             file_size=item.get('file_size'),

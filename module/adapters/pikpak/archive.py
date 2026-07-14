@@ -81,7 +81,7 @@ class RclonePikPakArchiveClient:
             return PikPakArchiveResult(False, 'missing_metadata', 'File name is missing and size/time matching is unavailable.')
 
         try:
-            source_folder = clean_remote_segment(source_folder)
+            source_folder = normalize_source_folder_path(source_folder)
             target_name = clean_remote_segment(file_name) if file_name else None
             match_name = target_name if match_original_name else None
             source_root = clean_remote_path(self.config.get('source_directory') or '')
@@ -144,7 +144,7 @@ class RclonePikPakArchiveClient:
         if not source_folder:
             return PikPakArchiveResult(False, 'missing_metadata', 'Source folder is missing.')
         try:
-            folder = clean_remote_segment(source_folder)
+            folder = normalize_source_folder_path(source_folder)
             target_root = clean_remote_path(self.config.get('root_directory') or '')
             target_dir = join_remote_path(target_root, folder)
             self.ensure_directory(target_dir)
@@ -356,6 +356,16 @@ def clean_remote_segment(value: str) -> str:
 
 def clean_remote_path(value: str) -> str:
     return str(value or '').replace('\\', '/').strip('/')
+
+
+def normalize_source_folder_path(value: str) -> str:
+    """Allow nested archive folders like channel/post; sanitize each segment."""
+    parts = []
+    for part in clean_remote_path(value).split('/'):
+        cleaned = clean_remote_segment(part)
+        if cleaned:
+            parts.append(cleaned)
+    return '/'.join(parts)
 
 
 def join_remote_path(*parts: str) -> str:

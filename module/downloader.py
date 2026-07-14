@@ -108,7 +108,7 @@ from module.target_profiles import (
 from module.pikpak_archive import build_pikpak_archive_client
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_progress import TransferProgressTracker
-from module.source_folders import source_folder_from_link, source_folder_from_message
+from module.source_folders import archive_source_folder, join_local_source_folder
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
 from module.persistence.system_log import SystemLogTracer
@@ -219,7 +219,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 dtype
                             )
         if source_folder:
-            save_directory = os.path.join(save_directory, source_folder)
+            save_directory = join_local_source_folder(save_directory, source_folder)
         return save_directory
 
     def get_final_save_directory(self, message, with_upload: Optional[dict] = None) -> str:
@@ -433,7 +433,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             target_link=task.get('target_link'),
             target_profile=task.get('target_profile'),
             source_link=source_link,
-            source_folder=source_folder_from_link(source_link),
+            source_folder=archive_source_folder(
+                fallback_link=source_link,
+                post_message_id=range_message_id,
+            ),
             task_id=task.get('id'),
             media_type=media_type,
             range_message_id=range_message_id
@@ -682,10 +685,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 or getattr(group_message, 'link', None)
                 or getattr(message, 'link', None)
             )
-            archive_folder = source_folder or source_folder_from_message(
+            archive_folder = source_folder or archive_source_folder(
                 group_message,
                 fallback_chat_id=origin_chat_id,
-                fallback_link=group_source_link
+                fallback_link=group_source_link,
             )
             archive_result = self.archive_pikpak_item(
                 target_profile='pikpak',
@@ -751,10 +754,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         try:
             if trace_id is None:
                 trace_id, _, _ = self._message_chain_context(message, watch_id)
-            channel_source_folder = source_folder or source_folder_from_message(
+            channel_source_folder = source_folder or archive_source_folder(
                 message,
                 fallback_chat_id=origin_chat_id,
-                fallback_link=archive_source_link or getattr(message, 'link', None)
+                fallback_link=archive_source_link or getattr(message, 'link', None),
             )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
             runtime_filter = self.message_filter
@@ -1128,7 +1131,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         with_upload=self.build_download_upload_meta(
                             target_link=target_link,
                             source_link=origin_link,
-                            source_folder=source_folder_from_link(origin_link)
+                            source_folder=archive_source_folder(fallback_link=origin_link),
                         )
                     )
                     break
@@ -1517,6 +1520,22 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             except TypeError:
                 return self.check_type(item)
 
+        parent_message = None
+        try:
+            parent_message = await self.app.client.get_messages(
+                chat_id=source_chat_id,
+                message_ids=source_message_id,
+            )
+            if getattr(parent_message, 'empty', False):
+                parent_message = None
+        except Exception:
+            parent_message = None
+        post_archive_folder = archive_source_folder(
+            post_message=parent_message,
+            fallback_chat_id=source_chat_id,
+            post_message_id=source_message_id,
+        )
+
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
                     client=self.app.client,
@@ -1584,10 +1603,6 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     media_group_ids = (
                         sorted(member.id for member in forward_group) if forward_group else None
                     )
-                    channel_source_folder = source_folder_from_message(
-                        comment,
-                        fallback_chat_id=source_chat_id,
-                    )
                     await self.forward(
                         client=client,
                         message=forward_message,
@@ -1599,7 +1614,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         done_notice=done_notice,
                         watch_id=watch_id,
                         media_group=media_group_ids,
-                        source_folder=channel_source_folder,
+                        source_folder=post_archive_folder,
+                        archive_source_link=getattr(parent_message, 'link', None) if parent_message else None,
                         media_types_override=media_types_override,
                     )
                     count += 1
@@ -1668,7 +1684,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     forward_origin_chat_id = _listen_chat_id
                     forward_message_id = message.id
                     channel_source_link = link
-                    channel_source_folder = source_folder_from_message(
+                    channel_source_folder = archive_source_folder(
                         message,
                         fallback_chat_id=_listen_chat_id,
                         fallback_link=link,
