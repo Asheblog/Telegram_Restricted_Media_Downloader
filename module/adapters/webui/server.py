@@ -1,6 +1,8 @@
 # coding=UTF-8
 import base64
 import datetime
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -213,7 +215,7 @@ class WebUiServer:
 
     SESSION_COOKIE_NAME = 'trmd_session'
     SESSION_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
-    SESSION_TOKEN_BYTES = 32
+    SESSION_NONCE_BYTES = 16
 
     def validate_auth_config(self) -> None:
         if bool(self.username) != bool(self.password):
@@ -221,8 +223,22 @@ class WebUiServer:
         if self.requires_auth and not self.auth_enabled:
             raise ValueError('WebUI 对外监听时必须设置 TRMD_WEB_USERNAME 和 TRMD_WEB_PASSWORD。')
 
+    def _session_signing_key(self) -> bytes:
+        material = f'{self.username}\0{self.password}'.encode('utf-8')
+        return hashlib.sha256(b'trmd-webui-session\0' + material).digest()
+
+    def _sign_session_payload(self, payload: str) -> str:
+        return hmac.new(
+            self._session_signing_key(),
+            payload.encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
+
     def _generate_session_token(self) -> str:
-        return secrets.token_hex(self.SESSION_TOKEN_BYTES)
+        expiry = int(time.time()) + self.SESSION_MAX_AGE
+        nonce = secrets.token_hex(self.SESSION_NONCE_BYTES)
+        payload = f'{expiry}.{nonce}'
+        return f'{payload}.{self._sign_session_payload(payload)}'
 
     def _create_session_cookie(self, token: str, remember_me: bool = True) -> str:
         parts = [
@@ -235,31 +251,22 @@ class WebUiServer:
             parts.insert(1, f'Max-Age={self.SESSION_MAX_AGE}')
         return '; '.join(parts)
 
-    def _init_sessions(self) -> None:
-        if not hasattr(self, '_sessions'):
-            self._sessions: dict[str, float] = {}
-
-    def _store_session(self, token: str) -> None:
-        self._init_sessions()
-        self._sessions[token] = time.time() + self.SESSION_MAX_AGE
-        self._prune_expired_sessions()
-
     def validate_session_token(self, token: str) -> bool:
-        self._init_sessions()
-        expiry = self._sessions.get(token)
-        if expiry is None:
+        if not token or not self.auth_enabled:
             return False
-        if time.time() > expiry:
-            del self._sessions[token]
+        parts = token.split('.')
+        if len(parts) != 3:
+            return False
+        expiry_text, nonce, signature = parts
+        if not expiry_text.isdigit() or not nonce or not signature:
+            return False
+        payload = f'{expiry_text}.{nonce}'
+        expected = self._sign_session_payload(payload)
+        if not hmac.compare_digest(signature, expected):
+            return False
+        if time.time() > int(expiry_text):
             return False
         return True
-
-    def _prune_expired_sessions(self) -> None:
-        self._init_sessions()
-        now = time.time()
-        expired = [t for t, exp in self._sessions.items() if now > exp]
-        for t in expired:
-            del self._sessions[t]
 
     @staticmethod
     def _get_request_cookie(handler: BaseHTTPRequestHandler, name: str) -> Optional[str]:
@@ -313,14 +320,11 @@ class WebUiServer:
                     self._pending_cookie = None
 
             def _try_authorize(self):
-                """Check and apply auth silently. Returns True if authorized (may set _pending_cookie)."""
+                """Check and apply auth silently. Returns True if authorized."""
                 if not server.auth_enabled:
                     return True
                 session_token = server._get_request_cookie(self, server.SESSION_COOKIE_NAME)
-                if session_token and server.validate_session_token(session_token):
-                    self._pending_cookie = server._create_session_cookie(session_token)
-                    return True
-                return False
+                return bool(session_token and server.validate_session_token(session_token))
 
             def _check_auth(self):
                 path = urlparse(self.path).path
@@ -467,7 +471,6 @@ class WebUiServer:
                     self._send_json({'error': '用户名或密码错误。'}, HTTPStatus.UNAUTHORIZED)
                     return
                 token = server._generate_session_token()
-                server._store_session(token)
                 cookie = server._create_session_cookie(token, remember_me=remember_me)
                 self.send_response(HTTPStatus.OK)
                 self.send_header('Set-Cookie', cookie)
@@ -479,10 +482,6 @@ class WebUiServer:
                 self.wfile.write(data)
 
             def _handle_logout(self):
-                session_token = server._get_request_cookie(self, server.SESSION_COOKIE_NAME)
-                if session_token:
-                    server._init_sessions()
-                    server._sessions.pop(session_token, None)
                 cookie = f'{server.SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
                 self.send_response(HTTPStatus.OK)
                 self.send_header('Set-Cookie', cookie)
