@@ -64,56 +64,57 @@ class WebOperationsMixin:
 
     def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
         scheduler = self.__dict__.get('comment_delay_scheduler')
-        if scheduler is not None:
-            return scheduler
-        store = self._ensure_transfer_store()
+        if scheduler is None:
+            store = self._ensure_transfer_store()
 
-        async def executor(capture: dict):
-            client = (
-                capture.get('client')
-                or getattr(self, 'user', None)
-                or getattr(getattr(self, 'app', None), 'client', None)
-            )
-            resolve_deep_link = False
-            watch_id = capture.get('watch_id')
-            if watch_id and store is not None:
-                watch = store.get_live_transfer_watch(str(watch_id))
-                if watch:
-                    resolve_deep_link = bool(watch.get('resolve_deep_link'))
-            count = await self.forward_discussion_replies(
-                client=client,
-                source_chat_id=capture.get('source_chat_id'),
-                source_message_id=int(capture.get('source_message_id')),
-                target_chat_id=capture.get('target_chat_id'),
-                target_link=capture.get('target_link'),
-                watch_id=capture.get('watch_id'),
-                resolve_deep_link=resolve_deep_link,
-            )
-            watch_id = capture.get('watch_id')
-            if watch_id:
-                self._record_watch_event(
-                    watch_id,
-                    capture.get('source_chat_id'),
-                    capture.get('source_message_id'),
-                    capture.get('target_chat_id'),
-                    capture.get('target_link'),
-                    'success' if count else 'skipped',
-                    f'延迟抓取评论区完成,匹配{count}条'
+            async def executor(capture: dict):
+                client = (
+                    capture.get('client')
+                    or getattr(self, 'user', None)
+                    or getattr(getattr(self, 'app', None), 'client', None)
                 )
-            return count
+                resolve_deep_link = False
+                watch_id = capture.get('watch_id')
+                if watch_id and store is not None:
+                    watch = store.get_live_transfer_watch(str(watch_id))
+                    if watch:
+                        resolve_deep_link = bool(watch.get('resolve_deep_link'))
+                count = await self.forward_discussion_replies(
+                    client=client,
+                    source_chat_id=capture.get('source_chat_id'),
+                    source_message_id=int(capture.get('source_message_id')),
+                    target_chat_id=capture.get('target_chat_id'),
+                    target_link=capture.get('target_link'),
+                    watch_id=capture.get('watch_id'),
+                    resolve_deep_link=resolve_deep_link,
+                )
+                watch_id = capture.get('watch_id')
+                if watch_id:
+                    self._record_watch_event(
+                        watch_id,
+                        capture.get('source_chat_id'),
+                        capture.get('source_message_id'),
+                        capture.get('target_chat_id'),
+                        capture.get('target_link'),
+                        'success' if count else 'skipped',
+                        f'延迟抓取评论区完成,匹配{count}条'
+                    )
+                return count
 
-        def on_cancel(capture: dict):
-            self._cancel_derived_tasks_for_deferred_capture(capture)
+            def on_cancel(capture: dict):
+                self._cancel_derived_tasks_for_deferred_capture(capture)
 
-        scheduler = CommentDelayScheduler(
-            store=store,
-            delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
-            executor=executor,
-            on_cancel=on_cancel,
-            has_active_derived=self._has_active_derived_tasks_for_deferred_capture,
-        )
-        self.comment_delay_scheduler = scheduler
-        scheduler.start()
+            scheduler = CommentDelayScheduler(
+                store=store,
+                delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
+                executor=executor,
+                on_cancel=on_cancel,
+                has_active_derived=self._has_active_derived_tasks_for_deferred_capture,
+            )
+            self.comment_delay_scheduler = scheduler
+        # Always (re)arm: first call may come from a WebUI worker thread without a
+        # running loop; pass the app loop so start can attach via call_soon_threadsafe.
+        scheduler.start(loop=getattr(self, 'loop', None))
         return scheduler
 
     def _has_active_derived_tasks_for_deferred_capture(self, capture: dict) -> bool:

@@ -20,7 +20,7 @@ sys.argv = _ORIGINAL_ARGV
 
 class CommentDelaySchedulerCase(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
+        self._tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.store = TransferStore(directory=self._tmpdir.name)
         self.executed = []
 
@@ -188,7 +188,7 @@ class CommentDelaySchedulerCase(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_tick_fails_orphaned_running_without_inflight(self):
+    def test_tick_requeues_orphaned_running_without_inflight(self):
         row = self.store.schedule_deferred_discussion_capture(
             watch_id='forward:a->b',
             source_chat_id='-1001',
@@ -199,13 +199,61 @@ class CommentDelaySchedulerCase(unittest.TestCase):
         )
         # Claim marks running but never starts an inflight worker (restart orphan).
         self.store.claim_due_deferred_discussion_captures(now=time.time())
+        cancelled_ids = []
+        self.scheduler.on_cancel = lambda capture: cancelled_ids.append(int(capture['id']))
 
         async def run():
             await self.scheduler.tick_once()
             fetched = self.store.get_deferred_discussion_capture(row['id'])
-            self.assertEqual(DeferredDiscussionCaptureStatus.FAILURE, fetched['status'])
-            self.assertIn('orphan', (fetched.get('error_message') or '').lower())
-            self.assertEqual(0, len(self.executed))
+            self.assertEqual(DeferredDiscussionCaptureStatus.DONE, fetched['status'])
+            self.assertIsNone(fetched.get('error_message'))
+            self.assertEqual(1, len(self.executed))
+            self.assertEqual([], cancelled_ids)
+
+        asyncio.run(run())
+
+    def test_start_from_other_thread_arms_with_loop(self):
+        import threading
+
+        row = self.store.schedule_deferred_discussion_capture(
+            watch_id='forward:a->b',
+            source_chat_id='-1001',
+            source_message_id=17,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=time.time() - 1,
+        )
+
+        async def run():
+            loop = asyncio.get_running_loop()
+            started = threading.Event()
+            errors = []
+
+            def worker():
+                try:
+                    # Mimic WebUI HTTP thread: no running loop here.
+                    self.scheduler.start()
+                    self.assertIsNone(self.scheduler._task)
+                    self.scheduler.start(loop=loop)
+                    started.set()
+                except Exception as exc:
+                    errors.append(exc)
+                    started.set()
+
+            threading.Thread(target=worker, daemon=True).start()
+            self.assertTrue(started.wait(timeout=2), errors)
+            # Allow call_soon_threadsafe arm + one tick to claim the due row.
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                fetched = self.store.get_deferred_discussion_capture(row['id'])
+                if fetched and fetched.get('status') == DeferredDiscussionCaptureStatus.DONE:
+                    break
+                await asyncio.sleep(0.02)
+            self.scheduler.stop()
+            fetched = self.store.get_deferred_discussion_capture(row['id'])
+            self.assertEqual([], errors)
+            self.assertEqual(DeferredDiscussionCaptureStatus.DONE, fetched['status'])
+            self.assertEqual(1, len(self.executed))
 
         asyncio.run(run())
 

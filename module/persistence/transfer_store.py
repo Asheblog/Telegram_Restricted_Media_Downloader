@@ -2233,3 +2233,40 @@ class TransferStore:
                     ),
                 )
         return snapshots
+
+    def requeue_running_deferred_discussion_captures(
+            self,
+            capture_ids: List[int],
+            *,
+            due_at: float,
+    ) -> List[Dict[str, Any]]:
+        """Requeue specific running captures as pending. Returns pre-update snapshots."""
+        ids = [int(capture_id) for capture_id in capture_ids]
+        if not ids:
+            return []
+        snapshots: List[Dict[str, Any]] = []
+        stamp = self.utc_now()
+        with self.connect() as conn:
+            for capture_id in ids:
+                row = conn.execute(
+                    'SELECT * FROM deferred_discussion_captures WHERE id = ? AND status = ?',
+                    (capture_id, DeferredDiscussionCaptureStatus.RUNNING),
+                ).fetchone()
+                if not row:
+                    continue
+                snapshots.append(self._deferred_discussion_capture_row(row))
+                conn.execute(
+                    '''
+                    UPDATE deferred_discussion_captures
+                    SET status = ?, due_at = ?, error_message = NULL, updated_at = ?
+                    WHERE id = ? AND status = ?
+                    ''',
+                    (
+                        DeferredDiscussionCaptureStatus.PENDING,
+                        float(due_at),
+                        stamp,
+                        capture_id,
+                        DeferredDiscussionCaptureStatus.RUNNING,
+                    ),
+                )
+        return snapshots

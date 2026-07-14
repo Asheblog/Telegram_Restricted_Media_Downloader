@@ -40,15 +40,40 @@ class CommentDelayScheduler:
         self._stopped = False
         self._inflight: dict[int, asyncio.Task] = {}
 
-    def start(self) -> None:
+    def start(self, loop=None) -> None:
+        """Arm the background tick loop.
+
+        Prefer the caller's explicit ``loop`` so WebUI worker threads can attach
+        to the app event loop via ``call_soon_threadsafe``.
+        """
         self._stopped = False
         if self._task and not self._task.done():
             return
+        target = loop
+        if target is None:
+            try:
+                target = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+
+        def _arm() -> None:
+            if self._stopped:
+                return
+            if self._task and not self._task.done():
+                return
+            self._task = asyncio.get_running_loop().create_task(
+                self._loop(),
+                name='comment-delay-scheduler',
+            )
+
         try:
-            loop = asyncio.get_running_loop()
+            running = asyncio.get_running_loop()
         except RuntimeError:
-            return
-        self._task = loop.create_task(self._loop(), name='comment-delay-scheduler')
+            running = None
+        if running is target:
+            _arm()
+        elif target.is_running():
+            target.call_soon_threadsafe(_arm)
 
     def stop(self) -> None:
         self._stopped = True
@@ -166,7 +191,7 @@ class CommentDelayScheduler:
         return await self.run_now(int(capture_id))
 
     def _reclaim_orphaned_running(self) -> int:
-        """Fail running rows with no live worker and no active derived transfers."""
+        """Requeue running rows with no live worker and no active derived transfers."""
         running = self.store.list_deferred_discussion_captures(
             statuses=[DeferredDiscussionCaptureStatus.RUNNING],
             limit=500,
@@ -177,7 +202,6 @@ class CommentDelayScheduler:
             if task is not None and not task.done()
         }
         orphan_ids: list[int] = []
-        orphan_snapshots: list[dict] = []
         for capture in running:
             capture_id = int(capture['id'])
             if capture_id in keep_ids:
@@ -185,23 +209,13 @@ class CommentDelayScheduler:
             if self.has_active_derived and self.has_active_derived(capture):
                 continue
             orphan_ids.append(capture_id)
-            orphan_snapshots.append(capture)
         if not orphan_ids:
             return 0
-        failed = self.store.fail_running_deferred_discussion_captures(
+        requeued = self.store.requeue_running_deferred_discussion_captures(
             orphan_ids,
-            error_message='orphaned running capture',
+            due_at=self.time_fn(),
         )
-        for capture in orphan_snapshots:
-            if self.on_cancel:
-                try:
-                    self.on_cancel(capture)
-                except Exception:
-                    log.exception(
-                        'Deferred discussion orphan cancel hook failed: %s',
-                        capture.get('id'),
-                    )
-        return len(failed)
+        return len(requeued)
 
     async def tick_once(self) -> int:
         self._reclaim_orphaned_running()

@@ -16,7 +16,7 @@ sys.argv = _ORIGINAL_ARGV
 
 class DeferredDiscussionCaptureStoreCase(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
+        self._tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.store = TransferStore(directory=self._tmpdir.name)
 
     def tearDown(self):
@@ -119,6 +119,27 @@ class DeferredDiscussionCaptureStoreCase(unittest.TestCase):
             'failure',
             self.store.get_deferred_discussion_capture(row['id'])['status'],
         )
+        self.assertEqual(
+            'running',
+            self.store.get_deferred_discussion_capture(keep['id'])['status'],
+        )
+
+    def test_requeue_running_captures_for_restart_recovery(self):
+        row = self._schedule(due_at=time.time() - 1)
+        self.store.claim_due_deferred_discussion_captures(now=time.time())
+        keep = self._schedule(source_message_id=89, due_at=time.time() - 1)
+        self.store.claim_due_deferred_discussion_captures(now=time.time())
+        due_at = time.time()
+        requeued = self.store.requeue_running_deferred_discussion_captures(
+            [row['id']],
+            due_at=due_at,
+        )
+        self.assertEqual(1, len(requeued))
+        self.assertEqual(row['id'], requeued[0]['id'])
+        fetched = self.store.get_deferred_discussion_capture(row['id'])
+        self.assertEqual('pending', fetched['status'])
+        self.assertIsNone(fetched.get('error_message'))
+        self.assertAlmostEqual(due_at, float(fetched['due_at']), places=2)
         self.assertEqual(
             'running',
             self.store.get_deferred_discussion_capture(keep['id'])['status'],
