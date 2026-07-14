@@ -383,7 +383,7 @@ async function loadMobileWatches() {
     container.innerHTML = mobEmptyHtml('加载中...');
   }
   try {
-    var data = await fetchJson('/api/watches');
+    var data = await fetchJson(withClientTzQuery('/api/watches'));
     window.state.watches = Array.isArray(data.watches) ? data.watches : [];
     renderMobWatches();
   } catch (e) {
@@ -529,6 +529,14 @@ function mobWatchRoute(watch) {
   return extraSources > 0 ? route + ' +' + extraSources : route;
 }
 
+function mobWatchShortLink(link) {
+  var helpers = mobWatchHelpers();
+  if (typeof helpers.shortTelegramLink === 'function') {
+    return helpers.shortTelegramLink(link);
+  }
+  return link || '-';
+}
+
 function mobSummarizeWatchEvent(evt) {
   var helpers = mobWatchHelpers();
   if (typeof helpers.summarizeWatchEvent === 'function') return helpers.summarizeWatchEvent(evt);
@@ -557,20 +565,6 @@ function mobWatchModeTitle(mode) {
   return t('watches.historyTitle');
 }
 
-function mobileWatchMenuItems(watch) {
-  var items = [];
-  var deferredCount = Number(watch && watch.deferred_comment_count || 0);
-  if (watch && watch.type === 'forward') {
-    items.push({ action: 'edit', label: t('watches.edit') });
-    items.push({ action: 'downloads', label: t('watches.downloadRecords') });
-    if (watch.include_comment) {
-      items.push({ action: 'deferred', label: t('watches.deferredComments') + (deferredCount ? ' ' + deferredCount : '') });
-    }
-  }
-  items.push({ action: 'delete', label: t('tasks.delete'), danger: true });
-  return items;
-}
-
 function renderMobWatches() {
   var container = document.getElementById('mob-watches-list');
   if (!container) return;
@@ -592,31 +586,74 @@ function renderMobWatches() {
     var eventCount = Number(w.event_count || 0);
     var todayCount = Number(w.today_count || 0);
     var deferredCount = Number(w.deferred_comment_count || 0);
-    var route = mobWatchRoute(w);
+    var sourceFull = mobWatchSource(w) || '-';
+    var targetFull = (w.target_link || '本地');
+    var sourceShort = mobWatchShortLink(sourceFull);
+    var targetShort = mobWatchShortLink(targetFull);
+    var historyLabel = t('watches.historyTitle');
     var deferredBadge = w.type === 'forward' && w.include_comment && deferredCount > 0
       ? '<button class="watch-deferred-badge watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="deferred">' +
           esc(t('watches.deferredComments')) + ' ' + deferredCount +
         '</button>'
       : '';
-    var historyLabel = t('watches.historyTitle');
-    var todayHtml = w.type === 'forward'
-      ? '<button type="button" class="watch-count-btn watch-touch-btn text-xs font-semibold text-text-secondary" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + todayCount) + '">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</button>'
-      : '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</span>';
-    html += '<div class="mob-card status-' + statusClass + ' mob-watch-card" data-watch-id="' + esc(w.id) + '">' +
-      '<div class="mob-card__head">' +
-        '<div class="watch-task-main">' +
-          '<div class="watch-task-head">' +
-            '<span class="watch-status-dot ' + statusClass + '" aria-hidden="true"></span>' +
-            '<span class="mob-card__badge ' + typeClass + '">' + esc(typeLabel) + '</span>' +
-            '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
-            todayHtml +
-            deferredBadge +
+    var statsHtml = '';
+    if (w.type === 'forward') {
+      statsHtml =
+        '<div class="mob-watch-stats">' +
+          '<button type="button" class="mob-watch-stat watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history" data-mob-watch-detail-today="1" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.todayEvents') + ': ' + todayCount) + '">' +
+            '<span class="mob-watch-stat__label">' + esc(t('watches.todayEvents')) + '</span>' +
+            '<span class="mob-watch-stat__value">' + esc(String(todayCount)) + '</span>' +
+          '</button>' +
+          '<button type="button" class="mob-watch-stat mob-watch-stat--primary watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history" data-mob-watch-detail-today="0" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.totalEvents') + ': ' + eventCount) + '">' +
+            '<span class="mob-watch-stat__label">' + esc(t('watches.totalEvents')) + '</span>' +
+            '<span class="mob-watch-stat__value">' + esc(String(eventCount)) + '</span>' +
+          '</button>' +
+        '</div>';
+    } else {
+      statsHtml =
+        '<div class="mob-watch-stats mob-watch-stats--readonly">' +
+          '<div class="mob-watch-stat">' +
+            '<span class="mob-watch-stat__label">' + esc(t('watches.todayEvents')) + '</span>' +
+            '<span class="mob-watch-stat__value">' + esc(String(todayCount)) + '</span>' +
           '</div>' +
-          '<div class="watch-task-route" title="' + esc((mobWatchSource(w) || '-') + ' → ' + (w.target_link || '本地')) + '">' + esc(route) + '</div>' +
+          '<div class="mob-watch-stat">' +
+            '<span class="mob-watch-stat__label">' + esc(t('watches.totalEvents')) + '</span>' +
+            '<span class="mob-watch-stat__value">' + esc(String(eventCount)) + '</span>' +
+          '</div>' +
+        '</div>';
+    }
+    var actionsHtml = '';
+    if (w.type === 'forward') {
+      actionsHtml =
+        '<button type="button" class="mob-btn mob-btn-sm mob-btn-muted watch-touch-btn" data-mob-watch-action="edit" data-watch-id="' + esc(w.id) + '">' + esc(t('watches.edit')) + '</button>' +
+        '<button type="button" class="mob-btn mob-btn-sm mob-btn-muted watch-touch-btn" data-mob-watch-action="downloads" data-watch-id="' + esc(w.id) + '">' + esc(t('watches.downloadRecords')) + '</button>' +
+        '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-action="delete" data-watch-id="' + esc(w.id) + '">' + esc(t('tasks.delete')) + '</button>';
+    } else {
+      actionsHtml =
+        '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-action="delete" data-watch-id="' + esc(w.id) + '">' + esc(t('tasks.delete')) + '</button>';
+    }
+    html += '<div class="mob-card status-' + statusClass + ' mob-watch-card" data-watch-id="' + esc(w.id) + '">' +
+      '<div class="mob-watch-card__head">' +
+        '<div class="watch-task-head">' +
+          '<span class="watch-status-dot ' + statusClass + '" aria-hidden="true"></span>' +
+          '<span class="mob-card__badge ' + typeClass + '">' + esc(typeLabel) + '</span>' +
+          '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
+          deferredBadge +
         '</div>' +
       '</div>' +
-      '<div class="mob-card__actions">' +
-        '<button class="mob-btn mob-btn-sm mob-btn-muted watch-touch-btn" data-mob-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
+      '<div class="mob-watch-meta" role="table" aria-label="' + esc(typeLabel) + '">' +
+        '<div class="mob-watch-meta__row" role="row">' +
+          '<span class="mob-watch-meta__label" role="rowheader">' + esc(t('watches.source')) + '</span>' +
+          '<span class="mob-watch-meta__value" role="cell" title="' + esc(sourceFull) + '">' + esc(sourceShort) + '</span>' +
+        '</div>' +
+        '<div class="mob-watch-meta__row" role="row">' +
+          '<span class="mob-watch-meta__label" role="rowheader">' + esc(t('watches.target')) + '</span>' +
+          '<span class="mob-watch-meta__value" role="cell" title="' + esc(targetFull) + '">' + esc(targetShort) + '</span>' +
+        '</div>' +
+      '</div>' +
+      statsHtml +
+      '<div class="mob-card__actions mob-watch-card__actions' + (w.type === 'forward' ? '' : ' mob-watch-card__actions--single') + '">' +
+        actionsHtml +
       '</div>' +
     '</div>';
   });
@@ -628,43 +665,17 @@ function bindMobWatchCardEvents(container) {
   container.querySelectorAll('[data-mob-watch-detail]').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      openMobileWatchDetail(btn.dataset.mobWatchDetail, btn.dataset.mobWatchDetailMode || 'history');
+      var todayAttr = btn.dataset.mobWatchDetailToday;
+      var options = {};
+      if (todayAttr === '1') options.todayOnly = true;
+      if (todayAttr === '0') options.todayOnly = false;
+      openMobileWatchDetail(btn.dataset.mobWatchDetail, btn.dataset.mobWatchDetailMode || 'history', options);
     });
   });
-  container.querySelectorAll('[data-mob-watch-menu]').forEach(function(btn) {
+  container.querySelectorAll('[data-mob-watch-action]').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      openMobileWatchActionSheet(btn.dataset.mobWatchMenu);
-    });
-  });
-}
-
-function openMobileWatchActionSheet(watchId) {
-  stopMobWatchDownloadPolling();
-  sheetState.sheetType = 'watch-menu';
-  sheetState.watchId = watchId;
-  var overlay = document.getElementById('mob-sheet-overlay');
-  var sheet = document.getElementById('mob-sheet');
-  var watch = mobFindWatchById(watchId);
-  if (!overlay || !sheet || !watch) return;
-  sheet.className = 'mob-sheet';
-  var items = mobileWatchMenuItems(watch);
-  var html = '<div class="mob-sheet__title">' + esc(t('watches.moreActions')) + '</div>' +
-    '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(mobWatchRoute(watch)) + '</div>' +
-    '<div class="mob-menu-group" role="menu">';
-  items.forEach(function(item) {
-    html += '<button class="mob-menu-item' + (item.danger ? ' mob-menu-item--danger' : '') + '" type="button" role="menuitem" data-mob-watch-menu-action="' + item.action + '" data-watch-id="' + esc(watchId) + '">' +
-      '<span class="mob-menu-item__label">' + esc(item.label) + '</span>' +
-    '</button>';
-  });
-  html += '</div>' +
-    '<button class="mob-btn mob-btn-muted watch-touch-btn" type="button" id="mob-watch-menu-cancel">' + esc(t('action.cancel')) + '</button>';
-  sheet.innerHTML = html;
-  overlay.classList.add('open');
-  document.getElementById('mob-watch-menu-cancel')?.addEventListener('click', closeSheet);
-  sheet.querySelectorAll('[data-mob-watch-menu-action]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      handleMobileWatchMenuAction(btn.dataset.watchId, btn.dataset.mobWatchMenuAction);
+      handleMobileWatchMenuAction(btn.dataset.watchId, btn.dataset.mobWatchAction);
     });
   });
 }
@@ -708,7 +719,7 @@ function openMobileWatchEditSheet(watchId) {
       '</div>' +
     '</form>';
   overlay.classList.add('open');
-  document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', function() { openMobileWatchActionSheet(watchId); });
+  document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', closeSheet);
   document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
     event.preventDefault();
     var form = event.currentTarget;
@@ -739,9 +750,10 @@ function openMobileWatchEditSheet(watchId) {
   });
 }
 
-async function openMobileWatchDetail(watchId, mode) {
+async function openMobileWatchDetail(watchId, mode, options) {
   stopMobWatchDownloadPolling();
   var detailMode = mode || 'history';
+  var opts = options || {};
   sheetState.sheetType = 'watch-detail';
   state.watchDetail = {
     watchId: watchId,
@@ -750,6 +762,7 @@ async function openMobileWatchDetail(watchId, mode) {
     pageSize: 20,
     total: 0,
     filter: 'all',
+    todayOnly: detailMode === 'history' ? Boolean(opts.todayOnly) : false,
     items: [],
     statusCounts: null
   };
@@ -789,6 +802,34 @@ async function loadMobileWatchDetail(silent) {
   if (detail.mode === 'downloads') return loadMobileWatchDownloads(silent);
   if (detail.mode === 'deferred') return loadMobileWatchDeferred(detail.watchId, silent);
   return loadMobileWatchHistoryPage(silent);
+}
+
+function renderMobileWatchHistoryRange() {
+  var summary = document.getElementById('mob-watch-detail-summary');
+  var detail = state.watchDetail;
+  if (!summary || !detail || detail.mode !== 'history') return;
+  var watch = mobFindWatchById(detail.watchId);
+  var today = Number(watch && watch.today_count || 0);
+  var total = Number(watch && watch.event_count || 0);
+  summary.innerHTML =
+    '<div class="mob-watch-range" role="tablist" aria-label="' + esc(t('watches.historyTitle')) + '">' +
+      '<button type="button" class="mob-sheet-tab' + (detail.todayOnly ? ' active' : '') + '" role="tab" aria-selected="' + (detail.todayOnly ? 'true' : 'false') + '" data-mob-watch-range="today">' +
+        esc(t('watches.todayEvents')) + '<span class="count">' + today + '</span>' +
+      '</button>' +
+      '<button type="button" class="mob-sheet-tab' + (!detail.todayOnly ? ' active' : '') + '" role="tab" aria-selected="' + (!detail.todayOnly ? 'true' : 'false') + '" data-mob-watch-range="all">' +
+        esc(t('watches.totalEvents')) + '<span class="count">' + total + '</span>' +
+      '</button>' +
+    '</div>';
+  summary.querySelectorAll('[data-mob-watch-range]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var nextTodayOnly = btn.dataset.mobWatchRange === 'today';
+      if (Boolean(state.watchDetail.todayOnly) === nextTodayOnly) return;
+      state.watchDetail.todayOnly = nextTodayOnly;
+      state.watchDetail.filter = 'all';
+      state.watchDetail.page = 1;
+      loadMobileWatchHistoryPage(false);
+    });
+  });
 }
 
 function renderMobileWatchHistoryFilters(statusCounts) {
@@ -854,7 +895,6 @@ function bindMobileWatchHistoryRows() {
 async function loadMobileWatchHistoryPage(silent) {
   var detail = state.watchDetail || state.watchHistory;
   var body = document.getElementById('mob-watch-detail-body');
-  var summary = document.getElementById('mob-watch-detail-summary');
   var pagination = document.getElementById('mob-watch-detail-pagination');
   if (!detail || !detail.watchId || !body) return;
   var page = detail.page || 1;
@@ -866,7 +906,8 @@ async function loadMobileWatchHistoryPage(silent) {
     var status = mobWatchHistoryStatusQuery(detail.filter);
     var url = '/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset;
     if (status) url += '&status=' + encodeURIComponent(status);
-    var data = await fetchJson(url);
+    if (detail.todayOnly) url += '&today=1';
+    var data = await fetchJson(withClientTzQuery(url));
     var items = data.events || [];
     var total = Number(data.total || 0);
     var totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -879,8 +920,7 @@ async function loadMobileWatchHistoryPage(silent) {
     detail.items = items;
     detail.total = total;
     detail.statusCounts = statusCounts;
-    var watch = mobFindWatchById(detail.watchId);
-    if (summary) summary.textContent = '今日 ' + Number(watch && watch.today_count || 0) + ' · 全部 ' + Number(statusCounts.all || 0);
+    renderMobileWatchHistoryRange();
     renderMobileWatchHistoryFilters(statusCounts);
     body.innerHTML = renderMobileWatchHistoryList(items);
     bindMobileWatchHistoryRows();

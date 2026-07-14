@@ -147,7 +147,7 @@ class WebUiAssetsCase(unittest.TestCase):
             "else if (view === 'watches') { loadMobileWatches(); }",
             "else if (view === 'downloads-uploads') { loadMobileDownloadsUploads(); }",
             "var data = await fetchJson('/api/tasks');",
-            "var data = await fetchJson('/api/watches');",
+            "var data = await fetchJson(withClientTzQuery('/api/watches'));",
             "mobileSettingsLoadPromise = fetchJson('/api/settings').then(function(data)",
             "container.innerHTML = mobEmptyHtml('还没有转存任务。', 'tasks.empty');",
             "container.innerHTML = mobEmptyHtml('还没有实时监听。', 'watches.empty');",
@@ -319,6 +319,17 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('data-i18n="watches.totalEvents"', WEB_UI_HTML)
         self.assertIn('data-watch-menu', WEB_UI_HTML)
         self.assertIn('watches.badgeSuccess', WEB_UI_HTML)
+
+    def test_watch_history_supports_today_range(self):
+        combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
+        self.assertIn('data-watch-detail-today', WEB_UI_HTML)
+        self.assertIn('data-mob-watch-detail-today', WEB_UI_MOBILE_HTML)
+        self.assertIn("url += '&today=1'", combined)
+        self.assertIn('data-watch-detail-range', WEB_UI_HTML)
+        self.assertIn('data-mob-watch-range', WEB_UI_MOBILE_HTML)
+        self.assertIn('mob-watch-stat', WEB_UI_MOBILE_HTML)
+        self.assertIn('data-mob-watch-action', WEB_UI_MOBILE_HTML)
+        self.assertIn('mob-watch-card__actions', WEB_UI_MOBILE_HTML)
 
     def test_desktop_and_mobile_use_unified_webui_contract(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML

@@ -1027,10 +1027,10 @@ function renderWatches() {
       : '';
     const historyLabel = t('watches.historyTitle');
     const todayCell = w.type === 'forward'
-      ? '<button type="button" class="watch-count-btn" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + todayCount) + '">' + esc(String(todayCount)) + '</button>'
+      ? '<button type="button" class="watch-count-btn" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" data-watch-detail-today="1" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.todayEvents') + ': ' + todayCount) + '">' + esc(String(todayCount)) + '</button>'
       : esc(String(todayCount));
     const totalCell = w.type === 'forward'
-      ? '<button type="button" class="watch-count-btn watch-count-btn--primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + eventCount) + '">' + esc(String(eventCount)) + '</button>'
+      ? '<button type="button" class="watch-count-btn watch-count-btn--primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" data-watch-detail-today="0" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.totalEvents') + ': ' + eventCount) + '">' + esc(String(eventCount)) + '</button>'
       : esc(String(eventCount));
     return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
       '<td><div class="watch-cell watch-cell--start"><span class="badge ' + typeCls + '">' + typeLabel + '</span></div></td>' +
@@ -1115,7 +1115,7 @@ function openWatchOverflowMenu(watchId, anchor) {
   state.watchOverflowMenu = { watchId: watchId };
 }
 
-async function openWatchDetail(watchId, mode) {
+async function openWatchDetail(watchId, mode, options) {
   closeWatchOverflowMenu();
   const overlay = $('#watch-detail-overlay');
   const body = $('#watch-detail-body');
@@ -1123,6 +1123,7 @@ async function openWatchDetail(watchId, mode) {
   stopWatchDownloadPolling();
   const watch = findWatchById(watchId);
   const detailMode = mode || 'history';
+  const opts = options || {};
   state.watchDetail = {
     watchId: watchId,
     mode: detailMode,
@@ -1130,6 +1131,7 @@ async function openWatchDetail(watchId, mode) {
     pageSize: 20,
     total: 0,
     filter: 'all',
+    todayOnly: detailMode === 'history' ? Boolean(opts.todayOnly) : false,
     items: [],
     statusCounts: null,
   };
@@ -1241,7 +1243,8 @@ async function loadWatchDetailHistory(silent) {
     const status = watchHistoryStatusQuery(detail.filter);
     let url = '/api/watches/' + encodeURIComponent(detail.watchId) + '/events?limit=' + pageSize + '&offset=' + offset;
     if (status) url += '&status=' + encodeURIComponent(status);
-    const data = await fetchJson(url);
+    if (detail.todayOnly) url += '&today=1';
+    const data = await fetchJson(withClientTzQuery(url));
     const items = data.events || [];
     const total = Number(data.total || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1254,7 +1257,7 @@ async function loadWatchDetailHistory(silent) {
     detail.items = items;
     detail.total = total;
     detail.statusCounts = statusCounts;
-    renderWatchDetailHistorySummary(statusCounts);
+    renderWatchDetailHistorySummary();
     renderWatchDetailHistoryFilters(statusCounts);
     body.innerHTML = renderWatchHistoryList(items);
     footer.innerHTML = renderPaginationBar({
@@ -1274,12 +1277,22 @@ async function loadWatchDetailHistory(silent) {
   }
 }
 
-function renderWatchDetailHistorySummary(statusCounts) {
+function renderWatchDetailHistorySummary() {
   const summary = $('#watch-detail-summary');
-  const watch = findWatchById(state.watchDetail && state.watchDetail.watchId);
+  const detail = state.watchDetail;
+  if (!summary || !detail || detail.mode !== 'history') return;
+  const watch = findWatchById(detail.watchId);
   const today = watch ? Number(watch.today_count || 0) : 0;
-  const total = Number((statusCounts && statusCounts.all) || 0);
-  if (summary) summary.textContent = '今日 ' + today + ' · 全部 ' + total;
+  const total = watch ? Number(watch.event_count || 0) : 0;
+  summary.innerHTML =
+    '<div class="watch-range-tabs" role="tablist" aria-label="' + esc(t('watches.historyTitle')) + '">' +
+      '<button type="button" class="panel-tab' + (detail.todayOnly ? ' active' : '') + '" role="tab" aria-selected="' + (detail.todayOnly ? 'true' : 'false') + '" data-watch-detail-range="today">' +
+        esc(t('watches.todayEvents')) + ' (' + today + ')' +
+      '</button>' +
+      '<button type="button" class="panel-tab' + (!detail.todayOnly ? ' active' : '') + '" role="tab" aria-selected="' + (!detail.todayOnly ? 'true' : 'false') + '" data-watch-detail-range="all">' +
+        esc(t('watches.totalEvents')) + ' (' + total + ')' +
+      '</button>' +
+    '</div>';
 }
 
 function renderWatchDetailHistoryFilters(statusCounts) {
@@ -1553,7 +1566,11 @@ document.addEventListener('click', async function(e) {
   const detailBtn = e.target.closest('[data-watch-detail]');
   if (detailBtn) {
     e.stopPropagation();
-    await openWatchDetail(detailBtn.dataset.watchDetail, detailBtn.dataset.watchDetailMode);
+    const todayAttr = detailBtn.dataset.watchDetailToday;
+    const options = {};
+    if (todayAttr === '1') options.todayOnly = true;
+    if (todayAttr === '0') options.todayOnly = false;
+    await openWatchDetail(detailBtn.dataset.watchDetail, detailBtn.dataset.watchDetailMode, options);
     return;
   }
 
@@ -1738,6 +1755,16 @@ $('#watch-edit-overlay')?.addEventListener('click', function(e) {
 $('#watch-detail-close')?.addEventListener('click', closeWatchDetail);
 $('#watch-detail-overlay')?.addEventListener('click', function(e) {
   if (e.target === this) closeWatchDetail();
+});
+$('#watch-detail-summary')?.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-watch-detail-range]');
+  if (!btn || !state.watchDetail || state.watchDetail.mode !== 'history') return;
+  const nextTodayOnly = btn.dataset.watchDetailRange === 'today';
+  if (Boolean(state.watchDetail.todayOnly) === nextTodayOnly) return;
+  state.watchDetail.todayOnly = nextTodayOnly;
+  state.watchDetail.filter = 'all';
+  state.watchDetail.page = 1;
+  loadWatchDetailHistory(false);
 });
 $('#watch-detail-filters')?.addEventListener('click', function(e) {
   const btn = e.target.closest('[data-watch-detail-filter]');

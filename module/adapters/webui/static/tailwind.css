@@ -1001,6 +1001,10 @@
     @apply px-4 py-2 bg-surface-alt border-b border-line text-xs text-muted flex flex-wrap gap-2 justify-between items-center;
   }
 
+  .watch-range-tabs {
+    @apply flex flex-wrap gap-2 items-center;
+  }
+
   .watch-detail-filters {
     @apply px-4 py-2 flex gap-2 overflow-x-auto border-b border-line;
   }
@@ -1671,6 +1675,110 @@
     gap: 6px;
     margin-top: 8px;
     flex-wrap: wrap;
+  }
+  .mob-watch-card {
+    cursor: default;
+  }
+  .mob-watch-card:active {
+    transform: none;
+  }
+  .mob-watch-card__head {
+    margin-bottom: 8px;
+  }
+  .mob-watch-meta {
+    display: grid;
+    gap: 6px;
+    padding: 8px 0;
+    border-top: 1px solid var(--color-line);
+  }
+  .mob-watch-meta__row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    @apply text-xs;
+  }
+  .mob-watch-meta__label {
+    color: var(--color-muted);
+    padding-top: 1px;
+    white-space: nowrap;
+  }
+  .mob-watch-meta__value {
+    min-width: 0;
+    color: var(--color-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    line-height: 1.35;
+  }
+  .mob-watch-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .mob-watch-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 44px;
+    padding: 8px 6px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: var(--color-surface-muted);
+    color: var(--color-text);
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .mob-watch-stat:hover,
+  .mob-watch-stat:focus-visible {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    outline: none;
+  }
+  .mob-watch-stat--primary .mob-watch-stat__value {
+    color: var(--color-primary);
+  }
+  .mob-watch-stats--readonly .mob-watch-stat {
+    cursor: default;
+  }
+  .mob-watch-stats--readonly .mob-watch-stat:hover,
+  .mob-watch-stats--readonly .mob-watch-stat:focus-visible {
+    border-color: var(--color-line);
+    background: var(--color-surface-muted);
+  }
+  .mob-watch-stat__label {
+    @apply text-xs;
+    color: var(--color-muted);
+    line-height: 1.2;
+  }
+  .mob-watch-stat__value {
+    @apply text-base font-semibold tabular-nums leading-none;
+  }
+  .mob-watch-card__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .mob-watch-card__actions--single {
+    grid-template-columns: 1fr;
+  }
+  .mob-watch-card__actions .mob-btn {
+    width: 100%;
+    justify-content: center;
+    min-width: 0;
+  }
+  .mob-watch-range {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .mob-sheet__task-header .task-meta:has(.mob-watch-range) {
+    margin-bottom: 8px;
   }
   .mob-watch-events {
     margin-top: 8px;
