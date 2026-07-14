@@ -75,7 +75,7 @@ class WebUiAssetsCase(unittest.TestCase):
             'nav.transfers', 'nav.watches', 'nav.settings',
             'new.title', 'new.source', 'new.target', 'new.create',
             'tasks.title', 'tasks.empty', 'tasks.pause', 'tasks.resume',
-            'watches.title', 'watches.download', 'watches.forward',
+            'watches.title', 'watches.titleWithComment', 'watches.download', 'watches.forward',
             'nav.downloadsUploads', 'dl.title', 'dl.uploadTitle',
             'statistics.title', 'records.title', 'media.title',
             'settings.title', 'settings.save', 'settings.saved',
@@ -136,7 +136,7 @@ class WebUiAssetsCase(unittest.TestCase):
             '.mob-content{box-sizing:border-box;flex-direction:column;gap:10px;width:100%;min-width:0;max-width:100%',
             '.mob-collapse{border:1px solid var(--color-line);background:var(--color-surface);box-sizing:border-box;border-radius:10px;width:100%;min-width:0;max-width:100%',
             '.mob-card{background:var(--color-surface);border:1px solid var(--color-line);border-left:3px solid var(--color-line);box-sizing:border-box;cursor:pointer;border-radius:10px;width:100%;max-width:100%',
-            '#mob-tasks-list,#mob-watches-list,#mob-operations-list,#mob-statistics-list,#mob-records-list,#mob-media-result,#mob-profile-menu{width:100%;min-width:0;max-width:100%',
+            '#mob-tasks-list,#mob-watches-list,#mob-watches-list-comment,#mob-operations-list,#mob-statistics-list,#mob-records-list,#mob-media-result,#mob-profile-menu{width:100%;min-width:0;max-width:100%',
         ):
             self.assertIn(fragment, WEB_UI_MOBILE_HTML)
 
@@ -336,6 +336,17 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('data-i18n="watches.totalEvents"', WEB_UI_HTML)
         self.assertIn('data-watch-menu', WEB_UI_HTML)
         self.assertIn('watches.badgeSuccess', WEB_UI_HTML)
+
+    def test_watches_split_by_include_comment(self):
+        self.assertIn('id="watches-tbody"', WEB_UI_HTML)
+        self.assertIn('id="watches-tbody-comment"', WEB_UI_HTML)
+        self.assertIn('id="watches-empty-comment"', WEB_UI_HTML)
+        self.assertIn('data-i18n="watches.titleWithComment"', WEB_UI_HTML)
+        self.assertIn('partitionWatchesByComment', WEB_UI_HTML)
+        self.assertIn('id="mob-watches-list-comment"', WEB_UI_MOBILE_HTML)
+        self.assertIn('data-i18n="watches.titleWithComment"', WEB_UI_MOBILE_HTML)
+        self.assertIn('partitionWatchesByComment', WEB_UI_MOBILE_HTML)
+        self.assertIn('mob-watch-list-section', WEB_UI_MOBILE_HTML)
 
     def test_watches_table_cells_fill_row_height_for_vertical_center(self):
         # td 做 flex + stretch，.watch-cell 再 align-items:center（勿用 height:100%）

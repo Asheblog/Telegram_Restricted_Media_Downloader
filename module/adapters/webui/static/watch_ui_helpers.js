@@ -98,6 +98,16 @@
     return Number(task && task.progress_percent || 0);
   }
 
+  function partitionWatchesByComment(watches) {
+    var withoutComment = [];
+    var withComment = [];
+    (watches || []).forEach(function (watch) {
+      if (watch && watch.include_comment) withComment.push(watch);
+      else withoutComment.push(watch);
+    });
+    return { withoutComment: withoutComment, withComment: withComment };
+  }
+
   var WatchUiHelpers = {
     shortTelegramLink: shortTelegramLink,
     formatWatchRoute: formatWatchRoute,
@@ -105,6 +115,7 @@
     filterWatchEventsByStatus: filterWatchEventsByStatus,
     watchDownloadTitle: watchDownloadTitle,
     watchDownloadProgressPercent: watchDownloadProgressPercent,
+    partitionWatchesByComment: partitionWatchesByComment,
   };
 
   root.WatchUiHelpers = WatchUiHelpers;

@@ -49,4 +49,14 @@ assert.equal(h.filterWatchEventsByStatus(events, 'success').length, 1);
 assert.equal(h.filterWatchEventsByStatus(events, 'filtered').length, 1);
 assert.equal(h.filterWatchEventsByStatus(events, 'failure').length, 1);
 
+const partitioned = h.partitionWatchesByComment([
+  { id: 'a', include_comment: false },
+  { id: 'b', include_comment: true },
+  { id: 'c' },
+  { id: 'd', include_comment: 1 },
+]);
+assert.deepEqual(partitioned.withoutComment.map((w) => w.id), ['a', 'c']);
+assert.deepEqual(partitioned.withComment.map((w) => w.id), ['b', 'd']);
+assert.deepEqual(h.partitionWatchesByComment(null), { withoutComment: [], withComment: [] });
+
 console.log('watch_ui_helpers.test.mjs: ok');

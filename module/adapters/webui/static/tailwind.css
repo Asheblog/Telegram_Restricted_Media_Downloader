@@ -2126,8 +2126,23 @@
   .mob-body [style*="grid-template-columns: 1fr 1fr"] {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   }
+  .mob-watch-list-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  #mob-watches-list,
+  #mob-watches-list-comment {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
   #mob-tasks-list,
   #mob-watches-list,
+  #mob-watches-list-comment,
   #mob-operations-list,
   #mob-statistics-list,
   #mob-records-list,
