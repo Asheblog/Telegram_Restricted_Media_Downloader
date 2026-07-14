@@ -1424,6 +1424,8 @@ function renderMobSettingsForm() {
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
     '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
+    '<label style="margin-top:10px;"><span>收齐静默（秒）</span><input name="global.deep_link.settle_seconds" type="number" min="0" max="60" value="' + (getSettingLeafKey(glob, 'deep_link.settle_seconds') ?? 3) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">首条媒体后再等该秒数无新消息则结束收齐；0 表示收到首条即结束。</p>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 
   // Archive

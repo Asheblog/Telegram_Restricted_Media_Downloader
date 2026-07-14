@@ -1164,6 +1164,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMinIntervalHint">
           两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。
         </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkSettle">收齐静默（秒）</label>
+        <input class="form-input" name="global.deep_link.settle_seconds" type="number" min="0" max="60">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkSettleHint">
+          首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。
+        </p>
       </section>
 
     <!-- PikPak Archive -->
@@ -1486,7 +1491,7 @@ const i18n = {
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
-    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'watches.title': '活跃监听',
@@ -1500,7 +1505,7 @@ const i18n = {
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
-    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -1728,6 +1733,8 @@ const i18n = {
     'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.deepLinkMinInterval': '取片最小间隔（秒）',
     'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
+    'settings.deepLinkSettle': '收齐静默（秒）',
+    'settings.deepLinkSettleHint': '首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -1887,7 +1894,7 @@ const i18n = {
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
-    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'watches.title': 'Active Watches',
@@ -1901,7 +1908,7 @@ const i18n = {
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
-    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -2129,6 +2136,8 @@ const i18n = {
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
     'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
+    'settings.deepLinkSettle': 'Settle silence (seconds)',
+    'settings.deepLinkSettleHint': 'After the first media arrives, keep collecting until this many seconds pass with no new media. Use for bots that burst many files. 0 ends after the first media.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -6136,7 +6145,7 @@ const i18n = {
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
-    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'watches.title': '活跃监听',
@@ -6150,7 +6159,7 @@ const i18n = {
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
-    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -6378,6 +6387,8 @@ const i18n = {
     'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.deepLinkMinInterval': '取片最小间隔（秒）',
     'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
+    'settings.deepLinkSettle': '收齐静默（秒）',
+    'settings.deepLinkSettleHint': '首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -6537,7 +6548,7 @@ const i18n = {
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
-    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'watches.title': 'Active Watches',
@@ -6551,7 +6562,7 @@ const i18n = {
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
-    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -6779,6 +6790,8 @@ const i18n = {
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
     'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
+    'settings.deepLinkSettle': 'Settle silence (seconds)',
+    'settings.deepLinkSettleHint': 'After the first media arrives, keep collecting until this many seconds pass with no new media. Use for bots that burst many files. 0 ends after the first media.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',

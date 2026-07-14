@@ -1452,31 +1452,103 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             target_chat_id: Union[str, int],
             target_link: str,
             done_notice: Optional[bool] = True,
-            watch_id: Optional[str] = None
+            watch_id: Optional[str] = None,
+            resolve_deep_link: bool = False,
     ) -> int:
+        from module.transfer.deep_link import (
+            DeepLinkResolveError,
+            message_has_whitelisted_deep_link,
+            normalize_resolved_messages,
+        )
         count = 0
+        whitelist = self.gc.get_deep_link_bot_whitelist() if resolve_deep_link else []
+
+        def include_discussion_message(item) -> bool:
+            if self.check_type(item):
+                return True
+            return resolve_deep_link and message_has_whitelisted_deep_link(item, whitelist)
+
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
                     client=self.app.client,
                     chat_id=source_chat_id,
                     message_id=source_message_id,
-                    include_message=self.check_type
+                    include_message=include_discussion_message
             ):
-                comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
-                media_group_ids = sorted(member.id for member in media_group) if media_group else None
-                await self.forward(
-                    client=client,
-                    message=comment,
-                    message_id=comment.id,
-                    origin_chat_id=comment_chat_id,
-                    target_chat_id=target_chat_id,
-                    target_link=target_link,
-                    download_upload=True,
-                    done_notice=done_notice,
-                    watch_id=watch_id,
-                    media_group=media_group_ids
-                )
-                count += 1
+                messages_to_forward = [(comment, media_group)]
+                if resolve_deep_link:
+                    resolver = self.get_deep_link_resolver()
+                    try:
+                        resolved_list = normalize_resolved_messages(
+                            await resolver.resolve(
+                                client=self.app.client,
+                                message=comment,
+                                whitelist=whitelist,
+                                timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
+                                min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
+                                settle_seconds=self.gc.get_deep_link_settle_seconds(),
+                            )
+                        )
+                    except DeepLinkResolveError as e:
+                        self._log_system_chain(
+                            category='watch',
+                            stage='deep_link_failed',
+                            message=f'Discussion deep link resolve failed: {e}',
+                            level='error',
+                            watch_id=watch_id,
+                            source_chat_id=source_chat_id,
+                            source_message_id=source_message_id,
+                            target_link=target_link,
+                            details={
+                                'comment_id': getattr(comment, 'id', None),
+                                'error': str(e),
+                            },
+                        )
+                        continue
+                    if resolved_list:
+                        messages_to_forward = []
+                        by_group: dict = {}
+                        singles = []
+                        for resolved in resolved_list:
+                            group_id = getattr(resolved, 'media_group_id', None)
+                            if group_id is None:
+                                singles.append(resolved)
+                            else:
+                                by_group.setdefault(group_id, []).append(resolved)
+                        for group_members in by_group.values():
+                            group_members.sort(key=lambda item: getattr(item, 'id', 0) or 0)
+                            messages_to_forward.append((group_members[0], group_members))
+                        for resolved in singles:
+                            messages_to_forward.append((resolved, None))
+                for forward_message, forward_group in messages_to_forward:
+                    forward_chat = getattr(forward_message, 'chat', None)
+                    forward_chat_id = getattr(forward_chat, 'id', None)
+                    if forward_chat_id is None:
+                        meta = getattr(forward_message, '_deep_link_meta', {}) or {}
+                        forward_chat_id = meta.get('bot') or getattr(
+                            getattr(comment, 'chat', None), 'id', source_chat_id
+                        )
+                    media_group_ids = (
+                        sorted(member.id for member in forward_group) if forward_group else None
+                    )
+                    channel_source_folder = source_folder_from_message(
+                        comment,
+                        fallback_chat_id=source_chat_id,
+                    )
+                    await self.forward(
+                        client=client,
+                        message=forward_message,
+                        message_id=getattr(forward_message, 'id', comment.id),
+                        origin_chat_id=forward_chat_id,
+                        target_chat_id=target_chat_id,
+                        target_link=target_link,
+                        download_upload=True,
+                        done_notice=done_notice,
+                        watch_id=watch_id,
+                        media_group=media_group_ids,
+                        source_folder=channel_source_folder,
+                    )
+                    count += 1
         except (ValueError, AttributeError, MsgIdInvalid):
             pass
         return count
@@ -1547,16 +1619,23 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         fallback_chat_id=_listen_chat_id,
                         fallback_link=link,
                     )
+                    messages_to_forward = [message]
                     if resolve_deep_link:
-                        from module.transfer.deep_link import DeepLinkResolveError
+                        from module.transfer.deep_link import (
+                            DeepLinkResolveError,
+                            normalize_resolved_messages,
+                        )
                         resolver = self.get_deep_link_resolver()
                         try:
-                            resolved = await resolver.resolve(
-                                client=self.app.client,
-                                message=message,
-                                whitelist=self.gc.get_deep_link_bot_whitelist(),
-                                timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
-                                min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
+                            resolved_list = normalize_resolved_messages(
+                                await resolver.resolve(
+                                    client=self.app.client,
+                                    message=message,
+                                    whitelist=self.gc.get_deep_link_bot_whitelist(),
+                                    timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
+                                    min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
+                                    settle_seconds=self.gc.get_deep_link_settle_seconds(),
+                                )
                             )
                         except DeepLinkResolveError as e:
                             self._log_system_chain(
@@ -1572,105 +1651,100 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 details={'error': str(e)},
                             )
                             continue
-                        if resolved is not None:
-                            message = resolved
-                            forward_message_id = getattr(resolved, 'id', forward_message_id)
-                            resolved_chat = getattr(resolved, 'chat', None)
+                        if resolved_list is not None:
+                            messages_to_forward = resolved_list
+                    for forward_unit in messages_to_forward:
+                        forward_origin_chat_id = _listen_chat_id
+                        forward_message_id = getattr(forward_unit, 'id', message.id)
+                        if resolve_deep_link and forward_unit is not message:
+                            resolved_chat = getattr(forward_unit, 'chat', None)
                             resolved_chat_id = getattr(resolved_chat, 'id', None)
                             if resolved_chat_id is not None:
                                 forward_origin_chat_id = resolved_chat_id
                             else:
-                                meta = getattr(resolved, '_deep_link_meta', {}) or {}
+                                meta = getattr(forward_unit, '_deep_link_meta', {}) or {}
                                 if meta.get('bot'):
                                     forward_origin_chat_id = meta['bot']
-                    try:
-                        media_group_ids = await message.get_media_group()
-                        if not media_group_ids:
-                            raise ValueError
-                        if (
-                                not self.gc.forward_type.get('video') or
-                                not self.gc.forward_type.get('photo')
-                        ):
-                            log.warning('由于过滤了图片或视频类型的转发,将不再以媒体组方式发送。')
-                            raise ValueError
-                        if (
-                                getattr(getattr(message, 'chat', None), 'is_creator', False) or
-                                getattr(getattr(message, 'chat', None), 'is_admin', False)
-                        ) and (
-                                getattr(getattr(message, 'from_user', None), 'id', -1) ==
-                                getattr(getattr(client, 'me', None), 'id', None)
-                        ):
-                            pass
-                        elif (
-                                getattr(getattr(message, 'chat', None), 'has_protected_content', False) or
-                                getattr(getattr(message, 'sender_chat', None), 'has_protected_content', False) or
-                                getattr(message, 'has_protected_content', False)
-                        ):
-                            raise ValueError
-                        if not self.handle_media_groups.get(listen_chat_id):
-                            self.handle_media_groups[listen_chat_id] = set()
-                        if listen_chat_id in self.handle_media_groups and message.id not in self.handle_media_groups.get(
-                                listen_chat_id):
-                            ids: set = set()
-                            for peer_message in media_group_ids:
-                                peer_id = peer_message.id
-                                ids.add(peer_id)
-                            if ids:
-                                old_ids: Union[None, set] = self.handle_media_groups.get(listen_chat_id)
-                                if old_ids and isinstance(old_ids, set):
-                                    old_ids.update(ids)
-                                    self.handle_media_groups[listen_chat_id] = old_ids
-                                else:
-                                    self.handle_media_groups[listen_chat_id] = ids
-                            await self.forward(
-                                client=client,
-                                message=message,
-                                message_id=forward_message_id,
-                                origin_chat_id=forward_origin_chat_id,
-                                target_chat_id=_target_chat_id,
-                                target_link=target_link,
-                                download_upload=False,
-                                media_group=sorted(ids),
-                                watch_id=watch_id,
-                                trace_id=trace_id,
-                                source_folder=channel_source_folder,
-                                archive_source_link=channel_source_link,
-                            )
-                            if include_comment:
-                                await self.schedule_or_forward_discussion_replies(
+                        try:
+                            media_group_ids = await forward_unit.get_media_group()
+                            if not media_group_ids:
+                                raise ValueError
+                            if (
+                                    not self.gc.forward_type.get('video') or
+                                    not self.gc.forward_type.get('photo')
+                            ):
+                                log.warning('由于过滤了图片或视频类型的转发,将不再以媒体组方式发送。')
+                                raise ValueError
+                            if (
+                                    getattr(getattr(forward_unit, 'chat', None), 'is_creator', False) or
+                                    getattr(getattr(forward_unit, 'chat', None), 'is_admin', False)
+                            ) and (
+                                    getattr(getattr(forward_unit, 'from_user', None), 'id', -1) ==
+                                    getattr(getattr(client, 'me', None), 'id', None)
+                            ):
+                                pass
+                            elif (
+                                    getattr(getattr(forward_unit, 'chat', None), 'has_protected_content', False) or
+                                    getattr(getattr(forward_unit, 'sender_chat', None), 'has_protected_content', False) or
+                                    getattr(forward_unit, 'has_protected_content', False)
+                            ):
+                                raise ValueError
+                            if not self.handle_media_groups.get(listen_chat_id):
+                                self.handle_media_groups[listen_chat_id] = set()
+                            unit_key = getattr(forward_unit, 'id', None)
+                            if listen_chat_id in self.handle_media_groups and unit_key not in self.handle_media_groups.get(
+                                    listen_chat_id):
+                                ids: set = set()
+                                for peer_message in media_group_ids:
+                                    peer_id = peer_message.id
+                                    ids.add(peer_id)
+                                if ids:
+                                    old_ids: Union[None, set] = self.handle_media_groups.get(listen_chat_id)
+                                    if old_ids and isinstance(old_ids, set):
+                                        old_ids.update(ids)
+                                        self.handle_media_groups[listen_chat_id] = old_ids
+                                    else:
+                                        self.handle_media_groups[listen_chat_id] = ids
+                                await self.forward(
                                     client=client,
-                                    source_chat_id=_listen_chat_id,
-                                    source_message_id=message_id,
+                                    message=forward_unit,
+                                    message_id=forward_message_id,
+                                    origin_chat_id=forward_origin_chat_id,
                                     target_chat_id=_target_chat_id,
                                     target_link=target_link,
-                                    watch_id=watch_id
+                                    download_upload=False,
+                                    media_group=sorted(ids),
+                                    watch_id=watch_id,
+                                    trace_id=trace_id,
+                                    source_folder=channel_source_folder,
+                                    archive_source_link=channel_source_link,
                                 )
-                            break
-                        break
-                    except ValueError:
-                        self._log_system_chain(
-                            category='forward',
-                            stage='media_group_fallback',
-                            message='媒体组直转不可用，回退单条转发(允许下载上传)',
-                            trace_id=trace_id,
+                                continue
+                            continue
+                        except ValueError:
+                            self._log_system_chain(
+                                category='forward',
+                                stage='media_group_fallback',
+                                message='媒体组直转不可用，回退单条转发(允许下载上传)',
+                                trace_id=trace_id,
+                                watch_id=watch_id,
+                                source_chat_id=origin_chat_id,
+                                source_message_id=message_id,
+                                target_link=target_link
+                            )
+                        await self.forward(
+                            client=client,
+                            message=forward_unit,
+                            message_id=forward_message_id,
+                            origin_chat_id=forward_origin_chat_id,
+                            target_chat_id=_target_chat_id,
+                            target_link=target_link,
+                            download_upload=True,
                             watch_id=watch_id,
-                            source_chat_id=origin_chat_id,
-                            source_message_id=message_id,
-                            target_link=target_link
+                            trace_id=trace_id,
+                            source_folder=channel_source_folder,
+                            archive_source_link=channel_source_link,
                         )
-                    await self.forward(
-                        client=client,
-                        message=message,
-                        message_id=forward_message_id,
-                        origin_chat_id=forward_origin_chat_id,
-                        target_chat_id=_target_chat_id,
-                        target_link=target_link,
-                        download_upload=True,
-                        watch_id=watch_id,
-                        trace_id=trace_id,
-                        source_folder=channel_source_folder,
-                        archive_source_link=channel_source_link,
-                    )
                     if include_comment:
                         await self.schedule_or_forward_discussion_replies(
                             client=client,

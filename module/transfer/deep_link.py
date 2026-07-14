@@ -15,6 +15,8 @@ _TME_START_RE = re.compile(
     re.I,
 )
 
+_RESOLVABLE_MEDIA_ATTRS = ('video', 'document', 'animation', 'photo')
+
 
 def normalize_bot_username(value: str) -> str:
     return str(value or '').strip().lstrip('@').lower()
@@ -93,6 +95,19 @@ def pick_whitelisted_deep_link(
     return None
 
 
+def message_has_whitelisted_deep_link(message, whitelist: Iterable[str]) -> bool:
+    return pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist) is not None
+
+
+def normalize_resolved_messages(resolved) -> Optional[List[object]]:
+    """Normalize resolver output to a message list (None = no deep link)."""
+    if resolved is None:
+        return None
+    if isinstance(resolved, list):
+        return resolved or None
+    return [resolved]
+
+
 class DeepLinkResolveError(Exception):
     pass
 
@@ -103,16 +118,34 @@ class DeepLinkResolver:
             timeout_seconds: int = 60,
             poll_interval: float = 1.5,
             min_interval_seconds: float = 30,
+            settle_seconds: float = 3.0,
     ):
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval
         self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
+        self.settle_seconds = max(float(settle_seconds or 0), 0.0)
         self._lock = asyncio.Lock()
         self._last_start_bot_at: float = 0.0
 
     @staticmethod
     def message_has_resolvable_media(message) -> bool:
-        return any(getattr(message, attr, None) for attr in ('video', 'document', 'animation'))
+        return any(getattr(message, attr, None) for attr in _RESOLVABLE_MEDIA_ATTRS)
+
+    @staticmethod
+    def _message_timestamp(message) -> float:
+        msg_date = getattr(message, 'date', None)
+        if hasattr(msg_date, 'timestamp'):
+            return float(msg_date.timestamp())
+        return float(msg_date or 0)
+
+    @staticmethod
+    def _message_key(message) -> Tuple:
+        msg_id = getattr(message, 'id', None)
+        chat = getattr(message, 'chat', None)
+        chat_id = getattr(chat, 'id', None)
+        if msg_id is not None:
+            return chat_id, int(msg_id)
+        return chat_id, id(message)
 
     async def _wait_min_interval(self) -> None:
         if self.min_interval_seconds <= 0 or self._last_start_bot_at <= 0:
@@ -157,8 +190,26 @@ class DeepLinkResolver:
                 await asyncio.sleep(amount)
 
     @staticmethod
-    async def _collect_chat_history(client, bot_username: str, limit: int = 10) -> list:
+    async def _collect_chat_history(client, bot_username: str, limit: int = 30) -> list:
         return [message async for message in client.get_chat_history(bot_username, limit=limit)]
+
+    def _collect_new_media(self, history: list, started_at: float, collected: dict) -> bool:
+        """Merge newly seen media into collected. Returns True if any new media added."""
+        added = False
+        for message in history:
+            ts = self._message_timestamp(message)
+            if ts + 2 < started_at:  # allow small skew
+                continue
+            if getattr(message, 'outgoing', False):
+                continue
+            if not self.message_has_resolvable_media(message):
+                continue
+            key = self._message_key(message)
+            if key in collected:
+                continue
+            collected[key] = message
+            added = True
+        return added
 
     async def wait_for_media(
             self,
@@ -167,33 +218,67 @@ class DeepLinkResolver:
             started_at: float,
             deadline: Optional[float] = None,
     ):
+        """Backward-compatible: return the first collected media message."""
+        messages = await self.wait_for_media_batch(
+            client, bot_username, started_at, deadline=deadline,
+        )
+        return messages[0]
+
+    async def wait_for_media_batch(
+            self,
+            client,
+            bot_username: str,
+            started_at: float,
+            deadline: Optional[float] = None,
+    ) -> List[object]:
+        """Wait for bot media, then keep collecting until settle silent window or deadline."""
         if deadline is None:
             deadline = started_at + self.timeout_seconds
+        collected: dict = {}
+        first_media_at: Optional[float] = None
+        last_new_at: Optional[float] = None
+
         while time.time() < deadline:
             remaining = deadline - time.time()
             if remaining <= 0:
                 break
             try:
                 history = await asyncio.wait_for(
-                    self._collect_chat_history(client, bot_username, limit=10),
+                    self._collect_chat_history(client, bot_username, limit=30),
                     timeout=remaining,
                 )
             except asyncio.TimeoutError:
                 break
-            for message in history:
-                msg_date = getattr(message, 'date', None)
-                ts = msg_date.timestamp() if hasattr(msg_date, 'timestamp') else float(msg_date or 0)
-                if ts + 2 < started_at:  # allow small skew
-                    continue
-                if getattr(message, 'outgoing', False):
-                    continue
-                if self.message_has_resolvable_media(message):
-                    return message
+            now = time.time()
+            if self._collect_new_media(history, started_at, collected):
+                if first_media_at is None:
+                    first_media_at = now
+                last_new_at = now
+
+            if first_media_at is not None:
+                if self.settle_seconds <= 0:
+                    break
+                if last_new_at is not None and (now - last_new_at) >= self.settle_seconds:
+                    break
+
             sleep_for = min(self.poll_interval, max(0.0, deadline - time.time()))
+            if first_media_at is not None and self.settle_seconds > 0 and last_new_at is not None:
+                until_settle = self.settle_seconds - (time.time() - last_new_at)
+                if until_settle > 0:
+                    sleep_for = min(sleep_for, until_settle)
             if sleep_for <= 0:
                 break
             await asyncio.sleep(sleep_for)
-        raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
+
+        if not collected:
+            raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
+        return sorted(
+            collected.values(),
+            key=lambda message: (
+                self._message_timestamp(message),
+                int(getattr(message, 'id', 0) or 0),
+            ),
+        )
 
     async def resolve(
             self,
@@ -202,8 +287,9 @@ class DeepLinkResolver:
             whitelist,
             timeout_seconds=None,
             min_interval_seconds=None,
-    ) -> Optional[object]:
-        """若命中白名单深链则返回 bot 媒体消息；无深链返回 None；失败抛 DeepLinkResolveError。"""
+            settle_seconds=None,
+    ) -> Optional[List[object]]:
+        """若命中白名单深链则返回 bot 媒体消息列表；无深链返回 None；失败抛 DeepLinkResolveError。"""
         picked = pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist)
         if not picked:
             return None
@@ -213,17 +299,23 @@ class DeepLinkResolver:
                 self.timeout_seconds = int(timeout_seconds)
             if min_interval_seconds is not None:
                 self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
+            if settle_seconds is not None:
+                self.settle_seconds = max(float(settle_seconds or 0), 0.0)
             await self._wait_min_interval()
             started_at = time.time()
             deadline = started_at + self.timeout_seconds
 
             async def _fetch():
                 await self.start_bot(client, bot, param, deadline=deadline)
-                return await self.wait_for_media(client, bot, started_at, deadline=deadline)
+                return await self.wait_for_media_batch(
+                    client, bot, started_at, deadline=deadline,
+                )
 
             try:
-                media_msg = await asyncio.wait_for(_fetch(), timeout=self.timeout_seconds)
+                media_msgs = await _fetch()
             except asyncio.TimeoutError as e:
                 raise DeepLinkResolveError('资源 bot 未在超时内返回媒体') from e
-            media_msg._deep_link_meta = {'bot': bot, 'start_param': param}
-            return media_msg
+            meta = {'bot': bot, 'start_param': param}
+            for media_msg in media_msgs:
+                media_msg._deep_link_meta = dict(meta)
+            return media_msgs

@@ -22,7 +22,11 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 from module import log
 from module.enums import DownloadStatus, DownloadType
 from module.source_folders import source_folder_from_message
-from module.transfer.deep_link import DeepLinkResolveError
+from module.transfer.deep_link import (
+    DeepLinkResolveError,
+    message_has_whitelisted_deep_link,
+    normalize_resolved_messages,
+)
 from module.transfer_store import TransferStatus
 from module.uploader import TelegramUploader
 from module.util import get_message_by_link, iter_discussion_reply_messages
@@ -517,18 +521,21 @@ class WebTransferRunner:
             fallback_chat_id=origin_chat_id,
             fallback_link=source_link
         )
-        forward_chat_id = origin_chat_id
-        forward_message_id = message_id
-        resolved_meta = None
+        resolved_list = None
         if bool(task.get('resolve_deep_link')):
             resolver = host.get_deep_link_resolver()
+            settle_getter = getattr(host.gc, 'get_deep_link_settle_seconds', None)
+            settle_seconds = settle_getter() if callable(settle_getter) else None
             try:
-                resolved = await resolver.resolve(
-                    client=host.app.client,
-                    message=message,
-                    whitelist=host.gc.get_deep_link_bot_whitelist(),
-                    timeout_seconds=host.gc.get_deep_link_timeout_seconds(),
-                    min_interval_seconds=host.gc.get_deep_link_min_interval_seconds(),
+                resolved_list = normalize_resolved_messages(
+                    await resolver.resolve(
+                        client=host.app.client,
+                        message=message,
+                        whitelist=host.gc.get_deep_link_bot_whitelist(),
+                        timeout_seconds=host.gc.get_deep_link_timeout_seconds(),
+                        min_interval_seconds=host.gc.get_deep_link_min_interval_seconds(),
+                        settle_seconds=settle_seconds,
+                    )
                 )
             except DeepLinkResolveError as e:
                 task_id = int(task.get('id'))
@@ -568,44 +575,180 @@ class WebTransferRunner:
                     )
                 host.refresh_transfer_task_counts(task_id)
                 return False
-            if resolved is not None:
-                resolved_meta = getattr(resolved, '_deep_link_meta', {}) or {}
-                message = resolved
-                forward_message_id = getattr(resolved, 'id', message_id)
-                resolved_chat = getattr(resolved, 'chat', None)
+
+        messages_to_send = resolved_list if resolved_list else [message]
+        used_fallback = False
+        multi_resolved = bool(resolved_list) and len(resolved_list) > 1
+        for send_message in messages_to_send:
+            forward_chat_id = origin_chat_id
+            forward_message_id = message_id
+            resolved_meta = None
+            item_source_chat_id = origin_chat_id
+            item_source_message_id = message_id
+            if resolved_list is not None:
+                resolved_meta = getattr(send_message, '_deep_link_meta', {}) or {}
+                forward_message_id = getattr(send_message, 'id', message_id)
+                resolved_chat = getattr(send_message, 'chat', None)
                 resolved_chat_id = getattr(resolved_chat, 'id', None)
                 if resolved_chat_id is not None:
                     forward_chat_id = resolved_chat_id
                 elif resolved_meta.get('bot'):
                     forward_chat_id = resolved_meta['bot']
-        limit_error = host.get_task_target_size_limit_error(task, message)
-        if limit_error:
-            host.skip_transfer_item_for_target_limit(
-                task=task,
-                message=channel_message,
-                source_link=source_link,
-                origin_chat_id=origin_chat_id,
-                limit_error=limit_error,
-                range_message_id=range_message_id
-            )
-            return False
-        while True:
-            try:
-                forwarded_message = await host.forward(
-                    client=host.app.client,
-                    message=message,
-                    message_id=forward_message_id,
-                    origin_chat_id=forward_chat_id,
-                    target_chat_id=target_chat_id,
-                    target_link=task.get('target_link'),
-                    download_upload=False,
-                    done_notice=False,
-                    ignore_type_filter=True,
-                    archive_after_success=False
+                if multi_resolved:
+                    item_source_chat_id = forward_chat_id
+                    item_source_message_id = forward_message_id
+            limit_error = host.get_task_target_size_limit_error(task, send_message)
+            if limit_error:
+                host.skip_transfer_item_for_target_limit(
+                    task=task,
+                    message=channel_message,
+                    source_link=source_link,
+                    origin_chat_id=origin_chat_id,
+                    limit_error=limit_error,
+                    range_message_id=range_message_id
                 )
-                media_meta = host.get_message_media_target_limit_meta(message)
-                archive_file_name = host.get_message_media_archive_filename(message)
-                task_id = int(task.get('id'))
+                continue
+            while True:
+                try:
+                    forwarded_message = await host.forward(
+                        client=host.app.client,
+                        message=send_message,
+                        message_id=forward_message_id,
+                        origin_chat_id=forward_chat_id,
+                        target_chat_id=target_chat_id,
+                        target_link=task.get('target_link'),
+                        download_upload=False,
+                        done_notice=False,
+                        ignore_type_filter=True,
+                        archive_after_success=False
+                    )
+                    media_meta = host.get_message_media_target_limit_meta(send_message)
+                    archive_file_name = host.get_message_media_archive_filename(send_message)
+                    task_id = int(task.get('id'))
+                    item_id = host.transfer_store.add_item(
+                        task_id=task_id,
+                        source_chat_id=item_source_chat_id,
+                        source_message_id=item_source_message_id,
+                        range_message_id=range_message_id,
+                        source_link=source_link,
+                        target_link=task.get('target_link'),
+                        media_type='forward',
+                        file_name=(media_meta or {}).get('file_name'),
+                        file_size=(media_meta or {}).get('file_size'),
+                        source_folder=channel_source_folder,
+                        archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,
+                        archive_match_original_name=(
+                            archive_file_name is None
+                            if task.get('target_profile') == 'pikpak' and media_meta
+                            else None
+                        ),
+                        phase='forwarded',
+                        status=TransferStatus.RUNNING
+                    )
+                    if resolved_meta:
+                        bot = resolved_meta.get('bot') or ''
+                        start_param = resolved_meta.get('start_param') or ''
+                        host.transfer_store.add_event(
+                            task_id,
+                            f'resolved_via=@{bot} start={start_param} source={source_link}',
+                            item_id=item_id,
+                        )
+                    if host.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
+                        if not host.forwarded_message_has_identity(forwarded_message):
+                            host.fail_transfer_item(
+                                task_id,
+                                item_id,
+                                f'Direct forward did not produce a target message: {source_link}'
+                            )
+                            break
+                        confirmed = await host.wait_for_pikpak_ingest_confirmation(
+                            target_chat_id=target_chat_id,
+                            forwarded_message=forwarded_message
+                        )
+                        if not confirmed:
+                            archive_result = host.archive_pikpak_item(
+                                target_profile=task.get('target_profile'),
+                                item_id=item_id,
+                                task_id=task_id,
+                                message=send_message,
+                                source_link=source_link,
+                                source_folder=channel_source_folder,
+                                transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                            )
+                            if bool(getattr(archive_result, 'ok', False)):
+                                host.transfer_store.update_item(
+                                    item_id,
+                                    phase='forwarded',
+                                    status=TransferStatus.SUCCESS,
+                                    error_message=''
+                                )
+                                host.transfer_store.add_event(
+                                    task_id,
+                                    f'PikPak ingest confirmation recovered by archive: {source_link}',
+                                    item_id=item_id
+                                )
+                                host.refresh_transfer_task_counts(task_id)
+                                break
+                            error_message = f'PikPak ingest confirmation timeout or failure: {source_link}'
+                            host.fail_transfer_item(task_id, item_id, error_message)
+                            break
+                        host.complete_forwarded_pikpak_item(
+                            task=task,
+                            item_id=item_id,
+                            task_id=task_id,
+                            message=send_message,
+                            source_link=source_link,
+                            source_folder=channel_source_folder,
+                            transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                        )
+                        break
+                    host.transfer_store.update_item(
+                        item_id,
+                        phase='forwarded',
+                        status=TransferStatus.SUCCESS,
+                        error_message=''
+                    )
+                    host.transfer_store.add_event(
+                        task_id,
+                        f'Direct forward succeeded: {source_link}',
+                        item_id=item_id
+                    )
+                    host.refresh_transfer_task_counts(task_id)
+                    break
+                except (FloodWait, FloodPremiumWait) as e:
+                    await host.wait_for_telegram_flood(e, task_id=int(task.get('id')), action='web transfer forward')
+                except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
+                    if not host.gc.download_upload:
+                        raise
+                    host.transfer_store.add_event(
+                        int(task.get('id')),
+                        f'Direct forward fallback for {source_link}: {e}',
+                        level='warning'
+                    )
+                    if resolved_meta is not None:
+                        # Deep-link media lives in bot DM — never re-fetch the channel teaser.
+                        await self.create_web_transfer_fallback_download(
+                            task=task,
+                            source_link=source_link,
+                            message=send_message,
+                            range_message_id=range_message_id
+                        )
+                    else:
+                        fallback_link = getattr(send_message, 'link', None) or source_link
+                        await self.create_web_transfer_fallback_download(
+                            task=task,
+                            source_link=fallback_link,
+                            message=None if fallback_link else send_message,
+                            range_message_id=range_message_id
+                        )
+                    used_fallback = True
+                    break
+        if multi_resolved and not used_fallback:
+            # Mark the original source message complete so range/listen resume skips it.
+            task_id = int(task.get('id'))
+            if not host.transfer_store.is_source_message_terminal(
+                    task_id, int(message_id), origin_chat_id
+            ):
                 item_id = host.transfer_store.add_item(
                     task_id=task_id,
                     source_chat_id=origin_chat_id,
@@ -613,116 +756,19 @@ class WebTransferRunner:
                     range_message_id=range_message_id,
                     source_link=source_link,
                     target_link=task.get('target_link'),
-                    media_type='forward',
-                    file_name=(media_meta or {}).get('file_name'),
-                    file_size=(media_meta or {}).get('file_size'),
-                    source_folder=channel_source_folder,
-                    archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,
-                    archive_match_original_name=(
-                        archive_file_name is None
-                        if task.get('target_profile') == 'pikpak' and media_meta
-                        else None
-                    ),
-                    phase='forwarded',
-                    status=TransferStatus.RUNNING
-                )
-                if resolved_meta:
-                    bot = resolved_meta.get('bot') or ''
-                    start_param = resolved_meta.get('start_param') or ''
-                    host.transfer_store.add_event(
-                        task_id,
-                        f'resolved_via=@{bot} start={start_param} source={source_link}',
-                        item_id=item_id,
-                    )
-                if host.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
-                    if not host.forwarded_message_has_identity(forwarded_message):
-                        host.fail_transfer_item(
-                            task_id,
-                            item_id,
-                            f'Direct forward did not produce a target message: {source_link}'
-                        )
-                        return False
-                    confirmed = await host.wait_for_pikpak_ingest_confirmation(
-                        target_chat_id=target_chat_id,
-                        forwarded_message=forwarded_message
-                    )
-                    if not confirmed:
-                        archive_result = host.archive_pikpak_item(
-                            target_profile=task.get('target_profile'),
-                            item_id=item_id,
-                            task_id=task_id,
-                            message=message,
-                            source_link=source_link,
-                            source_folder=channel_source_folder,
-                            transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
-                        )
-                        if bool(getattr(archive_result, 'ok', False)):
-                            host.transfer_store.update_item(
-                                item_id,
-                                phase='forwarded',
-                                status=TransferStatus.SUCCESS,
-                                error_message=''
-                            )
-                            host.transfer_store.add_event(
-                                task_id,
-                                f'PikPak ingest confirmation recovered by archive: {source_link}',
-                                item_id=item_id
-                            )
-                            host.refresh_transfer_task_counts(task_id)
-                            return False
-                        error_message = f'PikPak ingest confirmation timeout or failure: {source_link}'
-                        host.fail_transfer_item(task_id, item_id, error_message)
-                        return False
-                    host.complete_forwarded_pikpak_item(
-                        task=task,
-                        item_id=item_id,
-                        task_id=task_id,
-                        message=message,
-                        source_link=source_link,
-                        source_folder=channel_source_folder,
-                        transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
-                    )
-                    return False
-                host.transfer_store.update_item(
-                    item_id,
+                    media_type='deep_link',
                     phase='forwarded',
                     status=TransferStatus.SUCCESS,
-                    error_message=''
+                    source_folder=channel_source_folder,
+                    error_message='',
                 )
                 host.transfer_store.add_event(
                     task_id,
-                    f'Direct forward succeeded: {source_link}',
-                    item_id=item_id
+                    f'deep_link_batch_complete count={len(resolved_list)} source={source_link}',
+                    item_id=item_id,
                 )
                 host.refresh_transfer_task_counts(task_id)
-                return False
-            except (FloodWait, FloodPremiumWait) as e:
-                await host.wait_for_telegram_flood(e, task_id=int(task.get('id')), action='web transfer forward')
-            except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
-                if not host.gc.download_upload:
-                    raise
-                host.transfer_store.add_event(
-                    int(task.get('id')),
-                    f'Direct forward fallback for {source_link}: {e}',
-                    level='warning'
-                )
-                if resolved_meta is not None:
-                    # Deep-link media lives in bot DM — never re-fetch the channel teaser.
-                    await self.create_web_transfer_fallback_download(
-                        task=task,
-                        source_link=source_link,
-                        message=message,
-                        range_message_id=range_message_id
-                    )
-                else:
-                    fallback_link = getattr(message, 'link', None) or source_link
-                    await self.create_web_transfer_fallback_download(
-                        task=task,
-                        source_link=fallback_link,
-                        message=None if fallback_link else message,
-                        range_message_id=range_message_id
-                    )
-                return True
+        return used_fallback
 
     async def transfer_web_discussion_replies_to_target(
             self,
@@ -737,12 +783,24 @@ class WebTransferRunner:
         task_id = int(task.get('id'))
         reply_count = 0
         fallback_count = 0
+        check_type = self._resolve_method('check_type')
+        resolve_deep_link = bool(task.get('resolve_deep_link'))
+        whitelist = []
+        if resolve_deep_link:
+            getter = getattr(host.gc, 'get_deep_link_bot_whitelist', None)
+            whitelist = getter() if callable(getter) else []
+
+        def include_discussion_message(item) -> bool:
+            if check_type(item):
+                return True
+            return resolve_deep_link and message_has_whitelisted_deep_link(item, whitelist)
+
         try:
             async for comment in iter_discussion_reply_messages(
                     client=host.app.client,
                     chat_id=source_chat_id,
                     message_id=source_message_id,
-                    include_message=self._resolve_method('check_type')
+                    include_message=include_discussion_message
             ):
                 comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
                 comment_id = getattr(comment, 'id', None)

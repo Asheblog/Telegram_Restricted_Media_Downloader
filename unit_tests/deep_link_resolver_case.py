@@ -56,7 +56,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 date=started,
             )
             client = _make_history_client([[video_msg]])
-            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             source = _source_message_with_deep_link('a82bot', 'v_abc')
 
             with patch.object(resolver, 'start_bot', new=AsyncMock()) as start_bot:
@@ -70,10 +72,10 @@ class DeepLinkResolverCase(unittest.TestCase):
                 )
                 self.assertIn('deadline', start_bot.await_args.kwargs)
 
-            self.assertIs(result, video_msg)
+            self.assertEqual([video_msg], result)
             self.assertEqual(
                 {'bot': 'a82bot', 'start_param': 'v_abc'},
-                getattr(result, '_deep_link_meta'),
+                getattr(result[0], '_deep_link_meta'),
             )
 
         asyncio.run(run_case())
@@ -90,7 +92,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 text='hello',
             )
             client = _make_history_client([[text_msg]])
-            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             source = _source_message_with_deep_link()
 
             with patch.object(resolver, 'start_bot', new=AsyncMock()):
@@ -110,7 +114,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 date=started,
             )
             client = _make_history_client([[video_msg]])
-            resolver = DeepLinkResolver(timeout_seconds=2.0, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             source = _source_message_with_deep_link()
 
             order = []
@@ -157,7 +163,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 invoke=AsyncMock(side_effect=[FloodWait(3), None]),
                 rnd_id=lambda: 1,
             )
-            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
 
             with patch('module.transfer.deep_link.asyncio.sleep', new=AsyncMock()) as sleep_mock:
                 await resolver.start_bot(client, 'a82bot', 'v_abc')
@@ -200,7 +208,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 get_chat_history=hung_history,
                 rnd_id=lambda: 1,
             )
-            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             t0 = time.time()
             with self.assertRaises(DeepLinkResolveError):
                 await asyncio.wait_for(
@@ -223,7 +233,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 get_chat_history=AsyncMock(),
                 rnd_id=lambda: 1,
             )
-            resolver = DeepLinkResolver(timeout_seconds=0.3, poll_interval=0.05)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             real_sleep = asyncio.sleep
 
             async def yield_sleep(seconds):
@@ -269,7 +281,9 @@ class DeepLinkResolverCase(unittest.TestCase):
                 get_chat_history=history,
                 rnd_id=lambda: 1,
             )
-            resolver = DeepLinkResolver(timeout_seconds=0.25, poll_interval=0.05, min_interval_seconds=0)
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.25, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
             first = asyncio.create_task(
                 resolver.resolve(client, _source_message_with_deep_link(), whitelist=['a82bot']),
             )
@@ -281,7 +295,71 @@ class DeepLinkResolverCase(unittest.TestCase):
                 resolver.resolve(client, _source_message_with_deep_link(), whitelist=['a82bot']),
                 timeout=1.5,
             )
-            self.assertTrue(getattr(result, 'video', None))
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+
+        asyncio.run(run_case())
+
+    def test_resolve_collects_multiple_media_from_same_poll(self):
+        async def run_case():
+            started = time.time()
+            first = SimpleNamespace(
+                id=1,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+            )
+            second = SimpleNamespace(
+                id=2,
+                video=None,
+                document=object(),
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started + 0.1,
+                chat=SimpleNamespace(id='bot'),
+            )
+            client = _make_history_client([[second, first]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.5,
+                poll_interval=0.05,
+                settle_seconds=0,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([first, second], result)
+
+        asyncio.run(run_case())
+
+    def test_resolve_accepts_photo_media(self):
+        async def run_case():
+            started = time.time()
+            photo_msg = SimpleNamespace(
+                id=9,
+                video=None,
+                document=None,
+                animation=None,
+                photo=object(),
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+            )
+            client = _make_history_client([[photo_msg]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.5, poll_interval=0.05, settle_seconds=0, min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([photo_msg], result)
 
         asyncio.run(run_case())
 

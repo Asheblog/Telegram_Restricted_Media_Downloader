@@ -74,6 +74,12 @@ class WebOperationsMixin:
                 or getattr(self, 'user', None)
                 or getattr(getattr(self, 'app', None), 'client', None)
             )
+            resolve_deep_link = False
+            watch_id = capture.get('watch_id')
+            if watch_id and store is not None:
+                watch = store.get_live_transfer_watch(str(watch_id))
+                if watch:
+                    resolve_deep_link = bool(watch.get('resolve_deep_link'))
             count = await self.forward_discussion_replies(
                 client=client,
                 source_chat_id=capture.get('source_chat_id'),
@@ -81,6 +87,7 @@ class WebOperationsMixin:
                 target_chat_id=capture.get('target_chat_id'),
                 target_link=capture.get('target_link'),
                 watch_id=capture.get('watch_id'),
+                resolve_deep_link=resolve_deep_link,
             )
             watch_id = capture.get('watch_id')
             if watch_id:

@@ -5,10 +5,20 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from unit_tests.pyrogram_stub import install_pyrogram_stub
+install_pyrogram_stub()
+
 from module.persistence.transfer_store import TransferStore
 from module.transfer.deep_link import DeepLinkResolveError
 from module.transfer.runner import WebTransferRunner
 from module.transfer_store import TransferStatus
+
+
+def _close_store(store):
+    conn = getattr(getattr(store, '_tls', None), 'conn', None)
+    if conn is not None:
+        conn.close()
+        store._tls.conn = None
 
 
 def _make_host(store, resolver=None, forward=None):
@@ -25,6 +35,7 @@ def _make_host(store, resolver=None, forward=None):
             get_deep_link_bot_whitelist=lambda: ['a82bot'],
             get_deep_link_timeout_seconds=lambda: 60,
             get_deep_link_min_interval_seconds=lambda: 0,
+            get_deep_link_settle_seconds=lambda: 0,
         ),
         transfer_store=store,
         forward_calls=forward_calls,
@@ -55,7 +66,7 @@ def _make_host(store, resolver=None, forward=None):
 
 class DeepLinkTransferWireCase(unittest.TestCase):
     def test_resolve_disabled_does_not_call_resolver(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -85,9 +96,10 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             resolver.resolve.assert_not_called()
             self.assertEqual(1, len(host.forward_calls))
             self.assertIs(channel_msg, host.forward_calls[0]['message'])
+            _close_store(store)
 
     def test_resolve_returns_media_forwards_resolved_and_records_event(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -135,7 +147,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             )
 
     def test_resolve_error_records_failure_without_channel_fallback(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -176,9 +188,9 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertIn('timeout', item['error_message'])
 
     def test_resolve_success_forward_fallback_uses_resolved_message(self):
-        from pyrogram.errors import ChatForwardsRestricted
+        from pyrogram.errors.exceptions.bad_request_400 import ChatForwardsRestricted
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -224,7 +236,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertEqual('https://t.me/source/1', kwargs['source_link'])
 
     def test_resolve_pikpak_archive_keeps_channel_source_folder_not_bot(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/swag_vip',
@@ -279,11 +291,72 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             )
 
 
+class DeepLinkMultiMediaWireCase(unittest.TestCase):
+    def test_resolve_list_forwards_each_media_and_marks_source_complete(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/target',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolved = [
+                SimpleNamespace(
+                    id=101,
+                    video=SimpleNamespace(file_size=10, file_name='a.mp4'),
+                    chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                    link=None,
+                    _deep_link_meta={'bot': 'a82bot', 'start_param': 'pack'},
+                ),
+                SimpleNamespace(
+                    id=102,
+                    document=SimpleNamespace(file_size=11, file_name='b.bin'),
+                    video=None,
+                    chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                    link=None,
+                    _deep_link_meta={'bot': 'a82bot', 'start_param': 'pack'},
+                ),
+            ]
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+            host = _make_host(store, resolver=resolver)
+            host.get_message_media_target_limit_meta = lambda message: (
+                {'file_name': 'a.mp4', 'file_size': 10}
+                if getattr(message, 'video', None)
+                else (
+                    {'file_name': 'b.bin', 'file_size': 11}
+                    if getattr(message, 'document', None)
+                    else None
+                )
+            )
+            runner = WebTransferRunner(host)
+            channel_msg = SimpleNamespace(
+                id=1,
+                empty=False,
+                link='https://t.me/source/1',
+                chat=SimpleNamespace(id='source-chat', username='source'),
+                video=None,
+            )
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1',
+            ))
+
+            self.assertEqual(2, len(host.forward_calls))
+            items = store.list_items(task_id)
+            self.assertTrue(any(item['source_message_id'] == 1 for item in items))
+            self.assertTrue(store.is_source_message_terminal(task_id, 1, 'source-chat'))
+
+
 class DeepLinkArchiveFolderCase(unittest.TestCase):
     def test_archive_prefers_item_source_folder_over_bot_message_username(self):
         from module.pikpak_integration import PikpakIntegrationManager
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/swag_vip', 'https://t.me/mypikpakbot')
             item_id = store.add_item(
