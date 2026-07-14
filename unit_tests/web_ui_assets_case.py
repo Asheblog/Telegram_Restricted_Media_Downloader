@@ -53,6 +53,9 @@ class WebUiAssetsCase(unittest.TestCase):
             '/api/auth/status',
             '/api/auth/logout',
             '/api/auth/submit',
+            '/api/setup/status',
+            '/api/setup/api',
+            '/api/setup/rclone',
             '/api/channel-downloads',
             '/api/uploads',
             '/api/statistics',
@@ -158,6 +161,11 @@ class WebUiAssetsCase(unittest.TestCase):
             self.assertIn(fragment, WEB_UI_MOBILE_HTML)
 
     def test_settings_view_exposes_pikpak_archive(self):
+        self.assertIn('id="setup-container"', WEB_UI_HTML)
+        self.assertIn('id="setup-container"', WEB_UI_MOBILE_HTML)
+        self.assertIn('function checkSetupStatus', WEB_UI_HTML)
+        self.assertIn('function checkSetupStatus', WEB_UI_MOBILE_HTML)
+        self.assertIn('settings-btn-setup-rclone', WEB_UI_HTML)
         for fragment in (
             'global.target_profiles.pikpak.archive.enable',
             'global.target_profiles.pikpak.archive.remote',

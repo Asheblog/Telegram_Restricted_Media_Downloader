@@ -175,6 +175,12 @@ class AuthProvider:
 
 
 class WebUiServer:
+    SETUP_ALLOWED_PREFIXES = (
+        '/api/auth/',
+        '/api/setup/',
+        '/api/settings',
+    )
+
     def __init__(
             self,
             store: TransferStore,
@@ -188,6 +194,12 @@ class WebUiServer:
             password: Optional[str] = None,
             diagnostic: Optional[IDiagnosticPort] = None,
             deep_link_whitelist_getter: Optional[Callable[[], list]] = None,
+            setup_status_provider: Optional[Callable[[], dict]] = None,
+            setup_api_saver: Optional[Callable[[dict], dict]] = None,
+            setup_rclone_configurer: Optional[Callable[[dict], dict]] = None,
+            setup_rclone_skipper: Optional[Callable[[Optional[dict]], dict]] = None,
+            setup_rclone_tester: Optional[Callable[[Optional[dict]], dict]] = None,
+            setup_ready_checker: Optional[Callable[[], bool]] = None,
     ):
         self.store = store
         self.view_model = WebUiViewModel(store)
@@ -201,10 +213,32 @@ class WebUiServer:
         self.password = password or ''
         self.diagnostic = diagnostic or default_diagnostic
         self.deep_link_whitelist_getter = deep_link_whitelist_getter
+        self.setup_status_provider = setup_status_provider
+        self.setup_api_saver = setup_api_saver
+        self.setup_rclone_configurer = setup_rclone_configurer
+        self.setup_rclone_skipper = setup_rclone_skipper
+        self.setup_rclone_tester = setup_rclone_tester
+        self.setup_ready_checker = setup_ready_checker
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self.auth_provider: Optional[AuthProvider] = None
         self.validate_auth_config()
+
+    def is_setup_ready(self) -> bool:
+        checker = self.setup_ready_checker
+        if callable(checker):
+            try:
+                return bool(checker())
+            except Exception:
+                return False
+        return True
+
+    def is_setup_path_allowed(self, path: str) -> bool:
+        if path in ('/api/auth/login', '/api/auth/logout', '/api/auth/status', '/api/auth/submit'):
+            return True
+        if path == '/api/settings' or path.startswith('/api/settings?'):
+            return True
+        return any(path == prefix.rstrip('/') or path.startswith(prefix) for prefix in self.SETUP_ALLOWED_PREFIXES)
 
     def _require_deep_link_whitelist_if_enabled(self, resolve_deep_link: bool) -> None:
         if not resolve_deep_link:
@@ -364,6 +398,32 @@ class WebUiServer:
                 if self._try_authorize():
                     return True
                 self._send_auth_required()
+                return False
+
+            def _send_setup_required(self):
+                data = json.dumps(
+                    {
+                        'error_code': 'setup_required',
+                        'error': '请先完成初始化配置。',
+                    },
+                    ensure_ascii=False
+                ).encode('utf-8')
+                self.send_response(HTTPStatus.CONFLICT)
+                self.send_header('content-type', 'application/json; charset=utf-8')
+                self.send_header('cache-control', 'no-store')
+                self.send_header('content-length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def _check_setup_ready(self):
+                path = urlparse(self.path).path
+                if not path.startswith('/api/'):
+                    return True
+                if server.is_setup_path_allowed(path):
+                    return True
+                if server.is_setup_ready():
+                    return True
+                self._send_setup_required()
                 return False
 
             def _check_page_auth(self):
@@ -546,11 +606,24 @@ class WebUiServer:
                 # API / other requests require auth
                 if not self._check_auth():
                     return
+                if not self._check_setup_ready():
+                    return
                 if parsed.path == '/api/auth/status':
                     if server.auth_provider:
                         self._send_json(server.auth_provider.get_state())
                     else:
                         self._send_json({'step': 'none', 'error': None, 'user': None})
+                    return
+                if parsed.path == '/api/setup/status':
+                    provider = server.setup_status_provider
+                    if not callable(provider):
+                        self._send_error('setup_unavailable', 'Setup status unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        self._send_json(provider())
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 读取初始化状态失败。')
+                        self._send_error('setup_status_failed', str(e), HTTPStatus.BAD_REQUEST)
                     return
                 if parsed.path == '/api/tasks':
                     settings = server.get_settings()
@@ -766,6 +839,8 @@ class WebUiServer:
 
                 if not self._check_auth():
                     return
+                if not self._check_setup_ready():
+                    return
                 if parsed.path == '/api/auth/submit':
                     payload = self._read_json()
                     if server.auth_provider:
@@ -773,6 +848,54 @@ class WebUiServer:
                         self._send_json({'accepted': True})
                     else:
                         self._send_error('no_auth_provider', 'No auth provider configured.', HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                if parsed.path == '/api/setup/api':
+                    if not callable(server.setup_api_saver):
+                        self._send_error('setup_unavailable', 'Setup API unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.setup_api_saver(payload))
+                    except ValueError as e:
+                        self._send_error('invalid_setup_api', str(e), HTTPStatus.BAD_REQUEST)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 保存 API 凭证失败。')
+                        self._send_error('setup_api_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed.path == '/api/setup/rclone':
+                    if not callable(server.setup_rclone_configurer):
+                        self._send_error('setup_unavailable', 'Setup rclone unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.setup_rclone_configurer(payload))
+                    except ValueError as e:
+                        self._send_error('invalid_setup_rclone', str(e), HTTPStatus.BAD_REQUEST)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 配置 rclone 失败。')
+                        self._send_error('setup_rclone_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed.path == '/api/setup/rclone/skip':
+                    if not callable(server.setup_rclone_skipper):
+                        self._send_error('setup_unavailable', 'Setup rclone skip unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.setup_rclone_skipper(payload))
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 跳过 rclone 失败。')
+                        self._send_error('setup_rclone_skip_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed.path == '/api/setup/rclone/test':
+                    if not callable(server.setup_rclone_tester):
+                        self._send_error('setup_unavailable', 'Setup rclone test unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.setup_rclone_tester(payload))
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 探测 rclone 失败。')
+                        self._send_error('setup_rclone_test_failed', str(e), HTTPStatus.BAD_REQUEST)
                     return
                 task_action = server.parse_task_action_path(parsed.path)
                 if task_action:
@@ -961,6 +1084,8 @@ class WebUiServer:
             def do_PATCH(self):
                 if not self._check_auth():
                     return
+                if not self._check_setup_ready():
+                    return
                 parsed = urlparse(self.path)
                 if parsed.path != '/api/settings':
                     self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
@@ -987,6 +1112,8 @@ class WebUiServer:
 
             def do_PUT(self):
                 if not self._check_auth():
+                    return
+                if not self._check_setup_ready():
                     return
                 parsed = urlparse(self.path)
                 if parsed.path.startswith('/api/watches/'):
@@ -1016,6 +1143,8 @@ class WebUiServer:
 
             def do_DELETE(self):
                 if not self._check_auth():
+                    return
+                if not self._check_setup_ready():
                     return
                 parsed = urlparse(self.path)
                 if parsed.path == '/api/download-records':

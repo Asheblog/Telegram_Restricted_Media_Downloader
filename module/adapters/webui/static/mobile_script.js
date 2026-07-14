@@ -31,18 +31,33 @@ function showLoginError(msg) {
 
 async function checkAuthStatus() {
   try {
+    if (typeof checkSetupStatus === 'function') {
+      var setup = await checkSetupStatus();
+      if (setup && setup.wizard_active && setup.current_step === 'api') {
+        hideLogin();
+        return;
+      }
+    }
     var resp = await fetch('/api/auth/status');
     if (resp.status === 401) { redirectToLoginPage(); return; }
     var state = await resp.json();
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
+          hideLogin();
+          return;
+        }
         var container = document.getElementById('login-container');
         if (container) container.classList.remove('active');
         await loadCurrentView();
         startPolling();
         return;
       case 'done': case 'none':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
+          hideLogin();
+          return;
+        }
         hideLogin();
         startPolling();
         return;
@@ -1513,6 +1528,11 @@ function renderMobSettingsForm() {
   if (archiveFields) {
     var arch = getSettingLeafKey(glob, 'target_profiles.pikpak.archive') || {};
     archiveFields.innerHTML =
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">' +
+        '<button type="button" class="mob-btn" id="settings-btn-setup-rclone">配置 rclone</button>' +
+        '<button type="button" class="mob-btn mob-btn-muted" id="settings-btn-test-rclone">验证 remote</button>' +
+        '<button type="button" class="mob-btn mob-btn-muted" id="settings-btn-relogin-telegram">重新登录 Telegram</button>' +
+      '</div>' +
       '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.target_profiles.pikpak.archive.enable"' + (arch.enable ? ' checked' : '') + '><span>PikPak按来源频道归档</span></label>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
         '<label><span>PikPak rclone remote</span><input name="global.target_profiles.pikpak.archive.remote" value="' + escAttr(arch.remote || '') + '"></label>' +
@@ -1526,6 +1546,7 @@ function renderMobSettingsForm() {
         '<label><span>轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0" value="' + (arch.poll_interval_seconds || '') + '"></label>' +
         '<label><span>匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0" value="' + (arch.match_window_seconds || '') + '"></label>' +
       '</div>';
+    if (typeof bindSetupWizardHandlers === 'function') bindSetupWizardHandlers();
   }
 
   // Sensitive
@@ -2191,5 +2212,6 @@ async function loadMediaMobile() {
   });
 
   // Kickoff
+  if (typeof startSetupPolling === 'function') startSetupPolling();
   checkAuthStatus();
 })();

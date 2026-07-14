@@ -2487,6 +2487,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
 
     async def __ensure_client_authorized(self) -> None:
         """确保 Telegram Client 已登录；模仿 pyrogram.Client.start() 的完整流程。"""
+        if self.app.client is None:
+            if not self.app.has_telegram_api_credentials():
+                raise RuntimeError('缺少 api_id / api_hash，无法登录 Telegram。')
+            self.app.rebuild_client()
         if self.web_ui_auth:
             # WebUI 模式
             is_authorized = await self.app.client.connect()
@@ -2517,10 +2521,32 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             self.start_web_ui()
             await self.app.client.start(use_qr=False)
 
+    async def _await_web_setup_and_authorize(self) -> None:
+        """Wait for First-run API credentials, then authorize via WebUI."""
+        event = getattr(self, '_api_credentials_event', None)
+        while not self.app.has_telegram_api_credentials():
+            if event is None:
+                await asyncio.sleep(0.5)
+                continue
+            await event.wait()
+            event.clear()
+        # Rebuild so proxy/api changes from setup take effect.
+        if self.app.client is not None:
+            try:
+                if self.app.client.is_connected:
+                    await self.app.client.disconnect()
+            except Exception:
+                pass
+        self.app.rebuild_client()
+        await self.__ensure_client_authorized()
+
     async def __download_media_from_links(self) -> None:
         if PARSE_ARGS.web is not None:
-            self.start_web_ui(with_auth_provider=True)
-        await self.__ensure_client_authorized()
+            self.start_web_ui(with_auth_provider=True, defer_runtime_recovery=True)
+            await self._await_web_setup_and_authorize()
+            self.recover_web_runtime()
+        else:
+            await self.__ensure_client_authorized()
         self.my_id = await get_my_id(self.app.client)
         await self.restore_live_transfer_watches()
         self.pb.progress.start()  # v1.1.8修复登录输入手机号不显示文本问题。

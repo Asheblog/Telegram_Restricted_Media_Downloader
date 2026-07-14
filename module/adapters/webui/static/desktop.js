@@ -501,17 +501,33 @@ function showLoginError(msg) {
 
 async function checkAuthStatus() {
   try {
+    if (typeof checkSetupStatus === 'function') {
+      const setup = await checkSetupStatus();
+      if (setup && setup.wizard_active && setup.current_step === 'api') {
+        hideLogin();
+        return;
+      }
+    }
     const resp = await fetch('/api/auth/status');
     if (resp.status === 401) { redirectToLoginPage(); return; }
     const state = await resp.json();
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
+        // Setup not ready yet (waiting for API credentials / authorize start).
+        if (lastSetupStatus && !lastSetupStatus.ready) {
+          hideLogin();
+          return;
+        }
         hideLogin();
         await refreshTransferData();
         startPolling();
         return;
       case 'done': case 'none':
+        if (lastSetupStatus && !lastSetupStatus.ready) {
+          hideLogin();
+          return;
+        }
         hideLogin();
         await refreshTransferData();
         startPolling();
@@ -2651,8 +2667,10 @@ document.addEventListener('change', function(e) {
   ensureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);
   applyDesktopRouteFromLocation();
+  if (typeof startSetupPolling === 'function') startSetupPolling();
   checkAuthStatus();
   authPollTimer = setInterval(() => {
+    if (typeof checkSetupStatus === 'function') checkSetupStatus();
     if (authStep === 'done' || authStep === 'none') {
       clearInterval(authPollTimer);
       authPollTimer = null;

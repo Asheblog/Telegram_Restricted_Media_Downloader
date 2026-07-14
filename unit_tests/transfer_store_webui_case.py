@@ -604,7 +604,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
             GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']
         )
         archive = GlobalConfig.TEMPLATE['target_profiles']['pikpak']['archive']
-        self.assertTrue(archive['enable'])
+        # ADR-0012: archive stays off until First-run Setup Wizard probes rclone.
+        self.assertFalse(archive['enable'])
         self.assertEqual('pikpak', archive['remote'])
         self.assertEqual('My Telegram', archive['source_directory'])
         self.assertEqual('Telegram', archive['root_directory'])
@@ -615,7 +616,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             allowed={'target_profiles'}
         )
         self.assertEqual(1024, settings['target_profiles']['pikpak']['max_file_size'])
-        self.assertTrue(settings['target_profiles']['pikpak']['archive']['enable'])
+        self.assertFalse(settings['target_profiles']['pikpak']['archive']['enable'])
         self.assertEqual(
             4 * 1024 ** 3,
             GlobalConfig.TEMPLATE['target_profiles']['pikpak']['max_file_size']

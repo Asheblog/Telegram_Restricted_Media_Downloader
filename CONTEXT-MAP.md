@@ -51,6 +51,7 @@
 | `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
 | `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
 | `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP + REST API | ~1670 |
+| `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone 配置 | ~250 |
 | `adapters/webui/view_model.py` | `webui_view_model.py` | 桌面/移动统一 ViewModel | ~550 |
 | `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~500 |
 | `adapters/webui/statistics_payload.py` | `statistics_payload.py` | 统计面板 payload | ~80 |
@@ -120,8 +121,13 @@
 | `/api/transfer/detect-range` | POST | 检测频道消息范围 |
 | `/api/media/scan` | GET | 扫描可清理文件 |
 | `/api/media/cleanup` | POST | 执行文件清理 |
-| `/api/telegram/status` | GET | Telegram 登录状态 |
-| `/api/telegram/login` | POST | WebUI 登录 Telegram |
+| `/api/auth/status` | GET | WebUI Telegram Login 步进状态 |
+| `/api/auth/submit` | POST | 提交手机号/验证码/2FA |
+| `/api/setup/status` | GET | First-run Setup Wizard 状态（含 Setup Ready） |
+| `/api/setup/api` | POST | 保存 `api_id`/`api_hash`（可选代理）并触发 Client 重建 |
+| `/api/setup/rclone` | POST | 非交互创建/覆盖 PikPak rclone remote 并探测 |
+| `/api/setup/rclone/skip` | POST | 跳过 rclone；关闭归档 |
+| `/api/setup/rclone/test` | POST | 探测已有 remote |
 
 ## 术语 → 代码实体
 
@@ -138,6 +144,7 @@
 | Message Filter | `core/filter.py` → `MessageFilter` |
 | Download Success Record | `persistence/transfer_store.py` → `download_success` 表 |
 | WebUI ViewModel Contract | `adapters/webui/view_model.py` → `WebUiViewModel` |
+| First-run Setup Wizard / Setup Ready | `adapters/webui/setup.py` → `SetupCoordinator` |
 | Execution Mode / watch_inline | `transfer/watch_inline.py` + TransferStore `execution_mode` |
 | Deep Link Resolve | `transfer/deep_link.py` |
 | Deferred Discussion Reply Capture | `transfer/comment_delay.py` |

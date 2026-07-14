@@ -956,10 +956,11 @@ class WebOperationsMixin:
             self.local_storage_guard.notify_limit_changed()
         return self.get_web_settings()
 
-    def start_web_ui(self, with_auth_provider: bool = False) -> None:
+    def start_web_ui(self, with_auth_provider: bool = False, defer_runtime_recovery: bool = False) -> None:
         dl = _downloader()
         if dl.PARSE_ARGS.web is None:
             return
+        os.makedirs(self.app.temp_directory or self.app.TEMP_DIRECTORY, exist_ok=True)
         self.transfer_store = dl.TransferStore(directory=self.app.temp_directory)
         system_log = getattr(self, 'system_log', None)
         if system_log is not None:
@@ -979,12 +980,26 @@ class WebOperationsMixin:
             password=get_web_password_from_env(),
             diagnostic=getattr(self, 'diagnostic', None),
             deep_link_whitelist_getter=lambda: self.gc.get_deep_link_bot_whitelist(),
+            setup_status_provider=self.get_setup_status,
+            setup_api_saver=self.save_setup_api_credentials,
+            setup_rclone_configurer=self.configure_setup_rclone,
+            setup_rclone_skipper=self.skip_setup_rclone,
+            setup_rclone_tester=self.test_setup_rclone,
+            setup_ready_checker=self.is_setup_ready,
         )
         if with_auth_provider:
             from module.web_ui import AuthProvider
             self.web_ui_auth = AuthProvider()
             self.web_ui.set_auth_provider(self.web_ui_auth)
         self.web_ui.start(open_browser=True)
+        if not defer_runtime_recovery:
+            self.recover_web_runtime()
+        console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
+
+    def recover_web_runtime(self) -> None:
+        """Resume pending web tasks / archives after Setup Ready."""
+        if not self.transfer_store:
+            return
         for task in self.transfer_store.list_tasks():
             if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
                 continue
@@ -1002,7 +1017,157 @@ class WebOperationsMixin:
             self._ensure_comment_delay_scheduler()
         except Exception as e:
             log.debug(f'Comment delay scheduler start skipped: {e}')
-        console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
+
+    def _archive_settings(self) -> dict:
+        profiles = (self.gc.config or {}).get('target_profiles') or {}
+        pikpak = profiles.get('pikpak') if isinstance(profiles, dict) else {}
+        archive = (pikpak or {}).get('archive') if isinstance(pikpak, dict) else {}
+        return archive if isinstance(archive, dict) else {}
+
+    def _set_archive_settings(self, *, enable: Optional[bool] = None, remote: Optional[str] = None) -> None:
+        config = deepcopy(self.gc.config)
+        profiles = config.setdefault('target_profiles', {})
+        if not isinstance(profiles, dict):
+            profiles = {}
+            config['target_profiles'] = profiles
+        pikpak = profiles.setdefault('pikpak', {})
+        if not isinstance(pikpak, dict):
+            pikpak = {}
+            profiles['pikpak'] = pikpak
+        archive = pikpak.setdefault('archive', {})
+        if not isinstance(archive, dict):
+            archive = {}
+            pikpak['archive'] = archive
+        if enable is not None:
+            archive['enable'] = bool(enable)
+        if remote is not None:
+            archive['remote'] = str(remote).strip().rstrip(':') or 'pikpak'
+        self.gc.save_config(config)
+        self.gc.target_profiles = config.get('target_profiles', self.gc.target_profiles)
+
+    def is_setup_ready(self) -> bool:
+        return bool(self.get_setup_status().get('ready'))
+
+    def get_setup_status(self) -> dict:
+        from module.adapters.webui.setup import has_telegram_api_credentials
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        api_done = has_telegram_api_credentials(self.app.config)
+        telegram_step = 'none'
+        telegram_error = None
+        telegram_done = False
+        auth = getattr(self, 'web_ui_auth', None)
+        if auth is not None:
+            state = auth.get_state()
+            telegram_step = state.get('step') or 'pending'
+            telegram_error = state.get('error')
+            telegram_done = telegram_step == 'done'
+        client = getattr(self.app, 'client', None)
+        if client is not None and getattr(client, 'is_connected', False) and getattr(client, 'me', None):
+            telegram_done = True
+            if telegram_step in ('none', 'pending'):
+                telegram_step = 'done'
+        archive = self._archive_settings()
+        return coordinator.build_status(
+            api_done=api_done,
+            telegram_done=telegram_done,
+            telegram_step=telegram_step,
+            telegram_error=telegram_error,
+            archive_enable=bool(archive.get('enable')),
+            archive_remote=str(archive.get('remote') or 'pikpak'),
+        )
+
+    def save_setup_api_credentials(self, payload: dict) -> dict:
+        payload = payload if isinstance(payload, dict) else {}
+        api_id = payload.get('api_id')
+        api_hash = str(payload.get('api_hash') or '').strip()
+        try:
+            api_id_int = int(api_id)
+        except (TypeError, ValueError):
+            raise ValueError('api_id 必须是数字。')
+        if api_id_int <= 0:
+            raise ValueError('api_id 无效。')
+        if len(api_hash) < 16:
+            raise ValueError('api_hash 无效。')
+
+        user_config = deepcopy(self.app.config)
+        user_config['api_id'] = api_id_int
+        user_config['api_hash'] = api_hash
+        proxy_patch = payload.get('proxy')
+        if isinstance(proxy_patch, dict):
+            proxy = user_config.get('proxy') if isinstance(user_config.get('proxy'), dict) else {}
+            if proxy_patch.get('enable_proxy') is not None:
+                proxy['enable_proxy'] = bool(proxy_patch.get('enable_proxy'))
+            for key in ('scheme', 'hostname', 'port', 'username', 'password'):
+                if key in proxy_patch:
+                    proxy[key] = proxy_patch.get(key)
+            user_config['proxy'] = proxy
+        from module.adapters.webui.setup import apply_web_safe_user_defaults
+        user_config = apply_web_safe_user_defaults(user_config)
+        user_config = UserConfig.normalize_runtime_numbers(user_config)
+        self.app.save_config(user_config)
+        self.app.config = user_config
+        self.app.refresh_runtime_fields()
+        # Signal main loop to build/rebuild client then authorize.
+        event = getattr(self, '_api_credentials_event', None)
+        if event is not None:
+            loop = getattr(self, 'loop', None)
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(event.set)
+            else:
+                event.set()
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is not None:
+            coordinator.signal_api_ready()
+        return self.get_setup_status()
+
+    def configure_setup_rclone(self, payload: dict) -> dict:
+        payload = payload if isinstance(payload, dict) else {}
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        remote = str(payload.get('remote') or 'pikpak').strip().rstrip(':') or 'pikpak'
+        probe = coordinator.configure_pikpak_remote(
+            remote=remote,
+            username=str(payload.get('username') or ''),
+            password=str(payload.get('password') or ''),
+            overwrite=bool(payload.get('overwrite', True)),
+        )
+        self._set_archive_settings(enable=True, remote=remote)
+        coordinator.dismiss_rclone()
+        status = self.get_setup_status()
+        status['rclone_probe'] = probe
+        return status
+
+    def skip_setup_rclone(self, payload: Optional[dict] = None) -> dict:
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        self._set_archive_settings(enable=False)
+        coordinator.dismiss_rclone()
+        return self.get_setup_status()
+
+    def test_setup_rclone(self, payload: Optional[dict] = None) -> dict:
+        payload = payload if isinstance(payload, dict) else {}
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        archive = self._archive_settings()
+        remote = str(payload.get('remote') or archive.get('remote') or 'pikpak').strip().rstrip(':') or 'pikpak'
+        probe = coordinator.probe_rclone(remote)
+        if probe.get('ok'):
+            self._set_archive_settings(enable=True, remote=remote)
+            coordinator.dismiss_rclone()
+        return {'probe': probe, 'status': self.get_setup_status()}
     async def process_web_operation(self, operation_id: str) -> None:
         operation = self.web_operations.get(operation_id)
         if not operation:

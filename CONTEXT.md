@@ -182,6 +182,12 @@ _Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI, in-memory-only ses
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login
 
+**First-run Setup Wizard** — `--web` 模式下，在站内登录之后引导用户完成初始化：填写 Telegram API 凭证、完成 WebUI Telegram Login、可选配置 rclone PikPak remote。就绪判定以真实配置与会话为准（合法 `api_id`/`api_hash` + 已授权 Session）；已就绪的升级环境不弹全屏向导。rclone 可跳过；跳过或未探测成功时归档保持关闭。
+_Avoid_: setup completed flag, forced rclone gate, stdin config_guide in web mode, ttyd rclone wizard
+
+**Setup Ready** — First-run Setup Wizard 的硬门槛：API 凭证已保存且 Telegram 会话已授权。未就绪时屏蔽转存/监听等业务 API；设置里可重新登录 Telegram 或重配 rclone。
+_Avoid_: initialization token, wizard finished marker
+
 **WebUI ViewModel Contract** — WebUI 后端为桌面端与移动端共同输出的唯一公共数据契约。任务列表、任务详情、任务统计、设置选项均先在服务端归一化，再由前端共享脚本消费。
 _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend state
 
@@ -218,6 +224,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0009](docs/adr/0009-watch-inline-transfer-execution-mode.md) — 监听下载回退用 watch_inline，不入 Web 队列
 - [ADR-0010](docs/adr/0010-unified-media-type-allowlist.md) — 统一媒体类型白名单与任务级覆盖
 - [ADR-0011](docs/adr/0011-source-post-archive-path.md) — 按频道主贴嵌套归档路径
+- [ADR-0012](docs/adr/0012-first-run-webui-setup.md) — WebUI 首启配置向导（API / Telegram / rclone）
 
 ---
 

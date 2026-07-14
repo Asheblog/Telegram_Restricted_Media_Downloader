@@ -811,6 +811,11 @@
     <!-- PikPak Archive -->
     <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
+        <div class="flex flex-wrap gap-2 mb-3">
+          <button type="button" class="btn" id="settings-btn-setup-rclone">配置 / 更换 rclone</button>
+          <button type="button" class="btn" id="settings-btn-test-rclone">验证 remote</button>
+          <button type="button" class="btn" id="settings-btn-relogin-telegram">重新登录 Telegram</button>
+        </div>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">
           <span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span>

@@ -400,6 +400,11 @@ const i18n = {
     'event.level.warning': '警告',
     'event.level.error': '错误',
     'error.auth_required': '需要登录。',
+    'error.setup_required': '请先完成初始化配置。',
+    'error.setup_api_failed': '保存 API 凭证失败。',
+    'error.setup_rclone_failed': '配置 rclone 失败。',
+    'error.invalid_setup_api': 'API 凭证无效。',
+    'error.invalid_setup_rclone': 'rclone 参数无效。',
     'error.invalid_task_id': '任务 ID 无效。',
     'error.task_not_found': '找不到任务。',
     'error.source_link_required': '请填写来源链接。',
@@ -806,6 +811,11 @@ const i18n = {
     'event.level.warning': 'Warning',
     'event.level.error': 'Error',
     'error.auth_required': 'Authentication required.',
+    'error.setup_required': 'Please finish first-run setup.',
+    'error.setup_api_failed': 'Failed to save API credentials.',
+    'error.setup_rclone_failed': 'Failed to configure rclone.',
+    'error.invalid_setup_api': 'Invalid API credentials.',
+    'error.invalid_setup_rclone': 'Invalid rclone parameters.',
     'error.invalid_task_id': 'Invalid task ID.',
     'error.task_not_found': 'Task not found.',
     'error.source_link_required': 'Source link is required.',
@@ -1507,4 +1517,232 @@ async function deleteWatch(watchId) {
   state.watches = (state.watches || []).filter(function(watch) { return watch.id !== watchId; });
   if (typeof loadMobileWatches === 'function') await loadMobileWatches();
   else if (typeof loadWatches === 'function') await loadWatches();
+}
+
+/* ====== First-run Setup Wizard ====== */
+var setupPollTimer = null;
+var setupForceRclone = false;
+var lastSetupStatus = null;
+
+function showSetupError(msg) {
+  var el = document.getElementById('setup-error');
+  if (!el) return;
+  el.textContent = msg || '';
+  if (msg) el.classList.add('visible');
+  else el.classList.remove('visible');
+}
+
+function hideSetupWizard() {
+  var container = document.getElementById('setup-container');
+  if (container) {
+    container.style.display = 'none';
+    container.classList.add('hidden');
+  }
+  setupForceRclone = false;
+  if (setupPollTimer) {
+    clearInterval(setupPollTimer);
+    setupPollTimer = null;
+  }
+}
+
+function showSetupStep(step) {
+  ['setup-form-api', 'setup-form-rclone', 'setup-form-done'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  var container = document.getElementById('setup-container');
+  if (container) {
+    container.style.display = 'flex';
+    container.classList.remove('hidden');
+  }
+  var target = document.getElementById('setup-form-' + step);
+  if (target) target.classList.remove('hidden');
+  showSetupError('');
+}
+
+async function fetchSetupStatus() {
+  var resp = await fetch('/api/setup/status');
+  if (resp.status === 401) {
+    if (typeof redirectToLoginPage === 'function') redirectToLoginPage();
+    throw { error_code: 'auth_required' };
+  }
+  if (!resp.ok) {
+    var data = {};
+    try { data = await resp.json(); } catch (e) {}
+    throw data;
+  }
+  return resp.json();
+}
+
+async function checkSetupStatus() {
+  try {
+    var status = await fetchSetupStatus();
+    lastSetupStatus = status;
+    var current = status.current_step || 'done';
+    var active = !!status.wizard_active || setupForceRclone;
+
+    if (setupForceRclone) {
+      showSetupStep('rclone');
+      var remote = (((status.steps || {}).rclone || {}).remote) || 'pikpak';
+      var remoteInput = document.getElementById('setup-rclone-remote');
+      if (remoteInput && !remoteInput.value) remoteInput.value = remote;
+      return status;
+    }
+
+    if (!active) {
+      hideSetupWizard();
+      return status;
+    }
+
+    if (current === 'api') {
+      showSetupStep('api');
+    } else if (current === 'telegram') {
+      hideSetupWizard();
+    } else if (current === 'rclone') {
+      showSetupStep('rclone');
+      var rclone = (status.steps || {}).rclone || {};
+      var hint = document.getElementById('setup-rclone-hint');
+      if (hint) hint.textContent = rclone.message || '';
+      var ri = document.getElementById('setup-rclone-remote');
+      if (ri) ri.value = rclone.remote || 'pikpak';
+    } else {
+      showSetupStep('done');
+      setTimeout(hideSetupWizard, 1200);
+    }
+    return status;
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return null;
+    return null;
+  }
+}
+
+function bindSetupWizardHandlers() {
+  var apiBtn = document.getElementById('setup-btn-api');
+  if (apiBtn && !apiBtn.dataset.bound) {
+    apiBtn.dataset.bound = '1';
+    apiBtn.addEventListener('click', async function() {
+      var apiId = (document.getElementById('setup-api-id').value || '').trim();
+      var apiHash = (document.getElementById('setup-api-hash').value || '').trim();
+      if (!apiId || !apiHash) { showSetupError('请填写 api_id 和 api_hash'); return; }
+      apiBtn.disabled = true;
+      showSetupError('');
+      try {
+        var payload = { api_id: apiId, api_hash: apiHash };
+        var enableProxy = !!(document.getElementById('setup-proxy-enable') || {}).checked;
+        if (enableProxy) {
+          payload.proxy = {
+            enable_proxy: true,
+            scheme: (document.getElementById('setup-proxy-scheme').value || '').trim() || null,
+            hostname: (document.getElementById('setup-proxy-hostname').value || '').trim() || null,
+            port: (document.getElementById('setup-proxy-port').value || '').trim() || null
+          };
+        }
+        await postJson('/api/setup/api', payload);
+        await checkSetupStatus();
+        if (typeof checkAuthStatus === 'function') await checkAuthStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, '保存失败，请重试'));
+      } finally {
+        apiBtn.disabled = false;
+      }
+    });
+  }
+
+  var rcloneBtn = document.getElementById('setup-btn-rclone');
+  if (rcloneBtn && !rcloneBtn.dataset.bound) {
+    rcloneBtn.dataset.bound = '1';
+    rcloneBtn.addEventListener('click', async function() {
+      rcloneBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/rclone', {
+          remote: (document.getElementById('setup-rclone-remote').value || 'pikpak').trim(),
+          username: (document.getElementById('setup-rclone-user').value || '').trim(),
+          password: document.getElementById('setup-rclone-pass').value || '',
+          overwrite: true
+        });
+        setupForceRclone = false;
+        showSetupStep('done');
+        setTimeout(function() { hideSetupWizard(); checkSetupStatus(); }, 1000);
+      } catch (e) {
+        showSetupError(translateApiError(e, 'rclone 配置失败'));
+      } finally {
+        rcloneBtn.disabled = false;
+      }
+    });
+  }
+
+  var skipBtn = document.getElementById('setup-btn-rclone-skip');
+  if (skipBtn && !skipBtn.dataset.bound) {
+    skipBtn.dataset.bound = '1';
+    skipBtn.addEventListener('click', async function() {
+      try {
+        await postJson('/api/setup/rclone/skip', {});
+        setupForceRclone = false;
+        hideSetupWizard();
+      } catch (e) {
+        showSetupError(translateApiError(e, '跳过失败'));
+      }
+    });
+  }
+
+  var testBtn = document.getElementById('setup-btn-rclone-test');
+  if (testBtn && !testBtn.dataset.bound) {
+    testBtn.dataset.bound = '1';
+    testBtn.addEventListener('click', async function() {
+      try {
+        var result = await postJson('/api/setup/rclone/test', {
+          remote: (document.getElementById('setup-rclone-remote').value || 'pikpak').trim()
+        });
+        var probe = (result && result.probe) || {};
+        if (probe.ok) {
+          setupForceRclone = false;
+          showSetupStep('done');
+          setTimeout(hideSetupWizard, 1000);
+        } else {
+          showSetupError(probe.message || 'remote 不可用');
+        }
+      } catch (e) {
+        showSetupError(translateApiError(e, '验证失败'));
+      }
+    });
+  }
+
+  var settingsRclone = document.getElementById('settings-btn-setup-rclone');
+  if (settingsRclone && !settingsRclone.dataset.bound) {
+    settingsRclone.dataset.bound = '1';
+    settingsRclone.addEventListener('click', function() {
+      setupForceRclone = true;
+      showSetupStep('rclone');
+    });
+  }
+  var settingsTest = document.getElementById('settings-btn-test-rclone');
+  if (settingsTest && !settingsTest.dataset.bound) {
+    settingsTest.dataset.bound = '1';
+    settingsTest.addEventListener('click', async function() {
+      try {
+        var result = await postJson('/api/setup/rclone/test', {});
+        var probe = (result && result.probe) || {};
+        alert(probe.ok ? (probe.message || 'remote 可用') : (probe.message || 'remote 不可用'));
+      } catch (e) {
+        alert(translateApiError(e, '验证失败'));
+      }
+    });
+  }
+  var settingsRelogin = document.getElementById('settings-btn-relogin-telegram');
+  if (settingsRelogin && !settingsRelogin.dataset.bound) {
+    settingsRelogin.dataset.bound = '1';
+    settingsRelogin.addEventListener('click', function() {
+      alert('请删除 sessions 目录中的会话文件后重启服务，再在页面完成 Telegram 登录。');
+    });
+  }
+}
+
+function startSetupPolling() {
+  bindSetupWizardHandlers();
+  checkSetupStatus();
+  if (setupPollTimer) clearInterval(setupPollTimer);
+  setupPollTimer = setInterval(function() {
+    checkSetupStatus();
+  }, 2000);
 }

@@ -21,6 +21,7 @@ from module import (
 )
 from module.language import _t
 from module.core.config import UserConfig
+from module.parser import PARSE_ARGS
 from module.stdio import StatisticalTable
 from module.infra.client import TelegramRestrictedMediaDownloaderClient
 
@@ -47,12 +48,40 @@ class Application(UserConfig, StatisticalTable):
     def __init__(self):
         UserConfig.__init__(self)
         StatisticalTable.__init__(self)
-        self.client = self.build_client()
+        # Defer Client until Telegram API credentials exist (--web first-run).
+        self.client = self.build_client() if self.has_telegram_api_credentials() else None
         self.check_download_type()
         self.current_task_num: int = 0
 
+    def has_telegram_api_credentials(self) -> bool:
+        from module.adapters.webui.setup import has_telegram_api_credentials
+        return has_telegram_api_credentials(self.config)
+
+    def refresh_runtime_fields(self) -> None:
+        """Reload commonly used attributes after config mutation."""
+        self.config = self.normalize_runtime_numbers(self.config)
+        self.api_hash = self.config.get('api_hash')
+        self.api_id = self.config.get('api_id')
+        self.bot_token = self.config.get('bot_token')
+        self.download_type = self.config.get('download_type') or []
+        self.is_shutdown = self.config.get('is_shutdown')
+        self.links = self.config.get('links')
+        self.max_download_task = (self.config.get('max_tasks') or {}).get('download', 1)
+        self.max_download_retries = (self.config.get('max_retries') or {}).get('download', 5)
+        self.max_upload_task = (self.config.get('max_tasks') or {}).get('upload', 1)
+        self.max_upload_retries = (self.config.get('max_retries') or {}).get('upload', 3)
+        self.proxy = self.config.get('proxy', {}) or {}
+        self.enable_proxy = bool(self.proxy.get('enable_proxy', False))
+        self.save_directory = self.config.get('save_directory')
+        self.work_directory = PARSE_ARGS.session or (
+                self.config.get('session_directory') or UserConfig.WORK_DIRECTORY)
+        self.temp_directory = PARSE_ARGS.temp or (self.config.get('temp_directory') or UserConfig.TEMP_DIRECTORY)
+        self.check_download_type()
+
     def build_client(self) -> pyrogram.Client:
         """用填写的配置文件,构造pyrogram客户端。"""
+        if not self.has_telegram_api_credentials():
+            raise ValueError('缺少 api_id / api_hash，无法创建 Telegram Client。')
         os.makedirs(self.work_directory, exist_ok=True)
         return TelegramRestrictedMediaDownloaderClient(
             name=SOFTWARE_FULL_NAME.replace(' ', ''),
@@ -63,6 +92,12 @@ class Application(UserConfig, StatisticalTable):
             max_concurrent_transmissions=self.max_download_task,
             sleep_threshold=SLEEP_THRESHOLD,
         )
+
+    def rebuild_client(self) -> pyrogram.Client:
+        """Recreate Client after First-run Setup / settings change credentials."""
+        self.refresh_runtime_fields()
+        self.client = self.build_client()
+        return self.client
         # v1.3.7 新增多任务下载功能,无论是否Telegram会员。
         # https://stackoverflow.com/questions/76714896/pyrogram-download-multiple-files-at-the-same-time
 

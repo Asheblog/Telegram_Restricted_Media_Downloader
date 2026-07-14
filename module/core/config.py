@@ -391,6 +391,17 @@ class UserConfig(BaseConfig):
 
     def config_guide(self) -> None:
         """引导用户以交互式的方式修改、保存配置文件。"""
+        # --web: never block on stdin; First-run Setup Wizard fills API later (ADR-0012).
+        if PARSE_ARGS.web is not None:
+            from module.adapters.webui.setup import apply_web_safe_user_defaults
+            pre_load_config: dict = apply_web_safe_user_defaults(self.load_config())
+            if PARSE_ARGS.session:
+                pre_load_config['session_directory'] = PARSE_ARGS.session
+            if PARSE_ARGS.temp:
+                pre_load_config['temp_directory'] = PARSE_ARGS.temp
+            pre_load_config = self.normalize_runtime_numbers(pre_load_config)
+            self.save_config(pre_load_config)
+            return
         exit_flag: bool = False
         pre_load_config: dict = self.load_config()
         gsp = GetStdioParams()

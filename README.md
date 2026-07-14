@@ -77,112 +77,43 @@ admin / replace-with-a-strong-password
 
 如果 `TRMD_WEB_HOST=0.0.0.0`，必须设置 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD`，否则程序会拒绝启动，避免 WebUI 无密码暴露。
 
-## 2. 配置 Telegram
+## 2. 浏览器完成初始化（推荐）
 
-首次启动后会生成 `/opt/trmd/config/config.yaml`。编辑这个文件，至少填好下面几项：
+启动容器并登录 WebUI 后，会进入**首次初始化向导**（桌面端与手机浏览器均可）：
+
+1. 填写 Telegram `api_id` / `api_hash`（可选代理）
+2. 在页面完成 Telegram 登录（手机号、验证码、二步验证）
+3. 配置 PikPak rclone（可点「稍后再说」跳过；跳过后不会自动归档）
+
+路径、媒体类型等会按 Docker 默认值自动生成，一般不必先手改配置文件。  
+登录会话保存在 `/opt/trmd/sessions`，后续升级或重启请勿删除。
+
+**已有部署升级**：只要原来的 `api_id`/`api_hash` 与 sessions 仍有效，不会强弹全屏向导。
+
+若仍想手写 `config.yaml`，至少保证：
 
 ```yaml
 api_id: "123456"
 api_hash: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-bot_token: null
-download_type:
-  - video
-  - photo
-  - document
-  - audio
-  - voice
-  - animation
-  - video_note
-is_shutdown: false
-max_tasks:
-  download: 1
-  upload: 1
-max_retries:
-  download: 5
-  upload: 3
 save_directory: /app/downloads
 session_directory: /app/sessions
 temp_directory: /app/temp
-proxy:
-  enable_proxy: false
-  hostname: null
-  scheme: null
-  port: null
-  username: null
-  password: null
-target_profiles:
-  pikpak:
-    max_file_size: 4294967296
-    archive:
-      enable: true
-      remote: pikpak
-      source_directory: My Telegram
-      root_directory: Telegram
-      poll_seconds: 180
-      poll_interval_seconds: 5
-      match_window_seconds: 3600
-      archive_retry_interval_seconds: 300
 ```
 
-保存后重启：
+PikPak 归档等全局项写在 `/opt/trmd/config/.CONFIG.yaml`（或 WebUI「系统设置」），不要写进 `config.yaml`。
+
+也可以在「系统设置 → PikPak 归档」里随时「配置 / 更换 rclone」或「验证 remote」。
+
+## 3. rclone 排障（可选）
+
+正常情况用 WebUI 向导即可。若需命令行排查：
 
 ```bash
-docker compose restart
-docker logs -f trmd
-```
-
-第一次登录 Telegram 时，按日志提示输入手机号、验证码和二步验证密码。登录会话会保存在 `/opt/trmd/sessions`，后续升级或重启不要删除这个目录。
-
-如果你的服务器访问 Telegram 需要代理，把 `proxy.enable_proxy` 改为 `true`，并填写代理地址、协议和端口。
-
-## 3. 配置 rclone PikPak
-
-本项目的 PikPak 归档依赖 rclone。镜像里已经安装 rclone，你只需要生成 `/opt/trmd/rclone/rclone.conf`。
-
-如果容器正在运行，执行：
-
-```bash
-docker exec -it trmd rclone config --config /app/rclone/rclone.conf
-```
-
-如果容器还没跑起来，也可以用一次性容器配置：
-
-```bash
-docker run --rm -it \
-  -v /opt/trmd/rclone:/app/rclone \
-  ghcr.io/asheblog/telegram_restricted_media_downloader:latest \
-  rclone config --config /app/rclone/rclone.conf
-```
-
-按交互提示填写：
-
-```text
-n) New remote
-name> pikpak
-Storage> pikpak
-user> 你的 PikPak 登录邮箱或手机号
-y/g> y
-password> 你的 PikPak 密码
-Edit advanced config?> n
-Keep this "pikpak" remote?> y
-```
-
-重点是 remote 名称必须叫 `pikpak`，因为默认配置里写的是：
-
-```yaml
-target_profiles:
-  pikpak:
-    archive:
-      remote: pikpak
-```
-
-验证 rclone 能访问 PikPak：
-
-```bash
+docker exec -it trmd rclone listremotes --config /app/rclone/rclone.conf
 docker exec -it trmd rclone lsd pikpak: --config /app/rclone/rclone.conf
 ```
 
-能列出目录就表示配置成功。rclone 官方 PikPak 后端说明见 [rclone PikPak 文档](https://rclone.org/pikpak/)。
+官方说明见 [rclone PikPak 文档](https://rclone.org/pikpak/)。
 
 ## 4. 开始使用
 
@@ -270,27 +201,18 @@ docker logs -f trmd
 
 **PikPak 已收到文件，但没有归档**
 
-依次检查：
+优先在 WebUI「系统设置 → PikPak 归档」点「验证 remote」。命令排障：
 
 ```bash
 docker exec -it trmd rclone listremotes --config /app/rclone/rclone.conf
 docker exec -it trmd rclone lsd pikpak: --config /app/rclone/rclone.conf
 ```
 
-确认存在名为 `pikpak` 的 remote，并且 `target_profiles.pikpak.archive.enable` 是 `true`。
+确认 remote 可用，且归档开关已打开（向导配置成功后会自动打开）。
 
 **不想使用 PikPak 归档**
 
-把配置改成：
-
-```yaml
-target_profiles:
-  pikpak:
-    archive:
-      enable: false
-```
-
-这样仍可转存到 PikPak bot，但不会调用 rclone 移动文件。
+初始化时点「稍后再说」，或在设置里关闭「PikPak按来源频道归档」。仍可转存到 PikPak bot，只是不会用 rclone 移动文件。
 
 ## License
 

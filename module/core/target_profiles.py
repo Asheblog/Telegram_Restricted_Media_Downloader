@@ -9,7 +9,10 @@ DEFAULT_TARGET_PROFILES = {
     PIKPAK_TARGET_PROFILE: {
         'max_file_size': PIKPAK_DEFAULT_MAX_FILE_SIZE,
         'archive': {
-            'enable': True,
+            # New installs keep archive off until First-run Setup Wizard
+            # successfully probes rclone (ADR-0012). Existing configs keep
+            # their persisted enable flag.
+            'enable': False,
             'remote': 'pikpak',
             'source_directory': 'My Telegram',
             'root_directory': 'Telegram',

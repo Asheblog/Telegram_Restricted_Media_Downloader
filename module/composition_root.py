@@ -101,6 +101,11 @@ class TrmdCompositionRoot:
         self.transfer_store: Union[TransferStore, None] = None
         self.web_ui: Union[WebUiServer, None] = None
         self.web_ui_auth = None
+        from module.adapters.webui.setup import SetupCoordinator
+        self.setup_coordinator = SetupCoordinator()
+        self._api_credentials_event: asyncio.Event = asyncio.Event()
+        if self.app.has_telegram_api_credentials():
+            self._api_credentials_event.set()
         self.web_task_queue: asyncio.Queue = asyncio.Queue()
         self.web_submitted_task_ids: Set[int] = set()
         self.web_running_task: Optional[asyncio.Task] = None
