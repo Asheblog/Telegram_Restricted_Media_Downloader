@@ -91,8 +91,10 @@
 | max_retries | UserConfig | `config.max_retries.*` |
 | upload (download_upload, delete, pending_limit) | GlobalConfig | `gc.upload.*` |
 | target_profiles (pikpak archive 等) | GlobalConfig | `gc.target_profiles.pikpak.*` |
-| forward_type (媒体类型开关) | GlobalConfig | `gc.forward_type.*` |
-| message_filter | GlobalConfig | `gc.message_filter.*` |
+| Media Type Allowlist（唯一真源） | GlobalConfig | `gc.message_filter.media_types` |
+| forward_type（兼容双写） | GlobalConfig | `gc.forward_type.*` |
+| message_filter（日期/关键词 + media_types） | GlobalConfig | `gc.message_filter.*` |
+| Media Type Override（任务/监听） | TransferStore | `transfer_tasks.media_types` / `live_transfer_watches.media_types` |
 | file_log_level / console_log_level | GlobalConfig | `.CONFIG.yaml` |
 | notice | GlobalConfig | `.CONFIG.yaml` |
 | `deep_link.bot_whitelist` | GlobalConfig | 资源 bot 白名单 |

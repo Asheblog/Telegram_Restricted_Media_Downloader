@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 
+from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
 from module.persistence.transfer_store import TransferStore
 from module.transfer.deep_link import DeepLinkResolveError
 from module.transfer.runner import WebTransferRunner
@@ -32,6 +33,10 @@ def _make_host(store, resolver=None, forward=None):
         app=SimpleNamespace(client=object()),
         gc=SimpleNamespace(
             download_upload=True,
+            message_filter={
+                'enabled': True,
+                'media_types': dict(MEDIA_TYPES_DEFAULT),
+            },
             get_deep_link_bot_whitelist=lambda: ['a82bot'],
             get_deep_link_timeout_seconds=lambda: 60,
             get_deep_link_min_interval_seconds=lambda: 0,
@@ -55,6 +60,26 @@ def _make_host(store, resolver=None, forward=None):
     host.forwarded_message_has_identity = lambda msg: getattr(msg, 'id', None) is not None
     host.refresh_transfer_task_counts = lambda task_id: store.refresh_task_counts(task_id)
     host.skip_empty_transfer_source_message = lambda **kwargs: None
+    host.runtime_message_filter = lambda override=None: build_runtime_message_filter(
+        host.gc.message_filter,
+        override,
+    )
+    host.skip_transfer_item_for_media_type = (
+        lambda task, message, source_link, origin_chat_id, reject_reason, range_message_id=None: (
+            store.add_item(
+                task_id=int(task['id']),
+                source_chat_id=origin_chat_id,
+                source_message_id=getattr(message, 'id', None),
+                range_message_id=range_message_id,
+                source_link=source_link,
+                target_link=task.get('target_link'),
+                media_type='filtered',
+                phase='skipped',
+                status=TransferStatus.SKIPPED,
+                error_message=reject_reason,
+            )
+        )
+    )
     host.fail_transfer_item = lambda task_id, item_id, message: store.update_item(
         item_id,
         phase='failure',
@@ -83,6 +108,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
                 link='https://t.me/source/1',
                 chat=SimpleNamespace(id='source-chat', username='source'),
                 video=None,
+                text='teaser',
             )
 
             asyncio.run(runner.transfer_message_to_web_target(
@@ -123,6 +149,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
                 link='https://t.me/source/1',
                 chat=SimpleNamespace(id='source-chat', username='source'),
                 video=None,
+                text='teaser',
             )
 
             asyncio.run(runner.transfer_message_to_web_target(
@@ -219,6 +246,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
                 link='https://t.me/source/1',
                 chat=SimpleNamespace(id='source-chat', username='source'),
                 video=None,
+                text='teaser',
             )
 
             result = asyncio.run(runner.transfer_message_to_web_target(
@@ -271,6 +299,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
                 link='https://t.me/swag_vip/1',
                 chat=SimpleNamespace(id='-1001', username='swag_vip'),
                 video=None,
+                text='teaser',
             )
 
             asyncio.run(runner.transfer_message_to_web_target(
@@ -336,6 +365,7 @@ class DeepLinkMultiMediaWireCase(unittest.TestCase):
                 link='https://t.me/source/1',
                 chat=SimpleNamespace(id='source-chat', username='source'),
                 video=None,
+                text='teaser',
             )
 
             asyncio.run(runner.transfer_message_to_web_target(

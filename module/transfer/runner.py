@@ -46,9 +46,11 @@ class WebTransferHost(Protocol):
     async def wait_for_telegram_flood(self, error, task_id: Optional[int] = None, action: str = 'request') -> None: ...
     async def forward(self, **kwargs): ...
     async def create_download_task(self, **kwargs) -> dict: ...
-    def check_type(self, message) -> bool: ...
+    def check_type(self, message, media_types_override=None) -> bool: ...
+    def runtime_message_filter(self, media_types_override=None): ...
     def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict: ...
     def skip_transfer_item_for_target_limit(self, task: dict, message, source_link: str, origin_chat_id, limit_error: dict) -> int: ...
+    def skip_transfer_item_for_media_type(self, task: dict, message, source_link: str, origin_chat_id, reject_reason: str, range_message_id=None) -> int: ...
     def refresh_transfer_task_counts(self, task_id: int) -> None: ...
     def find_resumable_transfer_item(self, task_id: int, source_message_id: int, source_chat_id=None): ...
     def skip_missing_web_transfer_range_message(self, task: dict, origin_chat_id, source_link: str, message_id: int) -> None: ...
@@ -597,6 +599,40 @@ class WebTransferRunner:
                 if multi_resolved:
                     item_source_chat_id = forward_chat_id
                     item_source_message_id = forward_message_id
+            runtime_filter_fn = getattr(host, 'runtime_message_filter', None)
+            if callable(runtime_filter_fn):
+                runtime_filter = runtime_filter_fn(task.get('media_types'))
+            else:
+                from module.core.media_types import build_runtime_message_filter
+                mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
+                runtime_filter = build_runtime_message_filter(mf, task.get('media_types'))
+            if not runtime_filter.should_pass(send_message):
+                reject_reason = runtime_filter.get_reject_reason(send_message) or '媒体类型未允许'
+                skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
+                if callable(skip_fn):
+                    skip_fn(
+                        task=task,
+                        message=send_message,
+                        source_link=source_link,
+                        origin_chat_id=origin_chat_id,
+                        reject_reason=reject_reason,
+                        range_message_id=range_message_id,
+                    )
+                else:
+                    host.skip_transfer_item_for_target_limit(
+                        task=task,
+                        message=send_message,
+                        source_link=source_link,
+                        origin_chat_id=origin_chat_id,
+                        limit_error={
+                            'message': reject_reason,
+                            'media_type': 'filtered',
+                            'file_name': None,
+                            'file_size': None,
+                        },
+                        range_message_id=range_message_id,
+                    )
+                continue
             limit_error = host.get_task_target_size_limit_error(task, send_message)
             if limit_error:
                 host.skip_transfer_item_for_target_limit(
@@ -620,7 +656,8 @@ class WebTransferRunner:
                         download_upload=False,
                         done_notice=False,
                         ignore_type_filter=True,
-                        archive_after_success=False
+                        archive_after_success=False,
+                        media_types_override=task.get('media_types'),
                     )
                     media_meta = host.get_message_media_target_limit_meta(send_message)
                     archive_file_name = host.get_message_media_archive_filename(send_message)
@@ -785,6 +822,7 @@ class WebTransferRunner:
         fallback_count = 0
         check_type = self._resolve_method('check_type')
         resolve_deep_link = bool(task.get('resolve_deep_link'))
+        media_types_override = task.get('media_types')
         whitelist = []
         if resolve_deep_link:
             getter = getattr(host.gc, 'get_deep_link_bot_whitelist', None)
@@ -794,7 +832,10 @@ class WebTransferRunner:
             # Deep-link mode: discussion replies are deep-link-only (no bare text/media dump).
             if resolve_deep_link:
                 return message_has_whitelisted_deep_link(item, whitelist)
-            return check_type(item)
+            try:
+                return check_type(item, media_types_override=media_types_override)
+            except TypeError:
+                return check_type(item)
 
         try:
             async for comment in iter_discussion_reply_messages(

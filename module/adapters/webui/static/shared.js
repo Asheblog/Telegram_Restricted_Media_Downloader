@@ -43,6 +43,10 @@ const i18n = {
     'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
+    'mediaOverride.label': '媒体类型',
+    'mediaOverride.inherit': '使用系统设置',
+    'mediaOverride.custom': '自定义',
+    'mediaOverride.hint': '自定义时整表替换系统设置；默认继承全局允许的媒体类型。',
     'watches.title': '活跃监听',
     'watches.downloadTitle': '监听下载',
     'watches.downloadMeta': '新消息自动下载',
@@ -290,8 +294,9 @@ const i18n = {
     'settings.forwardTypes': '转发类型',
     'settings.forwardTypesHint': '（勾选 = 允许转发，未勾选的类型将被忽略）',
     'settings.messageFilter': '消息过滤',
-    'settings.mediaTypes': '媒体类型',
-    'settings.mediaTypesHint': '（勾选 = 允许处理，未勾选的类型将被过滤）',
+    'settings.mediaTypes': '允许的媒体类型',
+    'settings.mediaTypesHint': '（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）',
+    'settings.filterEnabledHint': '仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。',
     'settings.dateRange': '日期范围',
     'settings.keywords': '关键词',
     'settings.enabled': '启用',
@@ -444,6 +449,10 @@ const i18n = {
     'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
+    'mediaOverride.label': 'Media types',
+    'mediaOverride.inherit': 'Use system settings',
+    'mediaOverride.custom': 'Custom',
+    'mediaOverride.hint': 'Custom replaces the system allowlist entirely; default is to inherit the global allowlist.',
     'watches.title': 'Active Watches',
     'watches.downloadTitle': 'Download Watch',
     'watches.downloadMeta': 'Auto-download new messages',
@@ -691,8 +700,9 @@ const i18n = {
     'settings.forwardTypes': 'Forward Types',
     'settings.forwardTypesHint': '(Check = allow forward, unchecked types will be ignored)',
     'settings.messageFilter': 'Message Filter',
-    'settings.mediaTypes': 'Media types',
-    'settings.mediaTypesHint': '(Check = allow, unchecked types will be filtered out)',
+    'settings.mediaTypes': 'Allowed media types',
+    'settings.mediaTypesHint': '(Applies to all download/forward paths; checked = allowed)',
+    'settings.filterEnabledHint': 'Only toggles date-range and keyword filters; media types always follow the allowlist above.',
     'settings.dateRange': 'Date range',
     'settings.keywords': 'Keywords',
     'settings.enabled': 'Enabled',
@@ -861,6 +871,186 @@ function t(key, replacements) {
   }
   return text;
 }
+
+/* Unified Media Type Allowlist helpers (task/watch override + settings dual-write) */
+var MEDIA_TYPE_KEYS = ['video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'];
+var DOWNLOAD_MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS.filter(function(key) { return key !== 'text'; });
+
+function defaultMediaTypesDict(allAllowed) {
+  var dict = {};
+  var allowed = allAllowed !== false;
+  MEDIA_TYPE_KEYS.forEach(function(key) { dict[key] = allowed; });
+  return dict;
+}
+
+function mediaTypesToDownloadTypeList(mediaTypesDict) {
+  return DOWNLOAD_MEDIA_TYPE_KEYS.filter(function(key) {
+    return Boolean(mediaTypesDict && mediaTypesDict[key]);
+  });
+}
+
+function completeMediaTypesDict(raw) {
+  var dict = defaultMediaTypesDict(false);
+  if (!raw || typeof raw !== 'object') return dict;
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = Boolean(raw[key]);
+  });
+  return dict;
+}
+
+function collectMediaTypesDict(root, checkboxName) {
+  var scope = root || document;
+  var name = checkboxName || 'override_media_types';
+  var checked = Array.prototype.map.call(
+    scope.querySelectorAll('input[name="' + name + '"]:checked'),
+    function(cb) { return cb.value; }
+  );
+  var dict = {};
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = checked.indexOf(key) >= 0;
+  });
+  return dict;
+}
+
+function readMediaTypesOverride(root, modeName, checkboxName) {
+  var scope = root || document;
+  var modeInput = scope.querySelector('input[name="' + (modeName || 'media_types_mode') + '"]:checked');
+  var mode = modeInput ? modeInput.value : 'inherit';
+  if (mode !== 'custom') return null;
+  return collectMediaTypesDict(scope, checkboxName || 'override_media_types');
+}
+
+function renderMediaTypesCheckboxHtml(checkboxName, selectedDict, options) {
+  var name = checkboxName || 'override_media_types';
+  var selected = selectedDict || defaultMediaTypesDict(true);
+  var compact = options && options.compact;
+  var labelClass = compact
+    ? 'text-sm'
+    : 'flex items-center gap-2 text-sm text-text cursor-pointer';
+  var labelStyle = compact
+    ? 'display:flex;align-items:center;gap:6px;padding:4px 0;'
+    : '';
+  return MEDIA_TYPE_KEYS.map(function(key) {
+    return '<label class="' + labelClass + '"' + (labelStyle ? ' style="' + labelStyle + '"' : '') + '>' +
+      '<input type="checkbox" name="' + name + '" value="' + key + '" class="w-4 h-4"' +
+      (selected[key] ? ' checked' : '') + '>' +
+      '<span>' + key + '</span></label>';
+  }).join('');
+}
+
+function mediaTypesPickerMarkup(options) {
+  options = options || {};
+  var checkboxName = options.checkboxName || 'override_media_types';
+  var modeName = options.modeName || 'media_types_mode';
+  var selected = options.selected;
+  var isCustom = selected != null && typeof selected === 'object';
+  var compact = Boolean(options.compact);
+  var checkHtml = renderMediaTypesCheckboxHtml(
+    checkboxName,
+    isCustom ? completeMediaTypesDict(selected) : defaultMediaTypesDict(true),
+    { compact: compact }
+  );
+  var gridClass = compact
+    ? ' media-types-picker__grid'
+    : ' settings-type-grid media-types-picker__grid';
+  var gridStyle = compact
+    ? ' style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"'
+    : '';
+  return '<div class="form-group media-types-picker" data-media-types-picker>' +
+    '<label class="form-label">' + esc(t('mediaOverride.label')) + '</label>' +
+    '<div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1"' +
+      (compact ? ' style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin-bottom:4px;"' : '') + '>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="inherit" data-media-types-mode' +
+          (isCustom ? '' : ' checked') + '>' +
+        '<span>' + esc(t('mediaOverride.inherit')) + '</span></label>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="custom" data-media-types-mode' +
+          (isCustom ? ' checked' : '') + '>' +
+        '<span>' + esc(t('mediaOverride.custom')) + '</span></label>' +
+    '</div>' +
+    '<p class="text-xs text-muted leading-normal mb-1">' + esc(t('mediaOverride.hint')) + '</p>' +
+    '<div class="' + gridClass + (isCustom ? '' : ' hidden') + '"' + gridStyle +
+      ' data-media-types-grid>' + checkHtml + '</div>' +
+  '</div>';
+}
+
+function syncMediaTypesPickerVisibility(picker) {
+  if (!picker) return;
+  var mode = 'inherit';
+  picker.querySelectorAll('input[data-media-types-mode]').forEach(function(radio) {
+    if (radio.checked) mode = radio.value;
+  });
+  var show = mode === 'custom';
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (!grid) return;
+  grid.classList.toggle('hidden', !show);
+  // Inline display:grid on mobile must be cleared when hiding.
+  if (show) {
+    if (grid.dataset.gridDisplay) grid.style.display = grid.dataset.gridDisplay;
+    else if (grid.style.display === 'none') grid.style.display = '';
+  } else {
+    if (grid.style.display && grid.style.display !== 'none') {
+      grid.dataset.gridDisplay = grid.style.display;
+    }
+    grid.style.display = 'none';
+  }
+}
+
+function bindMediaTypesPicker(root) {
+  if (!root) return;
+  var radios = root.querySelectorAll('input[data-media-types-mode]');
+  radios.forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      syncMediaTypesPickerVisibility(root);
+    });
+  });
+  syncMediaTypesPickerVisibility(root);
+}
+
+function bindAllMediaTypesPickers(scope) {
+  var root = scope || document;
+  root.querySelectorAll('[data-media-types-picker]').forEach(function(picker) {
+    bindMediaTypesPicker(picker);
+  });
+}
+
+function setMediaTypesPicker(root, mediaTypes) {
+  if (!root) return;
+  var picker = root.matches && root.matches('[data-media-types-picker]')
+    ? root
+    : root.querySelector('[data-media-types-picker]');
+  if (!picker) return;
+  var inherit = mediaTypes == null || typeof mediaTypes !== 'object';
+  var inheritRadio = picker.querySelector('input[data-media-types-mode][value="inherit"]');
+  var customRadio = picker.querySelector('input[data-media-types-mode][value="custom"]');
+  if (inheritRadio) inheritRadio.checked = inherit;
+  if (customRadio) customRadio.checked = !inherit;
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (grid && !inherit) {
+    var selected = completeMediaTypesDict(mediaTypes);
+    grid.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+      cb.checked = Boolean(selected[cb.value]);
+    });
+  }
+  syncMediaTypesPickerVisibility(picker);
+}
+
+window.MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS;
+window.DOWNLOAD_MEDIA_TYPE_KEYS = DOWNLOAD_MEDIA_TYPE_KEYS;
+window.defaultMediaTypesDict = defaultMediaTypesDict;
+window.mediaTypesToDownloadTypeList = mediaTypesToDownloadTypeList;
+window.completeMediaTypesDict = completeMediaTypesDict;
+window.collectMediaTypesDict = collectMediaTypesDict;
+window.readMediaTypesOverride = readMediaTypesOverride;
+window.renderMediaTypesCheckboxHtml = renderMediaTypesCheckboxHtml;
+window.mediaTypesPickerMarkup = mediaTypesPickerMarkup;
+window.bindMediaTypesPicker = bindMediaTypesPicker;
+window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
+window.setMediaTypesPicker = setMediaTypesPicker;
+window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
 
 function esc(str) {
   if (!str) return '';

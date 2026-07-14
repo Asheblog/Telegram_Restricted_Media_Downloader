@@ -45,8 +45,8 @@ main.py
 
 | 配置层 | 类 | 文件名 | 位置 | 用途 |
 |--------|-----|--------|------|------|
-| 用户层 | `UserConfig` | `config.yaml` | 工作目录 | Telegram API 凭证、下载类型、代理 |
-| 全局层 | `GlobalConfig` | `.CONFIG.yaml` | `~/.config/TRMD/` | 上传行为、目标配置、消息过滤、转发类型 |
+| 用户层 | `UserConfig` | `config.yaml` | 工作目录 | Telegram API 凭证、下载类型（由统一白名单派生兼容）、代理 |
+| 全局层 | `GlobalConfig` | `.CONFIG.yaml` | `~/.config/TRMD/` | 上传行为、目标配置、消息过滤；媒体类型唯一真源为 `message_filter.media_types` |
 
 ### 子包结构
 
@@ -164,8 +164,14 @@ _Avoid_: Comment scraping, reply mirroring
 **Deferred Discussion Reply Capture** — 监听转发在开启 Discussion Reply Inclusion 时，主贴立即转发后，将讨论区抓取推迟到配置的到期时刻再执行一次的持久化任务。执行中可取消；失败或已取消可手动重试；仅无活跃 worker/派生转存的僵死 running 会被回收为失败。
 _Avoid_: Comment delay job, deferred comment poll, comment scrape loop, wall-clock capture timeout
 
-**Deep Link Resolve** — 可选的转存前置步骤：当来源消息含白名单资源 bot 的 `t.me/<bot>?start=<param>`（或等价 `tg://`）时，用用户会话调用 `messages.startBot` 取回 bot 私聊中的 video/document/animation/photo，再对取回消息执行既有转发/下载上传；业务来源仍记为原频道帖。由任务/监听上的 `resolve_deep_link` 开关控制；全局 `deep_link.bot_whitelist` 限定可解析 bot；`timeout_seconds` / `min_interval_seconds` 控制取片超时与两次 StartBot 冷却（遇 FloodWait 在剩余超时预算内等待后重试；预算不足或拉历史挂起则立即失败并释放串行锁）；`settle_seconds`（默认 3）在首条媒体后继续收齐连发/相册直至静默。评论区深链仅在同时开启 Discussion Reply Inclusion 时处理：延迟抓取到的讨论回复**仅**走白名单深链 resolve（不附带按 `check_type` 转存其它评论）。
+**Deep Link Resolve** — 可选的转存前置步骤：当来源消息含白名单资源 bot 的 `t.me/<bot>?start=<param>`（或等价 `tg://`）时，用用户会话调用 `messages.startBot` 取回 bot 私聊中的 video/document/animation/photo，再对取回消息执行既有转发/下载上传；业务来源仍记为原频道帖。由任务/监听上的 `resolve_deep_link` 开关控制；全局 `deep_link.bot_whitelist` 限定可解析 bot；`timeout_seconds` / `min_interval_seconds` 控制取片超时与两次 StartBot 冷却（遇 FloodWait 在剩余超时预算内等待后重试；预算不足或拉历史挂起则立即失败并释放串行锁）；`settle_seconds`（默认 3）在首条媒体后继续收齐连发/相册直至静默。评论区深链仅在同时开启 Discussion Reply Inclusion 时处理：延迟抓取到的讨论回复**仅**走白名单深链 resolve（不附带按 `check_type` 转存其它评论）。取回内容仍受 Media Type Allowlist 约束。
 _Avoid_: Bot scrape, start param hack, auto click teaser
+
+**Media Type Allowlist** — 全局唯一的允许处理媒体类型集合（`message_filter.media_types`）。所有下载/转发链路（Web 转存、实时监听、Bot 频道下载、深链取回）共用；消息过滤总开关不管媒体类型，只控制日期与关键词。
+_Avoid_: download_type, forward_type, per-pipeline type checkbox
+
+**Media Type Override** — 转存任务、实时监听或 Bot 下载会话上可选的媒体类型整表替换；未设置则继承 Media Type Allowlist，设置后不再并入全局。
+_Avoid_: type delta, additive filter, per-pipeline settings
 
 **WebUI Credentials** — 环境变量提供的站内登录凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码；用户通过 WebUI 登录页换取 HttpOnly 签名 session cookie（HMAC，密钥由用户名/密码派生；勾选记住我后 Cookie `Max-Age` 为 30 天，进程/容器重启后仍有效；修改密码会使旧 cookie 失效）。
 _Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI, in-memory-only session store
@@ -207,6 +213,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0007](docs/adr/0007-defer-discussion-reply-capture.md) — 监听转发评论区延迟一次抓取
 - [ADR-0008](docs/adr/0008-deep-link-resolve.md) — 转存前深链取片（用户会话 StartBot）
 - [ADR-0009](docs/adr/0009-watch-inline-transfer-execution-mode.md) — 监听下载回退用 watch_inline，不入 Web 队列
+- [ADR-0010](docs/adr/0010-unified-media-type-allowlist.md) — 统一媒体类型白名单与任务级覆盖
 
 ---
 

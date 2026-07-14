@@ -1111,18 +1111,35 @@ class WebOperationsMixin:
         date_range = payload.get('date_range') or {}
         start_date = date_range.get('start_date')
         end_date = date_range.get('end_date')
+        selected = set(payload.get('download_type') or [])
         download_type = {
-            dtype: dtype in set(payload.get('download_type') or [])
+            dtype: dtype in selected
             for dtype in DownloadType()
         }
+        # Form selection is full Media Type Override when provided; else inherit global allowlist.
+        media_types_override = None
+        if payload.get('download_type') is not None:
+            from module.core.media_types import DOWNLOAD_MEDIA_TYPES, MEDIA_TYPES
+            media_types_override = {t: False for t in MEDIA_TYPES}
+            for dtype in DOWNLOAD_MEDIA_TYPES:
+                media_types_override[dtype] = bool(download_type.get(dtype))
         keywords = payload.get('keywords') or []
         include_comment = bool(payload.get('include_comment'))
         filter_obj = Filter()
+        runtime_filter = self.runtime_message_filter(media_types_override) if hasattr(
+            self, 'runtime_message_filter'
+        ) else Filter({'media_types': download_type})
         links = []
+
+        def _media_ok(item) -> bool:
+            if hasattr(runtime_filter, 'should_pass_media_type'):
+                return runtime_filter.should_pass_media_type(item)
+            return filter_obj.dtype(item, download_type)
+
         async for message in self.app.client.get_chat_history(chat_id=chat_id, reverse=True):
             if (
                     filter_obj.date_range(message, start_date, end_date)
-                    and filter_obj.dtype(message, download_type)
+                    and _media_ok(message)
                     and filter_obj.keyword_filter(message, keywords)
             ):
                 links.append(message.link if getattr(message, 'link', None) else message)
@@ -1132,7 +1149,7 @@ class WebOperationsMixin:
                                 client=self.app.client,
                                 chat_id=chat_id,
                                 message_id=message.id,
-                                include_message=lambda item: filter_obj.dtype(item, download_type)
+                                include_message=_media_ok,
                         ):
                             links.append(comment.link if getattr(comment, 'link', None) else comment)
                     except (ValueError, AttributeError, MsgIdInvalid):

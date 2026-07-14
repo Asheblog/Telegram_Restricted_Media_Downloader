@@ -394,6 +394,33 @@ class TransferEngine:
         self.refresh_transfer_task_counts(task_id)
         return item_id
 
+    def skip_transfer_item_for_media_type(
+        self,
+        task: dict,
+        message,
+        source_link: str,
+        origin_chat_id,
+        reject_reason: str,
+        range_message_id: Optional[int] = None,
+    ) -> int:
+        task_id = int(task.get('id'))
+        reason = reject_reason or '媒体类型未允许'
+        item_id = self.transfer_store.add_item(
+            task_id=task_id,
+            source_chat_id=origin_chat_id,
+            source_message_id=getattr(message, 'id', None),
+            range_message_id=range_message_id,
+            source_link=source_link,
+            target_link=task.get('target_link'),
+            media_type='filtered',
+            phase='skipped',
+            status=TransferStatus.SKIPPED,
+            error_message=reason,
+        )
+        self.transfer_store.add_event(task_id, reason, level='warning', item_id=item_id)
+        self.refresh_transfer_task_counts(task_id)
+        return item_id
+
     @staticmethod
     def transfer_single_link(source_link: str) -> str:
         return source_link if '?single' in source_link else f'{source_link}?single'
@@ -444,9 +471,26 @@ class TransferEngine:
             self._msg_filter_config_id = id(current_mf)
         return self._message_filter
 
-    def check_type(self, message: pyrogram.types.Message):
-        """检查消息媒体类型是否允许（兼容旧接口，内部调用 MessageFilter）。"""
-        return self.message_filter.should_pass_media_type(message)
+    def effective_media_types(self, override=None) -> dict:
+        from module.core.media_types import resolve_allowed_media_types
+        mf = getattr(self.gc, 'message_filter', None) or {}
+        return resolve_allowed_media_types(
+            mf.get('media_types') if isinstance(mf, dict) else None,
+            override,
+        )
+
+    def runtime_message_filter(self, media_types_override=None):
+        from module.core.media_types import build_runtime_message_filter
+        return build_runtime_message_filter(
+            getattr(self.gc, 'message_filter', None),
+            media_types_override,
+        )
+
+    def check_type(self, message: pyrogram.types.Message, media_types_override=None):
+        """检查消息媒体类型是否允许（可选任务/监听级覆盖）。"""
+        if media_types_override is None:
+            return self.message_filter.should_pass_media_type(message)
+        return self.runtime_message_filter(media_types_override).should_pass_media_type(message)
 
     def get_media_meta(self, message: pyrogram.types.Message, dtype) -> Dict[str, Union[int, str]]:
         file_id: int = getattr(message, 'id')

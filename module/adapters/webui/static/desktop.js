@@ -374,6 +374,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+    media_types: readMediaTypesOverride(this),
   };
 
   try {
@@ -1498,9 +1499,14 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
   const fd = new FormData(this);
   const links = fd.get('source_links').split('\n').map(l => l.trim()).filter(Boolean);
   try {
-    await postJson('/api/watches', { type: 'download', source_links: links });
+    await postJson('/api/watches', {
+      type: 'download',
+      source_links: links,
+      media_types: readMediaTypesOverride(this),
+    });
     await loadWatches();
     this.reset();
+    setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
@@ -1516,9 +1522,11 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+      media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
     this.reset();
+    setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
@@ -1741,6 +1749,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
+  ensureOverrideMediaTypeGrids();
+  setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -1839,6 +1849,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+        media_types: readMediaTypesOverride(this),
       }),
     });
     closeEditWatchModal();
@@ -2088,6 +2099,7 @@ async function loadSettings() {
     state.settingsSchema = data.schema || {};
     state.settingsModel = data.settings_model || {};
     renderSettings();
+    ensureOverrideMediaTypeGrids();
   } catch(e) {}
 }
 
@@ -2138,11 +2150,7 @@ function renderSettings() {
   setSensitiveVal('user.bot_token', su.bot_token);
   setSensitiveVal('user.proxy.password', su.proxy?.password);
 
-  /* download types */
-  renderCheckboxGrid('download-type-grid', 'user.download_type', su.download_type || [], (state.settingsModel.options || {}).download_type || state.settingsSchema.download_type);
-  /* forward types */
-  renderCheckboxGrid('forward-type-grid', 'global.forward_type', sg.forward_type || [], (state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type);
-  /* message filter */
+  /* message filter + unified media type allowlist */
   renderMessageFilter(sg.message_filter || {});
   /* exports */
   setCheckboxVal('global.export_table.link', sg.export_table?.link);
@@ -2172,7 +2180,7 @@ function setSensitiveVal(name, val) {
 }
 
 function renderCheckboxGrid(containerId, inputName, selected, options) {
-  const types = normalizeOptionList(options || ['video','photo','audio','voice','animation','document','video_note']);
+  const types = normalizeOptionList(options || MEDIA_TYPE_KEYS);
   const container = document.getElementById(containerId);
   if (!container) return;
   var sel;
@@ -2192,6 +2200,23 @@ function renderCheckboxGrid(containerId, inputName, selected, options) {
       '<span>' + esc(label) + '</span>' +
     '</label>';
   }).join('');
+}
+
+function ensureOverrideMediaTypeGrids() {
+  const options = (state.settingsModel && state.settingsModel.options && state.settingsModel.options.message_filter_media_types)
+    || (state.settingsSchema && state.settingsSchema.message_filter && state.settingsSchema.message_filter.media_types)
+    || MEDIA_TYPE_KEYS;
+  [
+    'transfer-media-types-grid',
+    'watch-download-media-types-grid',
+    'watch-forward-media-types-grid',
+    'watch-edit-media-types-grid',
+  ].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el || el.childElementCount) return;
+    renderCheckboxGrid(id, 'override_media_types', MEDIA_TYPE_KEYS, options);
+    el.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+  });
 }
 
 function normalizeOptionList(options) {
@@ -2309,25 +2334,18 @@ function buildSettingsPayload() {
     }
   });
 
-  /* download types */
-  const downloadTypes = Array.from($$('input[name="user.download_type"]:checked')).map(cb => cb.value);
-  setNested(payload, ['user', 'download_type'], downloadTypes);
-
-  /* forward types */
-  const forwardTypes = Array.from($$('input[name="global.forward_type"]:checked')).map(cb => cb.value);
-  const forwardTypeOptions = normalizeOptionList((state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type || []);
-  const allForwardTypes = forwardTypeOptions.length ? forwardTypeOptions.map(function(option) { return option.value; }) : forwardTypes;
-  const forwardTypesDict = {};
-  allForwardTypes.forEach(function(t) { forwardTypesDict[t] = forwardTypes.indexOf(t) >= 0; });
-  setNested(payload, ['global', 'forward_type'], forwardTypesDict);
-
-  /* filter media types — 构建 {video: true, photo: false, ...} dict 格式与后端一致 */
-  const mediaTypeOptions = normalizeOptionList((state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types || []);
-  const allMediaTypes = mediaTypeOptions.length ? mediaTypeOptions.map(function(option) { return option.value; }) : ['video','photo','audio','document','voice','text','animation','video_note'];
+  /* unified media type allowlist — dual-write forward_type + user.download_type */
+  const mediaTypeOptions = normalizeOptionList((state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types || MEDIA_TYPE_KEYS);
+  const allMediaTypes = mediaTypeOptions.length ? mediaTypeOptions.map(function(option) { return option.value; }) : MEDIA_TYPE_KEYS.slice();
   const checkedMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(function(cb) { return cb.value; });
   const mediaTypesDict = {};
   allMediaTypes.forEach(function(t) { mediaTypesDict[t] = checkedMedia.indexOf(t) >= 0; });
+  MEDIA_TYPE_KEYS.forEach(function(t) {
+    if (mediaTypesDict[t] === undefined) mediaTypesDict[t] = false;
+  });
   setNested(payload, ['global', 'message_filter', 'media_types'], mediaTypesDict);
+  setNested(payload, ['global', 'forward_type'], completeMediaTypesDict(mediaTypesDict));
+  setNested(payload, ['user', 'download_type'], mediaTypesToDownloadTypeList(mediaTypesDict));
 
   /* filter keywords */
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');
@@ -2604,6 +2622,8 @@ document.addEventListener('change', function(e) {
 /* ====== Init ====== */
 (function init() {
   applyLanguage();
+  ensureOverrideMediaTypeGrids();
+  bindAllMediaTypesPickers(document);
   checkAuthStatus();
   authPollTimer = setInterval(() => {
     if (authStep === 'done' || authStep === 'none') {

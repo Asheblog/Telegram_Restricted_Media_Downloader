@@ -537,6 +537,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <p class="text-xs text-muted leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="transfer-media-types-grid"></div>
+          </div>
           <p class="text-xs text-muted leading-normal mb-2" data-i18n="new.hint">
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
@@ -596,6 +611,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <label class="form-label" data-i18n="watches.sources">来源频道（每行一个）</label>
             <textarea class="form-input watch-download-sources" name="source_links" rows="3" placeholder="https://t.me/channel1&#10;https://t.me/channel2" required></textarea>
           </div>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-download-media-types-grid"></div>
+          </div>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -640,6 +670,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-forward-media-types-grid"></div>
+          </div>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createForward">新增监听转发</span>
@@ -721,6 +766,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
       </p>
+      <div class="form-group media-types-picker" data-media-types-picker id="watch-edit-media-types-picker">
+        <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+            <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+            <span data-i18n="mediaOverride.custom">自定义</span>
+          </label>
+        </div>
+        <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+        <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-edit-media-types-grid"></div>
+      </div>
       <div class="flex gap-2 justify-end">
         <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
         <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
@@ -1235,32 +1295,19 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </div>
       </section>
 
-    <!-- Download Types -->
-    <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.downloadTypes">下载类型</h4>
-      <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
-      <div class="settings-type-grid" id="download-type-grid"></div>
-    </section>
-
-    <!-- Forward Types -->
-    <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.forwardTypes">转发类型</h4>
-      <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
-      <div class="settings-type-grid" id="forward-type-grid"></div>
-    </section>
-
-    <!-- Message Filter -->
+    <!-- Message Filter / Unified Media Type Allowlist -->
     <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.messageFilter">消息过滤</h4>
-        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
-          <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
-          <span data-i18n="settings.enabled">启用消息过滤</span>
-        </label>
         <div class="mb-3">
-          <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
-          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（勾选 = 允许处理，未勾选的类型将被过滤）</span>
+          <span class="form-label" data-i18n="settings.mediaTypes">允许的媒体类型</span>
+          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）</span>
           <div class="settings-type-grid" id="filter-media-grid"></div>
         </div>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-1">
+          <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
+          <span data-i18n="settings.enabled">启用</span>
+        </label>
+        <p class="text-xs text-muted mb-3" data-i18n="settings.filterEnabledHint">仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。</p>
         <div class="mb-3">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
             <input type="checkbox" name="global.message_filter.date_range.enabled" class="w-4 h-4">
@@ -1491,9 +1538,13 @@ const i18n = {
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
-    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
+    'mediaOverride.label': '媒体类型',
+    'mediaOverride.inherit': '使用系统设置',
+    'mediaOverride.custom': '自定义',
+    'mediaOverride.hint': '自定义时整表替换系统设置；默认继承全局允许的媒体类型。',
     'watches.title': '活跃监听',
     'watches.downloadTitle': '监听下载',
     'watches.downloadMeta': '新消息自动下载',
@@ -1505,7 +1556,7 @@ const i18n = {
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
-    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -1733,8 +1784,6 @@ const i18n = {
     'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.deepLinkMinInterval': '取片最小间隔（秒）',
     'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
-    'settings.deepLinkSettle': '收齐静默（秒）',
-    'settings.deepLinkSettleHint': '首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -1743,8 +1792,9 @@ const i18n = {
     'settings.forwardTypes': '转发类型',
     'settings.forwardTypesHint': '（勾选 = 允许转发，未勾选的类型将被忽略）',
     'settings.messageFilter': '消息过滤',
-    'settings.mediaTypes': '媒体类型',
-    'settings.mediaTypesHint': '（勾选 = 允许处理，未勾选的类型将被过滤）',
+    'settings.mediaTypes': '允许的媒体类型',
+    'settings.mediaTypesHint': '（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）',
+    'settings.filterEnabledHint': '仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。',
     'settings.dateRange': '日期范围',
     'settings.keywords': '关键词',
     'settings.enabled': '启用',
@@ -1894,9 +1944,13 @@ const i18n = {
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
-    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
+    'mediaOverride.label': 'Media types',
+    'mediaOverride.inherit': 'Use system settings',
+    'mediaOverride.custom': 'Custom',
+    'mediaOverride.hint': 'Custom replaces the system allowlist entirely; default is to inherit the global allowlist.',
     'watches.title': 'Active Watches',
     'watches.downloadTitle': 'Download Watch',
     'watches.downloadMeta': 'Auto-download new messages',
@@ -1908,7 +1962,7 @@ const i18n = {
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
-    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -2136,8 +2190,6 @@ const i18n = {
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
     'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
-    'settings.deepLinkSettle': 'Settle silence (seconds)',
-    'settings.deepLinkSettleHint': 'After the first media arrives, keep collecting until this many seconds pass with no new media. Use for bots that burst many files. 0 ends after the first media.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -2146,8 +2198,9 @@ const i18n = {
     'settings.forwardTypes': 'Forward Types',
     'settings.forwardTypesHint': '(Check = allow forward, unchecked types will be ignored)',
     'settings.messageFilter': 'Message Filter',
-    'settings.mediaTypes': 'Media types',
-    'settings.mediaTypesHint': '(Check = allow, unchecked types will be filtered out)',
+    'settings.mediaTypes': 'Allowed media types',
+    'settings.mediaTypesHint': '(Applies to all download/forward paths; checked = allowed)',
+    'settings.filterEnabledHint': 'Only toggles date-range and keyword filters; media types always follow the allowlist above.',
     'settings.dateRange': 'Date range',
     'settings.keywords': 'Keywords',
     'settings.enabled': 'Enabled',
@@ -2316,6 +2369,186 @@ function t(key, replacements) {
   }
   return text;
 }
+
+/* Unified Media Type Allowlist helpers (task/watch override + settings dual-write) */
+var MEDIA_TYPE_KEYS = ['video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'];
+var DOWNLOAD_MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS.filter(function(key) { return key !== 'text'; });
+
+function defaultMediaTypesDict(allAllowed) {
+  var dict = {};
+  var allowed = allAllowed !== false;
+  MEDIA_TYPE_KEYS.forEach(function(key) { dict[key] = allowed; });
+  return dict;
+}
+
+function mediaTypesToDownloadTypeList(mediaTypesDict) {
+  return DOWNLOAD_MEDIA_TYPE_KEYS.filter(function(key) {
+    return Boolean(mediaTypesDict && mediaTypesDict[key]);
+  });
+}
+
+function completeMediaTypesDict(raw) {
+  var dict = defaultMediaTypesDict(false);
+  if (!raw || typeof raw !== 'object') return dict;
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = Boolean(raw[key]);
+  });
+  return dict;
+}
+
+function collectMediaTypesDict(root, checkboxName) {
+  var scope = root || document;
+  var name = checkboxName || 'override_media_types';
+  var checked = Array.prototype.map.call(
+    scope.querySelectorAll('input[name="' + name + '"]:checked'),
+    function(cb) { return cb.value; }
+  );
+  var dict = {};
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = checked.indexOf(key) >= 0;
+  });
+  return dict;
+}
+
+function readMediaTypesOverride(root, modeName, checkboxName) {
+  var scope = root || document;
+  var modeInput = scope.querySelector('input[name="' + (modeName || 'media_types_mode') + '"]:checked');
+  var mode = modeInput ? modeInput.value : 'inherit';
+  if (mode !== 'custom') return null;
+  return collectMediaTypesDict(scope, checkboxName || 'override_media_types');
+}
+
+function renderMediaTypesCheckboxHtml(checkboxName, selectedDict, options) {
+  var name = checkboxName || 'override_media_types';
+  var selected = selectedDict || defaultMediaTypesDict(true);
+  var compact = options && options.compact;
+  var labelClass = compact
+    ? 'text-sm'
+    : 'flex items-center gap-2 text-sm text-text cursor-pointer';
+  var labelStyle = compact
+    ? 'display:flex;align-items:center;gap:6px;padding:4px 0;'
+    : '';
+  return MEDIA_TYPE_KEYS.map(function(key) {
+    return '<label class="' + labelClass + '"' + (labelStyle ? ' style="' + labelStyle + '"' : '') + '>' +
+      '<input type="checkbox" name="' + name + '" value="' + key + '" class="w-4 h-4"' +
+      (selected[key] ? ' checked' : '') + '>' +
+      '<span>' + key + '</span></label>';
+  }).join('');
+}
+
+function mediaTypesPickerMarkup(options) {
+  options = options || {};
+  var checkboxName = options.checkboxName || 'override_media_types';
+  var modeName = options.modeName || 'media_types_mode';
+  var selected = options.selected;
+  var isCustom = selected != null && typeof selected === 'object';
+  var compact = Boolean(options.compact);
+  var checkHtml = renderMediaTypesCheckboxHtml(
+    checkboxName,
+    isCustom ? completeMediaTypesDict(selected) : defaultMediaTypesDict(true),
+    { compact: compact }
+  );
+  var gridClass = compact
+    ? ' media-types-picker__grid'
+    : ' settings-type-grid media-types-picker__grid';
+  var gridStyle = compact
+    ? ' style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"'
+    : '';
+  return '<div class="form-group media-types-picker" data-media-types-picker>' +
+    '<label class="form-label">' + esc(t('mediaOverride.label')) + '</label>' +
+    '<div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1"' +
+      (compact ? ' style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin-bottom:4px;"' : '') + '>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="inherit" data-media-types-mode' +
+          (isCustom ? '' : ' checked') + '>' +
+        '<span>' + esc(t('mediaOverride.inherit')) + '</span></label>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="custom" data-media-types-mode' +
+          (isCustom ? ' checked' : '') + '>' +
+        '<span>' + esc(t('mediaOverride.custom')) + '</span></label>' +
+    '</div>' +
+    '<p class="text-xs text-muted leading-normal mb-1">' + esc(t('mediaOverride.hint')) + '</p>' +
+    '<div class="' + gridClass + (isCustom ? '' : ' hidden') + '"' + gridStyle +
+      ' data-media-types-grid>' + checkHtml + '</div>' +
+  '</div>';
+}
+
+function syncMediaTypesPickerVisibility(picker) {
+  if (!picker) return;
+  var mode = 'inherit';
+  picker.querySelectorAll('input[data-media-types-mode]').forEach(function(radio) {
+    if (radio.checked) mode = radio.value;
+  });
+  var show = mode === 'custom';
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (!grid) return;
+  grid.classList.toggle('hidden', !show);
+  // Inline display:grid on mobile must be cleared when hiding.
+  if (show) {
+    if (grid.dataset.gridDisplay) grid.style.display = grid.dataset.gridDisplay;
+    else if (grid.style.display === 'none') grid.style.display = '';
+  } else {
+    if (grid.style.display && grid.style.display !== 'none') {
+      grid.dataset.gridDisplay = grid.style.display;
+    }
+    grid.style.display = 'none';
+  }
+}
+
+function bindMediaTypesPicker(root) {
+  if (!root) return;
+  var radios = root.querySelectorAll('input[data-media-types-mode]');
+  radios.forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      syncMediaTypesPickerVisibility(root);
+    });
+  });
+  syncMediaTypesPickerVisibility(root);
+}
+
+function bindAllMediaTypesPickers(scope) {
+  var root = scope || document;
+  root.querySelectorAll('[data-media-types-picker]').forEach(function(picker) {
+    bindMediaTypesPicker(picker);
+  });
+}
+
+function setMediaTypesPicker(root, mediaTypes) {
+  if (!root) return;
+  var picker = root.matches && root.matches('[data-media-types-picker]')
+    ? root
+    : root.querySelector('[data-media-types-picker]');
+  if (!picker) return;
+  var inherit = mediaTypes == null || typeof mediaTypes !== 'object';
+  var inheritRadio = picker.querySelector('input[data-media-types-mode][value="inherit"]');
+  var customRadio = picker.querySelector('input[data-media-types-mode][value="custom"]');
+  if (inheritRadio) inheritRadio.checked = inherit;
+  if (customRadio) customRadio.checked = !inherit;
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (grid && !inherit) {
+    var selected = completeMediaTypesDict(mediaTypes);
+    grid.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+      cb.checked = Boolean(selected[cb.value]);
+    });
+  }
+  syncMediaTypesPickerVisibility(picker);
+}
+
+window.MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS;
+window.DOWNLOAD_MEDIA_TYPE_KEYS = DOWNLOAD_MEDIA_TYPE_KEYS;
+window.defaultMediaTypesDict = defaultMediaTypesDict;
+window.mediaTypesToDownloadTypeList = mediaTypesToDownloadTypeList;
+window.completeMediaTypesDict = completeMediaTypesDict;
+window.collectMediaTypesDict = collectMediaTypesDict;
+window.readMediaTypesOverride = readMediaTypesOverride;
+window.renderMediaTypesCheckboxHtml = renderMediaTypesCheckboxHtml;
+window.mediaTypesPickerMarkup = mediaTypesPickerMarkup;
+window.bindMediaTypesPicker = bindMediaTypesPicker;
+window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
+window.setMediaTypesPicker = setMediaTypesPicker;
+window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
 
 function esc(str) {
   if (!str) return '';
@@ -3097,6 +3330,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+    media_types: readMediaTypesOverride(this),
   };
 
   try {
@@ -4221,9 +4455,14 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
   const fd = new FormData(this);
   const links = fd.get('source_links').split('\n').map(l => l.trim()).filter(Boolean);
   try {
-    await postJson('/api/watches', { type: 'download', source_links: links });
+    await postJson('/api/watches', {
+      type: 'download',
+      source_links: links,
+      media_types: readMediaTypesOverride(this),
+    });
     await loadWatches();
     this.reset();
+    setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
@@ -4239,9 +4478,11 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+      media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
     this.reset();
+    setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
@@ -4464,6 +4705,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
+  ensureOverrideMediaTypeGrids();
+  setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -4562,6 +4805,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+        media_types: readMediaTypesOverride(this),
       }),
     });
     closeEditWatchModal();
@@ -4811,6 +5055,7 @@ async function loadSettings() {
     state.settingsSchema = data.schema || {};
     state.settingsModel = data.settings_model || {};
     renderSettings();
+    ensureOverrideMediaTypeGrids();
   } catch(e) {}
 }
 
@@ -4844,6 +5089,7 @@ function renderSettings() {
   );
   setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
   setFieldVal('global.deep_link.min_interval_seconds', sg.deep_link?.min_interval_seconds ?? 30);
+  setFieldVal('global.deep_link.settle_seconds', sg.deep_link?.settle_seconds ?? 3);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -4860,11 +5106,7 @@ function renderSettings() {
   setSensitiveVal('user.bot_token', su.bot_token);
   setSensitiveVal('user.proxy.password', su.proxy?.password);
 
-  /* download types */
-  renderCheckboxGrid('download-type-grid', 'user.download_type', su.download_type || [], (state.settingsModel.options || {}).download_type || state.settingsSchema.download_type);
-  /* forward types */
-  renderCheckboxGrid('forward-type-grid', 'global.forward_type', sg.forward_type || [], (state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type);
-  /* message filter */
+  /* message filter + unified media type allowlist */
   renderMessageFilter(sg.message_filter || {});
   /* exports */
   setCheckboxVal('global.export_table.link', sg.export_table?.link);
@@ -4894,7 +5136,7 @@ function setSensitiveVal(name, val) {
 }
 
 function renderCheckboxGrid(containerId, inputName, selected, options) {
-  const types = normalizeOptionList(options || ['video','photo','audio','voice','animation','document','video_note']);
+  const types = normalizeOptionList(options || MEDIA_TYPE_KEYS);
   const container = document.getElementById(containerId);
   if (!container) return;
   var sel;
@@ -4914,6 +5156,23 @@ function renderCheckboxGrid(containerId, inputName, selected, options) {
       '<span>' + esc(label) + '</span>' +
     '</label>';
   }).join('');
+}
+
+function ensureOverrideMediaTypeGrids() {
+  const options = (state.settingsModel && state.settingsModel.options && state.settingsModel.options.message_filter_media_types)
+    || (state.settingsSchema && state.settingsSchema.message_filter && state.settingsSchema.message_filter.media_types)
+    || MEDIA_TYPE_KEYS;
+  [
+    'transfer-media-types-grid',
+    'watch-download-media-types-grid',
+    'watch-forward-media-types-grid',
+    'watch-edit-media-types-grid',
+  ].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el || el.childElementCount) return;
+    renderCheckboxGrid(id, 'override_media_types', MEDIA_TYPE_KEYS, options);
+    el.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+  });
 }
 
 function normalizeOptionList(options) {
@@ -5031,25 +5290,18 @@ function buildSettingsPayload() {
     }
   });
 
-  /* download types */
-  const downloadTypes = Array.from($$('input[name="user.download_type"]:checked')).map(cb => cb.value);
-  setNested(payload, ['user', 'download_type'], downloadTypes);
-
-  /* forward types */
-  const forwardTypes = Array.from($$('input[name="global.forward_type"]:checked')).map(cb => cb.value);
-  const forwardTypeOptions = normalizeOptionList((state.settingsModel.options || {}).forward_type || state.settingsSchema.forward_type || []);
-  const allForwardTypes = forwardTypeOptions.length ? forwardTypeOptions.map(function(option) { return option.value; }) : forwardTypes;
-  const forwardTypesDict = {};
-  allForwardTypes.forEach(function(t) { forwardTypesDict[t] = forwardTypes.indexOf(t) >= 0; });
-  setNested(payload, ['global', 'forward_type'], forwardTypesDict);
-
-  /* filter media types — 构建 {video: true, photo: false, ...} dict 格式与后端一致 */
-  const mediaTypeOptions = normalizeOptionList((state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types || []);
-  const allMediaTypes = mediaTypeOptions.length ? mediaTypeOptions.map(function(option) { return option.value; }) : ['video','photo','audio','document','voice','text','animation','video_note'];
+  /* unified media type allowlist — dual-write forward_type + user.download_type */
+  const mediaTypeOptions = normalizeOptionList((state.settingsModel.options || {}).message_filter_media_types || (state.settingsSchema.message_filter || {}).media_types || MEDIA_TYPE_KEYS);
+  const allMediaTypes = mediaTypeOptions.length ? mediaTypeOptions.map(function(option) { return option.value; }) : MEDIA_TYPE_KEYS.slice();
   const checkedMedia = Array.from($$('input[name="global.message_filter.media_types"]:checked')).map(function(cb) { return cb.value; });
   const mediaTypesDict = {};
   allMediaTypes.forEach(function(t) { mediaTypesDict[t] = checkedMedia.indexOf(t) >= 0; });
+  MEDIA_TYPE_KEYS.forEach(function(t) {
+    if (mediaTypesDict[t] === undefined) mediaTypesDict[t] = false;
+  });
   setNested(payload, ['global', 'message_filter', 'media_types'], mediaTypesDict);
+  setNested(payload, ['global', 'forward_type'], completeMediaTypesDict(mediaTypesDict));
+  setNested(payload, ['user', 'download_type'], mediaTypesToDownloadTypeList(mediaTypesDict));
 
   /* filter keywords */
   const kwInput = document.querySelector('[name="global.message_filter.keywords.words"]');
@@ -5326,6 +5578,8 @@ document.addEventListener('change', function(e) {
 /* ====== Init ====== */
 (function init() {
   applyLanguage();
+  ensureOverrideMediaTypeGrids();
+  bindAllMediaTypesPickers(document);
   checkAuthStatus();
   authPollTimer = setInterval(() => {
     if (authStep === 'done' || authStep === 'none') {
@@ -5734,6 +5988,21 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
           <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="media-types-picker" data-media-types-picker>
+            <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-transfer-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
+          </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="new.create">创建任务</button>
           <p class="mob-empty hidden" id="mob-form-notice"></p>
         </form>
@@ -5779,6 +6048,21 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
               勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
             </p>
+          </div>
+          <div class="media-types-picker" data-media-types-picker>
+            <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-watch-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
           <p class="mob-empty hidden" id="mob-watch-notice"></p>
@@ -5924,14 +6208,6 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div class="mob-collapse" id="collapse-settings-sensitive">
         <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
         <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
-      </div>
-      <div class="mob-collapse" id="collapse-settings-download-types">
-        <div class="mob-collapse__head" data-i18n="settings.downloadTypes">下载类型 <span class="mob-collapse__arrow">&#9660;</span></div>
-        <div class="mob-collapse__body" id="mob-settings-download-types-fields"></div>
-      </div>
-      <div class="mob-collapse" id="collapse-settings-forward-types">
-        <div class="mob-collapse__head" data-i18n="settings.forwardTypes">转发类型 <span class="mob-collapse__arrow">&#9660;</span></div>
-        <div class="mob-collapse__body" id="mob-settings-forward-types-fields"></div>
       </div>
       <div class="mob-collapse" id="collapse-settings-message-filter">
         <div class="mob-collapse__head" data-i18n="settings.messageFilter">消息过滤 <span class="mob-collapse__arrow">&#9660;</span></div>
@@ -6145,9 +6421,13 @@ const i18n = {
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
-    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
+    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
+    'mediaOverride.label': '媒体类型',
+    'mediaOverride.inherit': '使用系统设置',
+    'mediaOverride.custom': '自定义',
+    'mediaOverride.hint': '自定义时整表替换系统设置；默认继承全局允许的媒体类型。',
     'watches.title': '活跃监听',
     'watches.downloadTitle': '监听下载',
     'watches.downloadMeta': '新消息自动下载',
@@ -6159,7 +6439,7 @@ const i18n = {
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
-    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；评论区深链需同时勾选「包含评论区」。需先在系统设置填写白名单。',
+    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -6387,8 +6667,6 @@ const i18n = {
     'settings.deepLinkTimeout': '取片超时（秒）',
     'settings.deepLinkMinInterval': '取片最小间隔（秒）',
     'settings.deepLinkMinIntervalHint': '两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。',
-    'settings.deepLinkSettle': '收齐静默（秒）',
-    'settings.deepLinkSettleHint': '首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。',
     'settings.sensitive': '账号与代理',
     'settings.proxyPassword': '代理密码',
     'settings.secretConfigured': '已配置，如需更换请填写',
@@ -6397,8 +6675,9 @@ const i18n = {
     'settings.forwardTypes': '转发类型',
     'settings.forwardTypesHint': '（勾选 = 允许转发，未勾选的类型将被忽略）',
     'settings.messageFilter': '消息过滤',
-    'settings.mediaTypes': '媒体类型',
-    'settings.mediaTypesHint': '（勾选 = 允许处理，未勾选的类型将被过滤）',
+    'settings.mediaTypes': '允许的媒体类型',
+    'settings.mediaTypesHint': '（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）',
+    'settings.filterEnabledHint': '仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。',
     'settings.dateRange': '日期范围',
     'settings.keywords': '关键词',
     'settings.enabled': '启用',
@@ -6548,9 +6827,13 @@ const i18n = {
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
-    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
+    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
+    'mediaOverride.label': 'Media types',
+    'mediaOverride.inherit': 'Use system settings',
+    'mediaOverride.custom': 'Custom',
+    'mediaOverride.hint': 'Custom replaces the system allowlist entirely; default is to inherit the global allowlist.',
     'watches.title': 'Active Watches',
     'watches.downloadTitle': 'Download Watch',
     'watches.downloadMeta': 'Auto-download new messages',
@@ -6562,7 +6845,7 @@ const i18n = {
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
-    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Comment deep links also require Include discussion replies. Configure the whitelist in Settings first.',
+    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -6790,8 +7073,6 @@ const i18n = {
     'settings.deepLinkTimeout': 'Resolve timeout (seconds)',
     'settings.deepLinkMinInterval': 'Min interval between resolves (seconds)',
     'settings.deepLinkMinIntervalHint': 'Minimum cooldown between StartBot calls to reduce Telegram flood waits. 0 disables proactive cooldown (FloodWait is still respected).',
-    'settings.deepLinkSettle': 'Settle silence (seconds)',
-    'settings.deepLinkSettleHint': 'After the first media arrives, keep collecting until this many seconds pass with no new media. Use for bots that burst many files. 0 ends after the first media.',
     'settings.sensitive': 'Account & Proxy',
     'settings.proxyPassword': 'Proxy password',
     'settings.secretConfigured': 'Configured, fill to replace',
@@ -6800,8 +7081,9 @@ const i18n = {
     'settings.forwardTypes': 'Forward Types',
     'settings.forwardTypesHint': '(Check = allow forward, unchecked types will be ignored)',
     'settings.messageFilter': 'Message Filter',
-    'settings.mediaTypes': 'Media types',
-    'settings.mediaTypesHint': '(Check = allow, unchecked types will be filtered out)',
+    'settings.mediaTypes': 'Allowed media types',
+    'settings.mediaTypesHint': '(Applies to all download/forward paths; checked = allowed)',
+    'settings.filterEnabledHint': 'Only toggles date-range and keyword filters; media types always follow the allowlist above.',
     'settings.dateRange': 'Date range',
     'settings.keywords': 'Keywords',
     'settings.enabled': 'Enabled',
@@ -6970,6 +7252,186 @@ function t(key, replacements) {
   }
   return text;
 }
+
+/* Unified Media Type Allowlist helpers (task/watch override + settings dual-write) */
+var MEDIA_TYPE_KEYS = ['video', 'photo', 'audio', 'document', 'voice', 'text', 'animation', 'video_note'];
+var DOWNLOAD_MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS.filter(function(key) { return key !== 'text'; });
+
+function defaultMediaTypesDict(allAllowed) {
+  var dict = {};
+  var allowed = allAllowed !== false;
+  MEDIA_TYPE_KEYS.forEach(function(key) { dict[key] = allowed; });
+  return dict;
+}
+
+function mediaTypesToDownloadTypeList(mediaTypesDict) {
+  return DOWNLOAD_MEDIA_TYPE_KEYS.filter(function(key) {
+    return Boolean(mediaTypesDict && mediaTypesDict[key]);
+  });
+}
+
+function completeMediaTypesDict(raw) {
+  var dict = defaultMediaTypesDict(false);
+  if (!raw || typeof raw !== 'object') return dict;
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = Boolean(raw[key]);
+  });
+  return dict;
+}
+
+function collectMediaTypesDict(root, checkboxName) {
+  var scope = root || document;
+  var name = checkboxName || 'override_media_types';
+  var checked = Array.prototype.map.call(
+    scope.querySelectorAll('input[name="' + name + '"]:checked'),
+    function(cb) { return cb.value; }
+  );
+  var dict = {};
+  MEDIA_TYPE_KEYS.forEach(function(key) {
+    dict[key] = checked.indexOf(key) >= 0;
+  });
+  return dict;
+}
+
+function readMediaTypesOverride(root, modeName, checkboxName) {
+  var scope = root || document;
+  var modeInput = scope.querySelector('input[name="' + (modeName || 'media_types_mode') + '"]:checked');
+  var mode = modeInput ? modeInput.value : 'inherit';
+  if (mode !== 'custom') return null;
+  return collectMediaTypesDict(scope, checkboxName || 'override_media_types');
+}
+
+function renderMediaTypesCheckboxHtml(checkboxName, selectedDict, options) {
+  var name = checkboxName || 'override_media_types';
+  var selected = selectedDict || defaultMediaTypesDict(true);
+  var compact = options && options.compact;
+  var labelClass = compact
+    ? 'text-sm'
+    : 'flex items-center gap-2 text-sm text-text cursor-pointer';
+  var labelStyle = compact
+    ? 'display:flex;align-items:center;gap:6px;padding:4px 0;'
+    : '';
+  return MEDIA_TYPE_KEYS.map(function(key) {
+    return '<label class="' + labelClass + '"' + (labelStyle ? ' style="' + labelStyle + '"' : '') + '>' +
+      '<input type="checkbox" name="' + name + '" value="' + key + '" class="w-4 h-4"' +
+      (selected[key] ? ' checked' : '') + '>' +
+      '<span>' + key + '</span></label>';
+  }).join('');
+}
+
+function mediaTypesPickerMarkup(options) {
+  options = options || {};
+  var checkboxName = options.checkboxName || 'override_media_types';
+  var modeName = options.modeName || 'media_types_mode';
+  var selected = options.selected;
+  var isCustom = selected != null && typeof selected === 'object';
+  var compact = Boolean(options.compact);
+  var checkHtml = renderMediaTypesCheckboxHtml(
+    checkboxName,
+    isCustom ? completeMediaTypesDict(selected) : defaultMediaTypesDict(true),
+    { compact: compact }
+  );
+  var gridClass = compact
+    ? ' media-types-picker__grid'
+    : ' settings-type-grid media-types-picker__grid';
+  var gridStyle = compact
+    ? ' style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"'
+    : '';
+  return '<div class="form-group media-types-picker" data-media-types-picker>' +
+    '<label class="form-label">' + esc(t('mediaOverride.label')) + '</label>' +
+    '<div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1"' +
+      (compact ? ' style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin-bottom:4px;"' : '') + '>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="inherit" data-media-types-mode' +
+          (isCustom ? '' : ' checked') + '>' +
+        '<span>' + esc(t('mediaOverride.inherit')) + '</span></label>' +
+      '<label class="flex items-center gap-2 text-sm text-muted cursor-pointer"' +
+        (compact ? ' style="display:flex;flex-direction:row;align-items:center;gap:8px;"' : '') + '>' +
+        '<input type="radio" name="' + modeName + '" value="custom" data-media-types-mode' +
+          (isCustom ? ' checked' : '') + '>' +
+        '<span>' + esc(t('mediaOverride.custom')) + '</span></label>' +
+    '</div>' +
+    '<p class="text-xs text-muted leading-normal mb-1">' + esc(t('mediaOverride.hint')) + '</p>' +
+    '<div class="' + gridClass + (isCustom ? '' : ' hidden') + '"' + gridStyle +
+      ' data-media-types-grid>' + checkHtml + '</div>' +
+  '</div>';
+}
+
+function syncMediaTypesPickerVisibility(picker) {
+  if (!picker) return;
+  var mode = 'inherit';
+  picker.querySelectorAll('input[data-media-types-mode]').forEach(function(radio) {
+    if (radio.checked) mode = radio.value;
+  });
+  var show = mode === 'custom';
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (!grid) return;
+  grid.classList.toggle('hidden', !show);
+  // Inline display:grid on mobile must be cleared when hiding.
+  if (show) {
+    if (grid.dataset.gridDisplay) grid.style.display = grid.dataset.gridDisplay;
+    else if (grid.style.display === 'none') grid.style.display = '';
+  } else {
+    if (grid.style.display && grid.style.display !== 'none') {
+      grid.dataset.gridDisplay = grid.style.display;
+    }
+    grid.style.display = 'none';
+  }
+}
+
+function bindMediaTypesPicker(root) {
+  if (!root) return;
+  var radios = root.querySelectorAll('input[data-media-types-mode]');
+  radios.forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      syncMediaTypesPickerVisibility(root);
+    });
+  });
+  syncMediaTypesPickerVisibility(root);
+}
+
+function bindAllMediaTypesPickers(scope) {
+  var root = scope || document;
+  root.querySelectorAll('[data-media-types-picker]').forEach(function(picker) {
+    bindMediaTypesPicker(picker);
+  });
+}
+
+function setMediaTypesPicker(root, mediaTypes) {
+  if (!root) return;
+  var picker = root.matches && root.matches('[data-media-types-picker]')
+    ? root
+    : root.querySelector('[data-media-types-picker]');
+  if (!picker) return;
+  var inherit = mediaTypes == null || typeof mediaTypes !== 'object';
+  var inheritRadio = picker.querySelector('input[data-media-types-mode][value="inherit"]');
+  var customRadio = picker.querySelector('input[data-media-types-mode][value="custom"]');
+  if (inheritRadio) inheritRadio.checked = inherit;
+  if (customRadio) customRadio.checked = !inherit;
+  var grid = picker.querySelector('[data-media-types-grid]');
+  if (grid && !inherit) {
+    var selected = completeMediaTypesDict(mediaTypes);
+    grid.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+      cb.checked = Boolean(selected[cb.value]);
+    });
+  }
+  syncMediaTypesPickerVisibility(picker);
+}
+
+window.MEDIA_TYPE_KEYS = MEDIA_TYPE_KEYS;
+window.DOWNLOAD_MEDIA_TYPE_KEYS = DOWNLOAD_MEDIA_TYPE_KEYS;
+window.defaultMediaTypesDict = defaultMediaTypesDict;
+window.mediaTypesToDownloadTypeList = mediaTypesToDownloadTypeList;
+window.completeMediaTypesDict = completeMediaTypesDict;
+window.collectMediaTypesDict = collectMediaTypesDict;
+window.readMediaTypesOverride = readMediaTypesOverride;
+window.renderMediaTypesCheckboxHtml = renderMediaTypesCheckboxHtml;
+window.mediaTypesPickerMarkup = mediaTypesPickerMarkup;
+window.bindMediaTypesPicker = bindMediaTypesPicker;
+window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
+window.setMediaTypesPicker = setMediaTypesPicker;
+window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
 
 function esc(str) {
   if (!str) return '';
@@ -8090,12 +8552,14 @@ function openMobileWatchEditSheet(watchId) {
       '<label><span>' + esc(t('watches.target')) + '</span><input name="target_link" required value="' + escAttr(watch.target_link || '') + '"></label>' +
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
+      mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
         '<button class="mob-btn mob-btn-muted watch-touch-btn" type="button" id="mob-watch-edit-cancel">' + esc(t('action.cancel')) + '</button>' +
       '</div>' +
     '</form>';
   overlay.classList.add('open');
+  bindAllMediaTypesPickers(sheet);
   document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', closeSheet);
   document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
     event.preventDefault();
@@ -8104,7 +8568,8 @@ function openMobileWatchEditSheet(watchId) {
       source_link: form.querySelector('[name="source_link"]').value.trim(),
       target_link: form.querySelector('[name="target_link"]').value.trim(),
       include_comment: form.querySelector('[name="include_comment"]').checked,
-      resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked
+      resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
+      media_types: readMediaTypesOverride(form)
     };
     try {
       var resp = await fetch('/api/watches/' + encodeURIComponent(watchId), {
@@ -8801,6 +9266,8 @@ function renderMobSettingsForm() {
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
     '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
+    '<label style="margin-top:10px;"><span>收齐静默（秒）</span><input name="global.deep_link.settle_seconds" type="number" min="0" max="60" value="' + (getSettingLeafKey(glob, 'deep_link.settle_seconds') ?? 3) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">首条媒体后再等该秒数无新消息则结束收齐；0 表示收到首条即结束。</p>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 
   // Archive
@@ -8835,29 +9302,25 @@ function renderMobSettingsForm() {
       '<label><span>代理密码</span><input name="user.proxy.password" type="password" placeholder="已配置"></label>' +
     '</div>';
 
-  // Download types
-  var dlFields = document.getElementById('mob-settings-download-types-fields');
-  if (dlFields) dlFields.innerHTML = renderCheckCards('user.download_type', model.options.download_type || [], selectedDownloadTypes(user), true);
-
-  // Forward types
-  var fwFields = document.getElementById('mob-settings-forward-types-fields');
-  if (fwFields) fwFields.innerHTML = renderCheckCards('global.forward_type', model.options.forward_type || [], selectedForward(glob), false);
-
-  // Message filter
+  // Message filter + unified media type allowlist
   var mf = glob.message_filter || {};
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-      '<div style="margin-top:10px;"><span class="text-sm font-medium text-text-secondary">媒体类型</span><span class="text-xs text-muted ml-1">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || [], selectedMediaTypes(glob), false) + '</div>' +
+    '<div><span class="text-sm font-medium text-text-secondary">' + esc(t('settings.mediaTypes')) + '</span>' +
+      '<span class="text-xs text-muted ml-1">' + esc(t('settings.mediaTypesHint')) + '</span>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' +
+        renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || MEDIA_TYPE_KEYS, selectedMediaTypes(glob), false) +
+      '</div>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>' + esc(t('settings.enabled')) + '</span></label>' +
+    '<p class="text-xs text-muted" style="margin:2px 0 8px;">' + esc(t('settings.filterEnabledHint')) + '</p>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>' + esc(t('settings.dateRange')) + '</span></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-      '<label><span>起始日期</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
-      '<label><span>结束日期</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
+      '<label><span>' + esc(t('settings.startDate')) + '</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
+      '<label><span>' + esc(t('settings.endDate')) + '</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>关键词过滤</span></label>' +
-    '<label><span>关键词列表（逗号分隔）</span><input name="global.message_filter.keywords.words" value="' + escAttr(getSettingLeafKey(mf, 'keywords.words') || '') + '" placeholder="广告,推广,赞助"></label>';
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>' + esc(t('settings.keywords')) + '</span></label>' +
+    '<label><span>' + esc(t('settings.keywordList')) + '</span><input name="global.message_filter.keywords.words" value="' + escAttr((Array.isArray(getSettingLeafKey(mf, 'keywords.words')) ? getSettingLeafKey(mf, 'keywords.words').join(',') : (getSettingLeafKey(mf, 'keywords.words') || '')) || '') + '" placeholder="' + escAttr(t('settings.keywordPlaceholder')) + '"></label>';
 
   // Exports
   var expFields = document.getElementById('mob-settings-exports-fields');
@@ -8933,6 +9396,17 @@ function mobInitDownloadTypes() {
       '<span>' + esc(label || key) + '</span></label>';
   });
   grid.innerHTML = html || '<span class="text-sm text-muted">无可用类型</span>';
+}
+
+function mobEnsureOverrideMediaTypeGrids() {
+  [
+    'mob-transfer-media-types-grid',
+    'mob-watch-media-types-grid'
+  ].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el || el.childElementCount) return;
+    el.innerHTML = renderMediaTypesCheckboxHtml('override_media_types', defaultMediaTypesDict(true), { compact: true });
+  });
 }
 
 async function loadMobileOperations() {
@@ -9251,16 +9725,21 @@ async function loadMediaMobile() {
       event.preventDefault();
       var formData = new FormData(transferForm);
       var payload = {};
-      formData.forEach(function(v, k) { payload[k] = v; });
+      formData.forEach(function(v, k) {
+        if (k === 'media_types_mode' || k === 'override_media_types') return;
+        payload[k] = v;
+      });
       if (payload.start_id) payload.start_id = Number(payload.start_id);
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
+      payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         transferForm.reset();
+        setMediaTypesPicker(transferForm.querySelector('[data-media-types-picker]'), null);
         await loadMobileTasks();
         resetTaskPolling();
         setTimeout(function() { loadMobileTasks(); }, 800);
@@ -9287,11 +9766,13 @@ async function loadMediaMobile() {
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
+      payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {
         await postJson('/api/watches', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         watchForm.reset();
+        setMediaTypesPicker(watchForm.querySelector('[data-media-types-picker]'), null);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
@@ -9355,12 +9836,10 @@ async function loadMediaMobile() {
       // Collect form data from all inputs in settings subpage
       var inputs = settingsContainer.querySelectorAll('input[name], select[name], textarea[name]');
       var payload = {};
-      var downloadTypes = Array.from(settingsContainer.querySelectorAll('input[name="user.download_type"]:checked')).map(function(input) { return input.value; });
-      payload.user = payload.user || {};
-      payload.user.download_type = downloadTypes;
       inputs.forEach(function(input) {
         if (input.name === 'user.download_type') return;
         if (input.name === 'global.deep_link.bot_whitelist') return;
+        if (input.name === 'override_media_types' || input.name === 'media_types_mode') return;
         var keys = input.name.split('.');
         var cur = payload;
         for (var i = 0; i < keys.length - 1; i++) {
@@ -9385,6 +9864,16 @@ async function loadMediaMobile() {
           .split(/[\n,]+/)
           .map(function(s) { return s.trim(); })
           .filter(Boolean);
+      }
+
+      // Dual-write unified media allowlist → forward_type + download_type
+      var mediaTypesDict = payload.global && payload.global.message_filter && payload.global.message_filter.media_types;
+      if (mediaTypesDict && typeof mediaTypesDict === 'object') {
+        mediaTypesDict = completeMediaTypesDict(mediaTypesDict);
+        payload.global.message_filter.media_types = mediaTypesDict;
+        payload.global.forward_type = completeMediaTypesDict(mediaTypesDict);
+        payload.user = payload.user || {};
+        payload.user.download_type = mediaTypesToDownloadTypeList(mediaTypesDict);
       }
 
       // Clean undefined values
@@ -9454,6 +9943,9 @@ async function loadMediaMobile() {
   // Media scan button
   var mediaBtn = document.getElementById('mob-media-scan-btn');
   if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);
+
+  mobEnsureOverrideMediaTypeGrids();
+  bindAllMediaTypesPickers(document);
 
   // Kickoff
   checkAuthStatus();

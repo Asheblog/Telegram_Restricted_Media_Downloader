@@ -72,6 +72,8 @@ class LiveWatchManager:
             payload['target_link'] = watch.get('target_link')
             payload['include_comment'] = bool(watch.get('include_comment'))
             payload['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
+        if watch.get('media_types') is not None:
+            payload['media_types'] = watch.get('media_types')
         return payload
 
     def persisted_watches(self) -> list:
@@ -92,7 +94,8 @@ class LiveWatchManager:
             include_comment=bool(watch.get('include_comment')),
             resolve_deep_link=bool(watch.get('resolve_deep_link')),
             status=watch.get('status') or TransferStatus.PENDING,
-            error_message=watch.get('error_message')
+            error_message=watch.get('error_message'),
+            media_types=watch.get('media_types'),
         )
 
     def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
@@ -233,11 +236,15 @@ class LiveWatchManager:
                     'source_link': link,
                     'target_link': None,
                     'include_comment': False,
+                    'media_types': payload.get('media_types'),
                     'status': TransferStatus.PENDING
                 }
                 watch = self.persist_watch(watch)
                 self.web_pending_watches[watch['id']] = watch
-                self._create_live_watch_operation('download', {'source_link': link})
+                self._create_live_watch_operation(
+                    'download',
+                    {'source_link': link, 'media_types': payload.get('media_types')},
+                )
                 created.append(watch)
             return {'watches': created}
         if watch_type == 'forward':
@@ -276,6 +283,7 @@ class LiveWatchManager:
                 'target_link': target_link,
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
+                'media_types': payload.get('media_types'),
                 'status': TransferStatus.PENDING
             }
             watch = self.persist_watch(watch)
@@ -287,6 +295,7 @@ class LiveWatchManager:
                     'target_link': target_link,
                     'include_comment': include_comment,
                     'resolve_deep_link': resolve_deep_link,
+                    'media_types': payload.get('media_types'),
                 }
             )
             return {
@@ -355,6 +364,13 @@ class LiveWatchManager:
         new_target = str(payload.get('target_link') or '').strip()
         new_include_comment = bool(payload.get('include_comment'))
         new_resolve_deep_link = bool(payload.get('resolve_deep_link'))
+        media_types = payload.get('media_types')
+        if 'media_types' not in payload:
+            existing = None
+            store = self._transfer_store
+            if store:
+                existing = store.get_live_transfer_watch(watch_id)
+            media_types = (existing or {}).get('media_types')
         if not new_source:
             new_source = old_source
         if not new_source:
@@ -379,6 +395,7 @@ class LiveWatchManager:
             'target_link': new_target,
             'include_comment': new_include_comment,
             'resolve_deep_link': new_resolve_deep_link,
+            'media_types': media_types,
         })
 
     def export_forward_watches(self) -> dict:

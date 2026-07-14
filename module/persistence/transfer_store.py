@@ -6,6 +6,8 @@ import threading
 
 from typing import Optional, List, Dict, Any
 
+from module.core.media_types import normalize_media_types, serialize_media_types
+
 
 class TransferStatus:
     PENDING = 'pending'
@@ -231,6 +233,7 @@ class TransferStore:
                     'current_range_video_index': 'INTEGER NOT NULL DEFAULT 0',
                     'execution_mode': "TEXT NOT NULL DEFAULT 'web_queue'",
                     'watch_id': 'TEXT',
+                    'media_types': 'TEXT',
                 }
             )
             self._ensure_columns(
@@ -320,7 +323,8 @@ class TransferStore:
                     'include_comment': 'INTEGER NOT NULL DEFAULT 0',
                     'resolve_deep_link': 'INTEGER NOT NULL DEFAULT 0',
                     'status': f"TEXT NOT NULL DEFAULT '{TransferStatus.PENDING}'",
-                    'error_message': 'TEXT'
+                    'error_message': 'TEXT',
+                    'media_types': 'TEXT',
                 }
             )
             self._ensure_indexes(conn)
@@ -508,24 +512,27 @@ class TransferStore:
             resolve_deep_link: bool = False,
             execution_mode: str = ExecutionMode.WEB_QUEUE,
             watch_id: Optional[str] = None,
+            media_types: Optional[dict] = None,
     ) -> int:
         now = self.utc_now()
         mode = execution_mode or ExecutionMode.WEB_QUEUE
         if mode not in (ExecutionMode.WEB_QUEUE, ExecutionMode.WATCH_INLINE):
             mode = ExecutionMode.WEB_QUEUE
+        media_types_json = serialize_media_types(media_types)
         with self.connect() as conn:
             cursor = conn.execute(
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
                     include_comment, resolve_deep_link, execution_mode, watch_id,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    media_types, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    mode, watch_id or None, TransferStatus.PENDING, now, now
+                    mode, watch_id or None, media_types_json,
+                    TransferStatus.PENDING, now, now
                 )
             )
             task_id = int(cursor.lastrowid)
@@ -545,6 +552,7 @@ class TransferStore:
         task['assignment_completed'] = bool(task.get('assignment_completed'))
         task['execution_mode'] = task.get('execution_mode') or ExecutionMode.WEB_QUEUE
         task['watch_id'] = task.get('watch_id') or None
+        task['media_types'] = normalize_media_types(task.get('media_types'))
         return task
 
     def list_tasks(
@@ -1629,6 +1637,7 @@ class TransferStore:
         watch = dict(row)
         watch['include_comment'] = bool(watch.get('include_comment'))
         watch['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
+        watch['media_types'] = normalize_media_types(watch.get('media_types'))
         return watch
 
     def upsert_live_transfer_watch(
@@ -1640,22 +1649,25 @@ class TransferStore:
             include_comment: bool = False,
             resolve_deep_link: bool = False,
             status: str = TransferStatus.PENDING,
-            error_message: Optional[str] = None
+            error_message: Optional[str] = None,
+            media_types: Optional[dict] = None,
     ) -> Dict[str, Any]:
         now = self.utc_now()
+        media_types_json = serialize_media_types(media_types)
         with self.connect() as conn:
             conn.execute(
                 '''
                 INSERT INTO live_transfer_watches (
                     id, type, source_link, target_link, include_comment, resolve_deep_link,
-                    status, error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    media_types, status, error_message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     type = excluded.type,
                     source_link = excluded.source_link,
                     target_link = excluded.target_link,
                     include_comment = excluded.include_comment,
                     resolve_deep_link = excluded.resolve_deep_link,
+                    media_types = excluded.media_types,
                     status = excluded.status,
                     error_message = excluded.error_message,
                     updated_at = excluded.updated_at
@@ -1663,7 +1675,7 @@ class TransferStore:
                 (
                     watch_id, watch_type, source_link, target_link,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    status, error_message, now, now
+                    media_types_json, status, error_message, now, now
                 )
             )
         return self.get_live_transfer_watch(watch_id) or {
@@ -1673,6 +1685,7 @@ class TransferStore:
             'target_link': target_link,
             'include_comment': bool(include_comment),
             'resolve_deep_link': bool(resolve_deep_link),
+            'media_types': normalize_media_types(media_types),
             'status': status,
             'error_message': error_message,
             'created_at': now,

@@ -114,6 +114,21 @@
           <p class="text-xs text-muted leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="transfer-media-types-grid"></div>
+          </div>
           <p class="text-xs text-muted leading-normal mb-2" data-i18n="new.hint">
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
@@ -173,6 +188,21 @@
             <label class="form-label" data-i18n="watches.sources">来源频道（每行一个）</label>
             <textarea class="form-input watch-download-sources" name="source_links" rows="3" placeholder="https://t.me/channel1&#10;https://t.me/channel2" required></textarea>
           </div>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-download-media-types-grid"></div>
+          </div>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -217,6 +247,21 @@
           <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="form-group media-types-picker" data-media-types-picker>
+            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-forward-media-types-grid"></div>
+          </div>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createForward">新增监听转发</span>
@@ -298,6 +343,21 @@
       <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
       </p>
+      <div class="form-group media-types-picker" data-media-types-picker id="watch-edit-media-types-picker">
+        <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+            <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+            <span data-i18n="mediaOverride.custom">自定义</span>
+          </label>
+        </div>
+        <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+        <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-edit-media-types-grid"></div>
+      </div>
       <div class="flex gap-2 justify-end">
         <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
         <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
@@ -812,32 +872,19 @@
         </div>
       </section>
 
-    <!-- Download Types -->
-    <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.downloadTypes">下载类型</h4>
-      <span class="text-xs text-muted" data-i18n="settings.downloadTypesHint">（勾选 = 允许下载，未勾选的类型将被忽略）</span>
-      <div class="settings-type-grid" id="download-type-grid"></div>
-    </section>
-
-    <!-- Forward Types -->
-    <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.forwardTypes">转发类型</h4>
-      <span class="text-xs text-muted" data-i18n="settings.forwardTypesHint">（勾选 = 允许转发，未勾选的类型将被忽略）</span>
-      <div class="settings-type-grid" id="forward-type-grid"></div>
-    </section>
-
-    <!-- Message Filter -->
+    <!-- Message Filter / Unified Media Type Allowlist -->
     <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.messageFilter">消息过滤</h4>
-        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
-          <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
-          <span data-i18n="settings.enabled">启用消息过滤</span>
-        </label>
         <div class="mb-3">
-          <span class="form-label" data-i18n="settings.mediaTypes">媒体类型</span>
-          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（勾选 = 允许处理，未勾选的类型将被过滤）</span>
+          <span class="form-label" data-i18n="settings.mediaTypes">允许的媒体类型</span>
+          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）</span>
           <div class="settings-type-grid" id="filter-media-grid"></div>
         </div>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-1">
+          <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
+          <span data-i18n="settings.enabled">启用</span>
+        </label>
+        <p class="text-xs text-muted mb-3" data-i18n="settings.filterEnabledHint">仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。</p>
         <div class="mb-3">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
             <input type="checkbox" name="global.message_filter.date_range.enabled" class="w-4 h-4">

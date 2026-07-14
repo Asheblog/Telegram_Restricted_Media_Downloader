@@ -746,6 +746,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             trace_id: Optional[str] = None,
             source_folder: Optional[str] = None,
             archive_source_link: Optional[str] = None,
+            media_types_override=None,
     ):
         try:
             if trace_id is None:
@@ -756,8 +757,19 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 fallback_link=archive_source_link or getattr(message, 'link', None)
             )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
-            if not ignore_type_filter and not self.message_filter.should_pass(message):
-                reject_reason = self.message_filter.get_reject_reason(message) or '消息过滤器拒绝'
+            runtime_filter = self.message_filter
+            if not ignore_type_filter:
+                te = getattr(self, 'transfer_engine', None)
+                if te is not None and hasattr(te, 'runtime_message_filter'):
+                    runtime_filter = te.runtime_message_filter(media_types_override)
+                elif media_types_override is not None:
+                    from module.core.media_types import build_runtime_message_filter
+                    runtime_filter = build_runtime_message_filter(
+                        getattr(getattr(self, 'gc', None), 'message_filter', None),
+                        media_types_override,
+                    )
+            if not ignore_type_filter and not runtime_filter.should_pass(message):
+                reject_reason = runtime_filter.get_reject_reason(message) or '消息过滤器拒绝'
                 self._log_system_chain(
                     category='filter',
                     stage='filter_reject',
@@ -1385,8 +1397,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 source_message_id=message_id,
                 details={'source_link': getattr(message, 'link', None)}
             )
-            if not self.message_filter.should_pass(message):
-                reject_reason = self.message_filter.get_reject_reason(message) or '消息过滤器拒绝'
+            media_types_override = self._watch_media_types_override(watch_id)
+            runtime_filter = self.runtime_message_filter(media_types_override)
+            if not runtime_filter.should_pass(message):
+                reject_reason = runtime_filter.get_reject_reason(message) or '消息过滤器拒绝'
                 msg_id = getattr(message, 'id', '?')
                 log.info(f'监听下载:消息已被过滤器过滤,跳过。message_id={msg_id}')
                 self._log_system_chain(
@@ -1428,21 +1442,50 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 source_message_id=getattr(message, 'id', None)
             )
 
-    def check_type(self, message: pyrogram.types.Message):
+    def check_type(self, message: pyrogram.types.Message, media_types_override=None):
         te = getattr(self, 'transfer_engine', None)
         if te is not None:
             try:
-                return te.check_type(message)
+                return te.check_type(message, media_types_override=media_types_override)
             except Exception:
                 pass
-        ft = getattr(getattr(self, 'gc', None), 'forward_type', None)
-        if isinstance(ft, dict):
-            for media in ('video', 'photo', 'audio', 'document', 'voice', 'animation', 'video_note'):
-                if getattr(message, media, None):
-                    return bool(ft.get(media, False))
-            if getattr(message, 'text', None) or getattr(message, 'caption', None):
-                return bool(ft.get('text', False))
-        return False
+        from module.core.media_types import build_runtime_message_filter, resolve_allowed_media_types
+        mf = getattr(getattr(self, 'gc', None), 'message_filter', None) or {}
+        allowed = resolve_allowed_media_types(
+            mf.get('media_types') if isinstance(mf, dict) else None,
+            media_types_override,
+        )
+        return build_runtime_message_filter({'media_types': allowed}).should_pass_media_type(message)
+
+    def runtime_message_filter(self, media_types_override=None):
+        te = getattr(self, 'transfer_engine', None)
+        if te is not None and hasattr(te, 'runtime_message_filter'):
+            return te.runtime_message_filter(media_types_override)
+        from module.core.media_types import build_runtime_message_filter
+        return build_runtime_message_filter(
+            getattr(getattr(self, 'gc', None), 'message_filter', None),
+            media_types_override,
+        )
+
+    def skip_transfer_item_for_media_type(self, *args, **kwargs):
+        te = getattr(self, 'transfer_engine', None)
+        if te is not None:
+            return te.skip_transfer_item_for_media_type(*args, **kwargs)
+        raise RuntimeError('transfer_engine unavailable')
+
+    def _watch_media_types_override(self, watch_id):
+        if not watch_id:
+            return None
+        store = getattr(self, 'transfer_store', None)
+        if store is None:
+            return None
+        getter = getattr(store, 'get_live_transfer_watch', None)
+        if not callable(getter):
+            return None
+        watch = getter(watch_id)
+        if not isinstance(watch, dict):
+            return None
+        return watch.get('media_types')
 
     async def forward_discussion_replies(
             self,
@@ -1463,11 +1506,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         count = 0
         whitelist = self.gc.get_deep_link_bot_whitelist() if resolve_deep_link else []
 
+        media_types_override = self._watch_media_types_override(watch_id)
+
         def include_discussion_message(item) -> bool:
             # Deep-link mode: discussion replies are deep-link-only (no bare text/media dump).
             if resolve_deep_link:
                 return message_has_whitelisted_deep_link(item, whitelist)
-            return self.check_type(item)
+            try:
+                return self.check_type(item, media_types_override=media_types_override)
+            except TypeError:
+                return self.check_type(item)
 
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
@@ -1522,7 +1570,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         messages_to_forward.append((group_members[0], group_members))
                     for resolved in singles:
                         messages_to_forward.append((resolved, None))
+                runtime_filter = self.runtime_message_filter(media_types_override)
                 for forward_message, forward_group in messages_to_forward:
+                    if not runtime_filter.should_pass(forward_message):
+                        continue
                     forward_chat = getattr(forward_message, 'chat', None)
                     forward_chat_id = getattr(forward_chat, 'id', None)
                     if forward_chat_id is None:
@@ -1549,6 +1600,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         watch_id=watch_id,
                         media_group=media_group_ids,
                         source_folder=channel_source_folder,
+                        media_types_override=media_types_override,
                     )
                     count += 1
         except (ValueError, AttributeError, MsgIdInvalid):
@@ -1621,6 +1673,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         fallback_chat_id=_listen_chat_id,
                         fallback_link=link,
                     )
+                    media_types_override = self._watch_media_types_override(watch_id)
+                    runtime_filter = self.runtime_message_filter(media_types_override)
                     messages_to_forward = [message]
                     if resolve_deep_link:
                         from module.transfer.deep_link import (
@@ -1656,6 +1710,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         if resolved_list is not None:
                             messages_to_forward = resolved_list
                     for forward_unit in messages_to_forward:
+                        if not runtime_filter.should_pass(forward_unit):
+                            reject_reason = (
+                                runtime_filter.get_reject_reason(forward_unit) or '媒体类型未允许'
+                            )
+                            self._record_watch_event(
+                                watch_id, origin_chat_id, message_id,
+                                _target_chat_id, target_link,
+                                'skipped', f'跳过转发({reject_reason})。'
+                            )
+                            continue
                         forward_origin_chat_id = _listen_chat_id
                         forward_message_id = getattr(forward_unit, 'id', message.id)
                         if resolve_deep_link and forward_unit is not message:
@@ -1667,14 +1731,12 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                 meta = getattr(forward_unit, '_deep_link_meta', {}) or {}
                                 if meta.get('bot'):
                                     forward_origin_chat_id = meta['bot']
+                        allowed = runtime_filter.media_types or {}
                         try:
                             media_group_ids = await forward_unit.get_media_group()
                             if not media_group_ids:
                                 raise ValueError
-                            if (
-                                    not self.gc.forward_type.get('video') or
-                                    not self.gc.forward_type.get('photo')
-                            ):
+                            if not allowed.get('video') or not allowed.get('photo'):
                                 log.warning('由于过滤了图片或视频类型的转发,将不再以媒体组方式发送。')
                                 raise ValueError
                             if (
@@ -1720,6 +1782,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                                     trace_id=trace_id,
                                     source_folder=channel_source_folder,
                                     archive_source_link=channel_source_link,
+                                    media_types_override=media_types_override,
                                 )
                                 continue
                             continue
@@ -1746,6 +1809,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             trace_id=trace_id,
                             source_folder=channel_source_folder,
                             archive_source_link=channel_source_link,
+                            media_types_override=media_types_override,
                         )
                     if include_comment:
                         await self.schedule_or_forward_discussion_replies(

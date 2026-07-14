@@ -166,6 +166,21 @@
           <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
             勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
           </p>
+          <div class="media-types-picker" data-media-types-picker>
+            <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-transfer-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
+          </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="new.create">创建任务</button>
           <p class="mob-empty hidden" id="mob-form-notice"></p>
         </form>
@@ -211,6 +226,21 @@
             <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
               勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
             </p>
+          </div>
+          <div class="media-types-picker" data-media-types-picker>
+            <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+                <span data-i18n="mediaOverride.inherit">使用系统设置</span>
+              </label>
+              <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+                <span data-i18n="mediaOverride.custom">自定义</span>
+              </label>
+            </div>
+            <p class="text-xs text-muted" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
+            <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-watch-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
           <p class="mob-empty hidden" id="mob-watch-notice"></p>
@@ -356,14 +386,6 @@
       <div class="mob-collapse" id="collapse-settings-sensitive">
         <div class="mob-collapse__head" data-i18n="settings.sensitive">账号与代理 <span class="mob-collapse__arrow">&#9660;</span></div>
         <div class="mob-collapse__body" id="mob-settings-sensitive-fields"></div>
-      </div>
-      <div class="mob-collapse" id="collapse-settings-download-types">
-        <div class="mob-collapse__head" data-i18n="settings.downloadTypes">下载类型 <span class="mob-collapse__arrow">&#9660;</span></div>
-        <div class="mob-collapse__body" id="mob-settings-download-types-fields"></div>
-      </div>
-      <div class="mob-collapse" id="collapse-settings-forward-types">
-        <div class="mob-collapse__head" data-i18n="settings.forwardTypes">转发类型 <span class="mob-collapse__arrow">&#9660;</span></div>
-        <div class="mob-collapse__body" id="mob-settings-forward-types-fields"></div>
       </div>
       <div class="mob-collapse" id="collapse-settings-message-filter">
         <div class="mob-collapse__head" data-i18n="settings.messageFilter">消息过滤 <span class="mob-collapse__arrow">&#9660;</span></div>

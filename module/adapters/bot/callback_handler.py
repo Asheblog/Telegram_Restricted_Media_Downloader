@@ -105,31 +105,64 @@ class CallbackHandler:
         log.info(u_p)
 
     def _toggle_download_type_button(self, kb, _param: str):
-        if _param in self.app.download_type:
-            if len(self.app.download_type) == 1:
-                raise ValueError
-            f_s = '禁用'
-            self.app.download_type.remove(_param)
-        else:
-            f_s = '启用'
-            self.app.download_type.append(_param)
-
-        f_p = f'已{f_s}"{_param}"类型的下载。'
+        """Bot 设置里的下载类型开关：同步写入全局 Media Type Allowlist。"""
+        from module.core.media_types import (
+            DOWNLOAD_MEDIA_TYPES,
+            MEDIA_TYPES_DEFAULT,
+            media_types_to_download_type_list,
+            resolve_allowed_media_types,
+        )
+        mf = self.gc.config.setdefault('message_filter', {})
+        if not isinstance(mf, dict):
+            mf = {}
+            self.gc.config['message_filter'] = mf
+        media_types = resolve_allowed_media_types(mf.get('media_types'), None)
+        _status = bool(media_types.get(_param, False))
+        enabled_download = [t for t in DOWNLOAD_MEDIA_TYPES if media_types.get(t)]
+        if len(enabled_download) == 1 and _status and _param in DOWNLOAD_MEDIA_TYPES:
+            raise ValueError
+        media_types[_param] = not _status
+        for key in MEDIA_TYPES_DEFAULT:
+            media_types.setdefault(key, False)
+        mf['media_types'] = media_types
+        self.gc.config['forward_type'] = dict(media_types)
+        self.gc.forward_type = dict(media_types)
+        self.gc.message_filter = mf
+        self.gc.save_config(self.gc.config)
+        self.app.download_type = media_types_to_download_type_list(media_types)
+        self.app.config['download_type'] = self.app.download_type
+        f_s = '禁用' if _status else '启用'
+        f_p = f'已{f_s}"{_param}"类型（全局媒体白名单）。'
         console.log(f_p, style='#FF4689')
         log.info(f_p)
 
     def _toggle_forward_type_button(self, kb, _param: str):
-        _forward_type: dict = self.gc.config.get('forward_type', self.gc.default_forward_type_nesting)
-        _status: bool = self.gc.get_nesting_config(
-            default_nesting=self.gc.default_forward_type_nesting,
-            param='forward_type',
-            nesting_param=_param
-        )
-        if list(_forward_type.values()).count(True) == 1 and _status:
+        from module.core.media_types import MEDIA_TYPES_DEFAULT, resolve_allowed_media_types
+        mf = self.gc.config.setdefault('message_filter', {})
+        if not isinstance(mf, dict):
+            mf = {}
+            self.gc.config['message_filter'] = mf
+        media_types = mf.get('media_types')
+        if not isinstance(media_types, dict):
+            media_types = resolve_allowed_media_types(
+                self.gc.config.get('forward_type'),
+                None,
+            )
+        else:
+            media_types = resolve_allowed_media_types(media_types, None)
+        _status = bool(media_types.get(_param, False))
+        if list(media_types.values()).count(True) == 1 and _status:
             raise ValueError
-        _forward_type[_param] = not _status
+        media_types[_param] = not _status
+        for key in MEDIA_TYPES_DEFAULT:
+            media_types.setdefault(key, False)
+        mf['media_types'] = media_types
+        self.gc.config['forward_type'] = dict(media_types)
+        self.gc.forward_type = dict(media_types)
+        self.gc.message_filter = mf
+        self.gc.save_config(self.gc.config)
         f_s = '禁用' if _status else '启用'
-        f_p = f'已{f_s}"{_param}"类型的转发。'
+        f_p = f'已{f_s}"{_param}"类型（全局媒体白名单）。'
         console.log(f_p, style='#FF4689')
         log.info(f_p)
 
@@ -142,11 +175,18 @@ class CallbackHandler:
         return _start_time, _end_time
 
     def _get_format_dtype(self, chat_id):
-        _download_type = []
-        for _dtype, _status in self._downloader.download_chat_filter[chat_id]['download_type'].items():
-            if _status:
-                _download_type.append(_t(_dtype))
-        return ','.join(_download_type)
+        from module.core.media_types import DOWNLOAD_MEDIA_TYPES, resolve_allowed_media_types
+        cfg = self._downloader.download_chat_filter[chat_id]
+        override = cfg.get('media_types')
+        mf = getattr(self.gc, 'message_filter', None) or {}
+        allowed = resolve_allowed_media_types(
+            mf.get('media_types') if isinstance(mf, dict) else None,
+            override,
+        )
+        labels = [_t(dtype) for dtype in DOWNLOAD_MEDIA_TYPES if allowed.get(dtype)]
+        if override is None:
+            return (','.join(labels) + '（继承系统设置）') if labels else '继承系统设置'
+        return ','.join(labels)
 
     def _get_format_keywords(self, chat_id):
         _keywords = self._downloader.download_chat_filter[chat_id]['keyword']
@@ -190,15 +230,26 @@ class CallbackHandler:
         return True
 
     def _toggle_dtype_filter_button(self, chat_id, _param: str):
-        _dtype: dict = self._downloader.download_chat_filter[chat_id]['download_type']
-        _status: bool = _dtype[_param]
-        if list(_dtype.values()).count(True) == 1 and _status:
+        from module.core.media_types import DOWNLOAD_MEDIA_TYPES, resolve_allowed_media_types
+        cfg = self._downloader.download_chat_filter[chat_id]
+        if cfg.get('media_types') is None:
+            mf = getattr(self.gc, 'message_filter', None) or {}
+            inherited = resolve_allowed_media_types(
+                mf.get('media_types') if isinstance(mf, dict) else None,
+                None,
+            )
+            cfg['media_types'] = {t: bool(inherited.get(t, False)) for t in DOWNLOAD_MEDIA_TYPES}
+        _dtype: dict = cfg['media_types']
+        _status: bool = bool(_dtype.get(_param))
+        enabled_count = sum(1 for t in DOWNLOAD_MEDIA_TYPES if _dtype.get(t))
+        if enabled_count == 1 and _status:
             raise ValueError
         _dtype[_param] = not _status
+        cfg['download_type'] = {t: bool(_dtype.get(t, False)) for t in DOWNLOAD_MEDIA_TYPES}
         f_s = '禁用' if _status else '启用'
-        f_p = f'已{f_s}"{_param}"类型用于/download_chat命令的下载。'
+        f_p = f'已{f_s}"{_param}"类型用于/download_chat命令的下载（会话覆盖）。'
         log.info(
-            f'{f_p}当前的/download_chat下载类型设置:{_dtype}')
+            f'{f_p}当前的/download_chat下载类型设置:{cfg["download_type"]}')
 
     async def handle(self, client, callback_query):
         callback_data = await Bot.callback_data(client, callback_query)

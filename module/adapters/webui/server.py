@@ -1092,6 +1092,8 @@ class WebUiServer:
                     'Range transfer source must be a chat link, not a message link.',
                     HTTPStatus.BAD_REQUEST
                 )
+        from module.core.media_types import parse_media_types_payload
+        media_types = parse_media_types_payload(payload.get('media_types'))
         task_id = self.store.create_task(
             source_link=source_link,
             target_link=target_link,
@@ -1100,6 +1102,7 @@ class WebUiServer:
             end_id=end_id,
             include_comment=include_comment,
             resolve_deep_link=resolve_deep_link,
+            media_types=media_types,
         )
         if self.task_submitter:
             self.task_submitter(task_id)
@@ -1157,11 +1160,17 @@ class WebUiServer:
             source_links = [str(link).strip() for link in (source_links or []) if str(link).strip()]
             if not source_links:
                 raise WebUiApiError('watch_source_required', 'At least one source link is required.', HTTPStatus.BAD_REQUEST)
+            from module.core.media_types import parse_media_types_payload
             for link in source_links:
                 if not link.startswith('https://t.me/'):
                     raise WebUiApiError('invalid_watch_source', 'Watch source link must start with https://t.me/.', HTTPStatus.BAD_REQUEST)
-            payload = {**payload, 'source_links': source_links}
+            payload = {
+                **payload,
+                'source_links': source_links,
+                'media_types': parse_media_types_payload(payload.get('media_types')),
+            }
         else:
+            from module.core.media_types import parse_media_types_payload
             source_link = str(payload.get('source_link') or '').strip()
             target_link = str(payload.get('target_link') or '').strip()
             include_comment = bool(payload.get('include_comment'))
@@ -1181,6 +1190,7 @@ class WebUiServer:
                 'target_link': target_link,
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
+                'media_types': parse_media_types_payload(payload.get('media_types')),
             }
         create_watch = self._operation('create_watch')
         if create_watch:
@@ -1205,9 +1215,14 @@ class WebUiServer:
     def update_watch(self, watch_id: str, payload: dict) -> dict:
         if not isinstance(payload, dict):
             raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
+        from module.core.media_types import parse_media_types_payload
         resolve_deep_link = bool(payload.get('resolve_deep_link'))
         self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
-        payload = {**payload, 'resolve_deep_link': resolve_deep_link}
+        payload = {
+            **payload,
+            'resolve_deep_link': resolve_deep_link,
+            'media_types': parse_media_types_payload(payload.get('media_types')),
+        }
         update_watch = self._operation('update_watch')
         if update_watch:
             try:

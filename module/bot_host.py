@@ -200,10 +200,13 @@ class BotHostMixin:
                     messages_to_download.append(message)
                     continue
 
-                # 先过全局消息过滤器（预过滤），再过 per-chat 过滤
-                if self.message_filter.should_pass(message) and (
+                # 媒体类型：全局白名单或会话覆盖；日期/关键词用 Bot 会话过滤器
+                media_override = download_chat_filter.get('media_types')
+                runtime_filter = self.runtime_message_filter(media_override) if hasattr(
+                    self, 'runtime_message_filter'
+                ) else self.message_filter
+                if runtime_filter.should_pass_media_type(message) and (
                         _filter.date_range(message, start_date, end_date) and
-                        _filter.dtype(message, download_type) and
                         _filter.keyword_filter(message, active_keywords)):
                     messages_to_download.append(message)
                     # 如果是媒体组的第一条消息，记录该media_group_id。

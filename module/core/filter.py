@@ -8,21 +8,18 @@ from typing import Optional
 
 import pyrogram
 
+from module.core import media_types as media_types_mod
+
 
 class MessageFilter:
     """共享消息过滤器，所有管线（转发、下载、监听）统一使用。
 
+    媒体类型始终生效；enabled 总开关只控制日期与关键词。
     采用 AND 逻辑：所有启用的过滤维度都满足才放行。未启用的维度视为"通过"。
     """
 
-    # 支持的媒体类型列表
-    MEDIA_TYPES = (
-        'video', 'photo', 'audio', 'document',
-        'voice', 'text', 'animation', 'video_note'
-    )
-
-    # 默认媒体类型配置（全部启用），供 GlobalConfig 和 WebUI 共享引用
-    MEDIA_TYPES_DEFAULT = {t: True for t in MEDIA_TYPES}
+    MEDIA_TYPES = media_types_mod.MEDIA_TYPES
+    MEDIA_TYPES_DEFAULT = media_types_mod.MEDIA_TYPES_DEFAULT
 
     def __init__(self, config: Optional[dict] = None):
         """
@@ -87,12 +84,15 @@ class MessageFilter:
         return passed
 
     def check_pass_with_reason(self, message: pyrogram.types.Message) -> tuple[bool, Optional[str]]:
-        """判断消息是否通过过滤，并返回拒绝原因（若被拒绝）。"""
-        if not self.enabled:
-            return True, None
+        """判断消息是否通过过滤，并返回拒绝原因（若被拒绝）。
+
+        媒体类型始终生效（不受 enabled 总开关影响）；enabled 只控制日期与关键词。
+        """
         if not self._check_media_type(message):
             enabled_types = [k for k, v in self.media_types.items() if v]
             return False, f'媒体类型不匹配(允许: {", ".join(enabled_types) or "全部"})'
+        if not self.enabled:
+            return True, None
         if not self._check_date_range(message):
             return False, '消息日期不在允许范围内'
         reject_keyword = self._reject_keyword(message)

@@ -380,6 +380,13 @@ class Bot:
             )
             return None
         BotCallbackText.DOWNLOAD_CHAT_ID = str(chat_id)
+        from module.core.media_types import DOWNLOAD_MEDIA_TYPES, resolve_allowed_media_types
+        mf = getattr(self.gc, 'message_filter', None) or {}
+        inherited = resolve_allowed_media_types(
+            mf.get('media_types') if isinstance(mf, dict) else None,
+            None,
+        )
+        download_type = {t: bool(inherited.get(t, False)) for t in DOWNLOAD_MEDIA_TYPES}
         self.download_chat_filter[BotCallbackText.DOWNLOAD_CHAT_ID] = {
             'date_range':
                 {
@@ -387,22 +394,15 @@ class Bot:
                     'end_date': None,
                     'adjust_step': 1
                 },
-            'download_type':
-                {
-                    'video': True,
-                    'photo': True,
-                    'document': True,
-                    'audio': True,
-                    'voice': True,
-                    'animation': True,
-                    'video_note': True
-                },
+            # None = inherit Media Type Allowlist; set on first dtype toggle (full replace).
+            'media_types': None,
+            'download_type': download_type,
             'keyword': {},
             'title': {},
             'comment': False
         }
         log.info(f'"{BotCallbackText.DOWNLOAD_CHAT_ID}"已添加至{self.download_chat_filter}。')
-        format_dtype = ','.join([_t(_) for _ in DownloadType()])
+        format_dtype = ','.join([_t(k) for k, v in download_type.items() if v]) or '继承系统设置'
         include_comment = self.download_chat_filter[BotCallbackText.DOWNLOAD_CHAT_ID]['comment']
         comment: str = '开' if include_comment else '关'
         await client.send_message(

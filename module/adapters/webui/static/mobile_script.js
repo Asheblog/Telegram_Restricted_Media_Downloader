@@ -713,12 +713,14 @@ function openMobileWatchEditSheet(watchId) {
       '<label><span>' + esc(t('watches.target')) + '</span><input name="target_link" required value="' + escAttr(watch.target_link || '') + '"></label>' +
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
+      mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
         '<button class="mob-btn mob-btn-muted watch-touch-btn" type="button" id="mob-watch-edit-cancel">' + esc(t('action.cancel')) + '</button>' +
       '</div>' +
     '</form>';
   overlay.classList.add('open');
+  bindAllMediaTypesPickers(sheet);
   document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', closeSheet);
   document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
     event.preventDefault();
@@ -727,7 +729,8 @@ function openMobileWatchEditSheet(watchId) {
       source_link: form.querySelector('[name="source_link"]').value.trim(),
       target_link: form.querySelector('[name="target_link"]').value.trim(),
       include_comment: form.querySelector('[name="include_comment"]').checked,
-      resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked
+      resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
+      media_types: readMediaTypesOverride(form)
     };
     try {
       var resp = await fetch('/api/watches/' + encodeURIComponent(watchId), {
@@ -1460,29 +1463,25 @@ function renderMobSettingsForm() {
       '<label><span>代理密码</span><input name="user.proxy.password" type="password" placeholder="已配置"></label>' +
     '</div>';
 
-  // Download types
-  var dlFields = document.getElementById('mob-settings-download-types-fields');
-  if (dlFields) dlFields.innerHTML = renderCheckCards('user.download_type', model.options.download_type || [], selectedDownloadTypes(user), true);
-
-  // Forward types
-  var fwFields = document.getElementById('mob-settings-forward-types-fields');
-  if (fwFields) fwFields.innerHTML = renderCheckCards('global.forward_type', model.options.forward_type || [], selectedForward(glob), false);
-
-  // Message filter
+  // Message filter + unified media type allowlist
   var mf = glob.message_filter || {};
   var mfFields = document.getElementById('mob-settings-message-filter-fields');
   if (mfFields) mfFields.innerHTML =
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>启用消息过滤</span></label>' +
-      '<div style="margin-top:10px;"><span class="text-sm font-medium text-text-secondary">媒体类型</span><span class="text-xs text-muted ml-1">（勾选 = 允许处理，未勾选的类型将被过滤）</span>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' + renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || [], selectedMediaTypes(glob), false) + '</div>' +
+    '<div><span class="text-sm font-medium text-text-secondary">' + esc(t('settings.mediaTypes')) + '</span>' +
+      '<span class="text-xs text-muted ml-1">' + esc(t('settings.mediaTypesHint')) + '</span>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;">' +
+        renderCheckCards('global.message_filter.media_types', model.options.message_filter_media_types || MEDIA_TYPE_KEYS, selectedMediaTypes(glob), false) +
+      '</div>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>日期范围过滤</span></label>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.enabled"' + (mf.enabled ? ' checked' : '') + '><span>' + esc(t('settings.enabled')) + '</span></label>' +
+    '<p class="text-xs text-muted" style="margin:2px 0 8px;">' + esc(t('settings.filterEnabledHint')) + '</p>' +
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.date_range.enabled"' + (getSettingLeafKey(mf, 'date_range.enabled') ? ' checked' : '') + '><span>' + esc(t('settings.dateRange')) + '</span></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-      '<label><span>起始日期</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
-      '<label><span>结束日期</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
+      '<label><span>' + esc(t('settings.startDate')) + '</span><input name="global.message_filter.date_range.start_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.start_date') || '') + '"></label>' +
+      '<label><span>' + esc(t('settings.endDate')) + '</span><input name="global.message_filter.date_range.end_date" type="datetime-local" value="' + escAttr(getSettingLeafKey(mf, 'date_range.end_date') || '') + '"></label>' +
     '</div>' +
-    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>关键词过滤</span></label>' +
-    '<label><span>关键词列表（逗号分隔）</span><input name="global.message_filter.keywords.words" value="' + escAttr(getSettingLeafKey(mf, 'keywords.words') || '') + '" placeholder="广告,推广,赞助"></label>';
+    '<label style="display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:10px;"><input type="checkbox" name="global.message_filter.keywords.enabled"' + (getSettingLeafKey(mf, 'keywords.enabled') ? ' checked' : '') + '><span>' + esc(t('settings.keywords')) + '</span></label>' +
+    '<label><span>' + esc(t('settings.keywordList')) + '</span><input name="global.message_filter.keywords.words" value="' + escAttr((Array.isArray(getSettingLeafKey(mf, 'keywords.words')) ? getSettingLeafKey(mf, 'keywords.words').join(',') : (getSettingLeafKey(mf, 'keywords.words') || '')) || '') + '" placeholder="' + escAttr(t('settings.keywordPlaceholder')) + '"></label>';
 
   // Exports
   var expFields = document.getElementById('mob-settings-exports-fields');
@@ -1558,6 +1557,17 @@ function mobInitDownloadTypes() {
       '<span>' + esc(label || key) + '</span></label>';
   });
   grid.innerHTML = html || '<span class="text-sm text-muted">无可用类型</span>';
+}
+
+function mobEnsureOverrideMediaTypeGrids() {
+  [
+    'mob-transfer-media-types-grid',
+    'mob-watch-media-types-grid'
+  ].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el || el.childElementCount) return;
+    el.innerHTML = renderMediaTypesCheckboxHtml('override_media_types', defaultMediaTypesDict(true), { compact: true });
+  });
 }
 
 async function loadMobileOperations() {
@@ -1876,16 +1886,21 @@ async function loadMediaMobile() {
       event.preventDefault();
       var formData = new FormData(transferForm);
       var payload = {};
-      formData.forEach(function(v, k) { payload[k] = v; });
+      formData.forEach(function(v, k) {
+        if (k === 'media_types_mode' || k === 'override_media_types') return;
+        payload[k] = v;
+      });
       if (payload.start_id) payload.start_id = Number(payload.start_id);
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
+      payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         transferForm.reset();
+        setMediaTypesPicker(transferForm.querySelector('[data-media-types-picker]'), null);
         await loadMobileTasks();
         resetTaskPolling();
         setTimeout(function() { loadMobileTasks(); }, 800);
@@ -1912,11 +1927,13 @@ async function loadMediaMobile() {
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
+      payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {
         await postJson('/api/watches', payload);
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
         watchForm.reset();
+        setMediaTypesPicker(watchForm.querySelector('[data-media-types-picker]'), null);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
         if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
@@ -1980,12 +1997,10 @@ async function loadMediaMobile() {
       // Collect form data from all inputs in settings subpage
       var inputs = settingsContainer.querySelectorAll('input[name], select[name], textarea[name]');
       var payload = {};
-      var downloadTypes = Array.from(settingsContainer.querySelectorAll('input[name="user.download_type"]:checked')).map(function(input) { return input.value; });
-      payload.user = payload.user || {};
-      payload.user.download_type = downloadTypes;
       inputs.forEach(function(input) {
         if (input.name === 'user.download_type') return;
         if (input.name === 'global.deep_link.bot_whitelist') return;
+        if (input.name === 'override_media_types' || input.name === 'media_types_mode') return;
         var keys = input.name.split('.');
         var cur = payload;
         for (var i = 0; i < keys.length - 1; i++) {
@@ -2010,6 +2025,16 @@ async function loadMediaMobile() {
           .split(/[\n,]+/)
           .map(function(s) { return s.trim(); })
           .filter(Boolean);
+      }
+
+      // Dual-write unified media allowlist → forward_type + download_type
+      var mediaTypesDict = payload.global && payload.global.message_filter && payload.global.message_filter.media_types;
+      if (mediaTypesDict && typeof mediaTypesDict === 'object') {
+        mediaTypesDict = completeMediaTypesDict(mediaTypesDict);
+        payload.global.message_filter.media_types = mediaTypesDict;
+        payload.global.forward_type = completeMediaTypesDict(mediaTypesDict);
+        payload.user = payload.user || {};
+        payload.user.download_type = mediaTypesToDownloadTypeList(mediaTypesDict);
       }
 
       // Clean undefined values
@@ -2079,6 +2104,9 @@ async function loadMediaMobile() {
   // Media scan button
   var mediaBtn = document.getElementById('mob-media-scan-btn');
   if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);
+
+  mobEnsureOverrideMediaTypeGrids();
+  bindAllMediaTypesPickers(document);
 
   // Kickoff
   checkAuthStatus();
