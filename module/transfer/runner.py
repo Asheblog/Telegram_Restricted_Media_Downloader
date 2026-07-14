@@ -791,9 +791,10 @@ class WebTransferRunner:
             whitelist = getter() if callable(getter) else []
 
         def include_discussion_message(item) -> bool:
-            if check_type(item):
-                return True
-            return resolve_deep_link and message_has_whitelisted_deep_link(item, whitelist)
+            # Deep-link mode: discussion replies are deep-link-only (no bare text/media dump).
+            if resolve_deep_link:
+                return message_has_whitelisted_deep_link(item, whitelist)
+            return check_type(item)
 
         try:
             async for comment in iter_discussion_reply_messages(

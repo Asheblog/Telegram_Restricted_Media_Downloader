@@ -1464,9 +1464,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         whitelist = self.gc.get_deep_link_bot_whitelist() if resolve_deep_link else []
 
         def include_discussion_message(item) -> bool:
-            if self.check_type(item):
-                return True
-            return resolve_deep_link and message_has_whitelisted_deep_link(item, whitelist)
+            # Deep-link mode: discussion replies are deep-link-only (no bare text/media dump).
+            if resolve_deep_link:
+                return message_has_whitelisted_deep_link(item, whitelist)
+            return self.check_type(item)
 
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
@@ -1505,21 +1506,22 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                             },
                         )
                         continue
-                    if resolved_list:
-                        messages_to_forward = []
-                        by_group: dict = {}
-                        singles = []
-                        for resolved in resolved_list:
-                            group_id = getattr(resolved, 'media_group_id', None)
-                            if group_id is None:
-                                singles.append(resolved)
-                            else:
-                                by_group.setdefault(group_id, []).append(resolved)
-                        for group_members in by_group.values():
-                            group_members.sort(key=lambda item: getattr(item, 'id', 0) or 0)
-                            messages_to_forward.append((group_members[0], group_members))
-                        for resolved in singles:
-                            messages_to_forward.append((resolved, None))
+                    if not resolved_list:
+                        continue
+                    messages_to_forward = []
+                    by_group: dict = {}
+                    singles = []
+                    for resolved in resolved_list:
+                        group_id = getattr(resolved, 'media_group_id', None)
+                        if group_id is None:
+                            singles.append(resolved)
+                        else:
+                            by_group.setdefault(group_id, []).append(resolved)
+                    for group_members in by_group.values():
+                        group_members.sort(key=lambda item: getattr(item, 'id', 0) or 0)
+                        messages_to_forward.append((group_members[0], group_members))
+                    for resolved in singles:
+                        messages_to_forward.append((resolved, None))
                 for forward_message, forward_group in messages_to_forward:
                     forward_chat = getattr(forward_message, 'chat', None)
                     forward_chat_id = getattr(forward_chat, 'id', None)

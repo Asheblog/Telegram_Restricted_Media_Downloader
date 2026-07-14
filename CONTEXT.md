@@ -164,7 +164,7 @@ _Avoid_: Comment scraping, reply mirroring
 **Deferred Discussion Reply Capture** — 监听转发在开启 Discussion Reply Inclusion 时，主贴立即转发后，将讨论区抓取推迟到配置的到期时刻再执行一次的持久化任务。执行中可取消；失败或已取消可手动重试；仅无活跃 worker/派生转存的僵死 running 会被回收为失败。
 _Avoid_: Comment delay job, deferred comment poll, comment scrape loop, wall-clock capture timeout
 
-**Deep Link Resolve** — 可选的转存前置步骤：当来源消息含白名单资源 bot 的 `t.me/<bot>?start=<param>`（或等价 `tg://`）时，用用户会话调用 `messages.startBot` 取回 bot 私聊中的 video/document/animation/photo，再对取回消息执行既有转发/下载上传；业务来源仍记为原频道帖。由任务/监听上的 `resolve_deep_link` 开关控制；全局 `deep_link.bot_whitelist` 限定可解析 bot；`timeout_seconds` / `min_interval_seconds` 控制取片超时与两次 StartBot 冷却（遇 FloodWait 在剩余超时预算内等待后重试；预算不足或拉历史挂起则立即失败并释放串行锁）；`settle_seconds`（默认 3）在首条媒体后继续收齐连发/相册直至静默。评论区深链仅在同时开启 Discussion Reply Inclusion 时处理：延迟抓取到的讨论回复再走同一套 resolve；带白名单深链的纯文本评论可绕过 `forward_type.text` 过滤。
+**Deep Link Resolve** — 可选的转存前置步骤：当来源消息含白名单资源 bot 的 `t.me/<bot>?start=<param>`（或等价 `tg://`）时，用用户会话调用 `messages.startBot` 取回 bot 私聊中的 video/document/animation/photo，再对取回消息执行既有转发/下载上传；业务来源仍记为原频道帖。由任务/监听上的 `resolve_deep_link` 开关控制；全局 `deep_link.bot_whitelist` 限定可解析 bot；`timeout_seconds` / `min_interval_seconds` 控制取片超时与两次 StartBot 冷却（遇 FloodWait 在剩余超时预算内等待后重试；预算不足或拉历史挂起则立即失败并释放串行锁）；`settle_seconds`（默认 3）在首条媒体后继续收齐连发/相册直至静默。评论区深链仅在同时开启 Discussion Reply Inclusion 时处理：延迟抓取到的讨论回复**仅**走白名单深链 resolve（不附带按 `check_type` 转存其它评论）。
 _Avoid_: Bot scrape, start param hack, auto click teaser
 
 **WebUI Credentials** — 环境变量提供的站内登录凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码；用户通过 WebUI 登录页换取 HttpOnly 签名 session cookie（HMAC，密钥由用户名/密码派生；勾选记住我后 Cookie `Max-Age` 为 30 天，进程/容器重启后仍有效；修改密码会使旧 cookie 失效）。
