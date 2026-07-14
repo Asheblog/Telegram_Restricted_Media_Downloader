@@ -14,26 +14,31 @@ TRMD 是一个长期运行的 Telegram 媒体转存工具，通过 WebUI 操作�
 
 ## 核心架构
 
+Phase 0–3 架构解耦已完成：业务实现落在子包，顶层 `module/*.py` 多为兼容 shim；装配集中在 composition root；对外仍以 `TelegramRestrictedMediaDownloader` 为门面。
+
 ```
-main.py (入口)
-  └── TelegramRestrictedMediaDownloader (主控制器, downloader.py, ~3700行)
-        ├── Application (Telegram 客户端 + 下载/文件名逻辑, app.py)
-        │     └── TelegramRestrictedMediaDownloaderClient (Pyrogram 扩展, client.py)
-        ├── Bot (Telegram Bot 命令处理, bot.py)
-        ├── CallbackHandler (Bot 回调处理, callback_handler.py)
-        ├── TransferEngine (转存引擎, transfer_engine.py)
-        ├── TransferStore (SQLite 持久化, transfer_store.py)
-        ├── TransferProgressTracker (转存进度跟踪, transfer_progress.py)
-        ├── PikpakIntegrationManager (PikPak 集成, pikpak_integration.py)
-        ├── WebUITaskManager (WebUI 任务调度, web_task_manager.py)
-        ├── LiveWatchManager (实时监听管理, live_watch_manager.py)
-        ├── WebUiServer (WebUI HTTP 服务, web_ui.py)
-        ├── WebUiViewModel (WebUI 统一数据契约, webui_view_model.py)
-        ├── LocalStorageGuard (本地磁盘守护, local_storage_guard.py)
-        ├── DynamicAsyncWindow (并发窗口控制, async_window.py)
-        ├── MediaManager (媒体文件清理, media_manager.py)
-        ├── UserConfig (config.yaml 用户配置, config.py)
-        └── GlobalConfig (.CONFIG.yaml 全局配置, config.py)
+main.py
+  └── TelegramRestrictedMediaDownloader          # module/downloader.py（门面）
+        ├── TrmdCompositionRoot                  # module/composition_root.py（接线）
+        ├── WebOperationsMixin                   # module/web_operations.py
+        └── BotHostMixin                         # module/bot_host.py
+
+装配出的主要模块：
+  core/app.py              Application（下载路径 / 文件名）
+  infra/client.py          Telegram 客户端（Pyrogram 扩展）
+  adapters/bot/            Bot + CallbackHandler
+  transfer/engine.py       TransferEngine
+  transfer/runner.py       WebTransferRunner
+  transfer/progress.py     TransferProgressTracker
+  transfer/live_watch.py   LiveWatchManager
+  persistence/transfer_store.py   TransferStore（SQLite）
+  adapters/pikpak/         PikPak 集成 + rclone 归档
+  adapters/webui/          HTTP 服务 / ViewModel / 任务调度 / 前端资源
+  persistence/             LocalStorageGuard / MediaManager / SystemLog
+  infra/                   DynamicAsyncWindow / TelegramUploader
+  core/config.py           UserConfig + GlobalConfig
+  ports.py                 Protocol seam（IWebUiOperations / IBotHost 等）
+  transfer/context.py      TransferContext + TransferPorts
 ```
 
 ### 配置系统（双层）
@@ -47,18 +52,20 @@ main.py (入口)
 
 ```
 module/
-  adapters/       # 外部系统适配器
-    bot/          # Bot 相关（待迁移）
-    pikpak/       # PikPak 相关（待迁移）
-    webui/        # WebUI HTTP + 内嵌前端资源 (assets.py, build_frontend.py)
-  core/           # 核心域对象（占位）
-  infra/          # 基础设施（占位）
-  persistence/    # 持久化层（占位）
-  transfer/       # 转存领域（占位）
-  utils/          # 工具函数（占位）
+  adapters/
+    bot/          # Bot 命令与回调（bot.py, callback_handler.py）
+    pikpak/       # PikPak 集成与 rclone 归档
+    webui/        # HTTP 服务、ViewModel、任务调度、内嵌前端
+  core/           # Application、Config、Enums、Filter、TargetProfiles
+  infra/          # Client、Uploader、AsyncWindow
+  persistence/    # TransferStore、MediaManager、LocalStorageGuard、SystemLog
+  transfer/       # Engine、Runner、Progress、LiveWatch、DeepLink、CommentDelay…
+  utils/          # util、stdio、path_tool、parser、language、diagnostics
 ```
 
-大部分业务逻辑仍在 `module/*.py` 顶层文件中，子包为架构升级框架。
+顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）。
+
+**架构立场**：大规模搬包 / 再拆 God Object 已暂停；后续仅在具体痛点出现时做局部深化（例如 listen/forward 出门面、收窄 TransferPorts）。
 
 ---
 

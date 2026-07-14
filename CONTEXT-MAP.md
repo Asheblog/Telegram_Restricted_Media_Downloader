@@ -1,60 +1,82 @@
 # CONTEXT-MAP — 项目速查映射
 
 > **注意**: 行数为编写时的近似快照，随时可能因代码变更而过时。
+> 顶层 `module/*.py` 大量为兼容 shim（约 3 行），实现以「实现路径」为准。
 
 ## 文件 → 职责速查
 
-| 文件 | 职责 | 行数(≈快照) |
-|------|------|----------|
-| `main.py` | 入口：检查环境 → 创建 TRMD → run() | 12 |
-| `module/__init__.py` | 全局常量、版本号、日志初始化、banner | 196 |
-| `module/downloader.py` | 主控制器，编排所有子系统 | 3700+ |
-| `module/app.py` | Telegram 客户端、下载文件名生成、关机 | 374 |
-| `module/client.py` | Pyrogram 客户端扩展（登录、文件下载、会话） | 958 |
-| `module/bot.py` | Telegram Bot 命令处理 + 内联键盘 | 1962 |
-| `module/callback_handler.py` | Bot 内联按钮回调路由 | ~500 |
-| `module/config.py` | 双层配置系统（UserConfig + GlobalConfig） | 870 |
-| `module/transfer_engine.py` | 转存核心引擎（下载→上传流程编排） | ~800 |
-| `module/transfer_store.py` | SQLite 持久化（任务/Item/事件/Watch CRUD） | ~600 |
-| `module/transfer_progress.py` | 转存进度跟踪（恢复/续传） | ~400 |
-| `module/web_ui.py` | WebUI HTTP 服务 + REST API | ~2000 |
-| `module/webui_view_model.py` | WebUI 桌面端/移动端统一 ViewModel 契约 | ~300 |
-| `module/web_task_manager.py` | WebUI 任务调度器 | ~500 |
-| `module/web_ui_assets.py` | WebUI 内嵌前端资源（兼容别名） | — |
-| `module/live_watch_manager.py` | 实时监听频道管理 | ~300 |
-| `module/pikpak_integration.py` | PikPak 集成（入库确认、归档） | ~300 |
-| `module/pikpak_archive.py` | rclone PikPak 归档客户端 | ~150 |
-| `module/filter.py` | 消息过滤器（媒体类型/日期/关键词黑名单） | 185 |
-| `module/target_profiles.py` | 目标配置：PikPak 大小限制、默认 profile | 43 |
-| `module/source_folders.py` | 来源频道文件夹名提取 | 64 |
-| `module/uploader.py` | Telegram 上传器 | ~400 |
-| `module/task.py` | DownloadTask / UploadTask 数据结构 | ~200 |
-| `module/enums.py` | 枚举/常量：类型、状态、按钮文案、验证、Banner | 1582 |
-| `module/parser.py` | CLI 参数解析 | 100 |
-| `module/language.py` | 中文本地化翻译表 | 67 |
-| `module/path_tool.py` | 路径/文件名处理工具 | ~300 |
-| `module/util.py` | 通用工具（链接解析、消息、环境判断） | 428 |
-| `module/stdio.py` | 终端 I/O、进度条、统计表 | ~600 |
-| `module/diagnostics.py` | 诊断日志适配器 | ~100 |
-| `module/comp.py` | TransferContext 组合上下文 | 52 |
-| `module/ports.py` | Protocol 接口定义（IWebUiOperations 等） | 73 |
-| `module/transfer_registry.py` | 转存注册表 | — |
-| `module/async_window.py` | 动态并发窗口 | ~80 |
-| `module/local_storage_guard.py` | 磁盘空间守护 | ~150 |
-| `module/media_manager.py` | 媒体文件清理 | ~300 |
+### 入口与装配（顶层）
 
-## 子包 → 内容
+| 文件 | 职责 | 行数(≈) |
+|------|------|--------|
+| `main.py` | 入口：检查环境 → 创建 TRMD → `run()` | 12 |
+| `module/__init__.py` | 全局常量、版本号、日志初始化、banner | ~210 |
+| `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；保留 listen/forward/download 主路径 | ~2390 |
+| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine | ~330 |
+| `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade` | ~1190 |
+| `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~350 |
+| `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotHost`、`IPikPakTarget` 等） | ~160 |
+| `module/live_watch_applicator.py` | 将 watch payload 应用到运行时监听 | ~85 |
+| `module/source_folders.py` | 来源频道文件夹名提取 | ~55 |
+
+### 实现路径（子包）
+
+| 实现路径 | 顶层 shim（若有） | 职责 | 行数(≈) |
+|----------|-------------------|------|--------|
+| `core/app.py` | `app.py` | Telegram 应用、下载文件名、关机 | ~340 |
+| `core/config.py` | `config.py` | 双层配置（UserConfig + GlobalConfig） | ~920 |
+| `core/enums.py` | `enums.py` | 枚举/常量：类型、状态、按钮文案等 | ~1440 |
+| `core/filter.py` | `filter.py` | 消息过滤器 | ~170 |
+| `core/target_profiles.py` | `target_profiles.py` | 目标 profile（PikPak 限制等） | ~40 |
+| `infra/client.py` | `client.py` | Pyrogram 客户端扩展 | ~830 |
+| `infra/uploader.py` | `uploader.py` | Telegram 上传器 | ~970 |
+| `infra/async_window.py` | `async_window.py` | 动态并发窗口 | ~50 |
+| `persistence/transfer_store.py` | `transfer_store.py` | SQLite：任务 / Item / 事件 / Watch CRUD | ~2090 |
+| `persistence/media_manager.py` | `media_manager.py` | 媒体文件清理 | ~480 |
+| `persistence/local_storage_guard.py` | `local_storage_guard.py` | 本地磁盘预算守护 | ~100 |
+| `persistence/system_log.py` | — | 系统日志追踪 | ~140 |
+| `transfer/engine.py` | `transfer_engine.py` | 转存引擎（下载→上传编排） | ~640 |
+| `transfer/runner.py` | — | Web 转存任务 runner | ~860 |
+| `transfer/progress.py` | `transfer_progress.py` | 进度跟踪 / 恢复续传 | ~940 |
+| `transfer/live_watch.py` | `live_watch_manager.py` | 实时监听管理 | ~400 |
+| `transfer/context.py` | `comp.py` | `TransferContext` + `TransferPorts` | ~130 |
+| `transfer/models.py` | `task.py` | DownloadTask / UploadTask | ~350 |
+| `transfer/deep_link.py` | — | 深链取片 | ~200 |
+| `transfer/comment_delay.py` | — | 讨论区延迟抓取调度 | ~240 |
+| `transfer/watch_inline.py` | — | watch_inline 执行模式辅助 | ~50 |
+| `transfer/forward_watch_backup.py` | — | 转发监听导入/导出 | ~110 |
+| `transfer/registry.py` | `transfer_registry.py` | 转存注册表 | ~20 |
+| `adapters/bot/bot.py` | `bot.py` | Bot 命令 + 内联键盘 | ~1900 |
+| `adapters/bot/callback_handler.py` | `callback_handler.py` | Bot 回调路由 | ~740 |
+| `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
+| `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
+| `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP + REST API | ~1670 |
+| `adapters/webui/view_model.py` | `webui_view_model.py` | 桌面/移动统一 ViewModel | ~550 |
+| `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~500 |
+| `adapters/webui/statistics_payload.py` | `statistics_payload.py` | 统计面板 payload | ~80 |
+| `adapters/webui/assets.py` | `web_ui_assets.py` | 内嵌 HTML/CSS/JS/字体 | 大文件 |
+| `adapters/webui/build_frontend.py` | — | Tailwind 前端构建 | ~100 |
+| `utils/util.py` | `util.py` | 链接解析、消息、环境判断 | ~550 |
+| `utils/stdio.py` | `stdio.py` | 终端 I/O、进度条 | ~560 |
+| `utils/path_tool.py` | `path_tool.py` | 路径/文件名工具 | ~280 |
+| `utils/parser.py` | `parser.py` | CLI 参数解析 | ~90 |
+| `utils/language.py` | `language.py` | 中文本地化 | ~65 |
+| `utils/diagnostics.py` | `diagnostics.py` | 诊断日志适配器 | ~30 |
+
+## 子包 → 状态
 
 | 子包 | 内容 | 状态 |
 |------|------|------|
-| `adapters/webui/` | `assets.py`（内嵌 HTML/CSS/JS/Font）、`build_frontend.py`（Tailwind 构建）、`download_fonts.py` | ✅ 已填充 |
-| `adapters/bot/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `adapters/pikpak/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `core/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `infra/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `persistence/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `transfer/` | `__init__.py` 占位 | 🔜 待迁移 |
-| `utils/` | `__init__.py` 占位 | 🔜 待迁移 |
+| `adapters/webui/` | server / view_model / task_manager / assets / build | ✅ 已填充 |
+| `adapters/bot/` | bot.py / callback_handler.py | ✅ 已填充 |
+| `adapters/pikpak/` | integration.py / archive.py | ✅ 已填充 |
+| `core/` | app / config / enums / filter / target_profiles | ✅ 已填充 |
+| `infra/` | client / uploader / async_window | ✅ 已填充 |
+| `persistence/` | transfer_store / media_manager / local_storage_guard / system_log | ✅ 已填充 |
+| `transfer/` | engine / runner / progress / live_watch / deep_link / comment_delay 等 | ✅ 已填充 |
+| `utils/` | util / stdio / path_tool / parser / language / diagnostics | ✅ 已填充 |
+
+> Phase 0–3 目录迁移与 seam 引入已完成。不再以「搬包」为目标；见 `CONTEXT.md` 架构立场。
 
 ## 配置项 → 位置
 
@@ -103,13 +125,18 @@
 
 | 术语 | 代码实体 |
 |------|----------|
-| Transfer Task | `transfer_store.py` → `transfer_tasks` 表 |
-| Transfer Item | `transfer_store.py` → `transfer_items` 表 |
-| Transfer Progress | `transfer_store.py` → completed source_message_ids |
-| PikPak Archive | `pikpak_integration.py` → `archive_pikpak_item()` |
-| PikPak Ingest Confirmation | `downloader.py` → `wait_for_pikpak_ingest_confirmation()` |
-| Target Profile | `target_profiles.py` → `DEFAULT_TARGET_PROFILES` |
-| Live Transfer Watch | `live_watch_manager.py` → `LiveWatchManager` |
-| Message Filter | `filter.py` → `MessageFilter` |
-| Download Success Record | `transfer_store.py` → `download_success` 表 |
-| WebUI ViewModel Contract | `webui_view_model.py` → `WebUiViewModel` |
+| Transfer Task | `persistence/transfer_store.py` → `transfer_tasks` 表 |
+| Transfer Item | `persistence/transfer_store.py` → `transfer_items` 表 |
+| Transfer Progress | `persistence/transfer_store.py` → completed source_message_ids |
+| PikPak Archive | `adapters/pikpak/integration.py` → `archive_pikpak_item()` |
+| PikPak Ingest Confirmation | `adapters/pikpak/integration.py` / downloader 转发等待路径 |
+| Target Profile | `core/target_profiles.py` → `DEFAULT_TARGET_PROFILES` |
+| Live Transfer Watch | `transfer/live_watch.py` → `LiveWatchManager` |
+| Message Filter | `core/filter.py` → `MessageFilter` |
+| Download Success Record | `persistence/transfer_store.py` → `download_success` 表 |
+| WebUI ViewModel Contract | `adapters/webui/view_model.py` → `WebUiViewModel` |
+| Execution Mode / watch_inline | `transfer/watch_inline.py` + TransferStore `execution_mode` |
+| Deep Link Resolve | `transfer/deep_link.py` |
+| Deferred Discussion Reply Capture | `transfer/comment_delay.py` |
+| Composition Root | `composition_root.py` → `TrmdCompositionRoot` |
+| TransferPorts / TransferContext | `transfer/context.py` |
