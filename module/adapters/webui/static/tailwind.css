@@ -657,7 +657,7 @@
 
   /* Badges */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold leading-none;
   }
 
   .badge-running { @apply bg-primary-soft text-primary; }
@@ -1066,10 +1066,52 @@
 
   .watch-row > td {
     vertical-align: middle;
+    padding-block: 0.5rem;
+    line-height: 1;
   }
 
   .watch-row td:first-child {
     text-align: left;
+  }
+
+  .watch-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .watch-cell--start {
+    justify-content: flex-start;
+  }
+
+  .watch-cell-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    line-height: 1.25;
+  }
+
+  .watch-row .table-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+    line-height: 0;
+  }
+
+  /* 操作按钮贴合文字行高，避免 34px 把行撑高后内容视觉上偏顶 */
+  .watch-row .btn-icon {
+    width: 26px;
+    height: 26px;
+    min-height: 26px;
+    font-size: 14px;
+    line-height: 1;
   }
 
   .watch-count-btn {
@@ -1077,6 +1119,7 @@
            font-semibold tabular-nums text-inherit leading-none
            bg-transparent border-0 rounded cursor-pointer
            transition-colors duration-150;
+    vertical-align: middle;
   }
 
   .watch-count-btn--primary {
@@ -1097,7 +1140,8 @@
   }
 
   .watch-status-cell {
-    @apply inline-flex items-center gap-2 text-sm;
+    @apply inline-flex items-center gap-1.5 text-xs leading-none;
+    vertical-align: middle;
   }
 
   .watch-status-dot {
