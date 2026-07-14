@@ -329,6 +329,19 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('data-watch-menu', WEB_UI_HTML)
         self.assertIn('watches.badgeSuccess', WEB_UI_HTML)
 
+    def test_watches_table_cells_fill_row_height_for_vertical_center(self):
+        # td height:1px + .watch-cell height:100% — flex 才能相对整行垂直居中
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row>td\{[^}]*height:1px',
+        )
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*height:100%',
+        )
+        self.assertIn('class="watch-cell watch-cell--start"', WEB_UI_HTML)
+        self.assertIn('class="watch-cell"', WEB_UI_HTML)
+
     def test_watch_history_supports_today_range(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
         self.assertIn('data-watch-detail-today', WEB_UI_HTML)
