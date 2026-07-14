@@ -425,12 +425,17 @@
            border-b-2 border-line bg-surface-alt sticky top-0 whitespace-nowrap;
   }
 
+  .data-table thead th,
+  .data-table tbody td {
+    vertical-align: middle;
+  }
+
   .data-table tbody td {
     @apply py-2.5 px-3 border-b border-line-light text-xs align-middle text-center;
   }
 
   .table-actions {
-    @apply justify-center;
+    @apply items-center justify-center;
   }
 
   /* 操作列按按钮内容收窄，避免挤占来源/目标频道 */
@@ -438,6 +443,7 @@
   .data-table td.watch-col-actions {
     width: 1%;
     white-space: nowrap;
+    vertical-align: middle;
   }
 
   .data-table tbody tr {
@@ -1058,8 +1064,28 @@
     background: var(--color-surface-hover);
   }
 
+  .watch-row > td {
+    vertical-align: middle;
+  }
+
   .watch-row td:first-child {
     text-align: left;
+  }
+
+  .watch-count-btn {
+    @apply inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5
+           font-semibold tabular-nums text-inherit leading-none
+           bg-transparent border-0 rounded cursor-pointer
+           transition-colors duration-150;
+  }
+
+  .watch-count-btn--primary {
+    @apply text-primary;
+  }
+
+  .watch-count-btn:hover,
+  .watch-count-btn:focus-visible {
+    @apply text-primary bg-primary-soft outline-none;
   }
 
   .watch-task-main {

@@ -1025,21 +1025,22 @@ function renderWatches() {
           esc(t('watches.deferredComments')) + ' ' + deferredCount +
         '</button>'
       : '';
-    const primaryButton = w.type === 'forward'
-      ? '<button class="btn btn-sm btn-primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history">' +
-          esc(t('watches.history')) +
-        '</button>'
-      : '';
+    const historyLabel = t('watches.historyTitle');
+    const todayCell = w.type === 'forward'
+      ? '<button type="button" class="watch-count-btn" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + todayCount) + '">' + esc(String(todayCount)) + '</button>'
+      : esc(String(todayCount));
+    const totalCell = w.type === 'forward'
+      ? '<button type="button" class="watch-count-btn watch-count-btn--primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + eventCount) + '">' + esc(String(eventCount)) + '</button>'
+      : esc(String(eventCount));
     return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
       '<td><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
       '<td class="font-mono text-left max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(source) + '">' + esc(sourceShort) + '</td>' +
       '<td class="font-mono text-left max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(target) + '">' + esc(targetShort) + '</td>' +
       '<td><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></td>' +
-      '<td class="font-semibold tabular-nums">' + esc(String(todayCount)) + '</td>' +
-      '<td class="font-semibold tabular-nums text-primary">' + esc(String(eventCount)) + '</td>' +
+      '<td class="font-semibold tabular-nums">' + todayCell + '</td>' +
+      '<td class="font-semibold tabular-nums text-primary">' + totalCell + '</td>' +
       '<td class="watch-col-actions">' +
-        '<div class="table-actions flex gap-1 whitespace-nowrap justify-end">' +
-          primaryButton +
+        '<div class="table-actions flex gap-1 whitespace-nowrap items-center justify-center">' +
           deferredBadge +
           '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
         '</div>' +

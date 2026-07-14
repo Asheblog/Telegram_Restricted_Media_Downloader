@@ -598,11 +598,10 @@ function renderMobWatches() {
           esc(t('watches.deferredComments')) + ' ' + deferredCount +
         '</button>'
       : '';
-    var primaryButton = w.type === 'forward'
-      ? '<button class="mob-btn mob-btn-sm mob-btn--primary watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history">' +
-          esc(t('watches.history')) +
-        '</button>'
-      : '';
+    var historyLabel = t('watches.historyTitle');
+    var todayHtml = w.type === 'forward'
+      ? '<button type="button" class="watch-count-btn watch-touch-btn text-xs font-semibold text-text-secondary" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history" title="' + esc(historyLabel) + '" aria-label="' + esc(historyLabel + ': ' + todayCount) + '">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</button>'
+      : '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</span>';
     html += '<div class="mob-card status-' + statusClass + ' mob-watch-card" data-watch-id="' + esc(w.id) + '">' +
       '<div class="mob-card__head">' +
         '<div class="watch-task-main">' +
@@ -610,14 +609,13 @@ function renderMobWatches() {
             '<span class="watch-status-dot ' + statusClass + '" aria-hidden="true"></span>' +
             '<span class="mob-card__badge ' + typeClass + '">' + esc(typeLabel) + '</span>' +
             '<span class="text-xs text-muted">' + esc(statusLabel) + '</span>' +
-            '<span class="text-xs font-semibold text-text-secondary">' + esc(t('watches.todayEvents')) + ' ' + todayCount + '</span>' +
+            todayHtml +
             deferredBadge +
           '</div>' +
           '<div class="watch-task-route" title="' + esc((mobWatchSource(w) || '-') + ' → ' + (w.target_link || '本地')) + '">' + esc(route) + '</div>' +
         '</div>' +
       '</div>' +
       '<div class="mob-card__actions">' +
-        primaryButton +
         '<button class="mob-btn mob-btn-sm mob-btn-muted watch-touch-btn" data-mob-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
       '</div>' +
     '</div>';
