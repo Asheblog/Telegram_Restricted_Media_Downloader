@@ -1068,11 +1068,14 @@
     background: var(--color-surface-hover);
   }
 
-  /* height:1px 让子元素 height:100% 相对整行解析；再靠 flex 真正垂直居中。
-     选择器需压过 .data-table tbody td，否则居中规则会被通用表格样式盖掉。 */
+  /* 表格里 height:100% 会按 td 的指定高度(如 1px)解析，不是最终行高，导致
+     .watch-cell 永远只有 min-height:26px。改让 td 自身做 flex，默认 stretch
+     子元素到整格高度，再由 .watch-cell 做内容垂直居中。 */
   .data-table tbody tr.watch-row > td {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
     vertical-align: middle;
-    height: 1px;
     line-height: 1;
   }
 
@@ -1086,8 +1089,9 @@
     justify-content: center;
     box-sizing: border-box;
     width: 100%;
-    height: 100%;
+    flex: 1 1 auto;
     min-height: 26px;
+    min-width: 0;
   }
 
   .data-table tbody tr.watch-row .watch-cell--start {

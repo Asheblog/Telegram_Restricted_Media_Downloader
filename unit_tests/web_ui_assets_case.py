@@ -338,12 +338,20 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('watches.badgeSuccess', WEB_UI_HTML)
 
     def test_watches_table_cells_fill_row_height_for_vertical_center(self):
-        # td height:1px + .watch-cell height:100% — flex 才能相对整行垂直居中
+        # td 做 flex + stretch，.watch-cell 再 align-items:center（勿用 height:100%）
         self.assertRegex(
             WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row>td\{[^}]*height:1px',
+            r'\.data-table tbody tr\.watch-row>td\{[^}]*display:flex',
         )
         self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row>td\{[^}]*align-items:stretch',
+        )
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*align-items:center',
+        )
+        self.assertNotRegex(
             WEB_UI_HTML,
             r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*height:100%',
         )
