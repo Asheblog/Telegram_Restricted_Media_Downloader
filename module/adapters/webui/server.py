@@ -33,6 +33,37 @@ SENSITIVE_SETTING_KEYS = {
     'username'
 }
 
+# WebUI SPA 视图路径（刷新后由前端按 pathname 恢复对应视图）
+SPA_VIEW_PATHS = frozenset({
+    '/',
+    '/index.html',
+    '/transfers',
+    '/watches',
+    '/downloads-uploads',
+    '/statistics',
+    '/records',
+    '/media',
+    '/system-logs',
+    '/settings',
+    '/profile',
+})
+
+
+def is_spa_page_path(path: str) -> bool:
+    """Whether a GET path should serve the SPA shell (not /api or static files)."""
+    if not path:
+        return True
+    if path.startswith('/api/') or path.startswith('/fonts/'):
+        return False
+    normalized = path.rstrip('/') or '/'
+    if normalized in SPA_VIEW_PATHS or path == '/index.html':
+        return True
+    leaf = normalized.rsplit('/', 1)[-1]
+    if leaf and '.' in leaf:
+        return False
+    # Unknown path without extension: still serve SPA so client can rewrite.
+    return True
+
 
 class WebUiApiError(Exception):
     def __init__(self, error_code: str, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST):
@@ -504,15 +535,15 @@ class WebUiServer:
                     self._send_error('invalid_font_path', 'Invalid font path.', HTTPStatus.BAD_REQUEST)
                     return
 
-                # Page requests: show login page when unauthorized
-                if parsed.path in ('/', '/index.html'):
+                # SPA page requests: show login page when unauthorized
+                if is_spa_page_path(parsed.path):
                     if not self._check_page_auth():
                         self._send_login_page()
                         return
                     self._send_html()
                     return
 
-                # API requests require auth
+                # API / other requests require auth
                 if not self._check_auth():
                     return
                 if parsed.path == '/api/auth/status':

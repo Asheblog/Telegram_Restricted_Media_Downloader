@@ -1138,6 +1138,59 @@ function redirectToLoginPage() {
   window.location.assign('/');
 }
 
+/* ====== SPA Path Routing ====== */
+var SPA_VIEW_PATHS = {
+  transfers: '/transfers',
+  watches: '/watches',
+  'downloads-uploads': '/downloads-uploads',
+  statistics: '/statistics',
+  records: '/records',
+  media: '/media',
+  'system-logs': '/system-logs',
+  settings: '/settings',
+  profile: '/profile'
+};
+
+var SPA_PATH_TO_VIEW = (function() {
+  var map = {};
+  Object.keys(SPA_VIEW_PATHS).forEach(function(view) {
+    map[SPA_VIEW_PATHS[view]] = view;
+  });
+  return map;
+})();
+
+function normalizeSpaPathname(pathname) {
+  var path = String(pathname || '/');
+  if (path === '/index.html') return '/';
+  if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+    path = path.replace(/\/+$/, '');
+  }
+  return path || '/';
+}
+
+function pathFromView(view) {
+  return SPA_VIEW_PATHS[view] || '/transfers';
+}
+
+function viewFromPath(pathname) {
+  var path = normalizeSpaPathname(pathname);
+  if (path === '/') return 'transfers';
+  return SPA_PATH_TO_VIEW[path] || null;
+}
+
+function syncSpaUrl(view, options) {
+  options = options || {};
+  var next = pathFromView(view);
+  var current = normalizeSpaPathname(window.location.pathname);
+  if (current === next && !options.replace) return;
+  var url = next + (window.location.search || '') + (window.location.hash || '');
+  if (options.replace) {
+    history.replaceState({ view: view }, '', url);
+  } else if (current !== next) {
+    history.pushState({ view: view }, '', url);
+  }
+}
+
 function clientTzOffsetMinutes() {
   return new Date().getTimezoneOffset();
 }

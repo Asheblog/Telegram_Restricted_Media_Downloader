@@ -234,7 +234,26 @@ var profileTitles = {
   settings: '系统设置'
 };
 
-function mobSwitchView(view) {
+var MOBILE_MAIN_TABS = {
+  transfers: true,
+  watches: true,
+  'downloads-uploads': true,
+  profile: true
+};
+
+var MOBILE_PROFILE_SUBPAGES = {
+  statistics: true,
+  records: true,
+  media: true,
+  settings: true
+};
+
+function mobSwitchView(view, options) {
+  options = options || {};
+  if (!MOBILE_MAIN_TABS[view]) {
+    view = 'transfers';
+  }
+
   // Hide all main views
   var views = document.querySelectorAll('.mob-view');
   views.forEach(function(v) { v.classList.remove('active'); });
@@ -252,7 +271,18 @@ function mobSwitchView(view) {
   // Reset top bar (exit sub-page mode)
   exitSubPage();
 
+  // Hide all subpages and restore profile menu when leaving a subpage
+  var subs = document.querySelectorAll('.mob-subpage');
+  subs.forEach(function(s) { s.classList.remove('active'); });
+  var menu = document.getElementById('mob-profile-menu');
+  if (menu) menu.style.display = '';
+  currentProfileSub = null;
+
   currentMainTab = view;
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(view, { replace: !!options.replaceUrl });
+  }
 
   // Load content
   if (view === 'transfers') { loadMobileTasks(); }
@@ -261,7 +291,21 @@ function mobSwitchView(view) {
   else if (view === 'profile') { /* menu is static, sub-pages load on demand */ }
 }
 
-function mobNavigateTo(subpage) {
+function mobNavigateTo(subpage, options) {
+  options = options || {};
+  if (!MOBILE_PROFILE_SUBPAGES[subpage]) {
+    mobSwitchView('profile', options);
+    return;
+  }
+
+  // Ensure profile tab is active without rewriting URL yet
+  if (currentMainTab !== 'profile') {
+    mobSwitchView('profile', { syncUrl: false });
+  } else {
+    // Hide other main-view active state already on profile
+    exitSubPage();
+  }
+
   // Hide profile menu
   var menu = document.getElementById('mob-profile-menu');
   if (menu) menu.style.display = 'none';
@@ -278,6 +322,11 @@ function mobNavigateTo(subpage) {
   enterSubPage(profileTitles[subpage] || subpage);
 
   currentProfileSub = subpage;
+  currentMainTab = 'profile';
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(subpage, { replace: !!options.replaceUrl });
+  }
 
   // Load content
   if (subpage === 'statistics') { loadMobileStatistics(); }
@@ -286,7 +335,8 @@ function mobNavigateTo(subpage) {
   else if (subpage === 'settings') { loadMobileSettings(); }
 }
 
-function mobNavigateBack() {
+function mobNavigateBack(options) {
+  options = options || {};
   exitSubPage();
 
   // Hide all subpages
@@ -298,6 +348,33 @@ function mobNavigateBack() {
   if (menu) menu.style.display = '';
 
   currentProfileSub = null;
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl('profile', { replace: !!options.replaceUrl });
+  }
+}
+
+function applyMobileRouteFromLocation() {
+  var path = normalizeSpaPathname(window.location.pathname);
+  var view = viewFromPath(path);
+
+  if (!view || view === 'system-logs') {
+    mobSwitchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (path === '/' || path === '/index.html') {
+    mobSwitchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (MOBILE_PROFILE_SUBPAGES[view]) {
+    mobNavigateTo(view, { syncUrl: false });
+    return;
+  }
+  if (MOBILE_MAIN_TABS[view]) {
+    mobSwitchView(view, { syncUrl: false });
+    return;
+  }
+  mobSwitchView('transfers', { replaceUrl: true });
 }
 
 function enterSubPage(title) {
@@ -2107,6 +2184,11 @@ async function loadMediaMobile() {
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);
+
+  applyMobileRouteFromLocation();
+  window.addEventListener('popstate', function() {
+    applyMobileRouteFromLocation();
+  });
 
   // Kickoff
   checkAuthStatus();

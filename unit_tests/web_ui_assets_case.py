@@ -121,6 +121,9 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('mob-tabbar', WEB_UI_MOBILE_HTML)
         # Blue color should be present
         self.assertIn('#2563eb', WEB_UI_MOBILE_HTML.lower())
+        self.assertIn('function applyMobileRouteFromLocation', WEB_UI_MOBILE_HTML)
+        self.assertIn('function pathFromView', WEB_UI_MOBILE_HTML)
+        self.assertIn("addEventListener('popstate'", WEB_UI_MOBILE_HTML)
 
     def test_mobile_layout_has_stable_full_width_panels(self):
         for fragment in (
@@ -226,6 +229,12 @@ class WebUiAssetsCase(unittest.TestCase):
 
     def test_view_switching_js(self):
         self.assertIn('function switchView', WEB_UI_HTML)
+        self.assertIn('function pathFromView', WEB_UI_HTML)
+        self.assertIn('function viewFromPath', WEB_UI_HTML)
+        self.assertIn('function applyDesktopRouteFromLocation', WEB_UI_HTML)
+        self.assertIn("history.pushState", WEB_UI_HTML)
+        self.assertIn("history.replaceState", WEB_UI_HTML)
+        self.assertIn("addEventListener('popstate'", WEB_UI_HTML)
 
     def test_polling_js(self):
         self.assertIn('function startPolling', WEB_UI_HTML)

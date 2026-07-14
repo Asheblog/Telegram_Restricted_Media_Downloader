@@ -2636,6 +2636,59 @@ function redirectToLoginPage() {
   window.location.assign('/');
 }
 
+/* ====== SPA Path Routing ====== */
+var SPA_VIEW_PATHS = {
+  transfers: '/transfers',
+  watches: '/watches',
+  'downloads-uploads': '/downloads-uploads',
+  statistics: '/statistics',
+  records: '/records',
+  media: '/media',
+  'system-logs': '/system-logs',
+  settings: '/settings',
+  profile: '/profile'
+};
+
+var SPA_PATH_TO_VIEW = (function() {
+  var map = {};
+  Object.keys(SPA_VIEW_PATHS).forEach(function(view) {
+    map[SPA_VIEW_PATHS[view]] = view;
+  });
+  return map;
+})();
+
+function normalizeSpaPathname(pathname) {
+  var path = String(pathname || '/');
+  if (path === '/index.html') return '/';
+  if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+    path = path.replace(/\/+$/, '');
+  }
+  return path || '/';
+}
+
+function pathFromView(view) {
+  return SPA_VIEW_PATHS[view] || '/transfers';
+}
+
+function viewFromPath(pathname) {
+  var path = normalizeSpaPathname(pathname);
+  if (path === '/') return 'transfers';
+  return SPA_PATH_TO_VIEW[path] || null;
+}
+
+function syncSpaUrl(view, options) {
+  options = options || {};
+  var next = pathFromView(view);
+  var current = normalizeSpaPathname(window.location.pathname);
+  if (current === next && !options.replace) return;
+  var url = next + (window.location.search || '') + (window.location.hash || '');
+  if (options.replace) {
+    history.replaceState({ view: view }, '', url);
+  } else if (current !== next) {
+    history.pushState({ view: view }, '', url);
+  }
+}
+
 function clientTzOffsetMinutes() {
   return new Date().getTimezoneOffset();
 }
@@ -2957,7 +3010,11 @@ async function deleteWatch(watchId) {
 <script>/* TRMD WebUI - Desktop SPA Logic */
 
 /* ====== View Switching ====== */
-function switchView(view) {
+function switchView(view, options) {
+  options = options || {};
+  if (!SPA_VIEW_PATHS[view] || view === 'profile') {
+    view = 'transfers';
+  }
   state.activeView = view;
   $$('.sidebar-nav-item').forEach(b => b.classList.remove('active'));
   const navBtn = document.querySelector('.sidebar-nav-item[data-nav="' + view + '"]');
@@ -2966,6 +3023,10 @@ function switchView(view) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const viewEl = document.getElementById('view-' + view);
   if (viewEl) viewEl.classList.add('active');
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(view, { replace: !!options.replaceUrl });
+  }
 
   if (view === 'transfers') renderTasks();
   if (view === 'watches') loadWatches();
@@ -2982,7 +3043,25 @@ function switchView(view) {
   }
 }
 
+function applyDesktopRouteFromLocation(options) {
+  options = options || {};
+  var view = viewFromPath(window.location.pathname);
+  var path = normalizeSpaPathname(window.location.pathname);
+  if (!view) {
+    switchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (path === '/' || path === '/index.html') {
+    switchView('transfers', { replaceUrl: true });
+    return;
+  }
+  switchView(view, { syncUrl: false, replaceUrl: false });
+}
+
 $$('[data-nav]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.nav)));
+window.addEventListener('popstate', function() {
+  applyDesktopRouteFromLocation();
+});
 
 /* ====== Task List ====== */
 async function loadTasks() {
@@ -5580,6 +5659,7 @@ document.addEventListener('change', function(e) {
   applyLanguage();
   ensureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);
+  applyDesktopRouteFromLocation();
   checkAuthStatus();
   authPollTimer = setInterval(() => {
     if (authStep === 'done' || authStep === 'none') {
@@ -7519,6 +7599,59 @@ function redirectToLoginPage() {
   window.location.assign('/');
 }
 
+/* ====== SPA Path Routing ====== */
+var SPA_VIEW_PATHS = {
+  transfers: '/transfers',
+  watches: '/watches',
+  'downloads-uploads': '/downloads-uploads',
+  statistics: '/statistics',
+  records: '/records',
+  media: '/media',
+  'system-logs': '/system-logs',
+  settings: '/settings',
+  profile: '/profile'
+};
+
+var SPA_PATH_TO_VIEW = (function() {
+  var map = {};
+  Object.keys(SPA_VIEW_PATHS).forEach(function(view) {
+    map[SPA_VIEW_PATHS[view]] = view;
+  });
+  return map;
+})();
+
+function normalizeSpaPathname(pathname) {
+  var path = String(pathname || '/');
+  if (path === '/index.html') return '/';
+  if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+    path = path.replace(/\/+$/, '');
+  }
+  return path || '/';
+}
+
+function pathFromView(view) {
+  return SPA_VIEW_PATHS[view] || '/transfers';
+}
+
+function viewFromPath(pathname) {
+  var path = normalizeSpaPathname(pathname);
+  if (path === '/') return 'transfers';
+  return SPA_PATH_TO_VIEW[path] || null;
+}
+
+function syncSpaUrl(view, options) {
+  options = options || {};
+  var next = pathFromView(view);
+  var current = normalizeSpaPathname(window.location.pathname);
+  if (current === next && !options.replace) return;
+  var url = next + (window.location.search || '') + (window.location.hash || '');
+  if (options.replace) {
+    history.replaceState({ view: view }, '', url);
+  } else if (current !== next) {
+    history.pushState({ view: view }, '', url);
+  }
+}
+
 function clientTzOffsetMinutes() {
   return new Date().getTimezoneOffset();
 }
@@ -8073,7 +8206,26 @@ var profileTitles = {
   settings: '系统设置'
 };
 
-function mobSwitchView(view) {
+var MOBILE_MAIN_TABS = {
+  transfers: true,
+  watches: true,
+  'downloads-uploads': true,
+  profile: true
+};
+
+var MOBILE_PROFILE_SUBPAGES = {
+  statistics: true,
+  records: true,
+  media: true,
+  settings: true
+};
+
+function mobSwitchView(view, options) {
+  options = options || {};
+  if (!MOBILE_MAIN_TABS[view]) {
+    view = 'transfers';
+  }
+
   // Hide all main views
   var views = document.querySelectorAll('.mob-view');
   views.forEach(function(v) { v.classList.remove('active'); });
@@ -8091,7 +8243,18 @@ function mobSwitchView(view) {
   // Reset top bar (exit sub-page mode)
   exitSubPage();
 
+  // Hide all subpages and restore profile menu when leaving a subpage
+  var subs = document.querySelectorAll('.mob-subpage');
+  subs.forEach(function(s) { s.classList.remove('active'); });
+  var menu = document.getElementById('mob-profile-menu');
+  if (menu) menu.style.display = '';
+  currentProfileSub = null;
+
   currentMainTab = view;
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(view, { replace: !!options.replaceUrl });
+  }
 
   // Load content
   if (view === 'transfers') { loadMobileTasks(); }
@@ -8100,7 +8263,21 @@ function mobSwitchView(view) {
   else if (view === 'profile') { /* menu is static, sub-pages load on demand */ }
 }
 
-function mobNavigateTo(subpage) {
+function mobNavigateTo(subpage, options) {
+  options = options || {};
+  if (!MOBILE_PROFILE_SUBPAGES[subpage]) {
+    mobSwitchView('profile', options);
+    return;
+  }
+
+  // Ensure profile tab is active without rewriting URL yet
+  if (currentMainTab !== 'profile') {
+    mobSwitchView('profile', { syncUrl: false });
+  } else {
+    // Hide other main-view active state already on profile
+    exitSubPage();
+  }
+
   // Hide profile menu
   var menu = document.getElementById('mob-profile-menu');
   if (menu) menu.style.display = 'none';
@@ -8117,6 +8294,11 @@ function mobNavigateTo(subpage) {
   enterSubPage(profileTitles[subpage] || subpage);
 
   currentProfileSub = subpage;
+  currentMainTab = 'profile';
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(subpage, { replace: !!options.replaceUrl });
+  }
 
   // Load content
   if (subpage === 'statistics') { loadMobileStatistics(); }
@@ -8125,7 +8307,8 @@ function mobNavigateTo(subpage) {
   else if (subpage === 'settings') { loadMobileSettings(); }
 }
 
-function mobNavigateBack() {
+function mobNavigateBack(options) {
+  options = options || {};
   exitSubPage();
 
   // Hide all subpages
@@ -8137,6 +8320,33 @@ function mobNavigateBack() {
   if (menu) menu.style.display = '';
 
   currentProfileSub = null;
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl('profile', { replace: !!options.replaceUrl });
+  }
+}
+
+function applyMobileRouteFromLocation() {
+  var path = normalizeSpaPathname(window.location.pathname);
+  var view = viewFromPath(path);
+
+  if (!view || view === 'system-logs') {
+    mobSwitchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (path === '/' || path === '/index.html') {
+    mobSwitchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (MOBILE_PROFILE_SUBPAGES[view]) {
+    mobNavigateTo(view, { syncUrl: false });
+    return;
+  }
+  if (MOBILE_MAIN_TABS[view]) {
+    mobSwitchView(view, { syncUrl: false });
+    return;
+  }
+  mobSwitchView('transfers', { replaceUrl: true });
 }
 
 function enterSubPage(title) {
@@ -9946,6 +10156,11 @@ async function loadMediaMobile() {
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);
+
+  applyMobileRouteFromLocation();
+  window.addEventListener('popstate', function() {
+    applyMobileRouteFromLocation();
+  });
 
   // Kickoff
   checkAuthStatus();

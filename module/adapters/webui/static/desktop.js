@@ -1,7 +1,11 @@
 /* TRMD WebUI - Desktop SPA Logic */
 
 /* ====== View Switching ====== */
-function switchView(view) {
+function switchView(view, options) {
+  options = options || {};
+  if (!SPA_VIEW_PATHS[view] || view === 'profile') {
+    view = 'transfers';
+  }
   state.activeView = view;
   $$('.sidebar-nav-item').forEach(b => b.classList.remove('active'));
   const navBtn = document.querySelector('.sidebar-nav-item[data-nav="' + view + '"]');
@@ -10,6 +14,10 @@ function switchView(view) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const viewEl = document.getElementById('view-' + view);
   if (viewEl) viewEl.classList.add('active');
+
+  if (options.syncUrl !== false) {
+    syncSpaUrl(view, { replace: !!options.replaceUrl });
+  }
 
   if (view === 'transfers') renderTasks();
   if (view === 'watches') loadWatches();
@@ -26,7 +34,25 @@ function switchView(view) {
   }
 }
 
+function applyDesktopRouteFromLocation(options) {
+  options = options || {};
+  var view = viewFromPath(window.location.pathname);
+  var path = normalizeSpaPathname(window.location.pathname);
+  if (!view) {
+    switchView('transfers', { replaceUrl: true });
+    return;
+  }
+  if (path === '/' || path === '/index.html') {
+    switchView('transfers', { replaceUrl: true });
+    return;
+  }
+  switchView(view, { syncUrl: false, replaceUrl: false });
+}
+
 $$('[data-nav]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.nav)));
+window.addEventListener('popstate', function() {
+  applyDesktopRouteFromLocation();
+});
 
 /* ====== Task List ====== */
 async function loadTasks() {
@@ -2624,6 +2650,7 @@ document.addEventListener('change', function(e) {
   applyLanguage();
   ensureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);
+  applyDesktopRouteFromLocation();
   checkAuthStatus();
   authPollTimer = setInterval(() => {
     if (authStep === 'done' || authStep === 'none') {
