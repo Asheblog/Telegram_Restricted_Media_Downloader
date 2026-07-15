@@ -668,6 +668,9 @@ function buildMobWatchCardHtml(w) {
   var eventCount = Number(w.event_count || 0);
   var todayCount = Number(w.today_count || 0);
   var deferredCount = Number(w.deferred_comment_count || 0);
+  var queueCount = Number(w.download_queue_count || 0);
+  var completedDownloadCount = Number(w.download_completed_count || 0);
+  var downloadLabel = t('watches.downloadRecordsTitle');
   var sourceFull = mobWatchSource(w) || '-';
   var targetFull = (w.target_link || '本地');
   var sourceShort = mobWatchShortLink(sourceFull);
@@ -682,6 +685,14 @@ function buildMobWatchCardHtml(w) {
   if (w.type === 'forward') {
     statsHtml =
       '<div class="mob-watch-stats">' +
+        '<button type="button" class="mob-watch-stat watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="downloads" title="' + esc(downloadLabel) + '" aria-label="' + esc(t('watches.downloadQueueCount') + ': ' + queueCount) + '">' +
+          '<span class="mob-watch-stat__label">' + esc(t('watches.downloadQueueCount')) + '</span>' +
+          '<span class="mob-watch-stat__value">' + esc(String(queueCount)) + '</span>' +
+        '</button>' +
+        '<button type="button" class="mob-watch-stat watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="downloads" title="' + esc(downloadLabel) + '" aria-label="' + esc(t('watches.downloadCompletedCount') + ': ' + completedDownloadCount) + '">' +
+          '<span class="mob-watch-stat__label">' + esc(t('watches.downloadCompletedCount')) + '</span>' +
+          '<span class="mob-watch-stat__value">' + esc(String(completedDownloadCount)) + '</span>' +
+        '</button>' +
         '<button type="button" class="mob-watch-stat watch-touch-btn" data-mob-watch-detail="' + esc(w.id) + '" data-mob-watch-detail-mode="history" data-mob-watch-detail-today="1" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.todayEvents') + ': ' + todayCount) + '">' +
           '<span class="mob-watch-stat__label">' + esc(t('watches.todayEvents')) + '</span>' +
           '<span class="mob-watch-stat__value">' + esc(String(todayCount)) + '</span>' +

@@ -355,6 +355,11 @@ class WebUiAssetsCase(unittest.TestCase):
 
     def test_watches_table_cells_preserve_native_table_layout(self):
         # td 必须保留 table-cell；改成 flex 会让所有字段挤进第一列。
+        # 行高用 tr{height:1px} + cell min-height:100% 做垂直居中，避免再给 td 设 display:flex。
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row\{[^}]*height:1px',
+        )
         self.assertRegex(
             WEB_UI_HTML,
             r'\.data-table tbody tr\.watch-row>td\{[^}]*display:table-cell',
@@ -367,9 +372,9 @@ class WebUiAssetsCase(unittest.TestCase):
             WEB_UI_HTML,
             r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*align-items:center',
         )
-        self.assertNotRegex(
+        self.assertRegex(
             WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*height:100%',
+            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*min-height:100%',
         )
         self.assertIn('class="watch-cell watch-cell--start"', WEB_UI_HTML)
         self.assertIn('class="watch-cell"', WEB_UI_HTML)

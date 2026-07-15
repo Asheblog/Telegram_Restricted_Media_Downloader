@@ -14,7 +14,7 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
     def test_create_task_persists_watch_id(self):
         from module.transfer_store import TransferStore, ExecutionMode
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/c/4209310295/5433',
@@ -32,7 +32,7 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
         from module.transfer_store import TransferStore, ExecutionMode
         from module.transfer.watch_inline import ensure_download_fallback_transfer_task
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'forward:https://t.me/ctuxas->https://t.me/pikpak_bot'
             task_id = ensure_download_fallback_transfer_task(
@@ -50,7 +50,7 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
         from module.transfer_store import TransferStore, ExecutionMode
         from module.adapters.webui.view_model import WebUiViewModel
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             store.create_task(
                 'https://t.me/web/1',
@@ -71,7 +71,7 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
         from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
         from module.adapters.webui.view_model import WebUiViewModel
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'forward:https://t.me/ctuxas->https://t.me/pikpak_bot'
             store.upsert_live_transfer_watch(
@@ -109,11 +109,58 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             self.assertEqual(1, payload['counts']['completed'])
             self.assertEqual(0, payload['counts']['failed'])
 
+    def test_attach_download_counts_to_watches(self):
+        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
+        from module.transfer.live_watch import LiveWatchManager
+        from module.util import make_forward_watch_rule
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            rule = make_forward_watch_rule('https://t.me/ctuxas', 'https://t.me/pikpak_bot')
+            watch_id = LiveWatchManager.forward_watch_id(rule)
+            store.upsert_live_transfer_watch(
+                watch_id=watch_id,
+                watch_type='forward',
+                source_link='https://t.me/ctuxas',
+                target_link='https://t.me/pikpak_bot',
+                status='running',
+            )
+            active_id = store.create_task(
+                'https://t.me/ctuxas/10',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+                watch_id=watch_id,
+            )
+            completed_id = store.create_task(
+                'https://t.me/ctuxas/11',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+                watch_id=watch_id,
+            )
+            legacy_completed_id = store.create_task(
+                'https://t.me/ctuxas/12',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+            store.update_task(active_id, status=TransferStatus.RUNNING, started=True)
+            store.update_task(completed_id, status=TransferStatus.SUCCESS, finished=True)
+            store.update_task(legacy_completed_id, status=TransferStatus.SUCCESS, finished=True)
+
+            manager = LiveWatchManager(
+                transfer_store_getter=lambda: store,
+                listen_forward_chat={rule: object()},
+            )
+            watches = manager.list_watches()
+            self.assertEqual(1, len(watches))
+            watch = watches[0]
+            self.assertEqual(1, watch['download_queue_count'])
+            self.assertEqual(2, watch['download_completed_count'])
+
     def test_watch_download_tasks_expose_display_file_name_and_active_progress(self):
         from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
         from module.adapters.webui.view_model import WebUiViewModel
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'forward:https://t.me/c/4209310295->https://t.me/pikpak_bot'
             store.upsert_live_transfer_watch(

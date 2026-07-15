@@ -1060,6 +1060,19 @@ function buildWatchRowHtml(w) {
       '</button>'
     : '';
   const historyLabel = t('watches.historyTitle');
+  const downloadLabel = t('watches.downloadRecordsTitle');
+  const queueCount = Number(w.download_queue_count || 0);
+  const completedDownloadCount = Number(w.download_completed_count || 0);
+  const queueCell = w.type === 'forward'
+    ? (queueCount > 0
+      ? '<button type="button" class="watch-count-btn" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="downloads" title="' + esc(downloadLabel) + '" aria-label="' + esc(t('watches.downloadQueueCount') + ': ' + queueCount) + '">' + esc(String(queueCount)) + '</button>'
+      : esc(String(queueCount)))
+    : '—';
+  const completedDownloadCell = w.type === 'forward'
+    ? (completedDownloadCount > 0
+      ? '<button type="button" class="watch-count-btn watch-count-btn--primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="downloads" title="' + esc(downloadLabel) + '" aria-label="' + esc(t('watches.downloadCompletedCount') + ': ' + completedDownloadCount) + '">' + esc(String(completedDownloadCount)) + '</button>'
+      : esc(String(completedDownloadCount)))
+    : '—';
   const todayCell = w.type === 'forward'
     ? '<button type="button" class="watch-count-btn" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" data-watch-detail-today="1" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.todayEvents') + ': ' + todayCount) + '">' + esc(String(todayCount)) + '</button>'
     : esc(String(todayCount));
@@ -1071,6 +1084,8 @@ function buildWatchRowHtml(w) {
     '<td class="font-mono text-left max-w-[200px]" title="' + esc(source) + '"><div class="watch-cell watch-cell--start"><span class="watch-cell-text">' + esc(sourceShort) + '</span></div></td>' +
     '<td class="font-mono text-left max-w-[160px]" title="' + esc(target) + '"><div class="watch-cell watch-cell--start"><span class="watch-cell-text">' + esc(targetShort) + '</span></div></td>' +
     '<td><div class="watch-cell"><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></div></td>' +
+    '<td class="font-semibold tabular-nums"><div class="watch-cell">' + queueCell + '</div></td>' +
+    '<td class="font-semibold tabular-nums"><div class="watch-cell">' + completedDownloadCell + '</div></td>' +
     '<td class="font-semibold tabular-nums"><div class="watch-cell">' + todayCell + '</div></td>' +
     '<td class="font-semibold tabular-nums text-primary"><div class="watch-cell">' + totalCell + '</div></td>' +
     '<td class="watch-col-actions">' +

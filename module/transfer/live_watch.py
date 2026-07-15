@@ -165,7 +165,11 @@ class LiveWatchManager:
             watches_by_id[watch_id]['event_count'] = count
             watches_by_id[watch_id]['today_count'] = today_count
             watches_by_id[watch_id]['deferred_comment_count'] = deferred_count
-        return sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
+        watches = sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
+        if store:
+            from module.adapters.webui.view_model import WebUiViewModel
+            WebUiViewModel(store).attach_download_counts_to_watches(watches)
+        return watches
 
     def pending_watch_sources(self, watch_type: str) -> set:
         return {

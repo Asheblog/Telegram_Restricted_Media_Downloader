@@ -588,6 +588,35 @@ class TransferStore:
             ).fetchall()
             return [self._task_row(row) for row in rows]
 
+    def summarize_watch_inline_tasks_by_watch_id(self) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT watch_id, status, COUNT(*) AS count
+                FROM transfer_tasks
+                WHERE execution_mode = ?
+                  AND watch_id IS NOT NULL
+                  AND TRIM(watch_id) != ''
+                GROUP BY watch_id, status
+                ''',
+                (ExecutionMode.WATCH_INLINE,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def list_watch_inline_tasks_without_watch_id(self, limit: int = 5000) -> List[Dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT * FROM transfer_tasks
+                WHERE execution_mode = ?
+                  AND (watch_id IS NULL OR TRIM(watch_id) = '')
+                ORDER BY id DESC
+                LIMIT ?
+                ''',
+                (ExecutionMode.WATCH_INLINE, limit),
+            ).fetchall()
+            return [self._task_row(row) for row in rows]
+
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         with self.connect() as conn:
             row = conn.execute('SELECT * FROM transfer_tasks WHERE id = ?', (task_id,)).fetchone()

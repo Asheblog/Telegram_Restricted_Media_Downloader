@@ -181,6 +181,58 @@ class WebUiViewModel:
             return 'active'
         return 'active'
 
+    def attach_download_counts_to_watches(self, watches: list[dict[str, Any]]) -> None:
+        """为 list_watches 结果附加 download_queue_count / download_completed_count。"""
+        from module.transfer.watch_inline import source_link_belongs_to_watch
+
+        if not watches:
+            return
+        counts_by_watch: dict[str, dict[str, int]] = {
+            str(watch.get('id')): {'download_queue_count': 0, 'download_completed_count': 0}
+            for watch in watches
+            if watch.get('id')
+        }
+        if not counts_by_watch:
+            return
+        watch_sources = {
+            str(watch.get('id')): str(watch.get('source_link') or '')
+            for watch in watches
+            if watch.get('id')
+        }
+        for row in self.store.summarize_watch_inline_tasks_by_watch_id():
+            watch_id = str(row.get('watch_id') or '')
+            if watch_id not in counts_by_watch:
+                continue
+            bucket = self.watch_download_status_bucket(row.get('status'))
+            count = int(row.get('count') or 0)
+            if bucket == 'active':
+                counts_by_watch[watch_id]['download_queue_count'] += count
+            elif bucket == 'completed':
+                counts_by_watch[watch_id]['download_completed_count'] += count
+        for task in self.store.list_watch_inline_tasks_without_watch_id(limit=5000):
+            source_link = str(task.get('source_link') or '')
+            matched_watch_id = None
+            for watch_id in sorted(counts_by_watch):
+                watch_source = watch_sources.get(watch_id) or ''
+                if watch_source and source_link_belongs_to_watch(source_link, watch_source):
+                    matched_watch_id = watch_id
+                    break
+            if not matched_watch_id:
+                continue
+            bucket = self.watch_download_status_bucket(task.get('status'))
+            if bucket == 'active':
+                counts_by_watch[matched_watch_id]['download_queue_count'] += 1
+            elif bucket == 'completed':
+                counts_by_watch[matched_watch_id]['download_completed_count'] += 1
+        for watch in watches:
+            summary = counts_by_watch.get(str(watch.get('id') or ''))
+            if summary:
+                watch['download_queue_count'] = summary['download_queue_count']
+                watch['download_completed_count'] = summary['download_completed_count']
+            else:
+                watch['download_queue_count'] = 0
+                watch['download_completed_count'] = 0
+
     def task_detail(
             self,
             task_id: int,
