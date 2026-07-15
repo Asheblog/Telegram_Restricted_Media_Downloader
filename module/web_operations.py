@@ -1180,14 +1180,7 @@ class WebOperationsMixin:
         return status
 
     def skip_setup_rclone(self, payload: Optional[dict] = None) -> dict:
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        self._set_archive_settings(enable=False)
-        coordinator.dismiss_rclone()
-        return self.get_setup_status()
+        raise ValueError('初始化必须配置 rclone（下载回退会直接上传到 My Telegram）。')
 
     def test_setup_rclone(self, payload: Optional[dict] = None) -> dict:
         payload = payload if isinstance(payload, dict) else {}

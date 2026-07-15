@@ -13,7 +13,8 @@ class SetupCoordinator:
     """Track setup readiness for WebUI first-run flow.
 
     Upgrade path: if API + Telegram are already ready at first status check,
-    never force the full-screen wizard (including optional rclone).
+    never force the full-screen wizard. New installs must configure rclone
+    (download→PikPak ingest now depends on rclone copyto My Telegram).
     """
 
     def __init__(
@@ -34,6 +35,7 @@ class SetupCoordinator:
                 self._guided = True
 
     def dismiss_rclone(self) -> None:
+        """Kept for settings re-config probe success bookkeeping; no longer skips wizard."""
         with self._lock:
             self._rclone_dismissed = True
 
@@ -75,8 +77,9 @@ class SetupCoordinator:
             guided = self._guided
             dismissed = self._rclone_dismissed
 
-        # Upgrade: never entered incomplete state → do not force rclone step.
-        rclone_resolved = rclone_ok or dismissed or (not guided)
+        # New installs (guided): rclone probe must succeed — skip/dismiss no longer resolves.
+        # Upgrades that never entered incomplete setup remain unforced.
+        rclone_resolved = rclone_ok or (not guided)
         wizard_active = (not ready) or (guided and not rclone_resolved)
 
         if not api_done:
@@ -103,6 +106,7 @@ class SetupCoordinator:
                     'done': rclone_resolved,
                     'ok': rclone_ok,
                     'prompt': guided and not rclone_resolved,
+                    'required': guided,
                     'dismissed': dismissed,
                     'remote': (archive_remote or 'pikpak').strip().rstrip(':') or 'pikpak',
                     'archive_enable': bool(archive_enable),

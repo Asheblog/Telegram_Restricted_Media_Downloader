@@ -7,7 +7,7 @@
 // Login helpers (delegates to shared.js utilities)
 // ---------------------------------------------------------------------------
 function showLoginStep(step) {
-  var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
+  var steps = ['preparing', 'phone', 'code', 'password', 'recovery', 'signup', 'done'];
   steps.forEach(function(id) {
     var el = document.getElementById('login-form-' + id);
     if (!el) return;
@@ -52,6 +52,10 @@ async function checkAuthStatus() {
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -62,6 +66,10 @@ async function checkAuthStatus() {
         startPolling();
         return;
       case 'done': case 'none':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -129,6 +137,7 @@ async function submitAuth(payload) {
   if (phoneBtn) phoneBtn.addEventListener('click', function() {
     var phone = document.getElementById('login-phone').value.trim();
     if (!phone) { showLoginError('请输入电话号码'); return; }
+    if (phone.charAt(0) !== '+') { showLoginError('电话号码需以 +地区号开头'); return; }
     submitAuth({ phone: phone });
   });
 

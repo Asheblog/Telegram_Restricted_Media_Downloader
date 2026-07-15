@@ -1,7 +1,7 @@
 {
   "name": "tgbot",
   "version": "1.0.0",
-  "description": "这是一个面向长期运行的 Telegram 媒体转存 WebUI。它可以把你有权访问的 Telegram 内容转存到目标会话，默认目标是 PikPak bot，并可通过 rclone 把 PikPak 入库后的文件按来源频道归档。",
+  "description": "这是一个面向长期运行的 Telegram 媒体转存 WebUI。它可把 Telegram 内容转存到目标会话；PikPak 场景下直接转发仍可走 bot，下载回退则用 rclone 直传到 My Telegram 并按来源频道归档。",
   "main": "index.js",
   "directories": {
     "doc": "docs",

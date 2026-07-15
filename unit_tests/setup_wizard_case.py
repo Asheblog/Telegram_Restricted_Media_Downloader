@@ -80,14 +80,27 @@ class SetupWizardCase(unittest.TestCase):
         self.assertEqual(after_tg['current_step'], 'rclone')
         self.assertTrue(after_tg['steps']['rclone']['prompt'])
 
-    def test_skip_rclone_dismisses_wizard(self):
+    def test_skip_rclone_no_longer_dismisses_wizard(self):
         coord = SetupCoordinator(runner=lambda *a, **k: _FakeCompleted(stdout=''))
         with patch.object(coord, 'probe_rclone', return_value={'ok': False, 'message': 'missing', 'remotes': []}):
             coord.build_status(api_done=False, telegram_done=False)
             coord.dismiss_rclone()
             status = coord.build_status(api_done=True, telegram_done=True, telegram_step='done')
         self.assertTrue(status['ready'])
+        self.assertTrue(status['wizard_active'])
+        self.assertEqual('rclone', status['current_step'])
+        self.assertTrue(status['steps']['rclone']['required'])
+
+    def test_guided_rclone_ok_completes_wizard(self):
+        coord = SetupCoordinator(runner=lambda *a, **k: _FakeCompleted(stdout='pikpak:\n'))
+        with patch.object(coord, 'probe_rclone', return_value={'ok': False, 'message': 'missing', 'remotes': []}):
+            coord.build_status(api_done=False, telegram_done=False)
+        with patch.object(coord, 'probe_rclone', return_value={'ok': True, 'message': 'ok', 'remotes': ['pikpak']}):
+            status = coord.build_status(api_done=True, telegram_done=True, telegram_step='done')
+        self.assertTrue(status['ready'])
         self.assertFalse(status['wizard_active'])
+        self.assertEqual('done', status['current_step'])
+        self.assertTrue(status['steps']['rclone']['done'])
 
     def test_configure_pikpak_remote_uses_rclone_noninteractive(self):
         calls = []

@@ -1005,36 +1005,93 @@ class TelegramUploader:
             item_id = with_upload.get('item_id')
             if callable(with_upload.get('on_file_ready')):
                 item_id = with_upload.get('on_file_ready')(file_path, with_upload)
+            upload_task = UploadTask(
+                chat_id=None,
+                file_path=file_path,
+                file_id=self.client.rnd_id(),
+                file_size=os.path.getsize(file_path),
+                file_part=[],
+                status=UploadStatus.PENDING,
+                with_delete=with_upload.get('with_delete'),
+                media_group=with_upload.get('media_group'),
+                message_id=with_upload.get('message_id'),
+                send_as_media_group=with_upload.get('send_as_media_group', False),
+                release_callback=with_upload.get('_window_release'),
+                transfer_meta={
+                    'task_id': with_upload.get('task_id'),
+                    'item_id': item_id,
+                    'target_profile': with_upload.get('target_profile'),
+                    'source_link': with_upload.get('source_link'),
+                    'source_folder': with_upload.get('source_folder'),
+                    'file_name': with_upload.get('file_name') or os.path.basename(file_path),
+                    'bot_progress': with_upload.get('bot_progress'),
+                    'local_storage_release': with_upload.get('_local_storage_release')
+                },
+                status_callback=with_upload.get('status_callback'),
+                progress_callback=with_upload.get('progress_callback')
+            )
+            # Plan A: PikPak download fallback uploads via rclone into My Telegram,
+            # then reuses the existing deferred archive/moveto path.
+            if with_upload.get('target_profile') == 'pikpak':
+                desired_name = with_upload.get('file_name') or os.path.basename(file_path)
+                if desired_name:
+                    upload_task.file_name = desired_name
+                asyncio.create_task(self._pikpak_rclone_ingest(upload_task))
+                return
             asyncio.create_task(
                 self.create_upload_task(
                     link=with_upload.get('link'),
-                    upload_task=UploadTask(
-                        chat_id=None,
-                        file_path=file_path,
-                        file_id=self.client.rnd_id(),
-                        file_size=os.path.getsize(file_path),
-                        file_part=[],
-                        status=UploadStatus.PENDING,
-                        with_delete=with_upload.get('with_delete'),
-                        media_group=with_upload.get('media_group'),
-                        message_id=with_upload.get('message_id'),
-                        send_as_media_group=with_upload.get('send_as_media_group', False),
-                        release_callback=with_upload.get('_window_release'),
-                        transfer_meta={
-                            'task_id': with_upload.get('task_id'),
-                            'item_id': item_id,
-                            'target_profile': with_upload.get('target_profile'),
-                            'source_link': with_upload.get('source_link'),
-                            'source_folder': with_upload.get('source_folder'),
-                            'file_name': with_upload.get('file_name') or os.path.basename(file_path),
-                            'bot_progress': with_upload.get('bot_progress'),
-                            'local_storage_release': with_upload.get('_local_storage_release')
-                        },
-                        status_callback=with_upload.get('status_callback'),
-                        progress_callback=with_upload.get('progress_callback')
-                    )
+                    upload_task=upload_task
                 )
             )
+
+    async def _pikpak_rclone_ingest(self, upload_task: UploadTask) -> None:
+        """Copy local file to PikPak ingest folder, then hand off to archive callbacks."""
+        self._set_upload_status(upload_task, UploadStatus.UPLOADING)
+        file_name = (
+            (upload_task.transfer_meta or {}).get('file_name')
+            or upload_task.file_name
+            or os.path.basename(upload_task.file_path)
+        )
+        try:
+            manager = getattr(self.upload_context, 'pikpak_manager', None)
+            if manager is None or not hasattr(manager, 'get_pikpak_archive_client'):
+                raise RuntimeError('PikPak rclone client is unavailable.')
+            client = manager.get_pikpak_archive_client()
+            result = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: client.upload_to_ingest(upload_task.file_path, file_name),
+            )
+            if not getattr(result, 'ok', False):
+                raise RuntimeError(
+                    getattr(result, 'message', None)
+                    or f'rclone upload failed: {getattr(result, "status", "error")}'
+                )
+            upload_task.file_name = file_name
+            # SENT triggers TransferProgressTracker cleanup + deferred archive.
+            self._set_upload_status(upload_task, UploadStatus.SENT)
+            deleted = True
+            if upload_task.with_delete:
+                deleted = safe_delete(upload_task.file_path)
+            if deleted:
+                self.release_transfer_local_storage(upload_task)
+            upload_task.release_window()
+            self._set_upload_status(upload_task, UploadStatus.SUCCESS)
+        except Exception as e:
+            self.diagnostic.error(
+                f'PikPak rclone ingest failed,{_t(KeyWord.REASON)}:"{e}"',
+                exc_info=True,
+            )
+            upload_task.error_msg = str(e)
+            self._set_upload_status(upload_task, UploadStatus.FAILURE)
+            self.release_transfer_local_storage(upload_task)
+            upload_task.release_window()
+
+    @staticmethod
+    def _set_upload_status(upload_task: UploadTask, status) -> None:
+        # Bypass UploadTask console side-effects (emoji) so ingest stays reliable on GBK terminals.
+        object.__setattr__(upload_task, 'status', status)
+        TelegramUploader.notify_transfer_status(upload_task)
 
     @staticmethod
     def notify_transfer_progress(upload_task: UploadTask, current: int, total: int) -> None:

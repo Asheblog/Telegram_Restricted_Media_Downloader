@@ -53,9 +53,9 @@ LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
 AUTHOR = 'Gentlesprite'
-__version__ = '0.2.150'
+__version__ = '0.2.151'
 __license__ = 'MIT License'
-__update_date__ = '2026/07/15 20:35:00'
+__update_date__ = '2026/07/15 21:30:00'
 __copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
 SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
 SOFTWARE_SHORT_NAME = 'TRMD'
@@ -208,7 +208,7 @@ target_profiles:
     archive:
       enable: true # 是否使用rclone将PikPak入库后的文件按来源频道归档。
       remote: pikpak # rclone中的PikPak remote名称。
-      source_directory: My Telegram # PikPak bot入库后的默认目录。
+      source_directory: My Telegram # PikPak 入库落点（bot 转发或 rclone copyto）；归档前暂存于此。
       root_directory: Telegram # PikPak归档根目录。
       poll_seconds: 180 # 每次归档尝试在My Telegram中轮询匹配的最长秒数。
       poll_interval_seconds: 5 # 轮询间隔秒数。

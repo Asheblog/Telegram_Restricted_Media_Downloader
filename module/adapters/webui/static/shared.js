@@ -1687,13 +1687,7 @@ function bindSetupWizardHandlers() {
   if (skipBtn && !skipBtn.dataset.bound) {
     skipBtn.dataset.bound = '1';
     skipBtn.addEventListener('click', async function() {
-      try {
-        await postJson('/api/setup/rclone/skip', {});
-        setupForceRclone = false;
-        hideSetupWizard();
-      } catch (e) {
-        showSetupError(translateApiError(e, '跳过失败'));
-      }
+      showSetupError('初始化必须配置 rclone，不能跳过。');
     });
   }
 

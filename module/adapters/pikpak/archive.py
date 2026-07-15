@@ -1,5 +1,6 @@
 # coding=UTF-8
 import json
+import os
 import posixpath
 import re
 import subprocess
@@ -39,6 +40,9 @@ class DisabledPikPakArchiveClient:
 
     def archive_file(self, *args, **kwargs) -> PikPakArchiveResult:
         return PikPakArchiveResult(False, 'disabled', 'PikPak archive is disabled.')
+
+    def upload_to_ingest(self, *args, **kwargs) -> PikPakArchiveResult:
+        return PikPakArchiveResult(False, 'disabled', 'PikPak rclone remote is not configured.')
 
 
 class RclonePikPakArchiveClient:
@@ -289,14 +293,47 @@ class RclonePikPakArchiveClient:
     def moveto(self, source_path: str, target_path: str) -> None:
         self._run(['moveto', self.remote(source_path), self.remote(target_path)])
 
+    def upload_to_ingest(
+            self,
+            local_path: str,
+            file_name: Optional[str] = None,
+    ) -> PikPakArchiveResult:
+        """Upload a local file into PikPak Ingest Folder (My Telegram) via rclone."""
+        if not self.config.get('remote'):
+            return PikPakArchiveResult(False, 'disabled', 'PikPak rclone remote is missing.')
+        if not local_path or not os.path.isfile(local_path):
+            return PikPakArchiveResult(False, 'missing_metadata', 'Local upload file is missing.')
+        try:
+            ingest_root = clean_remote_path(self.config.get('source_directory') or '')
+            name = clean_remote_segment(file_name or os.path.basename(local_path))
+            if not name:
+                return PikPakArchiveResult(False, 'missing_metadata', 'Upload file name is missing.')
+            if ingest_root:
+                self.ensure_directory(ingest_root)
+            remote_path = join_remote_path(ingest_root, name)
+            timeout = self._upload_timeout_seconds(os.path.getsize(local_path))
+            self._run(
+                ['copyto', local_path, self.remote(remote_path)],
+                timeout=timeout,
+            )
+            return PikPakArchiveResult(True, 'uploaded', archive_path=remote_path)
+        except Exception as e:
+            return PikPakArchiveResult(False, 'error', str(e))
+
+    @staticmethod
+    def _upload_timeout_seconds(file_size: int) -> int:
+        # Allow slow uplinks; floor 5 minutes, scale ~2s/MB, cap 2 hours.
+        megabytes = max(int(file_size or 0), 0) / (1024 * 1024)
+        return int(min(max(300, megabytes * 2.0), 7200))
+
     def remote(self, path: str) -> str:
         remote = str(self.config.get('remote') or '').rstrip(':')
         path = clean_remote_path(path)
         return f'{remote}:{path}' if path else f'{remote}:'
 
-    def _run(self, args: list[str]):
+    def _run(self, args: list[str], timeout: Optional[float] = 300):
         command = ['rclone', *args]
-        result = self.runner(command, capture_output=True, text=True, timeout=300)
+        result = self.runner(command, capture_output=True, text=True, timeout=timeout)
         if getattr(result, 'returncode', 0) != 0:
             stderr = getattr(result, 'stderr', '') or ''
             raise RuntimeError(stderr.strip() or f'Command failed: {command}')

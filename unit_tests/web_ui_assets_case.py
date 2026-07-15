@@ -174,6 +174,20 @@ class WebUiAssetsCase(unittest.TestCase):
         ):
             self.assertIn(fragment, WEB_UI_HTML)
 
+    def test_setup_wizard_requires_rclone_and_shows_login_preparing(self):
+        self.assertNotIn('id="setup-btn-rclone-skip"', WEB_UI_HTML)
+        self.assertNotIn('id="setup-btn-rclone-skip"', WEB_UI_MOBILE_HTML)
+        self.assertIn('必须先配通 rclone', WEB_UI_HTML)
+        self.assertIn('必须先配通 rclone', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="login-form-preparing"', WEB_UI_HTML)
+        self.assertIn('id="login-form-preparing"', WEB_UI_MOBILE_HTML)
+        self.assertIn("current_step === 'telegram'", WEB_UI_HTML)
+        self.assertIn("showLoginStep('preparing')", WEB_UI_HTML)
+        self.assertIn("showLoginStep('preparing')", WEB_UI_MOBILE_HTML)
+        self.assertIn('美国 +1', WEB_UI_HTML)
+        self.assertIn('美国 +1', WEB_UI_MOBILE_HTML)
+        self.assertIn("phone.charAt(0) !== '+'", WEB_UI_MOBILE_HTML)
+
     def test_include_comment_checkboxes_present(self):
         self.assertIn('name="include_comment"', WEB_UI_HTML)
         # At least 3 appearances: transfer form, watch forward form, channel download
@@ -261,7 +275,7 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('startPolling();', WEB_UI_HTML)
         self.assertIn('refreshSelectedTaskDetail();', WEB_UI_HTML)
         self.assertIn("{ silent: true })", WEB_UI_HTML)
-        self.assertIn("return t.status === 'pending' || t.status === 'running';", WEB_UI_MOBILE_HTML)
+        self.assertIn("return t.status === 'pending' || t.status === 'running' || t.status === 'pausing';", WEB_UI_MOBILE_HTML)
         self.assertIn('function refreshOpenTaskSheet', WEB_UI_MOBILE_HTML)
         self.assertIn('refreshOpenTaskSheet();', WEB_UI_MOBILE_HTML)
 

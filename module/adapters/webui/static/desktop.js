@@ -478,7 +478,7 @@ let authPollTimer = null, authStep = '';
 
 function showLoginStep(step) {
   authStep = step;
-  ['login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
+  ['login-form-preparing','login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.add('hidden');
@@ -529,7 +529,11 @@ async function checkAuthStatus() {
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
-        // Setup not ready yet (waiting for API credentials / authorize start).
+        // After API credentials: keep login overlay visible while Telegram client starts.
+        if (lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -539,6 +543,10 @@ async function checkAuthStatus() {
         startPolling();
         return;
       case 'done': case 'none':
+        if (lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;

@@ -105,8 +105,8 @@ admin / replace-with-a-strong-password
 启动容器并登录 WebUI 后，会进入**首次初始化向导**（桌面端与手机浏览器均可）：
 
 1. 填写 Telegram `api_id` / `api_hash`（可选代理）
-2. 在页面完成 Telegram 登录（手机号、验证码、二步验证）
-3. 配置 PikPak rclone（可点「稍后再说」跳过；跳过后不会自动归档）
+2. 在页面完成 Telegram 登录（手机号、验证码、二步验证；手机号用国际格式，如 `+44…` / `+1…` / `+86…`）
+3. **必须**配置 PikPak rclone（下载回退会直传 `My Telegram`，不可跳过）
 
 路径、媒体类型等会按 Docker 默认值自动生成，一般不必先手改配置文件。  
 登录会话保存在 `/opt/trmd/sessions`，后续升级或重启请勿删除。
@@ -233,9 +233,9 @@ docker exec -it trmd rclone lsd pikpak: --config /app/rclone/rclone.conf
 
 确认 remote 可用，且归档开关已打开（向导配置成功后会自动打开）。
 
-**不想使用 PikPak 归档**
+**不想自动归档到频道目录**
 
-初始化时点「稍后再说」，或在设置里关闭「PikPak按来源频道归档」。仍可转存到 PikPak bot，只是不会用 rclone 移动文件。
+在设置里关闭「PikPak按来源频道归档」。下载回退仍会 rclone 传到 `My Telegram`；直接转发仍可走 PikPak bot。关闭归档后文件会留在入库目录，需自行整理。
 
 ## License
 

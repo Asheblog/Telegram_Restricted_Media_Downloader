@@ -78,20 +78,20 @@ module/
     │       │
     │       ├── 成功 → [PikPak] 等待入库确认 → rclone 归档 → 完成
     │       └── 失败 (ChatForwardsRestricted 等)
-    │              └──→ 回退: 创建 Watch Inline Transfer Task → 下载到本地 → 上传到目标
-    │                     → [PikPak] 延迟 rclone 归档（可重试，重启可恢复）
+    │              └──→ 回退: 创建 Watch Inline Transfer Task → 下载到本地
+    │                     → [PikPak] rclone copyto "My Telegram"
+    │                     → 延迟 rclone 归档（可重试，重启可恢复）
     │
     └── 下载→上传流程
             │
             下载到 temp_directory/chat_id/
             │
-            上传到目标会话
-            │
-            [PikPak] 等待 PikPak bot 回复确认消息
+            [非 PikPak] 上传到目标会话
+            [PikPak] rclone copyto "My Telegram"（不经 pikpak_bot）
             │
             [PikPak archive=true] rclone 从 "My Telegram" 移动到 "Telegram/<频道名>"
             │
-            清理本地临时文件
+            清理本地临时文件（rclone/上传成功后再删）
 ```
 
 ---
@@ -185,11 +185,14 @@ _Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI, in-memory-only ses
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login
 
-**First-run Setup Wizard** — `--web` 模式下，在站内登录之后引导用户完成初始化：填写 Telegram API 凭证、完成 WebUI Telegram Login、可选配置 rclone PikPak remote。就绪判定以真实配置与会话为准（合法 `api_id`/`api_hash` + 已授权 Session）；已就绪的升级环境不弹全屏向导。rclone 可跳过；跳过或未探测成功时归档保持关闭。
-_Avoid_: setup completed flag, forced rclone gate, stdin config_guide in web mode, ttyd rclone wizard
+**First-run Setup Wizard** — `--web` 模式下，在站内登录之后引导用户完成初始化：填写 Telegram API 凭证、完成 WebUI Telegram Login、**强制配置** rclone PikPak remote（新装不可跳过）。就绪判定以真实配置与会话为准（合法 `api_id`/`api_hash` + 已授权 Session）；已就绪的升级环境不弹全屏向导。rclone 探测成功后开启归档。
+_Avoid_: setup completed flag, optional rclone skip on new install, stdin config_guide in web mode, ttyd rclone wizard
 
-**Setup Ready** — First-run Setup Wizard 的硬门槛：API 凭证已保存且 Telegram 会话已授权。未就绪时屏蔽转存/监听等业务 API；设置里可重新登录 Telegram 或重配 rclone。
+**Setup Ready** — First-run Setup Wizard 的硬门槛：API 凭证已保存且 Telegram 会话已授权。未就绪时屏蔽转存/监听等业务 API；新装另需配通 rclone 才结束向导。设置里可重新登录 Telegram 或重配 rclone。
 _Avoid_: initialization token, wizard finished marker
+
+**PikPak Rclone Ingest** — 下载回退路径将本地文件经 rclone `copyto` 上传到 PikPak Ingest Folder（`My Telegram`），再复用既有 PikPak Archive（匹配/moveto/改名）；不再经 `@pikpak_bot` Telegram 上传。直接转发路径仍可走 bot。
+_Avoid_: bot-only ingest, archive-bypass upload
 
 **WebUI ViewModel Contract** — WebUI 后端为桌面端与移动端共同输出的唯一公共数据契约。任务列表、任务详情、任务统计、设置选项均先在服务端归一化，再由前端共享脚本消费。
 _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend state

@@ -336,9 +336,9 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </div>
       </div>
       <div id="setup-form-rclone" class="login-step hidden">
-        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 3 / 3（可选）</div>
+        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 3 / 3（必选）</div>
         <h2 class="text-xl font-bold m-0 mb-1.5 text-text">配置 PikPak rclone</h2>
-        <p class="text-sm text-muted m-0 mb-5">用于把入库文件归档到云盘；可跳过，稍后再说</p>
+        <p class="text-sm text-muted m-0 mb-5">下载回退会直传 My Telegram，必须先配通 rclone</p>
         <div class="login-field">
           <label for="setup-rclone-remote">Remote 名称</label>
           <input id="setup-rclone-remote" type="text" value="pikpak" autocomplete="off">
@@ -353,7 +353,6 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </div>
         <p class="text-xs text-muted mb-4" id="setup-rclone-hint"></p>
         <div class="flex flex-wrap gap-2.5 justify-end">
-          <button type="button" class="btn" id="setup-btn-rclone-skip">稍后再说</button>
           <button type="button" class="btn" id="setup-btn-rclone-test">仅验证已有</button>
           <button type="button" id="setup-btn-rclone" class="login-submit !w-auto px-6">保存并验证</button>
         </div>
@@ -376,6 +375,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </div>
     <div class="login-card">
       <div class="login-error" id="login-error"></div>
+      <div id="login-form-preparing" class="login-step hidden">
+        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">准备中</div>
+        <h2 class="text-xl font-bold m-0 mb-1.5 text-text">正在连接 Telegram</h2>
+        <p class="text-sm text-muted m-0 mb-5" id="login-preparing-desc">API 凭证已保存，正在启动登录流程，手机号输入框即将出现…</p>
+        <div class="text-sm text-muted">请稍候，通常只需几秒。</div>
+      </div>
       <div id="login-form-phone" class="login-step">
         <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 1 / 3</div>
         <h2 class="text-xl font-bold m-0 mb-1.5 text-text">输入电话号码</h2>
@@ -383,7 +388,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <div class="login-field">
           <label for="login-phone">电话号码</label>
           <input id="login-phone" type="tel" placeholder="+447911123456" autocomplete="tel">
-          <div class="text-xs text-muted mt-1">必须以「+地区号」开头，例如英国 +44、中国 +86（不要加空格或括号）</div>
+          <div class="text-xs text-muted mt-1">必须以「+地区号」开头，例如英国 +44、美国 +1、日本 +81、中国 +86（不要加空格或括号）</div>
         </div>
         <div class="flex justify-end">
           <button type="button" id="login-btn-phone" class="login-submit !w-auto px-6">
@@ -3295,13 +3300,7 @@ function bindSetupWizardHandlers() {
   if (skipBtn && !skipBtn.dataset.bound) {
     skipBtn.dataset.bound = '1';
     skipBtn.addEventListener('click', async function() {
-      try {
-        await postJson('/api/setup/rclone/skip', {});
-        setupForceRclone = false;
-        hideSetupWizard();
-      } catch (e) {
-        showSetupError(translateApiError(e, '跳过失败'));
-      }
+      showSetupError('初始化必须配置 rclone，不能跳过。');
     });
   }
 
@@ -3846,7 +3845,7 @@ let authPollTimer = null, authStep = '';
 
 function showLoginStep(step) {
   authStep = step;
-  ['login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
+  ['login-form-preparing','login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.add('hidden');
@@ -3897,7 +3896,11 @@ async function checkAuthStatus() {
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
-        // Setup not ready yet (waiting for API credentials / authorize start).
+        // After API credentials: keep login overlay visible while Telegram client starts.
+        if (lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -3907,6 +3910,10 @@ async function checkAuthStatus() {
         startPolling();
         return;
       case 'done': case 'none':
+        if (lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -6363,9 +6370,9 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       </div>
     </div>
     <div id="setup-form-rclone" class="login-step hidden">
-      <div class="mob-login-card__step">步骤 3 / 3（可选）</div>
+      <div class="mob-login-card__step">步骤 3 / 3（必选）</div>
       <h2 class="mob-login-card__title">配置 PikPak rclone</h2>
-      <p class="mob-login-card__subtitle">可跳过；跳过后不会自动归档</p>
+      <p class="mob-login-card__subtitle">下载回退会直传 My Telegram，必须先配通 rclone</p>
       <div class="mob-login-field">
         <label for="setup-rclone-remote">Remote 名称</label>
         <input id="setup-rclone-remote" type="text" value="pikpak" autocomplete="off">
@@ -6380,7 +6387,6 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       </div>
       <p class="mob-login-field__hint" id="setup-rclone-hint"></p>
       <div class="mob-login-actions" style="flex-wrap:wrap">
-        <button type="button" class="mob-btn mob-btn-muted" id="setup-btn-rclone-skip">稍后再说</button>
         <button type="button" class="mob-btn mob-btn-muted" id="setup-btn-rclone-test">仅验证</button>
         <button type="button" id="setup-btn-rclone" class="mob-btn mob-login-submit">保存并验证</button>
       </div>
@@ -6403,6 +6409,13 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
   <div class="mob-login-card">
     <div class="mob-login-error" id="login-error"></div>
 
+    <div id="login-form-preparing" class="login-step hidden">
+      <div class="mob-login-card__step">准备中</div>
+      <h2 class="mob-login-card__title">正在连接 Telegram</h2>
+      <p class="mob-login-card__subtitle" id="login-preparing-desc">API 凭证已保存，正在启动登录流程，手机号输入框即将出现…</p>
+      <p class="mob-login-field__hint">请稍候，通常只需几秒。</p>
+    </div>
+
     <!-- Step 1: Phone -->
     <div id="login-form-phone" class="login-step">
       <div class="mob-login-card__step">步骤 1 / 3</div>
@@ -6411,7 +6424,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div class="mob-login-field">
         <label for="login-phone">电话号码</label>
         <input id="login-phone" type="tel" placeholder="+447911123456" autocomplete="tel">
-        <div class="mob-login-field__hint">必须以「+地区号」开头，例如英国 +44、中国 +86（不要加空格或括号）</div>
+        <div class="mob-login-field__hint">必须以「+地区号」开头，例如英国 +44、美国 +1、日本 +81、中国 +86（不要加空格或括号）</div>
       </div>
       <div class="mob-login-actions">
         <button type="button" id="login-btn-phone" class="mob-btn mob-login-submit">
@@ -8647,13 +8660,7 @@ function bindSetupWizardHandlers() {
   if (skipBtn && !skipBtn.dataset.bound) {
     skipBtn.dataset.bound = '1';
     skipBtn.addEventListener('click', async function() {
-      try {
-        await postJson('/api/setup/rclone/skip', {});
-        setupForceRclone = false;
-        hideSetupWizard();
-      } catch (e) {
-        showSetupError(translateApiError(e, '跳过失败'));
-      }
+      showSetupError('初始化必须配置 rclone，不能跳过。');
     });
   }
 
@@ -8727,7 +8734,7 @@ function startSetupPolling() {
 // Login helpers (delegates to shared.js utilities)
 // ---------------------------------------------------------------------------
 function showLoginStep(step) {
-  var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
+  var steps = ['preparing', 'phone', 'code', 'password', 'recovery', 'signup', 'done'];
   steps.forEach(function(id) {
     var el = document.getElementById('login-form-' + id);
     if (!el) return;
@@ -8772,6 +8779,10 @@ async function checkAuthStatus() {
     if (!state || !state.step) return;
     switch (state.step) {
       case 'pending':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -8782,6 +8793,10 @@ async function checkAuthStatus() {
         startPolling();
         return;
       case 'done': case 'none':
+        if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && lastSetupStatus.current_step === 'telegram') {
+          showLoginStep('preparing');
+          return;
+        }
         if (typeof lastSetupStatus !== 'undefined' && lastSetupStatus && !lastSetupStatus.ready) {
           hideLogin();
           return;
@@ -8849,6 +8864,7 @@ async function submitAuth(payload) {
   if (phoneBtn) phoneBtn.addEventListener('click', function() {
     var phone = document.getElementById('login-phone').value.trim();
     if (!phone) { showLoginError('请输入电话号码'); return; }
+    if (phone.charAt(0) !== '+') { showLoginError('电话号码需以 +地区号开头'); return; }
     submitAuth({ phone: phone });
   });
 
