@@ -3,7 +3,7 @@ import asyncio
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
@@ -122,6 +122,50 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             resolver.resolve.assert_not_called()
             self.assertEqual(1, len(host.forward_calls))
             self.assertIs(channel_msg, host.forward_calls[0]['message'])
+            _close_store(store)
+
+    def test_pikpak_target_skips_text_only_without_forward_or_ingest_wait(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/gokaidanbao',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+            )
+            task = store.get_task(task_id)
+            host = _make_host(store)
+            host.is_pikpak_target = lambda target_link, target_profile=None: True
+            host.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=False)
+            runner = WebTransferRunner(host)
+            text_msg = SimpleNamespace(
+                id=2040,
+                empty=False,
+                text='求片 取一\n洛宝',
+                caption=None,
+                link='https://t.me/gokaidanbao/2040',
+                chat=SimpleNamespace(id='gokaidanbao', username='gokaidanbao'),
+                video=None,
+                photo=None,
+                document=None,
+                audio=None,
+                voice=None,
+                animation=None,
+                video_note=None,
+            )
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=text_msg,
+                origin_chat_id='gokaidanbao',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/gokaidanbao/2040',
+            ))
+
+            self.assertEqual([], host.forward_calls)
+            host.wait_for_pikpak_ingest_confirmation.assert_not_awaited()
+            item = store.list_items(task_id)[0]
+            self.assertEqual(TransferStatus.SKIPPED, item['status'])
+            self.assertIn('PikPak 不支持无媒体消息', item['error_message'] or '')
             _close_store(store)
 
     def test_resolve_returns_media_forwards_resolved_and_records_event(self):
@@ -596,6 +640,62 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual([], folder_calls)
         self.assertEqual([], archive_calls)
+
+    def test_ingest_failure_recognizes_unsupported_file_reply(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        unsupported = SimpleNamespace(
+            text='当前文件不支持，PikPak 正在努力支持中',
+            caption=None,
+        )
+        self.assertTrue(PikpakIntegrationManager.is_pikpak_ingest_failure_message(unsupported))
+        self.assertFalse(
+            PikpakIntegrationManager.message_has_pikpak_ingestible_media(
+                SimpleNamespace(id=1, text='求片 取一', video=None, photo=None, document=None)
+            )
+        )
+        self.assertTrue(
+            PikpakIntegrationManager.message_has_pikpak_ingestible_media(
+                SimpleNamespace(id=2, video=SimpleNamespace(file_size=10), text=None)
+            )
+        )
+
+    def test_wait_for_ingest_returns_false_immediately_on_unsupported_reply(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        class FakeClient:
+            async def get_chat_history(self, chat_id, limit):
+                yield SimpleNamespace(
+                    id=101,
+                    text='当前文件不支持，PikPak 正在努力支持中',
+                    reply_to_message=SimpleNamespace(id=100),
+                )
+
+        sleep_calls = []
+
+        async def fake_sleep(_seconds):
+            sleep_calls.append(_seconds)
+
+        manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: None,
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+            app_getter=lambda: SimpleNamespace(client=FakeClient()),
+        )
+
+        async def run_case():
+            with patch('module.adapters.pikpak.integration.asyncio.sleep', new=fake_sleep):
+                return await manager.wait_for_pikpak_ingest_confirmation(
+                    target_chat_id='pikpak',
+                    forwarded_message=SimpleNamespace(id=100),
+                    timeout_seconds=15,
+                    poll_interval=3,
+                )
+
+        self.assertFalse(asyncio.run(run_case()))
+        self.assertEqual([], sleep_calls)
 
 
 class DeepLinkListenForwardFolderCase(unittest.TestCase):

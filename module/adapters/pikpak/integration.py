@@ -408,9 +408,23 @@ class PikpakIntegrationManager:
         return any(keyword in text for keyword in (
             '保存失败',
             '转存失败',
+            '不支持',
+            'unsupported',
+            'not supported',
             'failed',
             'error'
         ))
+
+    @staticmethod
+    def message_has_pikpak_ingestible_media(message) -> bool:
+        """True when the message carries media PikPak can typically save (not bare text)."""
+        if message is None:
+            return False
+        from module.core.media_types import DOWNLOAD_MEDIA_TYPES
+        for dtype in DOWNLOAD_MEDIA_TYPES:
+            if getattr(message, dtype, None):
+                return True
+        return False
 
     async def wait_for_pikpak_ingest_confirmation(
             self,

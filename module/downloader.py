@@ -809,6 +809,35 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         )
                     )
                 return None
+            if (
+                    self.is_pikpak_target(target_link)
+                    and not media_group
+                    and not PikpakIntegrationManager.message_has_pikpak_ingestible_media(message)
+            ):
+                reject_reason = 'PikPak 不支持无媒体消息'
+                self._log_system_chain(
+                    category='filter',
+                    stage='filter_reject',
+                    message=f'消息被过滤器拦截: {reject_reason}',
+                    level='info',
+                    trace_id=trace_id,
+                    watch_id=watch_id,
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    target_link=target_link,
+                    details={'reject_reason': reject_reason}
+                )
+                if watch_id:
+                    self._record_watch_event(
+                        watch_id,
+                        origin_chat_id,
+                        message_id,
+                        target_chat_id,
+                        target_link,
+                        'skipped',
+                        f'跳过转发({reject_reason})。',
+                    )
+                return None
             forwarded_message = None
             if media_group:
                 while True:

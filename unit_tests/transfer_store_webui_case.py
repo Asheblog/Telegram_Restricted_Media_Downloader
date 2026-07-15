@@ -2836,7 +2836,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual([], archive_calls)
             self.assertEqual([], folder_calls)
             item = store.list_items(task_id)[0]
-            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertEqual(TransferStatus.SKIPPED, item['status'])
+            self.assertIn('PikPak 不支持无媒体消息', item['error_message'] or '')
             self.assertIsNone(item['archive_status'])
             events = store.list_events(task_id)
             self.assertFalse(any('PikPak archive missing_metadata' in event['message'] for event in events))

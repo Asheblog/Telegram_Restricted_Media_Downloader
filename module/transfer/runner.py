@@ -21,6 +21,7 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 
 from module import log
 from module.enums import DownloadStatus, DownloadType
+from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import archive_source_folder
 from module.transfer.deep_link import (
     DeepLinkResolveError,
@@ -625,6 +626,36 @@ class WebTransferRunner:
             if not runtime_filter.should_pass(send_message):
                 reject_reason = runtime_filter.get_reject_reason(send_message) or '媒体类型未允许'
                 skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
+                if callable(skip_fn):
+                    skip_fn(
+                        task=task,
+                        message=send_message,
+                        source_link=source_link,
+                        origin_chat_id=origin_chat_id,
+                        reject_reason=reject_reason,
+                        range_message_id=range_message_id,
+                    )
+                else:
+                    host.skip_transfer_item_for_target_limit(
+                        task=task,
+                        message=send_message,
+                        source_link=source_link,
+                        origin_chat_id=origin_chat_id,
+                        limit_error={
+                            'message': reject_reason,
+                            'media_type': 'filtered',
+                            'file_name': None,
+                            'file_size': None,
+                        },
+                        range_message_id=range_message_id,
+                    )
+                continue
+            if (
+                    host.is_pikpak_target(task.get('target_link'), task.get('target_profile'))
+                    and not PikpakIntegrationManager.message_has_pikpak_ingestible_media(send_message)
+            ):
+                skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
+                reject_reason = 'PikPak 不支持无媒体消息'
                 if callable(skip_fn):
                     skip_fn(
                         task=task,
