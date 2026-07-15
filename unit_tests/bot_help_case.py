@@ -40,6 +40,8 @@ class BotHelpCase(unittest.TestCase):
         self.assertIn('魔改作者: Asheblog', text)
         self.assertIn('WebUI 入口', text)
         self.assertIn('Docker 默认访问', text)
+        self.assertIn('本 Fork 亮点', text)
+        self.assertIn('深链取片', text)
         self.assertIn('WebUI 能力', text)
         self.assertIn('/cleanup', text)
         self.assertIn('快速部署', text)

@@ -1,8 +1,31 @@
 # Telegram Restricted Media Downloader WebUI Fork
 
-这是一个面向长期运行的 Telegram 媒体转存 WebUI。它可以把你有权访问的 Telegram 内容转存到目标会话，默认目标是 PikPak bot，并可通过 rclone 把 PikPak 入库后的文件按来源频道归档。
+面向**长期运行**的 Telegram 媒体转存工具：用 WebUI 管理批量转存、实时监听和任务恢复，默认转存到 PikPak bot，并可用 rclone 按**来源频道 / 帖子**自动归档。
 
 请只用于你有权访问、保存和转存的内容。使用者需要自行承担使用行为及其后果。
+
+## 本 Fork 做什么
+
+继承上游 [Gentlesprite/TRMD](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) 的受限内容下载→上传链路，在此基础上把**运维和任务管理**搬到 WebUI，并补齐一批频道搬运场景里常见、但多数同类项目没做好的能力：
+
+| 能力 | 说明 |
+| --- | --- |
+| **深链取片** | 频道帖只有 `t.me/<bot>?start=...` 按钮、正片在资源 bot 私聊里时，用已登录账号 `startBot` 取回媒体再转存；支持评论区深链、连发收齐、白名单与超时控制 |
+| **WebUI 任务中心** | 转存 / 监听、进度与失败原因、暂停继续、重试、监听历史与导出导入；浏览器完成 API / 登录 / rclone 初始化 |
+| **PikPak 归档** | 转存到 PikPak 后，rclone 按 `Telegram/频道名/帖子路径` 整理，评论区与深链内容仍归属原帖 |
+| **TG Bot 辅助** | `/download`、`/forward`、`/listen_*` 等命令仍可用，适合临时操作；长期任务推荐 WebUI |
+
+## 与同类项目怎么选
+
+| 项目 | 更适合 | 优势 | 局限 |
+| --- | --- | --- | --- |
+| **本 Fork** | PikPak 长期归档、资源 bot 深链频道、需要 WebUI 管任务 | 深链取片 + 评论区、按帖归档、监听可恢复、失败可观测 | 部署比纯 Bot 重；存储侧偏 PikPak / rclone，不如多后端工具灵活 |
+| [Gentlesprite 上游](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) | 轻量 CLI / Bot、熟悉原版工作流 | 成熟、断点续传、命令齐全 | 无 WebUI；初始化多依赖 TTY / `docker exec` |
+| [SaveAny-Bot](https://github.com/krau/saveany-bot) | 多存储（Alist / S3 / WebDAV 等）统一搬运 | 后端生态广、监听与规则丰富 | AGPL；工作流与 PikPak 按帖归档不同；无资源 bot 深链取片 |
+| [TeleFlow](https://github.com/AvishkarPatil/TeleFlow) 等链接 Bot | 偶尔单条 / 小批量取片 | 上手快、双客户端架构清晰 | 缺长期任务、监听历史、深链与按帖归档 |
+| [telegram-media-downloader](https://github.com/botnick/telegram-media-downloader) | 本地媒体库与图库浏览 | PWA 图库、监控与去重很强 | 重心在本地下载库，不是 PikPak 转存流水线 |
+
+若你的来源帖**只有深链按钮、没有可直接转发的正片**，或需要**评论区才能拿到资源**，本 Fork 的深链取片通常是更省心的选择。
 
 ## 快速开始
 
