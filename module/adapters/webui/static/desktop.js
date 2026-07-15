@@ -446,7 +446,7 @@ function resetTaskPolling() {
 
 function startPolling() {
   if (state.taskPollTimer) return;
-  const fast = 3000, slow = 15000;
+  const fast = 1000, slow = 15000;
   let interval = hasActiveTasks() ? fast : slow;
   let lastPoll = 0;
 

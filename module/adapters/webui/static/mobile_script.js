@@ -214,11 +214,11 @@ function startPolling() {
 
   async function poll() {
     if (document.hidden) {
-      pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+      pollTimer = setTimeout(poll, hasActiveTasks() ? 1000 : 10000);
       return;
     }
     await loadCurrentView();
-    pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+    pollTimer = setTimeout(poll, hasActiveTasks() ? 1000 : 10000);
   }
 
   poll();

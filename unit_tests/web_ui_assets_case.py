@@ -266,6 +266,11 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_polling_js(self):
         self.assertIn('function startPolling', WEB_UI_HTML)
         self.assertIn('hasActiveTasks', WEB_UI_HTML)
+        # Active-task speed/stats refresh: 1s desktop + mobile; idle stays slower.
+        self.assertIn('const fast = 1000, slow = 15000;', WEB_UI_HTML)
+        self.assertIn('hasActiveTasks() ? 1000 : 10000', WEB_UI_MOBILE_HTML)
+        self.assertNotIn('const fast = 3000, slow = 15000;', WEB_UI_HTML)
+        self.assertNotIn('hasActiveTasks() ? 3000 : 10000', WEB_UI_MOBILE_HTML)
 
     def test_task_detail_progress_refreshes_without_manual_page_reload(self):
         self.assertIn('function refreshSelectedTaskDetail', WEB_UI_HTML)

@@ -3813,7 +3813,7 @@ function resetTaskPolling() {
 
 function startPolling() {
   if (state.taskPollTimer) return;
-  const fast = 3000, slow = 15000;
+  const fast = 1000, slow = 15000;
   let interval = hasActiveTasks() ? fast : slow;
   let lastPoll = 0;
 
@@ -8941,11 +8941,11 @@ function startPolling() {
 
   async function poll() {
     if (document.hidden) {
-      pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+      pollTimer = setTimeout(poll, hasActiveTasks() ? 1000 : 10000);
       return;
     }
     await loadCurrentView();
-    pollTimer = setTimeout(poll, hasActiveTasks() ? 3000 : 10000);
+    pollTimer = setTimeout(poll, hasActiveTasks() ? 1000 : 10000);
   }
 
   poll();
