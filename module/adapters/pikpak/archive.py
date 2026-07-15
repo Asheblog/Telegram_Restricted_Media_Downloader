@@ -304,21 +304,31 @@ class RclonePikPakArchiveClient:
         if not local_path or not os.path.isfile(local_path):
             return PikPakArchiveResult(False, 'missing_metadata', 'Local upload file is missing.')
         try:
-            ingest_root = clean_remote_path(self.config.get('source_directory') or '')
-            name = clean_remote_segment(file_name or os.path.basename(local_path))
-            if not name:
+            file_size = os.path.getsize(local_path)
+            if file_size <= 0:
+                return PikPakArchiveResult(False, 'missing_metadata', '上传文件大小为0')
+            remote_path = self.resolve_ingest_path(file_name or os.path.basename(local_path))
+            if not remote_path:
                 return PikPakArchiveResult(False, 'missing_metadata', 'Upload file name is missing.')
+            ingest_root = clean_remote_path(self.config.get('source_directory') or '')
             if ingest_root:
                 self.ensure_directory(ingest_root)
-            remote_path = join_remote_path(ingest_root, name)
-            timeout = self._upload_timeout_seconds(os.path.getsize(local_path))
-            self._run(
-                ['copyto', local_path, self.remote(remote_path)],
-                timeout=timeout,
-            )
+            timeout = self._upload_timeout_seconds(file_size)
+            self._run(self.copyto_command(local_path, remote_path)[1:], timeout=timeout)
             return PikPakArchiveResult(True, 'uploaded', archive_path=remote_path)
         except Exception as e:
             return PikPakArchiveResult(False, 'error', str(e))
+
+    def resolve_ingest_path(self, file_name: Optional[str]) -> Optional[str]:
+        ingest_root = clean_remote_path(self.config.get('source_directory') or '')
+        name = clean_remote_segment(file_name or '')
+        if not name:
+            return None
+        return join_remote_path(ingest_root, name)
+
+    def copyto_command(self, local_path: str, remote_path: str) -> list[str]:
+        # Keep rclone quiet so async PIPE cannot fill up and deadlock the process.
+        return ['rclone', 'copyto', local_path, self.remote(remote_path), '-q', '--stats', '0']
 
     @staticmethod
     def _upload_timeout_seconds(file_size: int) -> int:
@@ -341,8 +351,13 @@ class RclonePikPakArchiveClient:
 
 
 def build_pikpak_archive_client(config: Optional[dict]):
+    """Build archive/ingest client when remote is configured.
+
+    `enable` only gates archive_file/moveto; rclone ingest into My Telegram
+    remains available whenever remote is set.
+    """
     normalized = normalize_archive_config(config)
-    if not normalized.get('enable'):
+    if not normalized.get('remote'):
         return DisabledPikPakArchiveClient()
     return RclonePikPakArchiveClient(normalized)
 

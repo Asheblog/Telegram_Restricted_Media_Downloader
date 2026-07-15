@@ -289,6 +289,12 @@ class TelegramUploader:
 
     def cancel_uploads_for_task(self, task_id: int) -> int:
         cancelled = self._drop_uploads_for_task_from_queue(task_id)
+        registry = self._transfer_upload_registry()
+        async_tasks = list(registry.pop(int(task_id), set()))
+        for async_task in async_tasks:
+            if async_task and not async_task.done():
+                async_task.cancel()
+                cancelled += 1
         cancelled += self._cancel_active_uploads_for_task(task_id)
         return cancelled
 
@@ -1036,7 +1042,12 @@ class TelegramUploader:
                 desired_name = with_upload.get('file_name') or os.path.basename(file_path)
                 if desired_name:
                     upload_task.file_name = desired_name
-                asyncio.create_task(self._pikpak_rclone_ingest(upload_task))
+                upload_task.transfer_meta['rclone_ingest'] = True
+                ingest_task = asyncio.create_task(self._pikpak_rclone_ingest(upload_task))
+                self._register_transfer_upload_task(upload_task, ingest_task)
+                ingest_task.add_done_callback(
+                    partial(self._unregister_transfer_upload_task, upload_task)
+                )
                 return
             asyncio.create_task(
                 self.create_upload_task(
@@ -1047,27 +1058,69 @@ class TelegramUploader:
 
     async def _pikpak_rclone_ingest(self, upload_task: UploadTask) -> None:
         """Copy local file to PikPak ingest folder, then hand off to archive callbacks."""
+        task_id = (upload_task.transfer_meta or {}).get('task_id')
+        if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+            self._pause_upload_task(upload_task)
+            return
+
+        # Share TelegramUploader concurrency budget with MTProto uploads.
+        while self.current_task_num >= self.max_upload_task:
+            if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+                self._pause_upload_task(upload_task)
+                return
+            await self.event.wait()
+            self.event.clear()
+        self.current_task_num += 1
+
         self._set_upload_status(upload_task, UploadStatus.UPLOADING)
         file_name = (
             (upload_task.transfer_meta or {}).get('file_name')
             or upload_task.file_name
             or os.path.basename(upload_task.file_path)
         )
+        file_size = int(upload_task.file_size or 0)
         try:
+            if file_size <= 0 or not os.path.isfile(upload_task.file_path):
+                raise RuntimeError('上传文件大小为0' if file_size <= 0 else 'Local upload file is missing.')
+            # Start/end only — avoid fake byte pulses that corrupt upload_speed stats.
+            self.notify_transfer_progress(upload_task, 0, file_size)
+
             manager = getattr(self.upload_context, 'pikpak_manager', None)
             if manager is None or not hasattr(manager, 'get_pikpak_archive_client'):
                 raise RuntimeError('PikPak rclone client is unavailable.')
             client = manager.get_pikpak_archive_client()
-            result = await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: client.upload_to_ingest(upload_task.file_path, file_name),
-            )
-            if not getattr(result, 'ok', False):
-                raise RuntimeError(
-                    getattr(result, 'message', None)
-                    or f'rclone upload failed: {getattr(result, "status", "error")}'
+            if not hasattr(client, 'resolve_ingest_path') or not hasattr(client, 'copyto_command'):
+                # Disabled/missing remote client.
+                result = client.upload_to_ingest(upload_task.file_path, file_name)
+                if not getattr(result, 'ok', False):
+                    raise RuntimeError(
+                        getattr(result, 'message', None)
+                        or f'rclone upload failed: {getattr(result, "status", "error")}'
+                    )
+            else:
+                remote_path = client.resolve_ingest_path(file_name)
+                if not remote_path:
+                    raise RuntimeError('Upload file name is missing.')
+                ingest_root = getattr(client, 'config', {}).get('source_directory') or ''
+                if ingest_root and hasattr(client, 'ensure_directory'):
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        lambda: client.ensure_directory(str(ingest_root).replace('\\', '/').strip('/')),
+                    )
+                timeout = client._upload_timeout_seconds(file_size)
+                command = client.copyto_command(upload_task.file_path, remote_path)
+                await self._run_cancellable_rclone_copyto(
+                    upload_task=upload_task,
+                    command=command,
+                    timeout=timeout,
                 )
+
+            if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+                self._pause_upload_task(upload_task)
+                return
+
             upload_task.file_name = file_name
+            self.notify_transfer_progress(upload_task, file_size, file_size)
             # SENT triggers TransferProgressTracker cleanup + deferred archive.
             self._set_upload_status(upload_task, UploadStatus.SENT)
             deleted = True
@@ -1077,15 +1130,87 @@ class TelegramUploader:
                 self.release_transfer_local_storage(upload_task)
             upload_task.release_window()
             self._set_upload_status(upload_task, UploadStatus.SUCCESS)
+        except asyncio.CancelledError:
+            # Pause: keep local file. Hard cancel may already have marked FAILURE+cleanup.
+            if upload_task.status not in (
+                    UploadStatus.FAILURE, UploadStatus.SUCCESS, UploadStatus.SENT
+            ):
+                self._pause_upload_task(upload_task)
+            self.release_transfer_local_storage(upload_task)
+            raise
         except Exception as e:
             self.diagnostic.error(
                 f'PikPak rclone ingest failed,{_t(KeyWord.REASON)}:"{e}"',
                 exc_info=True,
             )
             upload_task.error_msg = str(e)
+            # FAILURE triggers TransferProgressTracker._try_cleanup; also honor with_delete.
             self._set_upload_status(upload_task, UploadStatus.FAILURE)
+            if upload_task.with_delete:
+                safe_delete(upload_task.file_path)
             self.release_transfer_local_storage(upload_task)
             upload_task.release_window()
+        finally:
+            self.current_task_num = max(0, int(self.current_task_num) - 1)
+            self.event.set()
+
+    async def _run_cancellable_rclone_copyto(
+            self,
+            *,
+            upload_task: UploadTask,
+            command: list[str],
+            timeout: float,
+    ) -> None:
+        task_id = (upload_task.transfer_meta or {}).get('task_id')
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stderr_task = asyncio.create_task(proc.stderr.read()) if proc.stderr else None
+        wait_task = asyncio.create_task(proc.wait())
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(float(timeout), 1.0)
+        try:
+            while True:
+                if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+                    proc.kill()
+                    await wait_task
+                    raise asyncio.CancelledError()
+                if loop.time() >= deadline:
+                    proc.kill()
+                    await wait_task
+                    raise TimeoutError(f'rclone copyto timed out after {int(timeout)}s')
+                try:
+                    await asyncio.wait_for(asyncio.shield(wait_task), timeout=1.0)
+                    break
+                except asyncio.TimeoutError:
+                    if wait_task.done():
+                        break
+                    continue
+            stderr = b''
+            if stderr_task is not None:
+                stderr = await stderr_task
+            if proc.returncode not in (0, None):
+                detail = (stderr.decode('utf-8', errors='replace') if stderr else '').strip()
+                raise RuntimeError(detail or f'rclone exit {proc.returncode}')
+        except asyncio.CancelledError:
+            if proc.returncode is None:
+                proc.kill()
+                await wait_task
+            if stderr_task is not None and not stderr_task.done():
+                stderr_task.cancel()
+            raise
+        except Exception:
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                    await wait_task
+                except Exception:
+                    pass
+            if stderr_task is not None and not stderr_task.done():
+                stderr_task.cancel()
+            raise
 
     @staticmethod
     def _set_upload_status(upload_task: UploadTask, status) -> None:

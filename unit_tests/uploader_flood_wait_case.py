@@ -491,9 +491,15 @@ class UploaderFloodWaitCase(unittest.TestCase):
                     ingest_calls.append((local_path, file_name))
                     return SimpleNamespace(ok=True, status='uploaded', message='', archive_path='My Telegram/title-name.mp4')
 
-            async def run_coro(coroutine):
-                await coroutine
-                return SimpleNamespace()
+            class FakeTask:
+                def done(self):
+                    return True
+
+                def cancel(self):
+                    return False
+
+                def add_done_callback(self, cb):
+                    cb(self)
 
             def fake_create_task(coroutine):
                 loop = asyncio.new_event_loop()
@@ -501,11 +507,19 @@ class UploaderFloodWaitCase(unittest.TestCase):
                     loop.run_until_complete(run_coro(coroutine))
                 finally:
                     loop.close()
+                return FakeTask()
+
+            async def run_coro(coroutine):
+                await coroutine
                 return SimpleNamespace()
 
             uploader = object.__new__(TelegramUploader)
             uploader.client = FakeClient()
             uploader.loop = asyncio.new_event_loop()
+            uploader._transfer_upload_tasks = {}
+            uploader.current_task_num = 0
+            uploader.max_upload_task = 1
+            uploader.event = asyncio.Event()
             uploader.upload_context = SimpleNamespace(
                 pikpak_manager=SimpleNamespace(
                     get_pikpak_archive_client=lambda: FakeArchive()
@@ -517,8 +531,10 @@ class UploaderFloodWaitCase(unittest.TestCase):
                     console_log=lambda *a, **k: None,
                     exception=lambda *a, **k: None,
                 ),
+                should_continue_web_transfer_task=lambda task_id: True,
             )
             uploader.release_transfer_local_storage = lambda task: None
+            progress = []
 
             with patch('module.infra.uploader.asyncio.create_task', side_effect=fake_create_task):
                 uploader.download_upload(
@@ -529,7 +545,9 @@ class UploaderFloodWaitCase(unittest.TestCase):
                         'source_folder': 'source',
                         'file_name': 'title-name.mp4',
                         'with_delete': False,
+                        'task_id': 11,
                         'status_callback': lambda task: statuses.append(task.status),
+                        'progress_callback': lambda task, cur, total: progress.append((cur, total)),
                         '_window_release': lambda: None,
                     },
                     file_path=file_path
@@ -538,6 +556,81 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertEqual([(file_path, 'title-name.mp4')], ingest_calls)
             self.assertIn(UploadStatus.SENT, statuses)
             self.assertIn(UploadStatus.SUCCESS, statuses)
+            self.assertTrue(progress and progress[0][0] == 0)
+            uploader.loop.close()
+
+    def test_download_upload_pikpak_deletes_local_file_on_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file_path = os.path.join(directory, 'fail-name.mp4')
+            with open(file_path, 'wb') as file:
+                file.write(b'12345')
+
+            class FakeClient:
+                def rnd_id(self):
+                    return 123
+
+            class FakeArchive:
+                def upload_to_ingest(self, local_path, file_name=None):
+                    return SimpleNamespace(ok=False, status='error', message='boom', archive_path=None)
+
+            class FakeTask:
+                def done(self):
+                    return True
+
+                def cancel(self):
+                    return False
+
+                def add_done_callback(self, cb):
+                    cb(self)
+
+            def fake_create_task(coroutine):
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(coroutine)
+                finally:
+                    loop.close()
+                return FakeTask()
+
+            uploader = object.__new__(TelegramUploader)
+            uploader.client = FakeClient()
+            uploader.loop = asyncio.new_event_loop()
+            uploader._transfer_upload_tasks = {}
+            uploader.current_task_num = 0
+            uploader.max_upload_task = 1
+            uploader.event = asyncio.Event()
+            uploader.upload_context = SimpleNamespace(
+                pikpak_manager=SimpleNamespace(
+                    get_pikpak_archive_client=lambda: FakeArchive()
+                ),
+                diagnostic=SimpleNamespace(
+                    info=lambda *a, **k: None,
+                    warning=lambda *a, **k: None,
+                    error=lambda *a, **k: None,
+                    console_log=lambda *a, **k: None,
+                    exception=lambda *a, **k: None,
+                ),
+                should_continue_web_transfer_task=lambda task_id: True,
+                transfer_store=None,
+            )
+            uploader.release_transfer_local_storage = lambda task: None
+
+            with patch('module.infra.uploader.asyncio.create_task', side_effect=fake_create_task):
+                uploader.download_upload(
+                    with_upload={
+                        'link': 'https://t.me/pikpak_bot',
+                        'target_profile': 'pikpak',
+                        'source_link': 'https://t.me/source/1',
+                        'source_folder': 'source',
+                        'file_name': 'fail-name.mp4',
+                        'with_delete': True,
+                        'task_id': 12,
+                        'status_callback': lambda task: None,
+                        '_window_release': lambda: None,
+                    },
+                    file_path=file_path
+                )
+
+            self.assertFalse(os.path.exists(file_path))
             uploader.loop.close()
 
 

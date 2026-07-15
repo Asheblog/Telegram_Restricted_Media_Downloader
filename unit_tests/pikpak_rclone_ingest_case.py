@@ -13,6 +13,8 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
+from unittest.mock import MagicMock, patch
+
 from module.enums import UploadStatus
 from module.pikpak_archive import (
     DisabledPikPakArchiveClient,
@@ -59,12 +61,92 @@ class PikpakRcloneIngestCase(unittest.TestCase):
         self.assertEqual(1, len(copyto))
         self.assertEqual(local_path, copyto[0][2])
         self.assertEqual('pikpak:My Telegram/123 - title.mp4', copyto[0][3])
+        self.assertIn('-q', copyto[0])
+        self.assertIn('--stats', copyto[0])
 
-    def test_upload_to_ingest_requires_remote(self):
-        client = DisabledPikPakArchiveClient()
-        result = client.upload_to_ingest('/tmp/a.mp4', 'a.mp4')
+    def test_upload_to_ingest_rejects_empty_file(self):
+        client = RclonePikPakArchiveClient(
+            {'enable': True, 'remote': 'pikpak', 'source_directory': 'My Telegram'},
+            runner=lambda *a, **k: _FakeCompleted(),
+        )
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as handle:
+            local_path = handle.name
+        try:
+            result = client.upload_to_ingest(local_path, 'empty.mp4')
+        finally:
+            os.unlink(local_path)
         self.assertFalse(result.ok)
-        self.assertEqual('disabled', result.status)
+        self.assertIn('0', result.message)
+
+    def test_download_upload_pikpak_pause_cancels_registered_task(self):
+        from module.infra.uploader import TelegramUploader
+
+        class FakeArchive:
+            def upload_to_ingest(self, local_path, file_name=None):
+                return PikPakArchiveResult(True, 'uploaded', archive_path='My Telegram/x.mp4')
+
+        uploader = object.__new__(TelegramUploader)
+        uploader.client = SimpleNamespace(rnd_id=lambda: 1)
+        uploader.loop = asyncio.new_event_loop()
+        uploader._transfer_upload_tasks = {}
+        uploader.upload_queue = asyncio.Queue()
+        uploader.current_task_num = 0
+        uploader.max_upload_task = 1
+        uploader.event = asyncio.Event()
+        uploader.upload_context = SimpleNamespace(
+            pikpak_manager=SimpleNamespace(get_pikpak_archive_client=lambda: FakeArchive()),
+            transfer_store=None,
+            should_continue_web_transfer_task=lambda task_id: True,
+            diagnostic=SimpleNamespace(
+                info=lambda *a, **k: None,
+                warning=lambda *a, **k: None,
+                error=lambda *a, **k: None,
+                console_log=lambda *a, **k: None,
+            ),
+        )
+        uploader.release_transfer_local_storage = lambda task: None
+        registered = []
+
+        class FakeTask:
+            def done(self):
+                return False
+
+            def cancel(self):
+                registered.append('cancelled')
+                return True
+
+            def add_done_callback(self, cb):
+                return None
+
+        def capture_create_task(coro):
+            # Don't run coro — we only verify registration + pause cancel.
+            coro.close()
+            return FakeTask()
+
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as handle:
+            handle.write(b'data')
+            local_path = handle.name
+        try:
+            with patch('module.infra.uploader.asyncio.create_task', side_effect=capture_create_task):
+                uploader.download_upload(
+                    {
+                        'link': 'https://t.me/pikpak_bot',
+                        'target_profile': 'pikpak',
+                        'file_name': 'x.mp4',
+                        'task_id': 99,
+                        'with_delete': False,
+                        '_window_release': lambda: None,
+                    },
+                    local_path,
+                )
+            self.assertIn(99, uploader._transfer_upload_registry())
+            paused = uploader.pause_uploads_for_task(99)
+            self.assertGreaterEqual(paused, 1)
+            self.assertIn('cancelled', registered)
+        finally:
+            uploader.loop.close()
+            if os.path.exists(local_path):
+                os.unlink(local_path)
 
     def test_download_upload_pikpak_uses_rclone_not_telegram_send(self):
         from module.infra.uploader import TelegramUploader
@@ -93,6 +175,7 @@ class PikpakRcloneIngestCase(unittest.TestCase):
                     is_running=True,
                     is_bot_running=False,
                     web_ui=None,
+                    should_continue_web_transfer_task=lambda task_id: True,
                     diagnostic=SimpleNamespace(
                         info=lambda *a, **k: None,
                         warning=lambda *a, **k: None,
@@ -110,6 +193,7 @@ class PikpakRcloneIngestCase(unittest.TestCase):
                 self.pb = SimpleNamespace()
                 self.app = SimpleNamespace()
                 self.is_premium = False
+                self._transfer_upload_tasks = {}
 
             async def create_upload_task(self, *args, **kwargs):
                 raise AssertionError('Telegram create_upload_task must not run for pikpak ingest')

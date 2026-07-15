@@ -894,7 +894,9 @@ class TransferProgressTracker:
                     file_name=upload_task.file_name,
                     file_size=getattr(upload_task, 'file_size', None),
                     transferred_at=transferred_at,
-                    match_original_name=match_original_name
+                    match_original_name=match_original_name,
+                    # rclone copyto already landed in My Telegram — no bot ingest wait.
+                    delay_seconds=0 if meta.get('rclone_ingest') else None,
                 )
             else:
                 archive_result = self._archive_pikpak_item(

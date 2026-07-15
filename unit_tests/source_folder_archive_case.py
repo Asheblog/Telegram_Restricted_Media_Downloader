@@ -616,6 +616,36 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual('disabled', result.status)
 
+    def test_archive_disabled_with_remote_still_allows_ingest(self):
+        from module.pikpak_archive import build_pikpak_archive_client
+
+        calls = []
+
+        def runner(args, **kwargs):
+            calls.append(args)
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = build_pikpak_archive_client({
+            'enable': False,
+            'remote': 'pikpak',
+            'source_directory': 'My Telegram',
+        })
+        client.runner = runner
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as handle:
+            handle.write(b'hello')
+            local_path = handle.name
+        try:
+            archive = client.archive_file('ctuxas', 'video.mp4', 5)
+            ingest = client.upload_to_ingest(local_path, '123 - title.mp4')
+        finally:
+            os.unlink(local_path)
+
+        self.assertFalse(archive.ok)
+        self.assertEqual('disabled', archive.status)
+        self.assertTrue(ingest.ok)
+        self.assertEqual('uploaded', ingest.status)
+        self.assertTrue(any(c[1] == 'copyto' for c in calls))
+
     def test_transfer_items_persist_archive_fields(self):
         from module.transfer_store import TransferStatus, TransferStore
 
