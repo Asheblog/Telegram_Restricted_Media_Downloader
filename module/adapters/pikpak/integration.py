@@ -79,9 +79,9 @@ class PikpakIntegrationManager:
         title_file_name = self.get_message_media_archive_filename(message)
         file_name = file_name or title_file_name or (media_meta or {}).get('file_name')
         file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
+        # Text-only / no-media messages must not create empty archive folders.
         if not file_name and (file_size is None or transferred_at is None):
-            ensure = getattr(self.get_pikpak_archive_client(), 'ensure_source_folder', None)
-            return ensure(folder) if callable(ensure) else None
+            return None
         result = self.get_pikpak_archive_client().archive_file(
             source_folder=folder,
             file_name=file_name,

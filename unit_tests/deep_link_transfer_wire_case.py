@@ -487,6 +487,55 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(['swag_vip/1'], archive_folders)
 
+    def test_archive_skips_text_only_message_without_creating_folder(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        folder_calls = []
+        archive_calls = []
+
+        class FakeArchive:
+            def ensure_source_folder(self, source_folder):
+                folder_calls.append(source_folder)
+                return SimpleNamespace(
+                    ok=True,
+                    status='folder_ready',
+                    archive_path=f'Telegram/{source_folder}',
+                    message='',
+                )
+
+            def archive_file(self, **kwargs):
+                archive_calls.append(kwargs)
+                return SimpleNamespace(ok=True, status='moved', archive_path='x', message='')
+
+        manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: FakeArchive(),
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+        )
+        text_message = SimpleNamespace(
+            id=1969,
+            text='求片 取一\n洛宝',
+            caption=None,
+            chat=SimpleNamespace(id=-1001, username='gokaidanbao'),
+            link='https://t.me/gokaidanbao/1969',
+        )
+
+        result = manager.archive_pikpak_item(
+            target_profile='pikpak',
+            item_id=None,
+            task_id=None,
+            message=text_message,
+            source_link='https://t.me/gokaidanbao/1969',
+            source_folder='gokaidanbao/1969 - 求片 取一',
+            transferred_at=1.0,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual([], folder_calls)
+        self.assertEqual([], archive_calls)
+
 
 class DeepLinkListenForwardFolderCase(unittest.TestCase):
     def test_pikpak_archive_after_forward_uses_explicit_channel_source_folder(self):

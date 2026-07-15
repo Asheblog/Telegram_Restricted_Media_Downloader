@@ -19,6 +19,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 
 import module as trmd_module
+from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import TransferStatus, TransferStore
@@ -2695,10 +2696,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         signature = inspect.signature(TelegramRestrictedMediaDownloader.wait_for_pikpak_ingest_confirmation)
         self.assertEqual(15, signature.parameters['timeout_seconds'].default)
 
-    def test_direct_pikpak_forward_without_media_metadata_prepares_source_folder(self):
+    def test_direct_pikpak_forward_without_media_metadata_skips_archive_folder(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/ctuxas',
@@ -2713,6 +2714,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             downloader.transfer_store = store
             downloader.app = SimpleNamespace(client=object())
+            downloader.gc = SimpleNamespace(
+                download_upload=True,
+                message_filter={'enabled': True, 'media_types': dict(MEDIA_TYPES_DEFAULT)},
+            )
             folder_calls = []
 
             async def fake_forward(**kwargs):
@@ -2736,11 +2741,37 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
             )
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+            downloader.get_message_media_target_limit_meta = (
+                downloader.pikpak_manager.get_message_media_target_limit_meta
+            )
+            downloader.get_message_media_archive_filename = (
+                PikpakIntegrationManager.get_message_media_archive_filename
+            )
+            downloader.get_task_target_size_limit_error = (
+                downloader.pikpak_manager.get_task_target_size_limit_error
+            )
+            downloader.is_pikpak_target = PikpakIntegrationManager.is_pikpak_target
+            downloader.forwarded_message_has_identity = (
+                PikpakIntegrationManager.forwarded_message_has_identity
+            )
+            downloader.complete_forwarded_pikpak_item = (
+                downloader.pikpak_manager.complete_forwarded_pikpak_item
+            )
+            downloader.archive_pikpak_item = downloader.pikpak_manager.archive_pikpak_item
+            downloader.refresh_transfer_task_counts = (
+                lambda tid: store.refresh_task_counts(tid)
+            )
+            downloader.runtime_message_filter = lambda override=None: build_runtime_message_filter(
+                downloader.gc.message_filter,
+                override,
+            )
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
                 message=SimpleNamespace(
                     id=1,
+                    text='求片 取一',
+                    caption=None,
                     link='https://t.me/ctuxas/1',
                     chat=SimpleNamespace(id=-100123, username='ctuxas')
                 ),
@@ -2750,7 +2781,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             ))
 
             self.assertEqual([], archive_calls)
-            self.assertEqual(['ctuxas'], folder_calls)
+            self.assertEqual([], folder_calls)
             item = store.list_items(task_id)[0]
             self.assertEqual(TransferStatus.SUCCESS, item['status'])
             self.assertIsNone(item['archive_status'])

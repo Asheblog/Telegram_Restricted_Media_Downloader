@@ -4,4 +4,4 @@
 
 **Considered Options:** 仅频道一层；仅评论区嵌套；子目录纯用正文标题（无 message_id，易重名）；按讨论组 chat 命名。
 
-**Consequences:** rclone/local 路径需支持嵌套；写 item 时即写入完整路径；恢复归档可从 link/message_id 重建；标题需 sanitize 与截断。
+**Consequences:** rclone/local 路径需支持嵌套；写 item 时即写入完整路径；恢复归档可从 link/message_id 重建；标题需 sanitize 与截断。无媒体（纯文字等）不得 `ensure_source_folder`，避免空帖目录。
