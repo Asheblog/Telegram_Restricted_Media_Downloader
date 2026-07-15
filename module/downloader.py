@@ -2149,6 +2149,23 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         if isinstance(message, list):
             self.inherit_media_group_title(message)
             for _message in message:
+                transfer_task_id = None
+                if isinstance(with_upload, dict) and with_upload.get('task_id') is not None:
+                    transfer_task_id = int(with_upload.get('task_id'))
+                    if not self.should_start_next_web_transfer_item(transfer_task_id):
+                        break
+                    chat = getattr(_message, 'chat', None)
+                    member_id = getattr(_message, 'id', None)
+                    if (
+                        self.transfer_store
+                        and member_id is not None
+                        and self.transfer_store.is_source_message_terminal(
+                            transfer_task_id,
+                            int(member_id),
+                            getattr(chat, 'id', None),
+                        )
+                    ):
+                        continue
                 if retry_count != 0:
                     if _message.id == retry_id:
                         await self.__add_task(chat_id, link_type, link, _message, retry, with_upload, diy_download_type)

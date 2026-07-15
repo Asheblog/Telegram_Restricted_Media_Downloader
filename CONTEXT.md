@@ -155,10 +155,10 @@ _Avoid_: In-memory link completion, upload task counters, media-type-only chart,
 **Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
 _Avoid_: Upload concurrency, temp cache size
 
-**Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item 继续跑完，不新开下一条；兑现后进入 Transfer Task Pause。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。
-_Avoid_: Immediate kill, hard pause, force stop
+**Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item（单个媒体文件/视频）继续跑完，不新开下一条 Item（同一主贴/相册里的下一个视频也不开）；在途下载上传排空后进入 Transfer Task Pause。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。
+_Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album
 
-**Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。
+**Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复后从下一条未完成 Item（可同一主贴内的下一个视频）接上。
 _Avoid_: Cancel task, delete task, kill transfer
 
 **Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。

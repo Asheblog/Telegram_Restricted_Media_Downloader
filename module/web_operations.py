@@ -208,6 +208,51 @@ class WebOperationsMixin:
             return False
         task = self.transfer_store.get_task(int(task_id))
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def should_start_next_web_transfer_item(self, task_id: int) -> bool:
+        """Whether a new Transfer Item may start. False while pausing/paused."""
+        if not self.transfer_store or not task_id:
+            return False
+        task = self.transfer_store.get_task(int(task_id))
+        if not task:
+            return False
+        return task.get('status') not in (TransferStatus.PAUSING, TransferStatus.PAUSED)
+
+    def has_active_transfer_io(self, task_id: int) -> bool:
+        for download_task in self._transfer_download_registry().get(int(task_id), set()):
+            if download_task is not None and not download_task.done():
+                return True
+        uploader = getattr(self, 'uploader', None)
+        registry_getter = getattr(uploader, '_transfer_upload_registry', None) if uploader else None
+        if callable(registry_getter):
+            for upload_task in registry_getter().get(int(task_id), set()):
+                if upload_task is not None and not upload_task.done():
+                    return True
+        return False
+
+    async def settle_web_task_pause_request(self, task_id: int, *, before: str | None = None) -> bool:
+        """Wait out in-flight IO while pausing, then finalize to paused. Return True to stop."""
+        if not self.transfer_store or not task_id:
+            return True
+        while True:
+            task = self.transfer_store.get_task(int(task_id))
+            if not task:
+                return True
+            status = task.get('status')
+            if status == TransferStatus.PAUSED:
+                return True
+            if status != TransferStatus.PAUSING:
+                return False
+            if self.has_active_transfer_io(int(task_id)):
+                await asyncio.sleep(0.2)
+                continue
+            self.transfer_store.update_task(int(task_id), status=TransferStatus.PAUSED)
+            message = 'Transfer task paused.'
+            if before:
+                message = f'Transfer task paused before item: {before}.'
+            self.transfer_store.add_event(int(task_id), message, level='warning')
+            return True
+
     def cancel_task_uploads(self, task_id: int) -> int:
         uploader = getattr(self, 'uploader', None)
         if uploader and hasattr(uploader, 'cancel_uploads_for_task'):

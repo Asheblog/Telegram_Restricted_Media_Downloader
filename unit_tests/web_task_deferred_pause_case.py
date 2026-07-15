@@ -137,17 +137,75 @@ class WebTaskDeferredPauseCase(unittest.TestCase):
             self.assertFalse(task['can_delete'])
             self.assertEqual(TransferStatus.PAUSING, task['status'])
 
-    def test_honor_pause_request_finalizes_pausing(self):
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
-            store = TransferStore(directory=directory)
-            task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
-            store.update_task(task_id, status=TransferStatus.PAUSING)
-            host = SimpleNamespace(transfer_store=store, web_task_manager=None)
-            runner = WebTransferRunner(host)
-            self.assertTrue(runner.honor_web_task_pause_request(task_id, before='7'))
-            self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
-            messages = [event['message'] for event in store.list_events(task_id)]
-            self.assertIn('Transfer task paused before message: 7.', messages)
+    def test_settle_pause_request_finalizes_pausing(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+                store.update_task(task_id, status=TransferStatus.PAUSING)
+                host = SimpleNamespace(transfer_store=store, web_task_manager=None)
+                runner = WebTransferRunner(host)
+                self.assertTrue(await runner.settle_web_task_pause_request(task_id, before='7'))
+                self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+                messages = [event['message'] for event in store.list_events(task_id)]
+                self.assertIn('Transfer task paused before item: 7.', messages)
+
+        asyncio.run(run_case())
+
+    def test_media_group_stops_before_next_video_when_pausing(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                downloader.transfer_store = store
+                started = []
+                messages = [SimpleNamespace(id=11), SimpleNamespace(id=12), SimpleNamespace(id=13)]
+                for message in messages:
+                    if not downloader.should_start_next_web_transfer_item(task_id):
+                        break
+                    started.append(message.id)
+                    if len(started) == 1:
+                        store.update_task(task_id, status=TransferStatus.PAUSING)
+                self.assertEqual([11], started)
+                self.assertEqual(TransferStatus.PAUSING, store.get_task(task_id)['status'])
+
+        asyncio.run(run_case())
+
+    def test_settle_waits_for_active_download_before_pausing(self):
+        TelegramRestrictedMediaDownloader = import_downloader_class()
+
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+                store.update_task(task_id, status=TransferStatus.PAUSING)
+                downloader = object.__new__(TelegramRestrictedMediaDownloader)
+                downloader.transfer_store = store
+                downloader.uploader = None
+                downloader._transfer_download_tasks = {}
+                keep_alive = asyncio.Event()
+
+                async def fake_download():
+                    await keep_alive.wait()
+
+                task = asyncio.create_task(fake_download())
+                downloader._register_transfer_download_task({'task_id': task_id}, task)
+                settle_task = asyncio.create_task(
+                    downloader.settle_web_task_pause_request(task_id, before='9')
+                )
+                await asyncio.sleep(0.35)
+                self.assertEqual(TransferStatus.PAUSING, store.get_task(task_id)['status'])
+                self.assertFalse(settle_task.done())
+                keep_alive.set()
+                await task
+                self.assertTrue(await settle_task)
+                self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+
+        asyncio.run(run_case())
 
     def test_refresh_task_counts_preserves_pausing(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:

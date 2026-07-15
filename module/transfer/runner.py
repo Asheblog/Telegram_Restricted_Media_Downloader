@@ -98,9 +98,25 @@ class WebTransferRunner:
         # PAUSING keeps in-flight download/upload alive; only PAUSED aborts mid-item.
         return bool(task and task.get('status') != TransferStatus.PAUSED)
 
-    def honor_web_task_pause_request(self, task_id: int, *, before: str | None = None) -> bool:
-        """Finalize a deferred pause at an item boundary. Return True if the caller must stop."""
+    def should_start_next_web_transfer_item(self, task_id: int) -> bool:
         host = self._host
+        starter = getattr(host, 'should_start_next_web_transfer_item', None)
+        if callable(starter):
+            return bool(starter(task_id))
+        transfer_store = host.transfer_store
+        if not transfer_store or not task_id:
+            return False
+        task = transfer_store.get_task(int(task_id))
+        if not task:
+            return False
+        return task.get('status') not in (TransferStatus.PAUSING, TransferStatus.PAUSED)
+
+    async def settle_web_task_pause_request(self, task_id: int, *, before: str | None = None) -> bool:
+        """Finalize deferred pause after in-flight item IO drains. Return True if caller must stop."""
+        host = self._host
+        settler = getattr(host, 'settle_web_task_pause_request', None)
+        if callable(settler):
+            return bool(await settler(task_id, before=before))
         transfer_store = host.transfer_store
         if not transfer_store or not task_id:
             return True
@@ -112,7 +128,7 @@ class WebTransferRunner:
             transfer_store.update_task(int(task_id), status=TransferStatus.PAUSED)
             message = 'Transfer task paused.'
             if before:
-                message = f'Transfer task paused before message: {before}.'
+                message = f'Transfer task paused before item: {before}.'
             transfer_store.add_event(int(task_id), message, level='warning')
             return True
         return status == TransferStatus.PAUSED
@@ -172,7 +188,7 @@ class WebTransferRunner:
                     end_id=int(end_id)
                 )
                 for message_id in range(int(start_id), int(end_id) + 1):
-                    if self.honor_web_task_pause_request(task_id, before=str(message_id)):
+                    if await self.settle_web_task_pause_request(task_id, before=str(message_id)):
                         return
                     if host.transfer_store.is_range_message_complete(task_id, message_id):
                         continue
@@ -299,7 +315,7 @@ class WebTransferRunner:
                     expected_total=expected_total,
                     assignment_completed=True
                 )
-                if self.honor_web_task_pause_request(task_id):
+                if await self.settle_web_task_pause_request(task_id):
                     return
             else:
                 single_expected = 1
@@ -319,7 +335,7 @@ class WebTransferRunner:
                 fallback_count = 0
                 expected_total = single_expected
                 if message_id not in completed_message_ids:
-                    if self.honor_web_task_pause_request(task_id, before=str(message_id)):
+                    if await self.settle_web_task_pause_request(task_id, before=str(message_id)):
                         return
                     if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
                         try:
@@ -384,7 +400,7 @@ class WebTransferRunner:
                     expected_total=expected_total,
                     assignment_completed=True
                 )
-                if self.honor_web_task_pause_request(task_id):
+                if await self.settle_web_task_pause_request(task_id):
                     return
         except asyncio.CancelledError:
             raise
@@ -429,7 +445,7 @@ class WebTransferRunner:
         task_id = int(task.get('id'))
         resumed = 0
         for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
-            if self.honor_web_task_pause_request(task_id, before=str(range_message_id)):
+            if await self.settle_web_task_pause_request(task_id, before=str(range_message_id)):
                 break
             try:
                 await self._resolve_method('wait_between_transfer_messages')()
@@ -627,6 +643,11 @@ class WebTransferRunner:
         used_fallback = False
         multi_resolved = bool(resolved_list) and len(resolved_list) > 1
         for send_message in messages_to_send:
+            if await self.settle_web_task_pause_request(
+                int(task.get('id')),
+                before=str(getattr(send_message, 'id', '')),
+            ):
+                break
             forward_chat_id = origin_chat_id
             forward_message_id = message_id
             resolved_meta = None
@@ -935,6 +956,11 @@ class WebTransferRunner:
                     message_id=source_message_id,
                     include_message=include_discussion_message
             ):
+                if await self.settle_web_task_pause_request(
+                    task_id,
+                    before=str(getattr(comment, 'id', '')),
+                ):
+                    break
                 comment_chat_id = getattr(getattr(comment, 'chat', None), 'id', source_chat_id)
                 comment_id = getattr(comment, 'id', None)
                 comment_link = getattr(comment, 'link', None)
