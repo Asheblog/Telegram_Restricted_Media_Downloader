@@ -158,7 +158,7 @@ _Avoid_: Upload concurrency, temp cache size
 **Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item（单个媒体文件/视频）继续跑完，不新开下一条 Item（同一主贴/相册里的下一个视频也不开）；在途下载上传排空后进入 Transfer Task Pause。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。
 _Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album
 
-**Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复后从下一条未完成 Item（可同一主贴内的下一个视频）接上。
+**Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复时绑定已有 Item（item_id），跳过已 success/skipped 的来源消息；压制同消息上的僵尸 active 行，避免再开一轮 fallback 下载。
 _Avoid_: Cancel task, delete task, kill transfer
 
 **Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。

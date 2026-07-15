@@ -2192,6 +2192,20 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         message=message,
                         dtype=valid_dtype).values()
                 task_with_upload = await self.prepare_download_upload_meta(with_upload)
+                if (
+                        isinstance(task_with_upload, dict)
+                        and self.transfer_store
+                        and task_with_upload.get('task_id') is not None
+                        and task_with_upload.get('item_id') is None
+                        and getattr(message, 'id', None) is not None
+                        and self.transfer_store.is_source_message_terminal(
+                            int(task_with_upload.get('task_id')),
+                            int(message.id),
+                            getattr(getattr(message, 'chat', None), 'id', chat_id),
+                        )
+                ):
+                    self.release_download_upload_window(task_with_upload)
+                    return None
                 task_with_upload = self.create_transfer_item_for_download(
                     task_with_upload=task_with_upload,
                     chat_id=chat_id,
@@ -2202,6 +2216,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     final_path=save_directory,
                     file_size=sever_file_size
                 )
+                if isinstance(task_with_upload, dict) and task_with_upload.get('_skip_download'):
+                    self.release_download_upload_window(task_with_upload)
+                    return None
                 if isinstance(task_with_upload, dict) and task_with_upload.get('source_folder'):
                     save_directory = self.get_final_file_path(message, file_name, task_with_upload)
                 if isinstance(task_with_upload, dict):

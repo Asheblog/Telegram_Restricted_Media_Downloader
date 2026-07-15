@@ -208,23 +208,55 @@ class TransferEngine:
         if not self.transfer_store or not task_with_upload.get('task_id'):
             return task_with_upload
         task_id = int(task_with_upload.get('task_id'))
-        item_id = self.transfer_store.add_item(
-            task_id=task_id,
-            source_chat_id=source_chat_id,
-            source_message_id=getattr(message, 'id', None),
-            range_message_id=task_with_upload.get('range_message_id'),
-            source_link=getattr(message, 'link', None) or link,
-            target_link=task_with_upload.get('link'),
-            media_type=media_type,
-            file_name=file_name,
-            file_size=file_size,
-            local_path=final_path,
-            temp_path=final_path,
-            source_folder=source_folder,
-            archive_status='pending' if task_with_upload.get('target_profile') == 'pikpak' else None,
-            phase='downloading',
-            status=TransferStatus.RUNNING
-        )
+        existing_item_id = task_with_upload.get('item_id')
+        terminal_statuses = TransferStatus.SUCCESS, TransferStatus.SKIPPED, TransferStatus.FAILURE
+        if existing_item_id is not None:
+            item_id = int(existing_item_id)
+            existing = self.transfer_store.get_item(item_id) or {}
+            if str(existing.get('status') or '') in terminal_statuses:
+                task_with_upload['_skip_download'] = True
+                self.refresh_transfer_task_counts(task_id)
+                return task_with_upload
+            self.transfer_store.update_item(
+                item_id,
+                source_chat_id=source_chat_id,
+                range_message_id=task_with_upload.get('range_message_id'),
+                media_type=media_type,
+                file_name=file_name,
+                file_size=file_size,
+                local_path=final_path,
+                temp_path=final_path,
+                source_folder=source_folder,
+                archive_status=(
+                    'pending'
+                    if task_with_upload.get('target_profile') == 'pikpak'
+                    and str(existing.get('archive_status') or '') not in (
+                        'already_archived', 'success', 'folder_ready'
+                    )
+                    else existing.get('archive_status')
+                ),
+                phase='downloading',
+                status=TransferStatus.RUNNING,
+                error_message='',
+            )
+        else:
+            item_id = self.transfer_store.add_item(
+                task_id=task_id,
+                source_chat_id=source_chat_id,
+                source_message_id=getattr(message, 'id', None),
+                range_message_id=task_with_upload.get('range_message_id'),
+                source_link=getattr(message, 'link', None) or link,
+                target_link=task_with_upload.get('link'),
+                media_type=media_type,
+                file_name=file_name,
+                file_size=file_size,
+                local_path=final_path,
+                temp_path=final_path,
+                source_folder=source_folder,
+                archive_status='pending' if task_with_upload.get('target_profile') == 'pikpak' else None,
+                phase='downloading',
+                status=TransferStatus.RUNNING
+            )
         partial_bytes = self.partial_download_bytes(final_path)
         self.transfer_store.update_item_progress(
             item_id=item_id,

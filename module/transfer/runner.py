@@ -190,6 +190,11 @@ class WebTransferRunner:
                 for message_id in range(int(start_id), int(end_id) + 1):
                     if await self.settle_web_task_pause_request(task_id, before=str(message_id)):
                         return
+                    host.transfer_store.suppress_duplicate_active_items_for_range(
+                        task_id,
+                        message_id,
+                        source_chat_id=origin_chat_id,
+                    )
                     if host.transfer_store.is_range_message_complete(task_id, message_id):
                         continue
                     host.transfer_store.update_task_range_runtime(
@@ -202,8 +207,9 @@ class WebTransferRunner:
                     resumed_count = await self.resume_interrupted_items_for_range_message(task, message_id)
                     if resumed_count:
                         fallback_count += resumed_count
-                        if host.transfer_store.is_range_message_complete(task_id, message_id):
-                            continue
+                        # create_download_task returns before IO finishes; do not stack another
+                        # fallback for the same message while this resume is already underway.
+                        continue
                     main_post_done = message_id in completed_message_ids
                     if main_post_done and include_comment:
                         range_video_seq = len(host.transfer_store.list_items_for_range_message(task_id, message_id))
@@ -222,21 +228,18 @@ class WebTransferRunner:
                         continue
                     if main_post_done:
                         continue
-                    if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
+                    if host.transfer_store.is_source_message_terminal(task_id, message_id, origin_chat_id):
+                        continue
+                    resumable_item = host.find_resumable_transfer_item(task_id, message_id, origin_chat_id)
+                    if resumable_item:
                         try:
                             await self._resolve_method('wait_between_transfer_messages')()
-                            message = await self._resolve_method('get_web_transfer_range_message')(
-                                origin_chat_id, message_id, task_id
+                            await self.resume_transfer_item_download(
+                                task=task,
+                                item=resumable_item,
+                                range_message_id=message_id,
                             )
-                            if message:
-                                message_link = f'{source_prefix}/{getattr(message, "id", "")}'
-                                await self.create_web_transfer_fallback_download(
-                                    task=task,
-                                    source_link=message_link,
-                                    message=message,
-                                    range_message_id=message_id
-                                )
-                                fallback_count += 1
+                            fallback_count += 1
                         except asyncio.CancelledError:
                             raise
                         except Exception as e:
@@ -337,42 +340,51 @@ class WebTransferRunner:
                 if message_id not in completed_message_ids:
                     if await self.settle_web_task_pause_request(task_id, before=str(message_id)):
                         return
-                    if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
-                        try:
-                            await self.create_web_transfer_fallback_download(
-                                task=task,
-                                source_link=source_link,
-                                message=message,
-                                range_message_id=message_id
-                            )
-                            fallback_count = 1
-                        except asyncio.CancelledError:
-                            raise
-                        except Exception as e:
-                            log.error(
-                                f'Web transfer resume download failed: task={task_id}, message={message_id}, reason="{e}"',
-                                exc_info=True
-                            )
-                            host.transfer_store.add_event(
-                                task_id,
-                                f'Resume download failed: {message_id}: {e}',
-                                level='error'
-                            )
-                    else:
-                        host.transfer_store.update_task_range_runtime(
+                    if message_id is not None:
+                        host.transfer_store.suppress_duplicate_active_items_for_range(
                             task_id,
-                            current_range_message_id=message_id,
-                            current_range_video_captured=1,
-                            current_range_video_index=1
+                            int(message_id),
+                            source_chat_id=origin_chat_id,
                         )
-                        fallback_count = 1 if await self._resolve_method('transfer_message_to_web_target')(
-                            task=task,
-                            message=message,
-                            origin_chat_id=origin_chat_id,
-                            target_chat_id=target_chat_id,
-                            source_link=source_link,
-                            range_message_id=message_id
-                        ) else 0
+                    if host.transfer_store.is_source_message_terminal(task_id, message_id, origin_chat_id):
+                        pass
+                    else:
+                        resumable_item = host.find_resumable_transfer_item(task_id, message_id, origin_chat_id)
+                        if resumable_item:
+                            try:
+                                await self.resume_transfer_item_download(
+                                    task=task,
+                                    item=resumable_item,
+                                    range_message_id=message_id,
+                                )
+                                fallback_count = 1
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as e:
+                                log.error(
+                                    f'Web transfer resume download failed: task={task_id}, message={message_id}, reason="{e}"',
+                                    exc_info=True
+                                )
+                                host.transfer_store.add_event(
+                                    task_id,
+                                    f'Resume download failed: {message_id}: {e}',
+                                    level='error'
+                                )
+                        else:
+                            host.transfer_store.update_task_range_runtime(
+                                task_id,
+                                current_range_message_id=message_id,
+                                current_range_video_captured=1,
+                                current_range_video_index=1
+                            )
+                            fallback_count = 1 if await self._resolve_method('transfer_message_to_web_target')(
+                                task=task,
+                                message=message,
+                                origin_chat_id=origin_chat_id,
+                                target_chat_id=target_chat_id,
+                                source_link=source_link,
+                                range_message_id=message_id
+                            ) else 0
                     if include_comment:
                         reply_count, reply_fallback_count = await self._resolve_method(
                             'transfer_web_discussion_replies_to_target'
@@ -432,6 +444,7 @@ class WebTransferRunner:
             source_link=source_link,
             range_message_id=range_message_id or item.get('range_message_id'),
             source_folder=item.get('source_folder'),
+            item_id=item.get('id'),
         )
 
     async def resume_interrupted_items_for_range_message(
@@ -443,6 +456,7 @@ class WebTransferRunner:
         if not host.transfer_store:
             return 0
         task_id = int(task.get('id'))
+        host.transfer_store.suppress_duplicate_active_items_for_range(task_id, range_message_id)
         resumed = 0
         for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
             if await self.settle_web_task_pause_request(task_id, before=str(range_message_id)):
@@ -534,6 +548,7 @@ class WebTransferRunner:
             message: Optional[pyrogram.types.Message] = None,
             range_message_id: Optional[int] = None,
             source_folder: Optional[str] = None,
+            item_id: Optional[int] = None,
     ) -> None:
         host = self._host
         message_ids = message if message is not None else self.transfer_single_link(source_link)
@@ -545,6 +560,8 @@ class WebTransferRunner:
         )
         if source_folder:
             with_upload['source_folder'] = source_folder
+        if item_id is not None:
+            with_upload['item_id'] = int(item_id)
         task_result = await host.create_download_task(
             message_ids=message_ids,
             retry=None,

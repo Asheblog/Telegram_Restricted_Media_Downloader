@@ -719,6 +719,16 @@ class TransferStore:
                 ).fetchone()
                 if row:
                     item_id = int(row['id'])
+                    existing = conn.execute(
+                        'SELECT status FROM transfer_items WHERE id = ?',
+                        (item_id,),
+                    ).fetchone()
+                    existing_status = str((existing['status'] if existing else '') or '')
+                    active_statuses = {TransferStatus.RUNNING, TransferStatus.PENDING}
+                    done_statuses = {TransferStatus.SUCCESS, TransferStatus.SKIPPED}
+                    # Never reopen a completed item via upsert — resume must pass item_id explicitly.
+                    if existing_status in done_statuses and str(status or '') in active_statuses:
+                        return item_id
                     self._update_item_with_connection(
                         conn=conn,
                         item_id=item_id,
@@ -970,6 +980,58 @@ class TransferStore:
             return False
         terminal_statuses = self._terminal_item_statuses()
         return all(str(item.get('status') or '') in terminal_statuses for item in items)
+
+    def suppress_duplicate_active_items_for_range(
+            self,
+            task_id: int,
+            range_message_id: int,
+            *,
+            source_chat_id=None,
+    ) -> int:
+        """Skip zombie active items when the same source message already has a terminal success/skip.
+
+        Resume used to spawn unbound downloads that left RUNNING siblings next to SUCCESS
+        rows; those zombies kept the range incomplete and triggered remount downloads.
+        """
+        terminal_done = {TransferStatus.SUCCESS, TransferStatus.SKIPPED}
+        active = {TransferStatus.RUNNING, TransferStatus.PENDING}
+        suppressed = 0
+        items = self.list_items_for_range_message(task_id, range_message_id)
+        by_source: dict[tuple, list] = {}
+        for item in items:
+            source_message_id = item.get('source_message_id')
+            if source_message_id is None:
+                continue
+            chat_id = str(item.get('source_chat_id') or '')
+            if source_chat_id is not None and chat_id and chat_id != str(source_chat_id):
+                continue
+            key = (chat_id, int(source_message_id))
+            by_source.setdefault(key, []).append(item)
+        for siblings in by_source.values():
+            if not any(str(item.get('status') or '') in terminal_done for item in siblings):
+                continue
+            for item in siblings:
+                if str(item.get('status') or '') not in active:
+                    continue
+                item_id = int(item.get('id') or 0)
+                if not item_id:
+                    continue
+                self.update_item(
+                    item_id,
+                    status=TransferStatus.SKIPPED,
+                    phase='skipped',
+                    error_message='Superseded by a completed item for the same source message.',
+                )
+                self.add_event(
+                    int(task_id),
+                    f'Suppressed duplicate active item #{item_id}.',
+                    level='warning',
+                    item_id=item_id,
+                )
+                suppressed += 1
+        if suppressed:
+            self.refresh_task_counts(int(task_id))
+        return suppressed
 
     def is_source_message_terminal(
             self,

@@ -736,6 +736,18 @@ class TransferProgressTracker:
         existing_item_id = with_upload.get('item_id')
         if existing_item_id is not None:
             item_id = int(existing_item_id)
+            existing = store.get_item(item_id) or {}
+            if str(existing.get('status') or '') in (
+                    TransferStatus.SUCCESS,
+                    TransferStatus.SKIPPED,
+                    TransferStatus.FAILURE,
+            ):
+                return item_id
+            preserved_archive = existing.get('archive_status')
+            if with_upload.get('target_profile') == 'pikpak' and preserved_archive in (
+                    'already_archived', 'success', 'folder_ready'
+            ):
+                archive_status = preserved_archive
             store.update_item(
                 item_id,
                 source_chat_id=with_upload.get('source_chat_id'),
