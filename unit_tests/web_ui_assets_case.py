@@ -286,6 +286,17 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function checkAuthStatus', WEB_UI_HTML)
         self.assertIn('showLoginStep', WEB_UI_HTML)
 
+    def test_telegram_login_step_toggle_clears_hidden_class(self):
+        """Steps after phone keep class=hidden in HTML; showLoginStep must remove it."""
+        combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
+        self.assertIn("el.classList.remove('hidden')", combined)
+        self.assertIn("el.classList.add('hidden')", WEB_UI_HTML)
+        self.assertIn("el.classList.add('hidden')", WEB_UI_MOBILE_HTML)
+        self.assertIn('placeholder="+447911123456"', WEB_UI_HTML)
+        self.assertIn('placeholder="+447911123456"', WEB_UI_MOBILE_HTML)
+        self.assertIn('英国 +44', combined)
+        self.assertNotIn('placeholder="+8615000000000"', combined)
+
     def test_media_scan_has_visible_feedback(self):
         self.assertIn("setMediaScanButtonLoading(true);", WEB_UI_HTML)
         self.assertIn("container.classList.remove('hidden');", WEB_UI_HTML)

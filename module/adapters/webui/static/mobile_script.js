@@ -8,9 +8,17 @@
 // ---------------------------------------------------------------------------
 function showLoginStep(step) {
   var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
-  steps.forEach(function(id) { var el = document.getElementById('login-form-' + id); if (el) el.style.display = 'none'; });
+  steps.forEach(function(id) {
+    var el = document.getElementById('login-form-' + id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.display = 'none';
+  });
   var el = document.getElementById('login-form-' + step);
-  if (el) el.style.display = '';
+  if (el) {
+    el.classList.remove('hidden');
+    el.style.display = '';
+  }
   var container = document.getElementById('login-container');
   if (container && !container.classList.contains('active')) container.classList.add('active');
   var loginError = document.getElementById('login-error');

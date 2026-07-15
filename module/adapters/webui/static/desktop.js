@@ -479,19 +479,31 @@ let authPollTimer = null, authStep = '';
 function showLoginStep(step) {
   authStep = step;
   ['login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.style.display = 'none';
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.display = 'none';
   });
   const el = document.getElementById('login-form-' + step);
-  if (el) el.style.display = '';
+  if (el) {
+    el.classList.remove('hidden');
+    el.style.display = '';
+  }
   const container = document.getElementById('login-container');
-  if (container) container.style.display = 'flex';
+  if (container) {
+    container.classList.remove('hidden');
+    container.style.display = 'flex';
+  }
   const errEl = document.getElementById('login-error');
   if (errEl) errEl.classList.remove('visible');
 }
 
 function hideLogin() {
   const container = document.getElementById('login-container');
-  if (container) container.style.display = 'none';
+  if (container) {
+    container.classList.add('hidden');
+    container.style.display = 'none';
+  }
   if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
 }
 

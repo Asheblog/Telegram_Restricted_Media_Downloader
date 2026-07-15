@@ -379,11 +379,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div id="login-form-phone" class="login-step">
         <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 1 / 3</div>
         <h2 class="text-xl font-bold m-0 mb-1.5 text-text">输入电话号码</h2>
-        <p class="text-sm text-muted m-0 mb-5">请输入您的 Telegram 账号绑定的手机号</p>
+        <p class="text-sm text-muted m-0 mb-5">请输入 Telegram 绑定手机号（国际格式，支持各国区号）</p>
         <div class="login-field">
           <label for="login-phone">电话号码</label>
-          <input id="login-phone" type="tel" placeholder="+8615000000000" autocomplete="tel">
-          <div class="text-xs text-muted mt-1">需以「+地区号」开头，如中国 +86</div>
+          <input id="login-phone" type="tel" placeholder="+447911123456" autocomplete="tel">
+          <div class="text-xs text-muted mt-1">必须以「+地区号」开头，例如英国 +44、中国 +86（不要加空格或括号）</div>
         </div>
         <div class="flex justify-end">
           <button type="button" id="login-btn-phone" class="login-submit !w-auto px-6">
@@ -3847,19 +3847,31 @@ let authPollTimer = null, authStep = '';
 function showLoginStep(step) {
   authStep = step;
   ['login-form-phone','login-form-code','login-form-password','login-form-recovery','login-form-signup','login-form-done'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.style.display = 'none';
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.display = 'none';
   });
   const el = document.getElementById('login-form-' + step);
-  if (el) el.style.display = '';
+  if (el) {
+    el.classList.remove('hidden');
+    el.style.display = '';
+  }
   const container = document.getElementById('login-container');
-  if (container) container.style.display = 'flex';
+  if (container) {
+    container.classList.remove('hidden');
+    container.style.display = 'flex';
+  }
   const errEl = document.getElementById('login-error');
   if (errEl) errEl.classList.remove('visible');
 }
 
 function hideLogin() {
   const container = document.getElementById('login-container');
-  if (container) container.style.display = 'none';
+  if (container) {
+    container.classList.add('hidden');
+    container.style.display = 'none';
+  }
   if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
 }
 
@@ -6395,11 +6407,11 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
     <div id="login-form-phone" class="login-step">
       <div class="mob-login-card__step">步骤 1 / 3</div>
       <h2 class="mob-login-card__title">输入电话号码</h2>
-      <p class="mob-login-card__subtitle">请输入您的 Telegram 账号绑定的手机号</p>
+      <p class="mob-login-card__subtitle">请输入 Telegram 绑定手机号（国际格式，支持各国区号）</p>
       <div class="mob-login-field">
         <label for="login-phone">电话号码</label>
-        <input id="login-phone" type="tel" placeholder="+8615000000000" autocomplete="tel">
-        <div class="mob-login-field__hint">需以「+地区号」开头，如中国 +86</div>
+        <input id="login-phone" type="tel" placeholder="+447911123456" autocomplete="tel">
+        <div class="mob-login-field__hint">必须以「+地区号」开头，例如英国 +44、中国 +86（不要加空格或括号）</div>
       </div>
       <div class="mob-login-actions">
         <button type="button" id="login-btn-phone" class="mob-btn mob-login-submit">
@@ -8716,9 +8728,17 @@ function startSetupPolling() {
 // ---------------------------------------------------------------------------
 function showLoginStep(step) {
   var steps = ['phone', 'code', 'password', 'recovery', 'signup', 'done'];
-  steps.forEach(function(id) { var el = document.getElementById('login-form-' + id); if (el) el.style.display = 'none'; });
+  steps.forEach(function(id) {
+    var el = document.getElementById('login-form-' + id);
+    if (!el) return;
+    el.classList.add('hidden');
+    el.style.display = 'none';
+  });
   var el = document.getElementById('login-form-' + step);
-  if (el) el.style.display = '';
+  if (el) {
+    el.classList.remove('hidden');
+    el.style.display = '';
+  }
   var container = document.getElementById('login-container');
   if (container && !container.classList.contains('active')) container.classList.add('active');
   var loginError = document.getElementById('login-error');
