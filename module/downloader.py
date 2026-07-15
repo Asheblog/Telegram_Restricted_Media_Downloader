@@ -108,7 +108,11 @@ from module.target_profiles import (
 from module.pikpak_archive import build_pikpak_archive_client
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_progress import TransferProgressTracker
-from module.source_folders import archive_source_folder, join_local_source_folder
+from module.source_folders import (
+    archive_source_folder,
+    join_local_source_folder,
+    resolve_forward_archive_source_folder,
+)
 from module.task import DownloadTask, UploadTask
 from module.transfer_store import TransferStore, TransferStatus
 from module.persistence.system_log import SystemLogTracer
@@ -686,16 +690,22 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     messages = list(group_messages)
             except Exception as e:
                 log.debug(f'Unable to resolve media group for PikPak archive: {e}')
+        shared_source_link = (
+            source_link
+            or getattr(message, 'link', None)
+        )
+        archive_folder = resolve_forward_archive_source_folder(
+            source_folder=source_folder,
+            messages=messages,
+            post_message_id=message_id,
+            fallback_chat_id=origin_chat_id,
+            fallback_link=shared_source_link,
+        )
         for group_message in messages:
             group_source_link = (
-                source_link
+                shared_source_link
                 or getattr(group_message, 'link', None)
                 or getattr(message, 'link', None)
-            )
-            archive_folder = source_folder or archive_source_folder(
-                group_message,
-                fallback_chat_id=origin_chat_id,
-                fallback_link=group_source_link,
             )
             archive_result = self.archive_pikpak_item(
                 target_profile='pikpak',
@@ -761,6 +771,13 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         try:
             if trace_id is None:
                 trace_id, _, _ = self._message_chain_context(message, watch_id)
+            if media_group:
+                try:
+                    group_messages = await message.get_media_group()
+                    if group_messages:
+                        self.inherit_media_group_title(group_messages)
+                except Exception as e:
+                    log.debug(f'Unable to inherit media group title before archive path: {e}')
             channel_source_folder = source_folder or archive_source_folder(
                 message,
                 fallback_chat_id=origin_chat_id,

@@ -187,6 +187,45 @@ def archive_source_folder(
     return join_archive_source_folder(channel, post_segment)
 
 
+def archive_folder_has_post_title(source_folder: Optional[str]) -> bool:
+    if not source_folder:
+        return False
+    parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+    if len(parts) < 2:
+        return False
+    return ' - ' in parts[-1]
+
+
+def resolve_forward_archive_source_folder(
+        *,
+        source_folder: Optional[str] = None,
+        messages=None,
+        post_message_id: Optional[Union[int, str]] = None,
+        fallback_chat_id=None,
+        fallback_link: Optional[str] = None,
+) -> str:
+    """Prefer an explicit Source Post Archive Path; enrich ID-only paths with album caption."""
+    message_list = list(messages or [])
+    title = None
+    for message in message_list:
+        title = post_title_from_message(message)
+        if title:
+            break
+    folder_message = message_list[0] if message_list else None
+    built = archive_source_folder(
+        folder_message,
+        fallback_chat_id=fallback_chat_id,
+        fallback_link=fallback_link,
+        post_message_id=post_message_id,
+        post_title=title,
+    )
+    if not source_folder:
+        return built
+    if title and not archive_folder_has_post_title(source_folder):
+        return built
+    return source_folder
+
+
 def join_local_source_folder(base_directory: str, source_folder: Optional[str]) -> str:
     import os
 

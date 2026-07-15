@@ -54,6 +54,53 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder(fallback_link='https://t.me/swag_vip/730'),
         )
 
+    def test_resolve_forward_archive_source_folder_enriches_id_only_path(self):
+        from module.source_folders import resolve_forward_archive_source_folder
+
+        trigger = SimpleNamespace(
+            id=93670,
+            caption=None,
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(id=-1001, username='chengdudiyi8', title=None),
+            link='https://t.me/chengdudiyi8/93670',
+            _trmd_source_title='继父出差了妈妈自己在家',
+        )
+
+        self.assertEqual(
+            'chengdudiyi8/93670 - 继父出差了妈妈自己在家',
+            resolve_forward_archive_source_folder(
+                source_folder='chengdudiyi8/93670',
+                messages=[trigger],
+                post_message_id=93670,
+                fallback_chat_id=-1001,
+                fallback_link='https://t.me/chengdudiyi8/93670',
+            ),
+        )
+
+    def test_resolve_forward_archive_source_folder_keeps_explicit_channel_folder(self):
+        from module.source_folders import resolve_forward_archive_source_folder
+
+        bot_message = SimpleNamespace(
+            id=99,
+            caption=None,
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(id='bot-chat', username='a82bot', title=None),
+            link=None,
+        )
+
+        self.assertEqual(
+            'swag_vip',
+            resolve_forward_archive_source_folder(
+                source_folder='swag_vip',
+                messages=[bot_message],
+                post_message_id=99,
+                fallback_chat_id='bot-chat',
+                fallback_link='https://t.me/swag_vip/1',
+            ),
+        )
+
     def test_archive_source_folder_for_comment_uses_parent_post(self):
         from module.source_folders import archive_source_folder
 

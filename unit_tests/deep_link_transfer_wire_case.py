@@ -729,6 +729,57 @@ class DeepLinkListenForwardFolderCase(unittest.TestCase):
         self.assertEqual('swag_vip', archive_calls[0]['source_folder'])
         self.assertEqual('https://t.me/swag_vip/1', archive_calls[0]['source_link'])
 
+    def test_pikpak_archive_after_forward_enriches_media_group_folder_with_caption(self):
+        from module.downloader import TelegramRestrictedMediaDownloader
+
+        archive_calls = []
+        downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
+        downloader.archive_pikpak_item = lambda **kwargs: (
+            archive_calls.append(kwargs) or SimpleNamespace(ok=True, status='moved', archive_path='x', message='')
+        )
+        downloader._log_system_chain = lambda **kwargs: None
+
+        members = []
+
+        async def get_media_group():
+            return members
+
+        trigger = SimpleNamespace(
+            id=93670,
+            caption=None,
+            text=None,
+            web_page=None,
+            photo=SimpleNamespace(file_size=10, file_unique_id='photoA'),
+            chat=SimpleNamespace(id=-1001, username='chengdudiyi8', title=None),
+            link='https://t.me/chengdudiyi8/93670',
+            get_media_group=get_media_group,
+        )
+        captioned = SimpleNamespace(
+            id=93671,
+            caption='继父出差了妈妈自己在家',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_size=20, file_name='b.mp4'),
+            chat=SimpleNamespace(id=-1001, username='chengdudiyi8', title=None),
+            link='https://t.me/chengdudiyi8/93671',
+            get_media_group=get_media_group,
+        )
+        members.extend([trigger, captioned])
+
+        asyncio.run(downloader._run_pikpak_archive_after_forward(
+            message=trigger,
+            origin_chat_id=-1001,
+            message_id=93670,
+            media_group=[93670, 93671],
+            source_folder='chengdudiyi8/93670',
+            source_link='https://t.me/chengdudiyi8/93670',
+        ))
+
+        self.assertEqual(2, len(archive_calls))
+        expected = 'chengdudiyi8/93670 - 继父出差了妈妈自己在家'
+        self.assertEqual(expected, archive_calls[0]['source_folder'])
+        self.assertEqual(expected, archive_calls[1]['source_folder'])
+
 
 if __name__ == '__main__':
     unittest.main()
