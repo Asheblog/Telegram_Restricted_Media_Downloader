@@ -95,7 +95,27 @@ class WebTransferRunner:
         if not transfer_store or not task_id:
             return False
         task = transfer_store.get_task(int(task_id))
+        # PAUSING keeps in-flight download/upload alive; only PAUSED aborts mid-item.
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def honor_web_task_pause_request(self, task_id: int, *, before: str | None = None) -> bool:
+        """Finalize a deferred pause at an item boundary. Return True if the caller must stop."""
+        host = self._host
+        transfer_store = host.transfer_store
+        if not transfer_store or not task_id:
+            return True
+        task = transfer_store.get_task(int(task_id))
+        if not task:
+            return True
+        status = task.get('status')
+        if status == TransferStatus.PAUSING:
+            transfer_store.update_task(int(task_id), status=TransferStatus.PAUSED)
+            message = 'Transfer task paused.'
+            if before:
+                message = f'Transfer task paused before message: {before}.'
+            transfer_store.add_event(int(task_id), message, level='warning')
+            return True
+        return status == TransferStatus.PAUSED
 
     async def process_task(self, task_id: int) -> None:
         host = self._host
@@ -104,9 +124,17 @@ class WebTransferRunner:
         task = host.transfer_store.get_task(task_id)
         if not task:
             return
-        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
+        if task.get('status') not in (
+            TransferStatus.PENDING,
+            TransferStatus.RUNNING,
+            TransferStatus.PAUSING,
+            TransferStatus.FAILURE,
+        ):
             return
-        host.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+        if task.get('status') == TransferStatus.PAUSING:
+            host.transfer_store.update_task(task_id, started=True)
+        else:
+            host.transfer_store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
         host.transfer_store.add_event(task_id, 'Transfer task started.')
         try:
             if not host.uploader:
@@ -144,13 +172,7 @@ class WebTransferRunner:
                     end_id=int(end_id)
                 )
                 for message_id in range(int(start_id), int(end_id) + 1):
-                    if not self.should_continue_web_transfer_task(task_id):
-                        latest_task = host.transfer_store.get_task(task_id)
-                        if latest_task and latest_task.get('status') == TransferStatus.PAUSED:
-                            host.transfer_store.add_event(
-                                task_id,
-                                f'Transfer task paused before message: {message_id}.'
-                            )
+                    if self.honor_web_task_pause_request(task_id, before=str(message_id)):
                         return
                     if host.transfer_store.is_range_message_complete(task_id, message_id):
                         continue
@@ -277,6 +299,8 @@ class WebTransferRunner:
                     expected_total=expected_total,
                     assignment_completed=True
                 )
+                if self.honor_web_task_pause_request(task_id):
+                    return
             else:
                 single_expected = 1
                 existing_total = int(task.get('total_items') or 0)
@@ -295,7 +319,7 @@ class WebTransferRunner:
                 fallback_count = 0
                 expected_total = single_expected
                 if message_id not in completed_message_ids:
-                    if not self.should_continue_web_transfer_task(task_id):
+                    if self.honor_web_task_pause_request(task_id, before=str(message_id)):
                         return
                     if host.find_resumable_transfer_item(task_id, message_id, origin_chat_id):
                         try:
@@ -360,6 +384,8 @@ class WebTransferRunner:
                     expected_total=expected_total,
                     assignment_completed=True
                 )
+                if self.honor_web_task_pause_request(task_id):
+                    return
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -403,6 +429,8 @@ class WebTransferRunner:
         task_id = int(task.get('id'))
         resumed = 0
         for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
+            if self.honor_web_task_pause_request(task_id, before=str(range_message_id)):
+                break
             try:
                 await self._resolve_method('wait_between_transfer_messages')()
                 await self.resume_transfer_item_download(

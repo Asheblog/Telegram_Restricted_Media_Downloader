@@ -396,6 +396,7 @@ const i18n = {
     'media.allTasks': '全部任务',
     'status.pending': '排队中',
     'status.running': '运行中',
+    'status.pausing': '暂停中…',
     'status.paused': '已暂停',
     'status.success': '已完成',
     'status.failure': '失败',
@@ -811,6 +812,7 @@ const i18n = {
     'media.allTasks': 'All tasks',
     'status.pending': 'Pending',
     'status.running': 'Running',
+    'status.pausing': 'Pausing…',
     'status.paused': 'Paused',
     'status.success': 'Completed',
     'status.failure': 'Failed',
@@ -1335,7 +1337,7 @@ function fmtTimestamp(sec) {
 }
 
 function statusBadge(status) {
-  const labels = { pending: 'status.pending', running: 'status.running', paused: 'status.paused', success: 'status.success', failure: 'status.failure', skipped: 'status.skipped' };
+  const labels = { pending: 'status.pending', running: 'status.running', pausing: 'status.pausing', paused: 'status.paused', success: 'status.success', failure: 'status.failure', skipped: 'status.skipped' };
   const cls = status || 'pending';
   return '<span class="badge badge-' + cls + '"><span class="status-dot ' + cls + '"></span>' + t(labels[status] || 'status.pending') + '</span>';
 }

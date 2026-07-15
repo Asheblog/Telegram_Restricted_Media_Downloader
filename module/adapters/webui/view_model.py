@@ -370,7 +370,7 @@ class WebUiViewModel:
             'started_at': task.get('started_at'),
             'finished_at': task.get('finished_at'),
             'can_pause': status in TASK_ACTIVE_STATUSES,
-            'can_resume': status == TransferStatus.PAUSED,
+            'can_resume': status in (TransferStatus.PAUSED, TransferStatus.PAUSING),
             'can_retry': summary['failed'] > 0,
             'can_delete': status in TASK_TERMINAL_STATUSES or status == TransferStatus.PAUSED,
             **active,

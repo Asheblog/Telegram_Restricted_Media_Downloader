@@ -665,6 +665,7 @@
   .badge-failed { @apply bg-danger-bg text-danger; }
   .badge-pending { @apply bg-orange-50 text-cta; }
   .badge-paused { @apply bg-slate-100 text-slate-500; }
+  .badge-pausing { @apply bg-amber-50 text-amber-700; }
   .badge-skipped { @apply bg-slate-100 text-slate-500; }
   .badge-warning { @apply bg-warning-bg text-warning; }
   .badge-muted { @apply bg-slate-100 text-slate-500; }
@@ -815,6 +816,7 @@
   .status-dot.failed { @apply bg-danger; }
   .status-dot.pending { @apply bg-warning; }
   .status-dot.paused { @apply bg-slate-300; }
+  .status-dot.pausing { @apply bg-amber-400; }
 
   /* Activity feed */
   .activity-item {

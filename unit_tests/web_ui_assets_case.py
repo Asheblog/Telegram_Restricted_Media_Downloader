@@ -80,7 +80,7 @@ class WebUiAssetsCase(unittest.TestCase):
             'statistics.title', 'records.title', 'media.title',
             'settings.title', 'settings.save', 'settings.saved',
             'form.createFailed', 'form.createSuccess', 'form.creatingTransfer',
-            'status.pending', 'status.running', 'status.success', 'status.failure',
+            'status.pending', 'status.running', 'status.pausing', 'status.success', 'status.failure',
             'action.refresh', 'nav.logout',
             'side.failed', 'side.status',
         ):

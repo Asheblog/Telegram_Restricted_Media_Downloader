@@ -25,17 +25,18 @@ def import_downloader_class():
 class WebTaskPauseUploadCase(unittest.TestCase):
     def test_pause_web_task_invokes_upload_pause(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             downloader = object.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = store
             downloader.web_task_manager = None
-            downloader.discard_web_task_submission = lambda *args, **kwargs: None
-            download_calls = []
-            upload_calls = []
-            downloader.cancel_task_downloads = lambda tid: download_calls.append(tid) or 0
-            downloader.pause_task_uploads = lambda tid: upload_calls.append(tid) or 0
+            discarded = []
+            downloader.discard_web_task_submission = (
+                lambda *args, **kwargs: discarded.append(args[0] if args else None)
+            )
+            downloader.web_running_task_id = None
+            downloader.web_running_task = None
 
             self.assertTrue(
                 TelegramRestrictedMediaDownloader.pause_web_task.__get__(
@@ -43,8 +44,8 @@ class WebTaskPauseUploadCase(unittest.TestCase):
                     TelegramRestrictedMediaDownloader
                 )(task_id)
             )
-            self.assertEqual([task_id], download_calls)
-            self.assertEqual([task_id], upload_calls)
+            self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+            self.assertEqual([task_id], discarded)
 
     def test_pause_uploads_for_task_drops_queue_without_failure(self):
         with tempfile.TemporaryDirectory() as directory:

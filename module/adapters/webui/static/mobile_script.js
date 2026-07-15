@@ -182,7 +182,7 @@ var mobWatchDownloadState = { watchId: null };
 
 function hasActiveTasks() {
   return (window.state && Array.isArray(window.state.tasks) && window.state.tasks.some(function(t) {
-    return t.status === 'pending' || t.status === 'running';
+    return t.status === 'pending' || t.status === 'running' || t.status === 'pausing';
   }));
 }
 
@@ -425,6 +425,7 @@ function mobBadge(status) {
   var map = {
     pending: '<span class="mob-card__badge pending">等待中</span>',
     running: '<span class="mob-card__badge running">运行中</span>',
+    pausing: '<span class="mob-card__badge paused">暂停中…</span>',
     paused: '<span class="mob-card__badge paused">已暂停</span>',
     completed: '<span class="mob-card__badge completed">已完成</span>',
     success: '<span class="mob-card__badge completed">已完成</span>',

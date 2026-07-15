@@ -274,7 +274,15 @@ class WebUITaskManager:
         if not self.transfer_store or not task_id:
             return False
         task = self.transfer_store.get_task(int(task_id))
+        # PAUSING keeps in-flight work; only PAUSED aborts mid-item.
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def _has_active_web_transfer_runner(self, task_id: int) -> bool:
+        return (
+            self.web_running_task_id == task_id
+            and self.web_running_task is not None
+            and not self.web_running_task.done()
+        )
 
     def _wait_for_running_transfer_task_stop(self, task_id: int) -> None:
         running_task_id = self.web_running_task_id
@@ -326,14 +334,13 @@ class WebUITaskManager:
             return False
         if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
             return False
+        if self._has_active_web_transfer_runner(task_id):
+            self.transfer_store.update_task(task_id, status=TransferStatus.PAUSING)
+            self.transfer_store.add_event(task_id, 'Transfer task pause requested.', level='warning')
+            return True
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
-        if self._cancel_task_downloads:
-            self._cancel_task_downloads(task_id)
-        if self._pause_task_uploads:
-            self._pause_task_uploads(task_id)
         self.discard_web_task_submission(task_id, cancel_running=True, wait=True)
-        self._wait_for_running_transfer_task_stop(task_id)
         self._kick_web_task_queue()
         return True
 
@@ -341,7 +348,14 @@ class WebUITaskManager:
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
-        if not task or task.get('status') != TransferStatus.PAUSED:
+        if not task:
+            return False
+        status = task.get('status')
+        if status == TransferStatus.PAUSING:
+            self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING)
+            self.transfer_store.add_event(task_id, 'Transfer task pause cancelled.')
+            return True
+        if status != TransferStatus.PAUSED:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PENDING)
         self.transfer_store.add_event(task_id, 'Transfer task resumed.')
@@ -488,7 +502,7 @@ class WebUITaskManager:
     def start_next_web_transfer_task(self) -> None:
         if self.web_running_task and not self.web_running_task.done():
             running_task_id = self.web_running_task_id
-            if running_task_id and not self.is_web_transfer_task_schedulable(running_task_id):
+            if running_task_id and not self._should_keep_web_transfer_runner(running_task_id):
                 try:
                     self.web_running_task.cancel()
                 except Exception:
@@ -520,6 +534,19 @@ class WebUITaskManager:
             finally:
                 self.web_task_queue.task_done()
 
+    def _should_keep_web_transfer_runner(self, task_id: int) -> bool:
+        if not self.transfer_store:
+            return False
+        task = self.transfer_store.get_task(task_id)
+        if not task:
+            return False
+        return task.get('status') in (
+            TransferStatus.PENDING,
+            TransferStatus.RUNNING,
+            TransferStatus.PAUSING,
+            TransferStatus.FAILURE,
+        )
+
     def is_web_transfer_task_schedulable(self, task_id: int) -> bool:
         if not self.transfer_store:
             return False
@@ -529,7 +556,12 @@ class WebUITaskManager:
         from module.transfer.watch_inline import is_watch_inline_task
         if is_watch_inline_task(task):
             return False
-        return task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
+        return task.get('status') in (
+            TransferStatus.PENDING,
+            TransferStatus.RUNNING,
+            TransferStatus.PAUSING,
+            TransferStatus.FAILURE,
+        )
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
         if task_id is not None:

@@ -12,6 +12,7 @@ from module.core.media_types import normalize_media_types, serialize_media_types
 class TransferStatus:
     PENDING = 'pending'
     RUNNING = 'running'
+    PAUSING = 'pausing'
     PAUSED = 'paused'
     SKIPPED = 'skipped'
     SUCCESS = 'success'
@@ -649,7 +650,11 @@ class TransferStore:
             'finished_at': (
                 now
                 if finished
-                else None if status in (TransferStatus.PENDING, TransferStatus.RUNNING)
+                else None if status in (
+                    TransferStatus.PENDING,
+                    TransferStatus.RUNNING,
+                    TransferStatus.PAUSING,
+                )
                 else task['finished_at']
             ),
             'assignment_completed': (
@@ -1218,6 +1223,8 @@ class TransferStore:
         finished = False
         if task.get('status') == TransferStatus.PAUSED:
             status = TransferStatus.PAUSED
+        elif task.get('status') == TransferStatus.PAUSING:
+            status = TransferStatus.PAUSING
         elif task.get('status') == TransferStatus.PENDING:
             status = TransferStatus.PENDING
         if expected > 0 and assigned and item_count >= expected and terminal >= expected:

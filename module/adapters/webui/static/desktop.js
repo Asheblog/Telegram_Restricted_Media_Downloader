@@ -425,7 +425,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
 
 /* ====== Polling ====== */
 function hasActiveTasks() {
-  return state.tasks.some(t => t.status === 'pending' || t.status === 'running');
+  return state.tasks.some(t => t.status === 'pending' || t.status === 'running' || t.status === 'pausing');
 }
 
 async function refreshTransferData() {

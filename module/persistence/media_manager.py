@@ -350,7 +350,12 @@ class MediaManager:
             active_task_ids = {
                 int(t.get('id'))
                 for t in tasks
-                if t.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.PAUSED)
+                if t.get('status') in (
+                    TransferStatus.PENDING,
+                    TransferStatus.RUNNING,
+                    TransferStatus.PAUSING,
+                    TransferStatus.PAUSED,
+                )
             }
             active_item_statuses = {
                 TransferStatus.PENDING,

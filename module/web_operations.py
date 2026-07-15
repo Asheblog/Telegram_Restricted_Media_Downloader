@@ -370,10 +370,20 @@ class WebOperationsMixin:
             return wm.pause_web_task(task_id)
         if not self.transfer_store or not self.transfer_store.get_task(task_id):
             return False
+        task = self.transfer_store.get_task(task_id)
+        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
+            return False
+        has_runner = (
+            getattr(self, 'web_running_task_id', None) == task_id
+            and getattr(self, 'web_running_task', None) is not None
+            and not self.web_running_task.done()
+        )
+        if has_runner:
+            self.transfer_store.update_task(task_id, status=TransferStatus.PAUSING)
+            self.transfer_store.add_event(task_id, 'Transfer task pause requested.', level='warning')
+            return True
         self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
         self.transfer_store.add_event(task_id, 'Transfer task paused.', level='warning')
-        self.cancel_task_downloads(task_id)
-        self.pause_task_uploads(task_id)
         self.discard_web_task_submission(task_id, cancel_running=True)
         return True
 
@@ -384,7 +394,14 @@ class WebOperationsMixin:
         if not self.transfer_store:
             return False
         task = self.transfer_store.get_task(task_id)
-        if not task or task.get('status') != TransferStatus.PAUSED:
+        if not task:
+            return False
+        status = task.get('status')
+        if status == TransferStatus.PAUSING:
+            self.transfer_store.update_task(task_id, status=TransferStatus.RUNNING)
+            self.transfer_store.add_event(task_id, 'Transfer task pause cancelled.')
+            return True
+        if status != TransferStatus.PAUSED:
             return False
         self.transfer_store.update_task(task_id, status=TransferStatus.PENDING)
         self.transfer_store.add_event(task_id, 'Transfer task resumed.')
@@ -1002,12 +1019,29 @@ class WebOperationsMixin:
         if not self.transfer_store:
             return
         for task in self.transfer_store.list_tasks():
-            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
-                continue
+            status = task.get('status')
+            task_id = int(task.get('id'))
             from module.transfer.watch_inline import is_watch_inline_task
             if is_watch_inline_task(task):
                 continue
-            self.submit_web_task(int(task.get('id')))
+            if status == TransferStatus.PAUSING:
+                has_active_item = any(
+                    item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
+                    for item in self.transfer_store.list_items(task_id)
+                )
+                if has_active_item:
+                    self.submit_web_task(task_id)
+                else:
+                    self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
+                    self.transfer_store.add_event(
+                        task_id,
+                        'Transfer task paused after restart with no in-flight item.',
+                        level='warning',
+                    )
+                continue
+            if status not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
+                continue
+            self.submit_web_task(task_id)
         recovered_archives = 0
         progress_tracker = getattr(self, 'progress_tracker', None)
         if progress_tracker is not None:
@@ -1387,7 +1421,12 @@ class WebOperationsMixin:
         from module.transfer.watch_inline import is_watch_inline_task
         if is_watch_inline_task(task):
             return False
-        return task.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE)
+        return task.get('status') in (
+            TransferStatus.PENDING,
+            TransferStatus.RUNNING,
+            TransferStatus.PAUSING,
+            TransferStatus.FAILURE,
+        )
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
         wm = getattr(self, 'web_task_manager', None)
