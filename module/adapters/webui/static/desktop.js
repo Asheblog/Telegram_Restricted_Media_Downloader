@@ -59,6 +59,7 @@ async function loadTasks() {
   try {
     const data = await fetchJson('/api/tasks');
     state.tasks = data.tasks || [];
+    state.taskStats = data.task_stats || {};
     state.metrics = data.metrics || {};
     state.lastSync = new Date();
     const syncEl = $('#last-sync');
@@ -71,20 +72,22 @@ async function loadTasks() {
 }
 
 function updateStats() {
-  const stats = { total: state.tasks.length, running: 0, success: 0, failed: 0, failedItems: 0 };
-  state.tasks.forEach(t => {
-    if (t.status === 'running') stats.running++;
-    if (t.status === 'success') stats.success++;
-    if (t.status === 'failure') stats.failed++;
-    if (t.failed_items) stats.failedItems += (t.failed_items || 0);
-  });
-  $('#stat-total').textContent = stats.total;
-  $('#stat-success').textContent = stats.success;
-  $('#stat-running').textContent = stats.running;
-  $('#stat-failed').textContent = stats.failedItems;
-  $('#metric-failed').textContent = stats.failedItems;
-  $('#badge-transfers').textContent = stats.running || '';
-  $('#badge-transfers').style.display = stats.running ? '' : 'none';
+  const taskStats = state.taskStats || {};
+  const totalTasks = Number(taskStats.total_tasks || 0);
+  const completedTasks = Number(taskStats.completed_tasks || 0);
+  const runningTasks = Number(taskStats.running_tasks || 0);
+  const failedTasks = Number(taskStats.failed_tasks || 0);
+  const failedItems = Number(taskStats.failed_items || 0);
+  $('#stat-total').textContent = totalTasks;
+  $('#stat-success').textContent = completedTasks;
+  $('#stat-running').textContent = runningTasks;
+  const failedEl = $('#stat-failed');
+  failedEl.textContent = failedTasks;
+  failedEl.title = t('stats.failedItemsDetail', { count: failedItems });
+  failedEl.setAttribute('aria-label', t('stats.failed') + ' ' + failedTasks + '. ' + t('stats.failedItemsDetail', { count: failedItems }));
+  $('#metric-failed').textContent = failedItems;
+  $('#badge-transfers').textContent = runningTasks || '';
+  $('#badge-transfers').style.display = runningTasks ? '' : 'none';
 
   const metrics = state.metrics || {};
   const uploadEl = $('#stat-upload-speed');

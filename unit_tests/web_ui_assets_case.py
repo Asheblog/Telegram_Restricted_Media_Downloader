@@ -220,6 +220,11 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('stat-success', WEB_UI_HTML)
         self.assertIn('stat-running', WEB_UI_HTML)
         self.assertIn('stat-failed', WEB_UI_HTML)
+        self.assertIn('已完成任务', WEB_UI_HTML)
+        self.assertIn('运行中任务', WEB_UI_HTML)
+        self.assertIn('失败任务', WEB_UI_HTML)
+        self.assertIn('data.task_stats || {}', WEB_UI_HTML)
+        self.assertIn('taskStats.failed_items', WEB_UI_HTML)
 
     def test_statistics_dashboard_present(self):
         for fragment in (

@@ -506,7 +506,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-success">0</div>
-        <div class="stat-card-label" data-i18n="stats.success">已完成</div>
+        <div class="stat-card-label" data-i18n="stats.success">已完成任务</div>
       </div>
     </div>
     <div class="stat-card">
@@ -515,7 +515,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-running">0</div>
-        <div class="stat-card-label" data-i18n="stats.running">运行中</div>
+        <div class="stat-card-label" data-i18n="stats.running">运行中任务</div>
       </div>
     </div>
     <div class="stat-card">
@@ -524,7 +524,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div>
         <div class="stat-card-value" id="stat-failed">0</div>
-        <div class="stat-card-label" data-i18n="stats.failed">失败项</div>
+        <div class="stat-card-label" data-i18n="stats.failed">失败任务</div>
       </div>
     </div>
     <div class="stat-card">
@@ -1626,9 +1626,10 @@ const i18n = {
     'hero.title': '转存控制台',
     'hero.body': '管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤',
     'stats.total': '总任务',
-    'stats.success': '已完成',
-    'stats.running': '运行中',
-    'stats.failed': '失败项',
+    'stats.success': '已完成任务',
+    'stats.running': '运行中任务',
+    'stats.failed': '失败任务',
+    'stats.failedItemsDetail': '当前任务中共有 {count} 个失败项',
     'stats.uploadSpeed': '实时上传网速',
     'stats.downloadSpeed': '实时下载网速',
     'stats.diskFree': '硬盘剩余空间',
@@ -2038,9 +2039,10 @@ const i18n = {
     'hero.title': 'Transfer Console',
     'hero.body': 'Manage Telegram content transfer tasks — live monitoring, batch operations, smart filtering',
     'stats.total': 'Total Tasks',
-    'stats.success': 'Completed',
-    'stats.running': 'Running',
-    'stats.failed': 'Failed Items',
+    'stats.success': 'Completed Tasks',
+    'stats.running': 'Running Tasks',
+    'stats.failed': 'Failed Tasks',
+    'stats.failedItemsDetail': '{count} failed items across current tasks',
     'stats.uploadSpeed': 'Upload Speed',
     'stats.downloadSpeed': 'Download Speed',
     'stats.diskFree': 'Free Disk Space',
@@ -2459,6 +2461,7 @@ const state = {
   recordsPageSize: 50,
   recordsTotal: 0,
   metrics: {},
+  taskStats: {},
 };
 window.state = state;
 
@@ -3414,6 +3417,7 @@ async function loadTasks() {
   try {
     const data = await fetchJson('/api/tasks');
     state.tasks = data.tasks || [];
+    state.taskStats = data.task_stats || {};
     state.metrics = data.metrics || {};
     state.lastSync = new Date();
     const syncEl = $('#last-sync');
@@ -3426,20 +3430,22 @@ async function loadTasks() {
 }
 
 function updateStats() {
-  const stats = { total: state.tasks.length, running: 0, success: 0, failed: 0, failedItems: 0 };
-  state.tasks.forEach(t => {
-    if (t.status === 'running') stats.running++;
-    if (t.status === 'success') stats.success++;
-    if (t.status === 'failure') stats.failed++;
-    if (t.failed_items) stats.failedItems += (t.failed_items || 0);
-  });
-  $('#stat-total').textContent = stats.total;
-  $('#stat-success').textContent = stats.success;
-  $('#stat-running').textContent = stats.running;
-  $('#stat-failed').textContent = stats.failedItems;
-  $('#metric-failed').textContent = stats.failedItems;
-  $('#badge-transfers').textContent = stats.running || '';
-  $('#badge-transfers').style.display = stats.running ? '' : 'none';
+  const taskStats = state.taskStats || {};
+  const totalTasks = Number(taskStats.total_tasks || 0);
+  const completedTasks = Number(taskStats.completed_tasks || 0);
+  const runningTasks = Number(taskStats.running_tasks || 0);
+  const failedTasks = Number(taskStats.failed_tasks || 0);
+  const failedItems = Number(taskStats.failed_items || 0);
+  $('#stat-total').textContent = totalTasks;
+  $('#stat-success').textContent = completedTasks;
+  $('#stat-running').textContent = runningTasks;
+  const failedEl = $('#stat-failed');
+  failedEl.textContent = failedTasks;
+  failedEl.title = t('stats.failedItemsDetail', { count: failedItems });
+  failedEl.setAttribute('aria-label', t('stats.failed') + ' ' + failedTasks + '. ' + t('stats.failedItemsDetail', { count: failedItems }));
+  $('#metric-failed').textContent = failedItems;
+  $('#badge-transfers').textContent = runningTasks || '';
+  $('#badge-transfers').style.display = runningTasks ? '' : 'none';
 
   const metrics = state.metrics || {};
   const uploadEl = $('#stat-upload-speed');
@@ -6939,9 +6945,10 @@ const i18n = {
     'hero.title': '转存控制台',
     'hero.body': '管理 Telegram 内容转存任务 — 实时监控、批量操作、智能过滤',
     'stats.total': '总任务',
-    'stats.success': '已完成',
-    'stats.running': '运行中',
-    'stats.failed': '失败项',
+    'stats.success': '已完成任务',
+    'stats.running': '运行中任务',
+    'stats.failed': '失败任务',
+    'stats.failedItemsDetail': '当前任务中共有 {count} 个失败项',
     'stats.uploadSpeed': '实时上传网速',
     'stats.downloadSpeed': '实时下载网速',
     'stats.diskFree': '硬盘剩余空间',
@@ -7351,9 +7358,10 @@ const i18n = {
     'hero.title': 'Transfer Console',
     'hero.body': 'Manage Telegram content transfer tasks — live monitoring, batch operations, smart filtering',
     'stats.total': 'Total Tasks',
-    'stats.success': 'Completed',
-    'stats.running': 'Running',
-    'stats.failed': 'Failed Items',
+    'stats.success': 'Completed Tasks',
+    'stats.running': 'Running Tasks',
+    'stats.failed': 'Failed Tasks',
+    'stats.failedItemsDetail': '{count} failed items across current tasks',
     'stats.uploadSpeed': 'Upload Speed',
     'stats.downloadSpeed': 'Download Speed',
     'stats.diskFree': 'Free Disk Space',
@@ -7772,6 +7780,7 @@ const state = {
   recordsPageSize: 50,
   recordsTotal: 0,
   metrics: {},
+  taskStats: {},
 };
 window.state = state;
 

@@ -22,7 +22,7 @@ import module as trmd_module
 from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
 from module.pikpak_integration import PikpakIntegrationManager
-from module.transfer_store import TransferStatus, TransferStore
+from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
 from module.webui_view_model import WebUiViewModel
 from module.web_ui import WebUiServer
 
@@ -876,6 +876,59 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(1, len(failed_detail['items']))
             self.assertEqual(TransferStatus.FAILURE, failed_detail['items'][0]['status'])
             self.assertEqual(4, failed_detail['summary']['total'])
+
+    def test_webui_task_stats_use_task_level_counts_across_the_full_web_queue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = TransferStore(directory=directory)
+            task_ids = {}
+            for status in (
+                TransferStatus.PENDING,
+                TransferStatus.RUNNING,
+                TransferStatus.PAUSED,
+                TransferStatus.SUCCESS,
+                TransferStatus.SKIPPED,
+                TransferStatus.FAILURE,
+            ):
+                task_id = store.create_task(
+                    f'https://t.me/source/{status}',
+                    'https://t.me/pikpak_bot',
+                )
+                store.update_task(task_id, status=status)
+                task_ids[status] = task_id
+
+            failed_task_id = task_ids[TransferStatus.FAILURE]
+            for message_id in (1, 2):
+                store.add_item(
+                    task_id=failed_task_id,
+                    source_message_id=message_id,
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    status=TransferStatus.FAILURE,
+                )
+
+            store.create_task(
+                'https://t.me/watch/1',
+                'https://t.me/pikpak_bot',
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+
+            payload = WebUiViewModel(store).task_list(limit=1)
+
+            self.assertEqual(1, len(payload['tasks']))
+            self.assertEqual(
+                {
+                    'total_tasks': 6,
+                    'completed_tasks': 2,
+                    'running_tasks': 1,
+                    'failed_tasks': 1,
+                    'pending_tasks': 1,
+                    'paused_tasks': 1,
+                    'failed_items': 2,
+                },
+                payload['task_stats'],
+            )
+            store.connect().close()
+            store._tls.conn = None
 
     def test_webui_settings_model_is_the_public_settings_contract(self):
         settings = {

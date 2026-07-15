@@ -68,7 +68,48 @@ class WebUiViewModel:
                     preferred_file_name=file_names_by_task.get(int(task['id'])),
                 )
                 for task in tasks
-            ]
+            ],
+            'task_stats': self.task_stats(),
+        }
+
+    def task_stats(self) -> dict[str, int]:
+        """Aggregate task-level dashboard counts across the full Web queue."""
+        from module.transfer_store import ExecutionMode
+
+        with self.store.connect() as conn:
+            rows = conn.execute(
+                '''
+                SELECT
+                    tt.status,
+                    COUNT(DISTINCT tt.id) AS task_count,
+                    SUM(CASE WHEN ti.status = ? THEN 1 ELSE 0 END) AS failed_item_count
+                FROM transfer_tasks AS tt
+                LEFT JOIN transfer_items AS ti ON ti.task_id = tt.id
+                WHERE COALESCE(tt.execution_mode, ?) != ?
+                GROUP BY tt.status
+                ''',
+                (
+                    TransferStatus.FAILURE,
+                    ExecutionMode.WEB_QUEUE,
+                    ExecutionMode.WATCH_INLINE,
+                ),
+            ).fetchall()
+
+        counts = {
+            str(row['status']): int(row['task_count'] or 0)
+            for row in rows
+        }
+        return {
+            'total_tasks': sum(counts.values()),
+            'completed_tasks': (
+                counts.get(TransferStatus.SUCCESS, 0)
+                + counts.get(TransferStatus.SKIPPED, 0)
+            ),
+            'running_tasks': counts.get(TransferStatus.RUNNING, 0),
+            'failed_tasks': counts.get(TransferStatus.FAILURE, 0),
+            'pending_tasks': counts.get(TransferStatus.PENDING, 0),
+            'paused_tasks': counts.get(TransferStatus.PAUSED, 0),
+            'failed_items': sum(int(row['failed_item_count'] or 0) for row in rows),
         }
 
     def watch_download_tasks(self, watch_id: str, limit: int = 200) -> Optional[dict[str, Any]]:
