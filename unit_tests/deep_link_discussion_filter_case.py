@@ -233,6 +233,61 @@ class DiscussionDeepLinkFilterWebCase(unittest.TestCase):
             self.assertNotIn(bare, [c['message'] for c in transfer_calls])
             _close_store(store)
 
+    def test_resume_discussion_download_keeps_parent_post_source_folder(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/mychannel/7',
+                'https://t.me/mypikpakbot',
+                include_comment=True,
+                resolve_deep_link=True,
+                target_profile='pikpak',
+            )
+            task = store.get_task(task_id)
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='discussion-chat',
+                source_message_id=12,
+                range_message_id=7,
+                source_link='https://t.me/discussgrp/12',
+                target_link='https://t.me/mypikpakbot',
+                source_folder='mychannel/7 - parent title',
+                phase='downloading',
+                status='running',
+            )
+            created_downloads = []
+
+            def build_meta(**kwargs):
+                return {
+                    'link': kwargs.get('task', task).get('target_link'),
+                    'source_link': kwargs.get('source_link'),
+                    'source_folder': kwargs.get('source_folder') or 'discussgrp/7',
+                    'range_message_id': kwargs.get('range_message_id'),
+                }
+
+            async def create_download_task(**kwargs):
+                created_downloads.append(kwargs)
+                return {'status': 'success'}
+
+            host = SimpleNamespace(
+                build_transfer_upload_meta=build_meta,
+                create_download_task=create_download_task,
+            )
+            runner = WebTransferRunner(host)
+
+            asyncio.run(runner.resume_transfer_item_download(
+                task=task,
+                item=store.get_item(item_id),
+                range_message_id=7,
+            ))
+
+            self.assertEqual(1, len(created_downloads))
+            self.assertEqual(
+                'mychannel/7 - parent title',
+                created_downloads[0]['with_upload']['source_folder'],
+            )
+            _close_store(store)
+
 
 if __name__ == '__main__':
     unittest.main()

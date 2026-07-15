@@ -61,10 +61,31 @@ class PikpakIntegrationManager:
             return None
         folder = source_folder
         store = self.transfer_store
+        item = None
         if not folder and store and item_id:
             item = store.get_item(int(item_id))
             if item:
                 folder = item.get('source_folder')
+        if not folder and store and task_id:
+            task = store.get_task(int(task_id))
+            if task:
+                task_source_link = task.get('source_link')
+                item_source_link = (item or {}).get('source_link')
+                post_message_id = (item or {}).get('range_message_id')
+                task_source_folder = source_folder_from_link(task_source_link)
+                item_source_folder = source_folder_from_link(item_source_link)
+                if (
+                        post_message_id is None
+                        and item_source_link
+                        and task_source_folder
+                        and item_source_folder == task_source_folder
+                ):
+                    post_message_id = (item or {}).get('source_message_id')
+                if task_source_link:
+                    folder = archive_source_folder(
+                        fallback_link=task_source_link,
+                        post_message_id=post_message_id,
+                    )
         if not folder:
             # Prefer channel identity from source_link (deep-link/bot media must not become the folder).
             if source_folder_from_link(source_link):

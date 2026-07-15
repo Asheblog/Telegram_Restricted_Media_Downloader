@@ -487,6 +487,67 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(['swag_vip/1'], archive_folders)
 
+    def test_archive_recovers_parent_folder_for_discussion_item_without_folder(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/mychannel/7',
+                'https://t.me/mypikpakbot',
+                target_profile='pikpak',
+                include_comment=True,
+                resolve_deep_link=True,
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_chat_id='discussion-chat',
+                source_message_id=12,
+                range_message_id=7,
+                source_link='https://t.me/discussgrp/12',
+                target_link='https://t.me/mypikpakbot',
+                status=TransferStatus.RUNNING,
+            )
+            archive_folders = []
+
+            class FakeArchive:
+                def archive_file(self, source_folder, **kwargs):
+                    archive_folders.append(source_folder)
+                    return SimpleNamespace(
+                        ok=True,
+                        status='moved',
+                        archive_path=f'Telegram/{source_folder}/video.mp4',
+                        message='',
+                    )
+
+            manager = PikpakIntegrationManager(
+                transfer_store_getter=lambda: store,
+                pikpak_archive_client_getter=lambda: FakeArchive(),
+                diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+                gc_getter=lambda: None,
+                refresh_counts=lambda tid: None,
+            )
+            bot_message = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+            )
+
+            result = manager.archive_pikpak_item(
+                target_profile='pikpak',
+                item_id=item_id,
+                task_id=task_id,
+                message=bot_message,
+                source_link='https://t.me/discussgrp/12',
+                transferred_at=1.0,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(['mychannel/7'], archive_folders)
+            self.assertEqual('mychannel/7', store.get_item(item_id)['source_folder'])
+            _close_store(store)
+
     def test_archive_skips_text_only_message_without_creating_folder(self):
         from module.pikpak_integration import PikpakIntegrationManager
 

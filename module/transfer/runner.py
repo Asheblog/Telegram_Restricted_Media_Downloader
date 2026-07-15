@@ -48,7 +48,14 @@ class WebTransferHost(Protocol):
     async def create_download_task(self, **kwargs) -> dict: ...
     def check_type(self, message, media_types_override=None) -> bool: ...
     def runtime_message_filter(self, media_types_override=None): ...
-    def build_transfer_upload_meta(self, task: dict, source_link: str = None, media_type: str = None) -> dict: ...
+    def build_transfer_upload_meta(
+            self,
+            task: dict,
+            source_link: str = None,
+            media_type: str = None,
+            range_message_id: Optional[int] = None,
+            source_folder: Optional[str] = None,
+    ) -> dict: ...
     def skip_transfer_item_for_target_limit(self, task: dict, message, source_link: str, origin_chat_id, limit_error: dict) -> int: ...
     def skip_transfer_item_for_media_type(self, task: dict, message, source_link: str, origin_chat_id, reject_reason: str, range_message_id=None) -> int: ...
     def refresh_transfer_task_counts(self, task_id: int) -> None: ...
@@ -380,7 +387,8 @@ class WebTransferRunner:
         await self.create_web_transfer_fallback_download(
             task=task,
             source_link=source_link,
-            range_message_id=range_message_id or item.get('range_message_id')
+            range_message_id=range_message_id or item.get('range_message_id'),
+            source_folder=item.get('source_folder'),
         )
 
     async def resume_interrupted_items_for_range_message(
@@ -488,6 +496,7 @@ class WebTransferRunner:
             task=task,
             source_link=source_link,
             range_message_id=range_message_id,
+            source_folder=source_folder,
         )
         if source_folder:
             with_upload['source_folder'] = source_folder
