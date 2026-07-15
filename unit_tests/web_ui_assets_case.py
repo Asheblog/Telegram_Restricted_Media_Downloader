@@ -348,15 +348,15 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('partitionWatchesByComment', WEB_UI_MOBILE_HTML)
         self.assertIn('mob-watch-list-section', WEB_UI_MOBILE_HTML)
 
-    def test_watches_table_cells_fill_row_height_for_vertical_center(self):
-        # td 做 flex + stretch，.watch-cell 再 align-items:center（勿用 height:100%）
+    def test_watches_table_cells_preserve_native_table_layout(self):
+        # td 必须保留 table-cell；改成 flex 会让所有字段挤进第一列。
         self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table tbody tr\.watch-row>td\{[^}]*display:table-cell',
+        )
+        self.assertNotRegex(
             WEB_UI_HTML,
             r'\.data-table tbody tr\.watch-row>td\{[^}]*display:flex',
-        )
-        self.assertRegex(
-            WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row>td\{[^}]*align-items:stretch',
         )
         self.assertRegex(
             WEB_UI_HTML,

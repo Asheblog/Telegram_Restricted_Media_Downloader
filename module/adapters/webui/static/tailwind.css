@@ -1068,13 +1068,9 @@
     background: var(--color-surface-hover);
   }
 
-  /* 表格里 height:100% 会按 td 的指定高度(如 1px)解析，不是最终行高，导致
-     .watch-cell 永远只有 min-height:26px。改让 td 自身做 flex，默认 stretch
-     子元素到整格高度，再由 .watch-cell 做内容垂直居中。 */
+  /* td 必须保留原生 table-cell 布局，否则浏览器无法按表头分配列宽。 */
   .data-table tbody tr.watch-row > td {
-    display: flex;
-    align-items: stretch;
-    justify-content: stretch;
+    display: table-cell;
     vertical-align: middle;
     line-height: 1;
   }
