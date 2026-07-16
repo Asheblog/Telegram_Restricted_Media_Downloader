@@ -622,7 +622,7 @@ class WebUiViewModel:
                     f'''
                     SELECT * FROM transfer_items
                     WHERE task_id = ? AND status IN ({placeholders})
-                    ORDER BY id ASC
+                    ORDER BY id DESC
                     LIMIT ? OFFSET ?
                     ''',
                     (task_id, *statuses, limit, offset)
@@ -632,7 +632,7 @@ class WebUiViewModel:
                 '''
                 SELECT * FROM transfer_items
                 WHERE task_id = ?
-                ORDER BY id ASC
+                ORDER BY id DESC
                 LIMIT ? OFFSET ?
                 ''',
                 (task_id, limit, offset)

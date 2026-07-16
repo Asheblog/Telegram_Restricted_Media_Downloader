@@ -877,6 +877,58 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(TransferStatus.FAILURE, failed_detail['items'][0]['status'])
             self.assertEqual(4, failed_detail['summary']['total'])
 
+    def test_webui_task_detail_lists_items_newest_first(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+            )
+            first_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.SUCCESS,
+                file_name='oldest.mp4',
+            )
+            middle_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.SUCCESS,
+                file_name='middle.mp4',
+            )
+            newest_id = store.add_item(
+                task_id=task_id,
+                source_message_id=3,
+                source_link='https://t.me/source/3',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.FAILURE,
+                file_name='newest.mp4',
+            )
+
+            model = WebUiViewModel(store)
+            detail = model.task_detail(task_id, item_limit=10)
+            first_page = model.task_detail(task_id, item_limit=1, item_offset=0)
+            success_detail = model.task_detail(
+                task_id,
+                item_limit=10,
+                item_status=TransferStatus.SUCCESS,
+            )
+
+            self.assertEqual(
+                [newest_id, middle_id, first_id],
+                [item['id'] for item in detail['items']],
+            )
+            self.assertEqual(newest_id, first_page['items'][0]['id'])
+            self.assertEqual(
+                [middle_id, first_id],
+                [item['id'] for item in success_detail['items']],
+            )
+            store.connect().close()
+
     def test_webui_task_stats_use_task_level_counts_across_the_full_web_queue(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)
