@@ -961,29 +961,6 @@ class Bot:
                 return None
         return {'command': command, 'links': links, 'include_comment': include_comment}
 
-    @staticmethod
-    async def listen_download(
-            client: pyrogram.Client,
-            message: pyrogram.types.Message
-    ):
-        pass
-
-    @staticmethod
-    async def listen_forward(
-            client: pyrogram.Client,
-            message: pyrogram.types.Message
-    ):
-        pass
-
-    async def cancel_listen(
-            self,
-            client: pyrogram.Client,
-            message: pyrogram.types.Message,
-            link: str,
-            command: str
-    ):
-        pass
-
     async def listen_info(
             self,
             client: pyrogram.Client,
@@ -1035,7 +1012,9 @@ class Bot:
             user_client: pyrogram.Client,
             user_message: pyrogram.types.Message
     ):
-        pass
+        raise NotImplementedError(
+            'handle_forwarded_media must be provided via Bot(handler_overrides=...) by the host'
+        )
 
     async def done_notice(
             self,
@@ -1082,6 +1061,7 @@ class Bot:
             start_handler = self._handler_overrides.get('start', self.start)
             callback_handler = self._handler_overrides.get('callback_data', self.callback_data)
             forwarded_handler = self._handler_overrides.get('handle_forwarded_media', self.handle_forwarded_media)
+            on_listen_handler = self._handler_overrides.get('on_listen', self.on_listen)
 
             self.bot.add_handler(
                 MessageHandler(
@@ -1151,7 +1131,7 @@ class Bot:
             )
             self.bot.add_handler(
                 MessageHandler(
-                    self.on_listen,
+                    on_listen_handler,
                     filters=pyrogram.filters.command(['listen_download', 'listen_forward']) & pyrogram.filters.user(
                         self.root)
                 )

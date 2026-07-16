@@ -11,8 +11,8 @@
 |------|------|--------|
 | `main.py` | 入口：检查环境 → 创建 TRMD → `run()` | 12 |
 | `module/__init__.py` | 全局常量、版本号、日志初始化、banner | ~210 |
-| `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；保留 listen/forward/download 主路径 | ~2390 |
-| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine | ~330 |
+| `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；listen/forward 委托 `transfer/live_transfer` | ~1900 |
+| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~350 |
 | `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade` | ~1190 |
 | `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~350 |
 | `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotHost`、`IPikPakTarget` 等） | ~160 |
@@ -39,6 +39,7 @@
 | `transfer/runner.py` | — | Web 转存任务 runner | ~860 |
 | `transfer/progress.py` | `transfer_progress.py` | 进度跟踪 / 恢复续传 | ~940 |
 | `transfer/live_watch.py` | `live_watch_manager.py` | 实时监听管理 | ~400 |
+| `transfer/live_transfer.py` | — | listen/forward 转存（`forward` / `listen_*` / `on_listen` / discussion replies） | ~1120 |
 | `transfer/context.py` | `comp.py` | `TransferContext` + `TransferPorts` | ~130 |
 | `transfer/models.py` | `task.py` | DownloadTask / UploadTask | ~350 |
 | `transfer/deep_link.py` | — | 深链取片 | ~200 |

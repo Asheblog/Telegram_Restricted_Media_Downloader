@@ -31,6 +31,7 @@ main.py
   transfer/runner.py       WebTransferRunner
   transfer/progress.py     TransferProgressTracker
   transfer/live_watch.py   LiveWatchManager
+  transfer/live_transfer.py LiveTransferService（listen/forward）
   persistence/transfer_store.py   TransferStore（SQLite）
   adapters/pikpak/         PikPak 集成 + rclone 归档
   adapters/webui/          HTTP 服务 / ViewModel / 任务调度 / 前端资源
@@ -59,7 +60,7 @@ module/
   core/           # Application、Config、Enums、Filter、TargetProfiles
   infra/          # Client、Uploader、AsyncWindow
   persistence/    # TransferStore、MediaManager、LocalStorageGuard、SystemLog
-  transfer/       # Engine、Runner、Progress、LiveWatch、DeepLink、CommentDelay…
+  transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
   utils/          # util、stdio、path_tool、parser、language、diagnostics
 ```
 

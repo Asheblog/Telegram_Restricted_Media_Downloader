@@ -28,6 +28,7 @@ from module.web_operations import WebOperationsFacade
 from module.uploader import TelegramUploader
 from module.web_ui import WebUiServer
 from module.live_watch_applicator import LiveWatchApplicator
+from module.transfer.live_transfer import LiveTransferService
 
 
 class TrmdCompositionRoot:
@@ -75,6 +76,8 @@ class TrmdCompositionRoot:
             handler_overrides={
                 'start': self.start,
                 'callback_data': self.callback_data,
+                'handle_forwarded_media': self.handle_forwarded_media,
+                'on_listen': self.on_listen,
             },
             gc=self.gc
         )
@@ -171,6 +174,7 @@ class TrmdCompositionRoot:
             downloader_ref=self,
         )
         self._transfer_runner = WebTransferRunner(host=self)
+        self.live_transfer = LiveTransferService(host=self)
         self._watch_applicator = LiveWatchApplicator(host=self)
         self.web_task_manager = WebUITaskManager(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),

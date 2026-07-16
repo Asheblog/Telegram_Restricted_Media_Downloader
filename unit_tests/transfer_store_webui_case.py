@@ -3869,7 +3869,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return {'chat_id': 'target-chat'}
             return {'chat_id': 'unknown'}
 
-        with patch('module.downloader.parse_link', side_effect=fake_parse_link):
+        with patch('module.transfer.live_transfer.parse_link', side_effect=fake_parse_link):
             asyncio.run(downloader.listen_forward(object(), FakeMessage()))
 
         self.assertEqual([5, 15], [call['message_id'] for call in downloader.forward_calls])
