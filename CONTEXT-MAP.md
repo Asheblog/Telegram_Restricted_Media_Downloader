@@ -40,7 +40,7 @@
 | `transfer/progress.py` | `transfer_progress.py` | 进度跟踪 / 恢复续传 | ~940 |
 | `transfer/live_watch.py` | `live_watch_manager.py` | 实时监听管理 | ~400 |
 | `transfer/live_transfer.py` | — | listen/forward 转存（`forward` / `listen_*` / `on_listen` / discussion replies） | ~1120 |
-| `transfer/context.py` | `comp.py` | `TransferContext` + `TransferPorts` | ~130 |
+| `transfer/context.py` | `comp.py` | `TransferContext` + 分簇 `TransferPorts`（Paths/Progress/Target/Storage/Runtime） | ~180 |
 | `transfer/models.py` | `task.py` | DownloadTask / UploadTask | ~350 |
 | `transfer/deep_link.py` | — | 深链取片 | ~200 |
 | `transfer/comment_delay.py` | — | 讨论区延迟抓取调度 | ~240 |

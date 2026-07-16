@@ -39,7 +39,7 @@ main.py
   infra/                   DynamicAsyncWindow / TelegramUploader
   core/config.py           UserConfig + GlobalConfig
   ports.py                 Protocol seam（IWebUiOperations / IBotHost 等）
-  transfer/context.py      TransferContext + TransferPorts
+  transfer/context.py      TransferContext + TransferPorts（Paths / Progress / Target / Storage / Runtime 分簇）
 ```
 
 ### 配置系统（双层）
@@ -66,7 +66,7 @@ module/
 
 顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）；零引用的 `client.py` shim 已删除，请直接用 `module.infra.client`。
 
-**架构立场**：大规模搬包 / 再拆 God Object 已暂停；后续仅在具体痛点出现时做局部深化（例如 listen/forward 出门面、收窄 TransferPorts）。
+**架构立场**：大规模搬包 / 再拆 God Object 已暂停；后续仅在具体痛点出现时做局部深化（listen/forward 已抽出；TransferPorts 已分簇）。
 
 ---
 

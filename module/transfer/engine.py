@@ -91,28 +91,28 @@ class TransferEngine:
         return self.ctx.download_upload_window
 
     def env_save_directory(self, *args, **kwargs):
-        return self.ports.env_save_directory(*args, **kwargs)
+        return self.ports.paths.env_save_directory(*args, **kwargs)
 
     def get_final_save_directory(self, *args, **kwargs):
-        return self.ports.get_final_save_directory(*args, **kwargs)
+        return self.ports.paths.get_final_save_directory(*args, **kwargs)
 
     def get_final_file_path(self, *args, **kwargs):
-        return self.ports.get_final_file_path(*args, **kwargs)
+        return self.ports.paths.get_final_file_path(*args, **kwargs)
 
     def infer_target_profile(self, *args, **kwargs):
-        return self.ports.infer_target_profile(*args, **kwargs)
+        return self.ports.target.infer_target_profile(*args, **kwargs)
 
     def normalize_download_upload_meta(self, *args, **kwargs):
-        return self.ports.normalize_download_upload_meta(*args, **kwargs)
+        return self.ports.target.normalize_download_upload_meta(*args, **kwargs)
 
     def is_pikpak_target(self, *args, **kwargs):
-        return self.ports.is_pikpak_target(*args, **kwargs)
+        return self.ports.target.is_pikpak_target(*args, **kwargs)
 
     def build_transfer_upload_meta(self, *args, **kwargs):
-        return self.ports.build_transfer_upload_meta(*args, **kwargs)
+        return self.ports.target.build_transfer_upload_meta(*args, **kwargs)
 
     def ensure_uploader(self, *args, **kwargs):
-        return self.ports.ensure_uploader(*args, **kwargs)
+        return self.ports.runtime.ensure_uploader(*args, **kwargs)
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
@@ -124,7 +124,7 @@ class TransferEngine:
 
     def detect_transfer_range(self, source_link: str) -> Optional[dict]:
         future = asyncio.run_coroutine_threadsafe(
-            self.ports.detect_transfer_range_async(source_link),
+            self.ports.runtime.detect_transfer_range_async(source_link),
             self.loop
         )
         return future.result(timeout=60)
@@ -136,7 +136,7 @@ class TransferEngine:
         file_path: str
     ) -> bool:
         if not isinstance(with_upload, dict):
-            self.ports.release_download_upload_window(with_upload)
+            self.ports.storage.release_download_upload_window(with_upload)
             return False
         try:
             try:
@@ -157,8 +157,8 @@ class TransferEngine:
             callback = with_upload.get('failure_callback')
             if callable(callback):
                 callback(with_upload, error)
-            self.ports.release_transfer_local_storage(with_upload)
-            self.ports.release_download_upload_window(with_upload)
+            self.ports.storage.release_transfer_local_storage(with_upload)
+            self.ports.storage.release_download_upload_window(with_upload)
             return False
 
     # ── 下载/上传编排 ──
@@ -326,11 +326,11 @@ class TransferEngine:
             'target_profile': profile,
             'media_type': media_type,
             'range_message_id': range_message_id,
-            'on_file_ready': self.ports.on_transfer_file_ready,
-            'status_callback': self.ports.on_transfer_upload_status,
-            'progress_callback': self.ports.on_transfer_upload_progress,
-            'skip_callback': self.ports.on_transfer_item_skipped,
-            'failure_callback': self.ports.on_transfer_item_failed
+            'on_file_ready': self.ports.progress.on_transfer_file_ready,
+            'status_callback': self.ports.progress.on_transfer_upload_status,
+            'progress_callback': self.ports.progress.on_transfer_upload_progress,
+            'skip_callback': self.ports.progress.on_transfer_item_skipped,
+            'failure_callback': self.ports.progress.on_transfer_item_failed
         }
 
     def telegram_upload_size_limit_error(self, file_size: int) -> Optional[str]:
@@ -380,7 +380,7 @@ class TransferEngine:
             task_with_upload['file_size'] = file_size
             callback(task_with_upload, error_message)
         self.notify_bot_transfer_upload_precheck_skipped(task_with_upload, file_name, file_size, error_message)
-        self.ports.release_download_upload_window(task_with_upload)
+        self.ports.storage.release_download_upload_window(task_with_upload)
 
     def notify_bot_transfer_upload_precheck_skipped(
         self,
@@ -395,14 +395,14 @@ class TransferEngine:
         if not isinstance(progress, dict):
             return
         progress['file_name'] = file_name
-        text = self.ports.build_bot_transfer_progress_text(
+        text = self.ports.progress.build_bot_transfer_progress_text(
             progress,
             phase='skipped',
             current=file_size,
             total=file_size,
             error_message=error_message
         )
-        self.ports.schedule_bot_transfer_progress_update(progress, text, force=True)
+        self.ports.progress.schedule_bot_transfer_progress_update(progress, text, force=True)
 
     def skip_transfer_item_for_target_limit(
         self,
@@ -631,15 +631,15 @@ class TransferEngine:
                             item_id=int(item_id) if item_id else None
                         )
             self.app.current_task_num -= 1
-            self.ports.event().set()
-            self.ports.release_transfer_local_storage(with_upload)
-            self.ports.release_download_upload_window(with_upload)
+            self.ports.runtime.event().set()
+            self.ports.storage.release_transfer_local_storage(with_upload)
+            self.ports.storage.release_download_upload_window(with_upload)
             try:
-                self.ports.queue().task_done()
+                self.ports.runtime.queue().task_done()
             except (AttributeError, ValueError):
                 pass
             try:
-                self.ports.pb_progress().remove_task(task_id=task_id)
+                self.ports.runtime.pb_progress().remove_task(task_id=task_id)
             except AttributeError:
                 pass
             return None, None
@@ -657,7 +657,7 @@ class TransferEngine:
                     f'{_t(KeyWord.STATUS)}:{_t(DownloadStatus.SKIP)}。', style='#e6db74'
                 )
                 DownloadTask.COMPLETE_LINK.add(link)
-                self.ports.record_transfer_download_success(
+                self.ports.progress.record_transfer_download_success(
                     with_upload=with_upload,
                     message=message,
                     file_path=self.get_final_file_path(message, file_name, with_upload)
@@ -667,12 +667,12 @@ class TransferEngine:
                     message=message,
                     file_path=self.get_final_file_path(message, file_name, with_upload)
                 ):
-                    self.ports.release_download_upload_window(with_upload)
+                    self.ports.storage.release_download_upload_window(with_upload)
             else:
-                self.ports.release_download_upload_window(with_upload)
+                self.ports.storage.release_download_upload_window(with_upload)
         else:
             self.app.current_task_num -= 1
-            self.ports.event().set()
+            self.ports.runtime.event().set()
             if self.__check_download_finish(
                 message=message,
                 sever_file_size=sever_file_size,
@@ -680,9 +680,9 @@ class TransferEngine:
                 save_directory=self.get_final_save_directory(message, with_upload),
                 with_move=True
             ):
-                self.ports.mark_transfer_local_storage_materialized(with_upload)
+                self.ports.storage.mark_transfer_local_storage_materialized(with_upload)
                 final_path = self.get_final_file_path(message, file_name, with_upload)
-                self.ports.record_transfer_download_success(
+                self.ports.progress.record_transfer_download_success(
                     with_upload=with_upload,
                     message=message,
                     file_path=final_path
@@ -696,13 +696,13 @@ class TransferEngine:
                     message=message,
                     file_path=final_path
                 ):
-                    self.ports.release_download_upload_window(with_upload)
-                self.ports.queue().task_done()
+                    self.ports.storage.release_download_upload_window(with_upload)
+                self.ports.runtime.queue().task_done()
             else:
                 if retry_count < self.app.max_download_retries:
                     retry_count += 1
                     task = self.loop.create_task(
-                        self.ports.create_download_task(
+                        self.ports.runtime.create_download_task(
                             message_ids=link if isinstance(link, str) else message,
                             retry={'id': file_id, 'count': retry_count},
                             with_upload=with_upload,
@@ -727,15 +727,15 @@ class TransferEngine:
                         f'{_error}'
                     )
                     DownloadTask.set_error(link=link, key=file_name, value=_error.replace('。', ''))
-                    self.ports.bot_task_link().discard(link)
+                    self.ports.runtime.bot_task_link().discard(link)
                     callback = with_upload.get('failure_callback') if isinstance(with_upload, dict) else None
                     if callable(callback):
                         with_upload['message_id'] = getattr(message, 'id', None)
                         callback(with_upload, _error)
-                    self.ports.release_download_upload_window(with_upload)
-                    self.ports.queue().task_done()
+                    self.ports.storage.release_download_upload_window(with_upload)
+                    self.ports.runtime.queue().task_done()
                 link, file_name = None, None
-            self.ports.pb_progress().remove_task(task_id=task_id)
+            self.ports.runtime.pb_progress().remove_task(task_id=task_id)
         return link, file_name
 
     def _process_links(self, link: Union[str, list]) -> Union[set, None]:
@@ -748,7 +748,7 @@ class TransferEngine:
                 for i in _links:
                     if i.startswith(start_content):
                         links.add(i)
-                        self.ports.bot_task_link().add(i)
+                        self.ports.runtime.bot_task_link().add(i)
                     elif i == '' or '#':
                         continue
                     else:
@@ -773,5 +773,5 @@ class TransferEngine:
             return None
 
     def _retry_call(self, notice, _future):
-        self.ports.queue().task_done()
+        self.ports.runtime.queue().task_done()
         console.log(notice, style='#FF4689')
