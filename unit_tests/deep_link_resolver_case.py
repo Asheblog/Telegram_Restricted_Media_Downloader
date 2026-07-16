@@ -363,6 +363,182 @@ class DeepLinkResolverCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_resolve_clicks_next_page_and_collects_more_media(self):
+        async def run_case():
+            started = time.time()
+            page1 = SimpleNamespace(
+                id=1,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            pager = SimpleNamespace(
+                id=2,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='下一页 ▶️', callback_data=b'next1', url=None),
+                ]]),
+                click=AsyncMock(),
+            )
+            page2 = SimpleNamespace(
+                id=3,
+                video=None,
+                document=object(),
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started + 0.2,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            # poll0: page1+pager; after click poll1+: page1+pager(no next)+page2
+            pager_done = SimpleNamespace(
+                id=2,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='📋 2/2', callback_data=b'status', url=None),
+                ]]),
+            )
+            client = _make_history_client([
+                [pager, page1],
+                [page2, pager_done, page1],
+            ])
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0,
+                poll_interval=0.02,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                max_pages=5,
+                page_click_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([page1, page2], result)
+            pager.click.assert_awaited()
+
+        asyncio.run(run_case())
+
+    def test_resolve_zero_media_then_pagination_succeeds(self):
+        async def run_case():
+            started = time.time()
+            pager = SimpleNamespace(
+                id=1,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='❄️1', callback_data=b'g1', url=None),
+                ]]),
+                click=AsyncMock(),
+            )
+            media = SimpleNamespace(
+                id=2,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started + 0.1,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            pager_done = SimpleNamespace(
+                id=1,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='✅1', callback_data=b'g1', url=None),
+                ]]),
+            )
+            client = _make_history_client([[pager], [media, pager_done]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0,
+                poll_interval=0.02,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                page_click_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([media], result)
+            pager.click.assert_awaited()
+
+        asyncio.run(run_case())
+
+    def test_resolve_pagination_click_failure_keeps_partial_media(self):
+        async def run_case():
+            started = time.time()
+            page1 = SimpleNamespace(
+                id=1,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            pager = SimpleNamespace(
+                id=2,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='下一页 ▶️', callback_data=b'next1', url=None),
+                ]]),
+                click=AsyncMock(side_effect=TimeoutError('bot slow')),
+            )
+            client = _make_history_client([[pager, page1]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=1.0,
+                poll_interval=0.02,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                page_click_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([page1], result)
+
+        asyncio.run(run_case())
+
 
 if __name__ == '__main__':
     unittest.main()

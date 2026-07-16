@@ -2243,6 +2243,8 @@ function renderSettings() {
   setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
   setFieldVal('global.deep_link.min_interval_seconds', sg.deep_link?.min_interval_seconds ?? 30);
   setFieldVal('global.deep_link.settle_seconds', sg.deep_link?.settle_seconds ?? 3);
+  setFieldVal('global.deep_link.max_pages', sg.deep_link?.max_pages ?? 20);
+  setFieldVal('global.deep_link.page_click_interval_seconds', sg.deep_link?.page_click_interval_seconds ?? 1);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);

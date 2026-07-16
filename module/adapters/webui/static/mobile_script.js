@@ -1626,6 +1626,8 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
     '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
     '<label style="margin-top:10px;"><span>收齐静默（秒）</span><input name="global.deep_link.settle_seconds" type="number" min="0" max="60" value="' + (getSettingLeafKey(glob, 'deep_link.settle_seconds') ?? 3) + '"></label>' +
+    '<label style="margin-top:10px;"><span>翻页最大页数</span><input name="global.deep_link.max_pages" type="number" min="1" max="100" value="' + (getSettingLeafKey(glob, 'deep_link.max_pages') ?? 20) + '"></label>' +
+    '<label style="margin-top:10px;"><span>翻页点击间隔（秒）</span><input name="global.deep_link.page_click_interval_seconds" type="number" min="0" max="30" value="' + (getSettingLeafKey(glob, 'deep_link.page_click_interval_seconds') ?? 1) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">首条媒体后再等该秒数无新消息则结束收齐；0 表示收到首条即结束。</p>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 

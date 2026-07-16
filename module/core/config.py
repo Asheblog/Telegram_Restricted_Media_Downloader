@@ -693,6 +693,8 @@ class GlobalConfig(BaseConfig):
             'timeout_seconds': 60,
             'min_interval_seconds': 30,
             'settle_seconds': 3,
+            'max_pages': 20,
+            'page_click_interval_seconds': 1,
         },
     }
 
@@ -728,6 +730,8 @@ class GlobalConfig(BaseConfig):
         self.deep_link_timeout_seconds: int = self.get_deep_link_timeout_seconds()
         self.deep_link_min_interval_seconds: int = self.get_deep_link_min_interval_seconds()
         self.deep_link_settle_seconds: int = self.get_deep_link_settle_seconds()
+        self.deep_link_max_pages: int = self.get_deep_link_max_pages()
+        self.deep_link_page_click_interval_seconds: int = self.get_deep_link_page_click_interval_seconds()
 
     def get_nesting_config(self, default_nesting, param, nesting_param):
         return self.config.get(param, default_nesting).get(nesting_param)
@@ -868,6 +872,30 @@ class GlobalConfig(BaseConfig):
             value = default_value
         return min(max(value, 0), 60)
 
+    def get_deep_link_max_pages(self) -> int:
+        default_value = int(self.default_deep_link_nesting.get('max_pages', 20))
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_deep_link_nesting,
+                param='deep_link',
+                nesting_param='max_pages'
+            ))
+        except (TypeError, ValueError, AttributeError):
+            value = default_value
+        return min(max(value, 1), 100)
+
+    def get_deep_link_page_click_interval_seconds(self) -> int:
+        default_value = int(self.default_deep_link_nesting.get('page_click_interval_seconds', 1))
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_deep_link_nesting,
+                param='deep_link',
+                nesting_param='page_click_interval_seconds'
+            ))
+        except (TypeError, ValueError, AttributeError):
+            value = default_value
+        return min(max(value, 0), 30)
+
     def save_config(self, config: dict) -> None:
         super().save_config(config)
         self.download_upload = self.get_nesting_config(
@@ -893,6 +921,8 @@ class GlobalConfig(BaseConfig):
         self.deep_link_timeout_seconds = self.get_deep_link_timeout_seconds()
         self.deep_link_min_interval_seconds = self.get_deep_link_min_interval_seconds()
         self.deep_link_settle_seconds = self.get_deep_link_settle_seconds()
+        self.deep_link_max_pages = self.get_deep_link_max_pages()
+        self.deep_link_page_click_interval_seconds = self.get_deep_link_page_click_interval_seconds()
         p = '全局配置文件已重新加载。'
         console.log(p, style='#FF4689')
         log.info(f'{p}{self.config}')

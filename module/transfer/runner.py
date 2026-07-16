@@ -732,6 +732,14 @@ class WebTransferRunner:
             resolver = host.get_deep_link_resolver()
             settle_getter = getattr(host.gc, 'get_deep_link_settle_seconds', None)
             settle_seconds = settle_getter() if callable(settle_getter) else None
+            max_pages_getter = getattr(host.gc, 'get_deep_link_max_pages', None)
+            max_pages = max_pages_getter() if callable(max_pages_getter) else None
+            page_interval_getter = getattr(
+                host.gc, 'get_deep_link_page_click_interval_seconds', None,
+            )
+            page_click_interval_seconds = (
+                page_interval_getter() if callable(page_interval_getter) else None
+            )
             try:
                 resolved_list = normalize_resolved_messages(
                     await resolver.resolve(
@@ -741,6 +749,8 @@ class WebTransferRunner:
                         timeout_seconds=host.gc.get_deep_link_timeout_seconds(),
                         min_interval_seconds=host.gc.get_deep_link_min_interval_seconds(),
                         settle_seconds=settle_seconds,
+                        max_pages=max_pages,
+                        page_click_interval_seconds=page_click_interval_seconds,
                     )
                 )
             except DeepLinkResolveError as e:

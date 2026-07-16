@@ -781,6 +781,10 @@ class LiveTransferService:
                                 timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
                                 min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
                                 settle_seconds=self.gc.get_deep_link_settle_seconds(),
+                                max_pages=self.gc.get_deep_link_max_pages(),
+                                page_click_interval_seconds=(
+                                    self.gc.get_deep_link_page_click_interval_seconds()
+                                ),
                             )
                         )
                     except DeepLinkResolveError as e:
@@ -947,6 +951,10 @@ class LiveTransferService:
                                     timeout_seconds=self.gc.get_deep_link_timeout_seconds(),
                                     min_interval_seconds=self.gc.get_deep_link_min_interval_seconds(),
                                     settle_seconds=self.gc.get_deep_link_settle_seconds(),
+                                    max_pages=self.gc.get_deep_link_max_pages(),
+                                    page_click_interval_seconds=(
+                                        self.gc.get_deep_link_page_click_interval_seconds()
+                                    ),
                                 )
                             )
                         except DeepLinkResolveError as e:

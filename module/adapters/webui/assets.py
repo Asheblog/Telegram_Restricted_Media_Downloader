@@ -1328,6 +1328,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkSettleHint">
           首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。
         </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkMaxPages">翻页最大页数</label>
+        <input class="form-input" name="global.deep_link.max_pages" type="number" min="1" max="100">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMaxPagesHint">
+          自动点击「下一页 / 组别」按钮的上限，防止异常 bot 占住取片串行锁。
+        </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkPageInterval">翻页点击间隔（秒）</label>
+        <input class="form-input" name="global.deep_link.page_click_interval_seconds" type="number" min="0" max="30">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkPageIntervalHint">
+          两次翻页点击之间的等待；用于降低限流。0 表示不额外等待。
+        </p>
       </section>
 
     <!-- PikPak Archive -->
@@ -5622,6 +5632,8 @@ function renderSettings() {
   setFieldVal('global.deep_link.timeout_seconds', sg.deep_link?.timeout_seconds ?? 60);
   setFieldVal('global.deep_link.min_interval_seconds', sg.deep_link?.min_interval_seconds ?? 30);
   setFieldVal('global.deep_link.settle_seconds', sg.deep_link?.settle_seconds ?? 3);
+  setFieldVal('global.deep_link.max_pages', sg.deep_link?.max_pages ?? 20);
+  setFieldVal('global.deep_link.page_click_interval_seconds', sg.deep_link?.page_click_interval_seconds ?? 1);
 
   /* archive */
   setCheckboxVal('global.target_profiles.pikpak.archive.enable', sg.target_profiles?.pikpak?.archive?.enable);
@@ -10440,6 +10452,8 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>取片超时（秒）</span><input name="global.deep_link.timeout_seconds" type="number" min="1" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.timeout_seconds') ?? 60) + '"></label>' +
     '<label style="margin-top:10px;"><span>取片最小间隔（秒）</span><input name="global.deep_link.min_interval_seconds" type="number" min="0" max="600" value="' + (getSettingLeafKey(glob, 'deep_link.min_interval_seconds') ?? 30) + '"></label>' +
     '<label style="margin-top:10px;"><span>收齐静默（秒）</span><input name="global.deep_link.settle_seconds" type="number" min="0" max="60" value="' + (getSettingLeafKey(glob, 'deep_link.settle_seconds') ?? 3) + '"></label>' +
+    '<label style="margin-top:10px;"><span>翻页最大页数</span><input name="global.deep_link.max_pages" type="number" min="1" max="100" value="' + (getSettingLeafKey(glob, 'deep_link.max_pages') ?? 20) + '"></label>' +
+    '<label style="margin-top:10px;"><span>翻页点击间隔（秒）</span><input name="global.deep_link.page_click_interval_seconds" type="number" min="0" max="30" value="' + (getSettingLeafKey(glob, 'deep_link.page_click_interval_seconds') ?? 1) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">首条媒体后再等该秒数无新消息则结束收齐；0 表示收到首条即结束。</p>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">两次 StartBot 之间的最小冷却，降低限流。0=不主动冷却。</p>';
 

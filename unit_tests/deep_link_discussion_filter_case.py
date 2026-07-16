@@ -97,6 +97,8 @@ class DiscussionDeepLinkFilterListenCase(unittest.TestCase):
             get_deep_link_timeout_seconds=lambda: 60,
             get_deep_link_min_interval_seconds=lambda: 0,
             get_deep_link_settle_seconds=lambda: 0,
+            get_deep_link_max_pages=lambda: 20,
+            get_deep_link_page_click_interval_seconds=lambda: 0,
             forward_type={'text': True, 'video': True},
         )
         downloader.check_type = lambda message: bool(

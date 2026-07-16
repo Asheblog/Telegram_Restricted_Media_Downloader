@@ -834,6 +834,16 @@
         <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkSettleHint">
           首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。
         </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkMaxPages">翻页最大页数</label>
+        <input class="form-input" name="global.deep_link.max_pages" type="number" min="1" max="100">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMaxPagesHint">
+          自动点击「下一页 / 组别」按钮的上限，防止异常 bot 占住取片串行锁。
+        </p>
+        <label class="form-label mt-3" data-i18n="settings.deepLinkPageInterval">翻页点击间隔（秒）</label>
+        <input class="form-input" name="global.deep_link.page_click_interval_seconds" type="number" min="0" max="30">
+        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkPageIntervalHint">
+          两次翻页点击之间的等待；用于降低限流。0 表示不额外等待。
+        </p>
       </section>
 
     <!-- PikPak Archive -->

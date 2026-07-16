@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import secrets
 import time
-from typing import Iterable, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Iterable, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
 DeepLink = Tuple[str, str]  # (bot_username_lower, start_param)
@@ -16,6 +18,25 @@ _TME_START_RE = re.compile(
 )
 
 _RESOLVABLE_MEDIA_ATTRS = ('video', 'document', 'animation', 'photo')
+
+_NEXT_RE = re.compile(r'(下一页|next\b|▶️|▶|»|››?)', re.I)
+_PREV_RE = re.compile(r'(上一页|previous\b|prev\b|◀️|◀|«|‹‹?)', re.I)
+_GROUP_RE = re.compile(
+    r'^(?:(?:[\U0001F300-\U0001FAFF\u2600-\u27BF]|\ufe0f|\u200d)*)\s*(\d{1,3})\s*$',
+)
+_PAGE_STATUS_RE = re.compile(
+    r'(?:(\d+)\s*-\s*)?(\d+)\s*/\s*(\d+)',
+)
+
+log = logging.getLogger('deep_link')
+
+
+@dataclass(frozen=True)
+class PaginationClickTarget:
+    message: object
+    callback_data: bytes
+    kind: str  # 'next' | 'group'
+    button_text: str = ''
 
 
 def normalize_bot_username(value: str) -> str:
@@ -108,6 +129,94 @@ def normalize_resolved_messages(resolved) -> Optional[List[object]]:
     return [resolved]
 
 
+def classify_pagination_button(text: str) -> str:
+    """Classify inline button label: next|prev|status|group|other."""
+    raw = str(text or '').strip()
+    if not raw:
+        return 'other'
+    if _PREV_RE.search(raw):
+        return 'prev'
+    if _NEXT_RE.search(raw):
+        return 'next'
+    if _PAGE_STATUS_RE.search(raw) and ('/' in raw):
+        # Status-like "1/2" or "1-2/2" without next/prev wording.
+        if not _GROUP_RE.match(raw):
+            return 'status'
+    if _GROUP_RE.match(raw):
+        return 'group'
+    return 'other'
+
+
+def is_last_page_status_text(text: str) -> bool:
+    """True when page indicator shows we are already on the last page."""
+    m = _PAGE_STATUS_RE.search(str(text or ''))
+    if not m:
+        return False
+    end = int(m.group(2))
+    total = int(m.group(3))
+    return total > 0 and end >= total
+
+
+def _normalize_callback_data(data) -> Optional[bytes]:
+    if data is None:
+        return None
+    if isinstance(data, bytes):
+        return data
+    if isinstance(data, bytearray):
+        return bytes(data)
+    if isinstance(data, str):
+        return data.encode('utf-8')
+    return None
+
+
+def _iter_callback_buttons(message) -> List[Tuple[str, bytes]]:
+    markup = getattr(message, 'reply_markup', None)
+    keyboard = getattr(markup, 'inline_keyboard', None) or []
+    out: List[Tuple[str, bytes]] = []
+    for row in keyboard:
+        for btn in row or []:
+            data = _normalize_callback_data(getattr(btn, 'callback_data', None))
+            if not data:
+                continue
+            text = str(getattr(btn, 'text', None) or '')
+            out.append((text, data))
+    return out
+
+
+def pick_pagination_click_target(
+        messages: Iterable[object],
+        clicked_callback_data: Optional[Set[bytes]] = None,
+) -> Optional[PaginationClickTarget]:
+    """Pick next pagination/group callback to click from recent bot messages."""
+    clicked = clicked_callback_data or set()
+    for message in messages:
+        buttons = _iter_callback_buttons(message)
+        if not buttons:
+            continue
+        groups: List[PaginationClickTarget] = []
+        nexts: List[PaginationClickTarget] = []
+        on_last_page = False
+        for text, data in buttons:
+            kind = classify_pagination_button(text)
+            if kind == 'status' and is_last_page_status_text(text):
+                on_last_page = True
+            if data in clicked:
+                continue
+            if kind == 'group':
+                groups.append(PaginationClickTarget(
+                    message=message, callback_data=data, kind='group', button_text=text,
+                ))
+            elif kind == 'next':
+                nexts.append(PaginationClickTarget(
+                    message=message, callback_data=data, kind='next', button_text=text,
+                ))
+        if groups:
+            return groups[0]
+        if nexts and not on_last_page:
+            return nexts[0]
+    return None
+
+
 class DeepLinkResolveError(Exception):
     pass
 
@@ -119,11 +228,15 @@ class DeepLinkResolver:
             poll_interval: float = 1.5,
             min_interval_seconds: float = 30,
             settle_seconds: float = 3.0,
+            max_pages: int = 20,
+            page_click_interval_seconds: float = 1.0,
     ):
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval
         self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
         self.settle_seconds = max(float(settle_seconds or 0), 0.0)
+        self.max_pages = max(int(max_pages or 1), 1)
+        self.page_click_interval_seconds = max(float(page_click_interval_seconds or 0), 0.0)
         self._lock = asyncio.Lock()
         self._last_start_bot_at: float = 0.0
 
@@ -211,6 +324,92 @@ class DeepLinkResolver:
             added = True
         return added
 
+    async def _click_callback(
+            self,
+            client,
+            target: PaginationClickTarget,
+            deadline: Optional[float] = None,
+    ) -> None:
+        remaining = 10.0
+        if deadline is not None:
+            remaining = max(0.1, min(10.0, deadline - time.time()))
+            if time.time() >= deadline:
+                raise TimeoutError('pagination click deadline exceeded')
+        message = target.message
+        chat = getattr(message, 'chat', None)
+        chat_id = getattr(chat, 'id', None)
+        if chat_id is None:
+            chat_id = getattr(message, 'chat_id', None)
+        message_id = getattr(message, 'id', None)
+        click = getattr(message, 'click', None)
+        if callable(click):
+            await click(target.button_text or 0)
+            return
+        request = getattr(client, 'request_callback_answer', None)
+        if not callable(request):
+            raise DeepLinkResolveError('客户端不支持点击 inline 按钮')
+        await request(
+            chat_id,
+            message_id,
+            target.callback_data,
+            timeout=int(max(1, remaining)),
+        )
+
+    async def _collect_wave(
+            self,
+            client,
+            bot_username: str,
+            started_at: float,
+            collected: dict,
+            clicked_callback_data: Set[bytes],
+            deadline: float,
+            *,
+            allow_empty_for_pagination: bool = True,
+    ) -> Optional[PaginationClickTarget]:
+        """Collect media until settle; return a pending click target if any."""
+        first_media_at: Optional[float] = None
+        last_new_at: Optional[float] = None
+        pending_target: Optional[PaginationClickTarget] = None
+
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            try:
+                history = await asyncio.wait_for(
+                    self._collect_chat_history(client, bot_username, limit=50),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                break
+            now = time.time()
+            if self._collect_new_media(history, started_at, collected):
+                if first_media_at is None:
+                    first_media_at = now
+                last_new_at = now
+
+            pending_target = pick_pagination_click_target(history, clicked_callback_data)
+
+            if first_media_at is not None:
+                if self.settle_seconds <= 0:
+                    break
+                if last_new_at is not None and (now - last_new_at) >= self.settle_seconds:
+                    break
+            elif allow_empty_for_pagination and pending_target is not None:
+                # Zero-media start: leave early to click pagination.
+                break
+
+            sleep_for = min(self.poll_interval, max(0.0, deadline - time.time()))
+            if first_media_at is not None and self.settle_seconds > 0 and last_new_at is not None:
+                until_settle = self.settle_seconds - (time.time() - last_new_at)
+                if until_settle > 0:
+                    sleep_for = min(sleep_for, until_settle)
+            if sleep_for <= 0:
+                break
+            await asyncio.sleep(sleep_for)
+
+        return pending_target
+
     async def wait_for_media(
             self,
             client,
@@ -231,44 +430,43 @@ class DeepLinkResolver:
             started_at: float,
             deadline: Optional[float] = None,
     ) -> List[object]:
-        """Wait for bot media, then keep collecting until settle silent window or deadline."""
+        """Wait for bot media (with optional pagination), return collected messages."""
         if deadline is None:
             deadline = started_at + self.timeout_seconds
         collected: dict = {}
-        first_media_at: Optional[float] = None
-        last_new_at: Optional[float] = None
+        clicked: Set[bytes] = set()
+        pages_clicked = 0
 
         while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
+            pending = await self._collect_wave(
+                client,
+                bot_username,
+                started_at,
+                collected,
+                clicked,
+                deadline,
+            )
+            if pages_clicked >= self.max_pages:
+                break
+            if pending is None:
                 break
             try:
-                history = await asyncio.wait_for(
-                    self._collect_chat_history(client, bot_username, limit=30),
-                    timeout=remaining,
+                await self._click_callback(client, pending, deadline=deadline)
+            except Exception as e:
+                log.warning(
+                    'deep_link pagination click failed (partial ok): %s',
+                    e,
                 )
-            except asyncio.TimeoutError:
                 break
-            now = time.time()
-            if self._collect_new_media(history, started_at, collected):
-                if first_media_at is None:
-                    first_media_at = now
-                last_new_at = now
-
-            if first_media_at is not None:
-                if self.settle_seconds <= 0:
-                    break
-                if last_new_at is not None and (now - last_new_at) >= self.settle_seconds:
-                    break
-
-            sleep_for = min(self.poll_interval, max(0.0, deadline - time.time()))
-            if first_media_at is not None and self.settle_seconds > 0 and last_new_at is not None:
-                until_settle = self.settle_seconds - (time.time() - last_new_at)
-                if until_settle > 0:
-                    sleep_for = min(sleep_for, until_settle)
-            if sleep_for <= 0:
-                break
-            await asyncio.sleep(sleep_for)
+            clicked.add(pending.callback_data)
+            pages_clicked += 1
+            if self.page_click_interval_seconds > 0:
+                sleep_for = min(
+                    self.page_click_interval_seconds,
+                    max(0.0, deadline - time.time()),
+                )
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
 
         if not collected:
             raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
@@ -288,6 +486,8 @@ class DeepLinkResolver:
             timeout_seconds=None,
             min_interval_seconds=None,
             settle_seconds=None,
+            max_pages=None,
+            page_click_interval_seconds=None,
     ) -> Optional[List[object]]:
         """若命中白名单深链则返回 bot 媒体消息列表；无深链返回 None；失败抛 DeepLinkResolveError。"""
         picked = pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist)
@@ -301,6 +501,12 @@ class DeepLinkResolver:
                 self.min_interval_seconds = max(float(min_interval_seconds or 0), 0.0)
             if settle_seconds is not None:
                 self.settle_seconds = max(float(settle_seconds or 0), 0.0)
+            if max_pages is not None:
+                self.max_pages = max(int(max_pages or 1), 1)
+            if page_click_interval_seconds is not None:
+                self.page_click_interval_seconds = max(
+                    float(page_click_interval_seconds or 0), 0.0,
+                )
             await self._wait_min_interval()
             started_at = time.time()
             deadline = started_at + self.timeout_seconds

@@ -17,6 +17,8 @@ class DeepLinkConfigCase(unittest.TestCase):
         self.assertEqual(60, GlobalConfig.TEMPLATE['deep_link']['timeout_seconds'])
         self.assertEqual(30, GlobalConfig.TEMPLATE['deep_link']['min_interval_seconds'])
         self.assertEqual(3, GlobalConfig.TEMPLATE['deep_link']['settle_seconds'])
+        self.assertEqual(20, GlobalConfig.TEMPLATE['deep_link']['max_pages'])
+        self.assertEqual(1, GlobalConfig.TEMPLATE['deep_link']['page_click_interval_seconds'])
 
     def test_getters(self):
         gc = GlobalConfig.__new__(GlobalConfig)
@@ -35,11 +37,21 @@ class DeepLinkConfigCase(unittest.TestCase):
         self.assertEqual(0, gc.get_deep_link_settle_seconds())
         gc.config = {'deep_link': {'settle_seconds': 999}}
         self.assertEqual(60, gc.get_deep_link_settle_seconds())
+        gc.config = {'deep_link': {'max_pages': 0}}
+        self.assertEqual(1, gc.get_deep_link_max_pages())
+        gc.config = {'deep_link': {'max_pages': 999}}
+        self.assertEqual(100, gc.get_deep_link_max_pages())
+        gc.config = {'deep_link': {'page_click_interval_seconds': -1}}
+        self.assertEqual(0, gc.get_deep_link_page_click_interval_seconds())
+        gc.config = {'deep_link': {'page_click_interval_seconds': 99}}
+        self.assertEqual(30, gc.get_deep_link_page_click_interval_seconds())
         gc.config = {}
         self.assertEqual([], gc.get_deep_link_bot_whitelist())
         self.assertEqual(60, gc.get_deep_link_timeout_seconds())
         self.assertEqual(30, gc.get_deep_link_min_interval_seconds())
         self.assertEqual(3, gc.get_deep_link_settle_seconds())
+        self.assertEqual(20, gc.get_deep_link_max_pages())
+        self.assertEqual(1, gc.get_deep_link_page_click_interval_seconds())
 
 
 if __name__ == '__main__':

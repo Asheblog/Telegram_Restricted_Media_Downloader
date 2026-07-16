@@ -102,6 +102,9 @@
 | `deep_link.bot_whitelist` | GlobalConfig | 资源 bot 白名单 |
 | `deep_link.timeout_seconds` | GlobalConfig | 取片超时秒数 |
 | `deep_link.min_interval_seconds` | GlobalConfig | 两次 StartBot 最小间隔秒数 |
+| `deep_link.settle_seconds` | GlobalConfig | 首条媒体后的收齐静默秒数 |
+| `deep_link.max_pages` | GlobalConfig | 翻页/组别按钮最大点击次数 |
+| `deep_link.page_click_interval_seconds` | GlobalConfig | 翻页点击间隔秒数 |
 
 ## WebUI API → handler
 
