@@ -28,7 +28,7 @@
 | `core/enums.py` | `enums.py` | 枚举/常量：类型、状态、按钮文案等 | ~1440 |
 | `core/filter.py` | `filter.py` | 消息过滤器 | ~170 |
 | `core/target_profiles.py` | `target_profiles.py` | 目标 profile（PikPak 限制等） | ~40 |
-| `infra/client.py` | `client.py` | Pyrogram 客户端扩展 | ~830 |
+| `infra/client.py` | —（已删零引用 shim） | Pyrogram 客户端扩展 | ~830 |
 | `infra/uploader.py` | `uploader.py` | Telegram 上传器 | ~970 |
 | `infra/async_window.py` | `async_window.py` | 动态并发窗口 | ~50 |
 | `persistence/transfer_store.py` | `transfer_store.py` | SQLite：任务 / Item / 事件 / Watch CRUD | ~2090 |
