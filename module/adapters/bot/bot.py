@@ -62,6 +62,7 @@ from module.enums import (
     BotButton,
     KeyWord
 )
+from module.adapters.bot.guide_wizard import BotGuideWizard
 
 
 class Bot:
@@ -99,6 +100,11 @@ class Bot:
         self.download_chat_filter: dict = {}
         self.adding_keywords: list = []  # 用于跟踪正在添加的关键词列表。
         self.keyword_handler: Union[MessageHandler, None] = None  # 关键词输入模式的handler。
+        self.guide_wizard = BotGuideWizard(self)
+
+    @staticmethod
+    def _is_bare_command(text: str, command: str) -> bool:
+        return (text or '').strip() == f'/{command}'
 
     def add_handler(self, handler, group: int = 0):
         """添加handler到指定的group。直接操作dispatcher.groups以确保正确添加。"""
@@ -144,6 +150,8 @@ class Bot:
 
     async def process_error_message(self, client: pyrogram.Client, message: pyrogram.types.Message) -> None:
         if self.keyword_handler:
+            return
+        if self.guide_wizard.has_active_session(message.from_user.id):
             return
         await self.help(client, message)
         await client.send_message(
@@ -241,13 +249,9 @@ class Bot:
             with_upload: Union[dict, None] = None
     ) -> Union[Dict[str, Union[set, pyrogram.types.Message]], None]:
         text: str = message.text
-        if text == '/download':
-            await client.send_message(
-                chat_id=message.from_user.id,
-                reply_parameters=ReplyParameters(message_id=message.id),
-                text='⚠️⚠️⚠️请提供下载链接⚠️⚠️⚠️语法:\n`/download https://t.me/x/x`',
-                link_preview_options=LINK_PREVIEW_OPTIONS
-            )
+        if self._is_bare_command(text, 'download'):
+            await self.guide_wizard.try_start(client, message, 'download')
+            return None
         elif text.startswith('https://t.me/'):
             if text[len('https://t.me/'):].count('/') >= 1:
                 try:
@@ -316,11 +320,12 @@ class Bot:
             else:
                 return None
 
-    async def get_download_chat_link_from_bot(
+    async def begin_download_chat_setup(
             self,
             client: pyrogram.Client,
             message: pyrogram.types.Message,
-    ):
+            chat_link: str,
+    ) -> None:
         if BotCallbackText.DOWNLOAD_CHAT_ID != 'download_chat_id':
             await client.send_message(
                 chat_id=message.from_user.id,
@@ -328,27 +333,7 @@ class Bot:
                 text='⚠️⚠️⚠️请执行或取消上一次频道下载任务设置⚠️⚠️⚠️',
                 link_preview_options=LINK_PREVIEW_OPTIONS
             )
-            return None
-        text: str = message.text
-        if text == '/download_chat':
-            await client.send_message(
-                chat_id=message.from_user.id,
-                reply_parameters=ReplyParameters(message_id=message.id),
-                text='⚠️⚠️⚠️请提供下载链接⚠️⚠️⚠️语法:\n`/download_chat https://t.me/x/x`',
-                link_preview_options=LINK_PREVIEW_OPTIONS
-            )
-            return None
-        command = text.split()
-        if len(command) != 2:
-            await self.help(client, message)
-            await client.send_message(
-                chat_id=message.from_user.id,
-                reply_parameters=ReplyParameters(message_id=message.id),
-                text='❌❌❌命令语法错误❌❌❌\n请查看帮助后重试。',
-                link_preview_options=LINK_PREVIEW_OPTIONS
-            )
-            return None
-        chat_link = command[1]
+            return
         try:
             meta = await parse_link(client=self.user, link=chat_link)
         except ValueError:
@@ -360,7 +345,7 @@ class Bot:
                 text='❌❌❌找不到频道❌❌❌',
                 link_preview_options=LINK_PREVIEW_OPTIONS
             )
-            return None
+            return
         chat_id = meta.get('chat_id')
         if not chat_id:
             await client.send_message(
@@ -369,7 +354,7 @@ class Bot:
                 text='❌❌❌无法获取频道名❌❌❌',
                 link_preview_options=LINK_PREVIEW_OPTIONS
             )
-            return None
+            return
         if chat_id in self.download_chat_filter:
             await client.send_message(
                 chat_id=message.from_user.id,
@@ -378,7 +363,7 @@ class Bot:
                      f'{chat_link}',
                 link_preview_options=LINK_PREVIEW_OPTIONS
             )
-            return None
+            return
         BotCallbackText.DOWNLOAD_CHAT_ID = str(chat_id)
         from module.core.media_types import DOWNLOAD_MEDIA_TYPES, resolve_allowed_media_types
         mf = getattr(self.gc, 'message_filter', None) or {}
@@ -394,7 +379,6 @@ class Bot:
                     'end_date': None,
                     'adjust_step': 1
                 },
-            # None = inherit Media Type Allowlist; set on first dtype toggle (full replace).
             'media_types': None,
             'download_type': download_type,
             'keyword': {},
@@ -417,6 +401,36 @@ class Bot:
             reply_markup=KeyboardButton.download_chat_filter_button(include_comment),
             link_preview_options=LINK_PREVIEW_OPTIONS
         )
+
+    async def get_download_chat_link_from_bot(
+            self,
+            client: pyrogram.Client,
+            message: pyrogram.types.Message,
+    ):
+        if BotCallbackText.DOWNLOAD_CHAT_ID != 'download_chat_id':
+            await client.send_message(
+                chat_id=message.from_user.id,
+                reply_parameters=ReplyParameters(message_id=message.id),
+                text='⚠️⚠️⚠️请执行或取消上一次频道下载任务设置⚠️⚠️⚠️',
+                link_preview_options=LINK_PREVIEW_OPTIONS
+            )
+            return None
+        text: str = message.text
+        if self._is_bare_command(text, 'download_chat'):
+            await self.guide_wizard.try_start(client, message, 'download_chat')
+            return None
+        command = text.split()
+        if len(command) != 2:
+            await self.help(client, message)
+            await client.send_message(
+                chat_id=message.from_user.id,
+                reply_parameters=ReplyParameters(message_id=message.id),
+                text='❌❌❌命令语法错误❌❌❌\n请查看帮助后重试。',
+                link_preview_options=LINK_PREVIEW_OPTIONS
+            )
+            return None
+        chat_link = command[1]
+        await self.begin_download_chat_setup(client, message, chat_link)
 
     @staticmethod
     async def safe_process_message(
@@ -487,6 +501,7 @@ class Bot:
             f'快速部署: 点「{BotButton.QUICK_START}」看 README 快速开始。\n\n'
             f'🧭 WebUI 能力: 新建转存(含深链/评论区) · 任务管理 · 实时监听 · 本地上传 · PikPak rclone 归档\n\n'
             f'🎮 TG Bot 辅助命令(临时操作用,日常建议 WebUI):\n'
+            f'💡 发送裸命令（如 `/download`）进入傻瓜引导；引导中可用 `/cancel` 取消。\n'
             f'🛎️ {BotCommandText.with_description(BotCommandText.HELP)}\n'
             f'📁 {BotCommandText.with_description(BotCommandText.DOWNLOAD)}\n'
             f'↗️ {BotCommandText.with_description(BotCommandText.FORWARD)}\n'
@@ -637,16 +652,8 @@ class Bot:
 
         text: str = message.text
         args, include_comment = split_include_comment_flag(text.split(maxsplit=5))
-        if text == '/forward':
-            await client.send_message(
-                chat_id=message.from_user.id,
-                reply_parameters=ReplyParameters(message_id=message.id),
-                text='❌❌❌命令语法无效❌❌❌\n'
-                     '⬇️⬇️⬇️语法如下⬇️⬇️⬇️\n'
-                     '`/forward 原始频道 目标频道 起始ID 结束ID [--include-comment]`\n'
-                     '⬇️⬇️⬇️请使用⬇️⬇️⬇️\n'
-                     '`/forward https://t.me/A https://t.me/B 1 100 --include-comment`\n'
-            )
+        if self._is_bare_command(text, 'forward'):
+            await self.guide_wizard.try_start(client, message, 'forward')
             return None
         try:
             start_id: int = int(safe_index(args, 3, -1))
@@ -843,6 +850,9 @@ class Bot:
         command: str = args[0]
         links: list = args[1:]
         if text.startswith('/listen_download'):
+            if self._is_bare_command(text, 'listen_download'):
+                await self.guide_wizard.try_start(client, message, 'listen_download')
+                return None
             if len(args) == 1:
                 await client.send_message(
                     chat_id=message.from_user.id,
@@ -904,6 +914,9 @@ class Bot:
             links: list = list(set(links))
 
         elif text.startswith('/listen_forward'):
+            if self._is_bare_command(text, 'listen_forward'):
+                await self.guide_wizard.try_start(client, message, 'listen_forward')
+                return None
             e: str = ''
             len_args: int = len(args)
             if len_args != 3:
@@ -1084,6 +1097,12 @@ class Bot:
             )
             self.bot.add_handler(
                 MessageHandler(
+                    self.guide_wizard.handle_cancel,
+                    filters=pyrogram.filters.command(['cancel']) & pyrogram.filters.user(self.root)
+                )
+            )
+            self.bot.add_handler(
+                MessageHandler(
                     self.cleanup,
                     filters=pyrogram.filters.command(['cleanup']) & pyrogram.filters.user(self.root)
                 )
@@ -1169,6 +1188,13 @@ class Bot:
                     callback_handler,
                     filters=pyrogram.filters.user(self.root)
                 )
+            )
+            self.bot.add_handler(
+                MessageHandler(
+                    self.guide_wizard.handle_message,
+                    filters=pyrogram.filters.user(self.root) & pyrogram.filters.text & ~pyrogram.filters.command()
+                ),
+                group=-2
             )
             self.bot.add_handler(
                 MessageHandler(

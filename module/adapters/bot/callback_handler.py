@@ -252,6 +252,10 @@ class CallbackHandler:
             f'{f_p}当前的/download_chat下载类型设置:{cfg["download_type"]}')
 
     async def handle(self, client, callback_query):
+        raw_data = callback_query.data
+        if isinstance(raw_data, str) and raw_data.startswith('gw_'):
+            if await self._downloader.bot.guide_wizard.handle_callback(client, callback_query):
+                return
         callback_data = await Bot.callback_data(client, callback_query)
         kb = KeyboardButton(callback_query)
         if callback_data is None:
