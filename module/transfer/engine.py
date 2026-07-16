@@ -182,6 +182,9 @@ class TransferEngine:
         if not isinstance(task_with_upload, dict):
             return task_with_upload
         source_chat_id = str(getattr(getattr(message, 'chat', None), 'id', chat_id))
+        # Album members must share one Source Post Archive Path. Prefer a caller-provided
+        # folder (listen/forward/__add_task precomputes via get_media_group); do not call
+        # Pyrogram's async get_media_group() from this sync path.
         source_folder = task_with_upload.get('source_folder') or archive_source_folder(
             message,
             fallback_chat_id=chat_id,

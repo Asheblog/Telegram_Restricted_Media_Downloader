@@ -110,7 +110,9 @@ from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_progress import TransferProgressTracker
 from module.source_folders import (
     archive_source_folder,
+    archive_source_folder_for_messages,
     join_local_source_folder,
+    media_group_post_message_id,
     resolve_forward_archive_source_folder,
 )
 from module.task import DownloadTask, UploadTask
@@ -763,10 +765,11 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             source_link
             or getattr(message, 'link', None)
         )
+        shared_post_id = media_group_post_message_id(messages) or message_id
         archive_folder = resolve_forward_archive_source_folder(
             source_folder=source_folder,
             messages=messages,
-            post_message_id=message_id,
+            post_message_id=shared_post_id,
             fallback_chat_id=origin_chat_id,
             fallback_link=shared_source_link,
         )
@@ -847,11 +850,28 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                         self.inherit_media_group_title(group_messages)
                 except Exception as e:
                     log.debug(f'Unable to inherit media group title before archive path: {e}')
-            channel_source_folder = source_folder or archive_source_folder(
-                message,
-                fallback_chat_id=origin_chat_id,
-                fallback_link=archive_source_link or getattr(message, 'link', None),
-            )
+            if source_folder:
+                channel_source_folder = source_folder
+            else:
+                group_messages = None
+                if media_group or getattr(message, 'media_group_id', None):
+                    try:
+                        group_messages = await message.get_media_group()
+                    except Exception:
+                        group_messages = None
+                if group_messages:
+                    self.inherit_media_group_title(group_messages)
+                    channel_source_folder = archive_source_folder_for_messages(
+                        group_messages,
+                        fallback_chat_id=origin_chat_id,
+                        fallback_link=archive_source_link or getattr(message, 'link', None),
+                    )
+                else:
+                    channel_source_folder = archive_source_folder(
+                        message,
+                        fallback_chat_id=origin_chat_id,
+                        fallback_link=archive_source_link or getattr(message, 'link', None),
+                    )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
             runtime_filter = self.message_filter
             if not ignore_type_filter:
@@ -1806,11 +1826,25 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     forward_origin_chat_id = _listen_chat_id
                     forward_message_id = message.id
                     channel_source_link = link
-                    channel_source_folder = archive_source_folder(
-                        message,
-                        fallback_chat_id=_listen_chat_id,
-                        fallback_link=link,
-                    )
+                    group_messages = None
+                    if getattr(message, 'media_group_id', None):
+                        try:
+                            group_messages = await message.get_media_group()
+                        except Exception:
+                            group_messages = None
+                    if group_messages:
+                        self.inherit_media_group_title(group_messages)
+                        channel_source_folder = archive_source_folder_for_messages(
+                            group_messages,
+                            fallback_chat_id=_listen_chat_id,
+                            fallback_link=link,
+                        )
+                    else:
+                        channel_source_folder = archive_source_folder(
+                            message,
+                            fallback_chat_id=_listen_chat_id,
+                            fallback_link=link,
+                        )
                     media_types_override = self._watch_media_types_override(watch_id)
                     runtime_filter = self.runtime_message_filter(media_types_override)
                     messages_to_forward = [message]
@@ -2209,6 +2243,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         retry_id = retry.get('id')
         if isinstance(message, list):
             self.inherit_media_group_title(message)
+            if isinstance(with_upload, dict):
+                shared_folder = with_upload.get('source_folder') or archive_source_folder_for_messages(
+                    message,
+                    fallback_chat_id=chat_id,
+                    fallback_link=link,
+                )
+                with_upload = dict(with_upload)
+                with_upload['source_folder'] = shared_folder
+                if with_upload.get('range_message_id') is None:
+                    with_upload['range_message_id'] = media_group_post_message_id(message)
             for _message in message:
                 transfer_task_id = None
                 if isinstance(with_upload, dict) and with_upload.get('task_id') is not None:

@@ -149,6 +149,93 @@ class SourceFolderArchiveCase(unittest.TestCase):
             ),
         )
 
+    def test_media_group_photo_and_video_share_min_id_and_best_title(self):
+        from module.source_folders import archive_source_folder_for_messages
+
+        photo = SimpleNamespace(
+            id=73464,
+            caption=(
+                '#示例社区 #乱伦 #姐弟 #野战\n'
+                '\n'
+                '【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教\n'
+            ),
+            text=None,
+            web_page=None,
+            photo=SimpleNamespace(file_id='p1', file_unique_id='pu1'),
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            media_group_id='album-1',
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73464',
+        )
+        video = SimpleNamespace(
+            id=73465,
+            caption=None,
+            text=None,
+            web_page=None,
+            photo=None,
+            video=SimpleNamespace(
+                file_name='5月13日.mp4',
+                file_id='v1',
+                mime_type='video/mp4',
+            ),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            media_group_id='album-1',
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73465',
+        )
+
+        shared = archive_source_folder_for_messages(
+            [video, photo],
+            fallback_link='https://t.me/chengdudiyi8/73465',
+        )
+        self.assertEqual(
+            'chengdudiyi8/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            shared,
+        )
+        # Video-only resolution must not invent a separate date folder when group is known.
+        self.assertEqual(
+            shared,
+            archive_source_folder_for_messages([video, photo]),
+        )
+
+    def test_resolve_forward_upgrades_title_but_keeps_existing_post_id(self):
+        from module.source_folders import resolve_forward_archive_source_folder
+
+        video = SimpleNamespace(
+            id=73469,
+            caption=None,
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='更好的标题正文.mp4', file_id='v1', mime_type='video/mp4'),
+            document=None,
+            photo=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73469',
+        )
+
+        self.assertEqual(
+            'chengdudiyi8/73464 - 更好的标题正文',
+            resolve_forward_archive_source_folder(
+                source_folder='chengdudiyi8/73464 - 5月13日',
+                messages=[video],
+                post_message_id=73469,
+                fallback_link='https://t.me/chengdudiyi8/73469',
+            ),
+        )
+
     def test_archive_source_folder_falls_back_to_media_file_name_stem(self):
         from module.source_folders import archive_source_folder, post_title_from_message
 

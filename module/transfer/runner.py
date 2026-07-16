@@ -22,7 +22,7 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 from module import log
 from module.enums import DownloadStatus, DownloadType
 from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import archive_source_folder
+from module.source_folders import archive_source_folder, archive_source_folder_for_messages, media_group_post_message_id
 from module.transfer.deep_link import (
     DeepLinkResolveError,
     message_has_whitelisted_deep_link,
@@ -595,12 +595,36 @@ class WebTransferRunner:
             )
             return False
         channel_message = archive_post_message if archive_post_message is not None else message
-        channel_source_folder = source_folder or archive_source_folder(
-            channel_message,
-            fallback_chat_id=origin_chat_id,
-            fallback_link=source_link,
-            post_message_id=range_message_id if archive_post_message is not None else None,
-        )
+        if source_folder:
+            channel_source_folder = source_folder
+        else:
+            group_messages = None
+            if archive_post_message is None and getattr(channel_message, 'media_group_id', None):
+                get_media_group = getattr(channel_message, 'get_media_group', None)
+                if callable(get_media_group):
+                    try:
+                        group_messages = await get_media_group()
+                    except Exception:
+                        group_messages = None
+            if group_messages:
+                inherit = getattr(host, 'inherit_media_group_title', None)
+                if callable(inherit):
+                    inherit(group_messages)
+                channel_source_folder = archive_source_folder_for_messages(
+                    group_messages,
+                    fallback_chat_id=origin_chat_id,
+                    fallback_link=source_link,
+                    post_message_id=range_message_id,
+                )
+                if range_message_id is None:
+                    range_message_id = media_group_post_message_id(group_messages)
+            else:
+                channel_source_folder = archive_source_folder(
+                    channel_message,
+                    fallback_chat_id=origin_chat_id,
+                    fallback_link=source_link,
+                    post_message_id=range_message_id if archive_post_message is not None else None,
+                )
         resolved_list = None
         if bool(task.get('resolve_deep_link')):
             resolver = host.get_deep_link_resolver()

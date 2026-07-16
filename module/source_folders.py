@@ -375,6 +375,52 @@ def archive_source_folder(
     return join_archive_source_folder(channel, post_segment)
 
 
+def media_group_post_message_id(messages) -> Optional[int]:
+    """Canonical album post id: smallest numeric message id in the group."""
+    ids = []
+    for message in messages or []:
+        value = getattr(message, 'id', None)
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return min(ids) if ids else None
+
+
+def archive_source_folder_for_messages(
+        messages,
+        *,
+        fallback_chat_id=None,
+        fallback_link: Optional[str] = None,
+        post_message_id: Optional[Union[int, str]] = None,
+) -> str:
+    """Build one Source Post Archive Path shared by all media-group members."""
+    message_list = [message for message in (messages or []) if message is not None]
+    if not message_list:
+        return archive_source_folder(
+            fallback_chat_id=fallback_chat_id,
+            fallback_link=fallback_link,
+            post_message_id=post_message_id,
+        )
+    folder_message = message_list[0]
+    for message in message_list:
+        chat = getattr(message, 'chat', None)
+        if getattr(chat, 'username', None) or source_folder_from_link(getattr(message, 'link', None)):
+            folder_message = message
+            break
+    return archive_source_folder(
+        folder_message,
+        fallback_chat_id=fallback_chat_id,
+        fallback_link=fallback_link or getattr(folder_message, 'link', None),
+        post_message_id=(
+            post_message_id
+            if post_message_id is not None
+            else media_group_post_message_id(message_list)
+        ),
+        post_title=pick_best_message_title(message_list),
+    )
+
+
 def archive_folder_has_post_title(source_folder: Optional[str]) -> bool:
     if not source_folder:
         return False
@@ -395,46 +441,46 @@ def resolve_forward_archive_source_folder(
     """Prefer an explicit Source Post Archive Path; enrich ID-only paths with album caption."""
     message_list = list(messages or [])
     title = pick_best_message_title(message_list)
+    group_post_id = (
+        post_message_id
+        if post_message_id is not None
+        else media_group_post_message_id(message_list)
+    )
     folder_message = message_list[0] if message_list else None
     built = archive_source_folder(
         folder_message,
         fallback_chat_id=fallback_chat_id,
         fallback_link=fallback_link,
-        post_message_id=post_message_id,
+        post_message_id=group_post_id,
         post_title=title,
     )
     if not source_folder:
         return built
+    channel = channel_folder_from_archive_path(source_folder)
+    parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+    existing_id = None
+    existing_title = None
+    if len(parts) >= 2:
+        if ' - ' in parts[-1]:
+            head, existing_title = parts[-1].split(' - ', 1)
+            existing_id = head.strip() or None
+            existing_title = existing_title.strip() or None
+        else:
+            existing_id = parts[-1].strip() or None
+    # Never let a later album member rewrite the canonical post id already stored on the path.
+    stable_id = existing_id if existing_id is not None else group_post_id
+    if title and channel and stable_id is not None:
+        if not existing_title or score_title_line(title) > score_title_line(existing_title):
+            post_segment = post_folder_segment(stable_id, title)
+            if post_segment:
+                return join_archive_source_folder(channel, post_segment)
     if title and not archive_folder_has_post_title(source_folder):
-        channel = channel_folder_from_archive_path(source_folder)
         if channel:
-            msg_id = post_message_id
-            if msg_id is None:
-                parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
-                if len(parts) >= 2:
-                    head = parts[-1].split(' - ', 1)[0].strip()
-                    if head:
-                        msg_id = head
-            post_segment = post_folder_segment(msg_id, title)
+            post_segment = post_folder_segment(stable_id, title)
             if post_segment:
                 return join_archive_source_folder(channel, post_segment)
             return channel
         return built
-    if title and archive_folder_has_post_title(source_folder):
-        # Replace weak titles already baked into an ID-only-enriched path.
-        channel = channel_folder_from_archive_path(source_folder)
-        parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
-        if channel and len(parts) >= 2 and ' - ' in parts[-1]:
-            existing_title = parts[-1].split(' - ', 1)[1].strip()
-            if score_title_line(title) > score_title_line(existing_title):
-                msg_id = post_message_id
-                if msg_id is None:
-                    head = parts[-1].split(' - ', 1)[0].strip()
-                    if head:
-                        msg_id = head
-                post_segment = post_folder_segment(msg_id, title)
-                if post_segment:
-                    return join_archive_source_folder(channel, post_segment)
     return source_folder
 
 
