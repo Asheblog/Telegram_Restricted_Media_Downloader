@@ -95,6 +95,16 @@ class BotGuideWizardCase(unittest.TestCase):
         finally:
             BotCallbackText.DOWNLOAD_CHAT_ID = previous
 
+    def test_is_bare_command_accepts_bot_username_suffix(self):
+        from module.adapters.bot.bot import Bot
+
+        self.assertTrue(Bot._is_bare_command('/listen_download', 'listen_download'))
+        self.assertTrue(Bot._is_bare_command('/listen_download@MyTRMDBot', 'listen_download'))
+        self.assertTrue(Bot._is_bare_command(' /download@x ', 'download'))
+        self.assertFalse(Bot._is_bare_command('/listen_download https://t.me/a', 'listen_download'))
+        self.assertFalse(Bot._is_bare_command('/listen_download@MyTRMDBot https://t.me/a', 'listen_download'))
+        self.assertEqual(Bot._command_token('/listen_download@MyTRMDBot'), '/listen_download')
+
     def test_session_expires_after_timeout(self):
         class _Bot:
             pass

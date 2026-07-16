@@ -103,8 +103,20 @@ class Bot:
         self.guide_wizard = BotGuideWizard(self)
 
     @staticmethod
-    def _is_bare_command(text: str, command: str) -> bool:
-        return (text or '').strip() == f'/{command}'
+    def _command_token(text: str) -> str:
+        """Normalize `/cmd` or `/cmd@BotName` to `/cmd`."""
+        first = (text or '').strip().split(maxsplit=1)[0] if text else ''
+        if '@' in first:
+            first = first.split('@', 1)[0]
+        return first
+
+    @classmethod
+    def _is_bare_command(cls, text: str, command: str) -> bool:
+        """True when message is only the command (optionally with @BotName)."""
+        raw = (text or '').strip()
+        if not raw:
+            return False
+        return cls._command_token(raw) == f'/{command}' and len(raw.split()) == 1
 
     def add_handler(self, handler, group: int = 0):
         """添加handler到指定的group。直接操作dispatcher.groups以确保正确添加。"""
@@ -847,22 +859,11 @@ class Bot:
     ) -> Union[Dict[str, list], None]:
         text: str = message.text
         args, include_comment = split_include_comment_flag(text.split())
-        command: str = args[0]
+        command: str = self._command_token(args[0]) if args else ''
         links: list = args[1:]
-        if text.startswith('/listen_download'):
-            if self._is_bare_command(text, 'listen_download'):
+        if command == '/listen_download' or (text or '').startswith('/listen_download'):
+            if self._is_bare_command(text, 'listen_download') or len(args) == 1:
                 await self.guide_wizard.try_start(client, message, 'listen_download')
-                return None
-            if len(args) == 1:
-                await client.send_message(
-                    chat_id=message.from_user.id,
-                    reply_parameters=ReplyParameters(message_id=message.id),
-                    text='❌❌❌命令语法错误❌❌❌\n'
-                         '⬇️⬇️⬇️语法如下⬇️⬇️⬇️\n'
-                         f'`/listen_download 监听频道1 监听频道2 监听频道n`\n'
-                         '⬇️⬇️⬇️请使用⬇️⬇️⬇️\n'
-                         f'`/listen_download https://t.me/A https://t.me/B https://t.me/n`\n'
-                )
                 return None
             last_message: Union[pyrogram.types.Message, str, None] = None
             invalid_links: list = []
@@ -913,17 +914,17 @@ class Bot:
                     return None
             links: list = list(set(links))
 
-        elif text.startswith('/listen_forward'):
-            if self._is_bare_command(text, 'listen_forward'):
+        elif command == '/listen_forward' or (text or '').startswith('/listen_forward'):
+            if self._is_bare_command(text, 'listen_forward') or len(args) == 1:
                 await self.guide_wizard.try_start(client, message, 'listen_forward')
                 return None
             e: str = ''
             len_args: int = len(args)
             if len_args != 3:
-                if len_args == 1:
-                    e: str = '命令缺少监听频道与转发频道'
-                elif len_args == 2:
+                if len_args == 2:
                     e: str = '命令缺少转发频道'
+                else:
+                    e: str = '命令缺少监听频道与转发频道'
                 await client.send_message(
                     chat_id=message.from_user.id,
                     reply_parameters=ReplyParameters(message_id=message.id),
