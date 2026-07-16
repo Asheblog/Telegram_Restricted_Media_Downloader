@@ -8,7 +8,11 @@ from module.diagnostics import RichDiagnosticAdapter
 from module.enums import DownloadType
 from module.transfer_store import TransferStatus
 from module.path_tool import extract_full_extension, is_compressed_file
-from module.source_folders import archive_source_folder, source_folder_from_link
+from module.source_folders import (
+    archive_source_folder,
+    resolve_forward_archive_source_folder,
+    source_folder_from_link,
+)
 from module.core.target_profiles import target_profile_limit, target_profile_size_error
 
 
@@ -62,16 +66,20 @@ class PikpakIntegrationManager:
         folder = source_folder
         store = self.transfer_store
         item = None
-        if not folder and store and item_id:
+        post_message_id = None
+        if store and item_id:
             item = store.get_item(int(item_id))
             if item:
-                folder = item.get('source_folder')
+                if not folder:
+                    folder = item.get('source_folder')
+                post_message_id = item.get('range_message_id')
         if not folder and store and task_id:
             task = store.get_task(int(task_id))
             if task:
                 task_source_link = task.get('source_link')
                 item_source_link = (item or {}).get('source_link')
-                post_message_id = (item or {}).get('range_message_id')
+                if post_message_id is None:
+                    post_message_id = (item or {}).get('range_message_id')
                 task_source_folder = source_folder_from_link(task_source_link)
                 item_source_folder = source_folder_from_link(item_source_link)
                 if (
@@ -86,18 +94,50 @@ class PikpakIntegrationManager:
                         fallback_link=task_source_link,
                         post_message_id=post_message_id,
                     )
+        if post_message_id is None and item:
+            item_source_link = item.get('source_link')
+            task = store.get_task(int(task_id)) if store and task_id else None
+            task_source_link = (task or {}).get('source_link')
+            task_source_folder = source_folder_from_link(task_source_link)
+            item_source_folder = source_folder_from_link(item_source_link)
+            if (
+                    item_source_link
+                    and task_source_folder
+                    and item_source_folder == task_source_folder
+            ):
+                post_message_id = item.get('source_message_id')
+            elif not task_source_link and item.get('source_message_id') is not None:
+                post_message_id = item.get('source_message_id')
         if not folder:
             # Prefer channel identity from source_link (deep-link/bot media must not become the folder).
             if source_folder_from_link(source_link):
-                folder = archive_source_folder(fallback_link=source_link)
+                folder = archive_source_folder(
+                    fallback_link=source_link,
+                    post_message_id=post_message_id,
+                )
             else:
                 folder = archive_source_folder(
                     message,
                     fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
                     fallback_link=source_link,
+                    post_message_id=post_message_id,
                 )
-        media_meta = self.get_message_media_target_limit_meta(message) if message is not None else None
-        title_file_name = self.get_message_media_archive_filename(message)
+        if message is not None:
+            folder = resolve_forward_archive_source_folder(
+                source_folder=folder,
+                messages=[message],
+                post_message_id=post_message_id if post_message_id is not None else getattr(message, 'id', None),
+                fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
+                fallback_link=source_link,
+            )
+        media_meta = self.get_message_media_target_limit_meta(
+            message,
+            post_message_id=post_message_id,
+        ) if message is not None else None
+        title_file_name = self.get_message_media_archive_filename(
+            message,
+            post_message_id=post_message_id,
+        )
         file_name = file_name or title_file_name or (media_meta or {}).get('file_name')
         file_size = file_size if file_size is not None else (media_meta or {}).get('file_size')
         # Text-only / no-media messages must not create empty archive folders.
@@ -157,7 +197,10 @@ class PikpakIntegrationManager:
         return datetime.datetime.now(datetime.UTC).timestamp()
 
     @staticmethod
-    def get_message_media_archive_filename(message) -> Optional[str]:
+    def get_message_media_archive_filename(
+            message,
+            post_message_id: Optional[Union[int, str]] = None,
+    ) -> Optional[str]:
         if message is None:
             return None
         for dtype in DownloadType():
@@ -167,11 +210,20 @@ class PikpakIntegrationManager:
             try:
                 if dtype == DownloadType.DOCUMENT and is_compressed_file(getattr(media, 'file_name', None)):
                     return None
-                title = DownloadFileName(message, dtype).get_message_title()
+                title = DownloadFileName(
+                    message,
+                    dtype,
+                    message_id_override=post_message_id,
+                ).get_message_title()
                 if not title:
                     return None
                 extension = PikpakIntegrationManager.get_message_media_archive_extension(dtype, media)
-                return '{} - {}.{}'.format(getattr(message, 'id', '0'), title, extension)
+                message_id = post_message_id if post_message_id is not None else getattr(message, 'id', '0')
+                try:
+                    message_id = str(int(message_id))
+                except (TypeError, ValueError):
+                    message_id = str(message_id or '0')
+                return '{} - {}.{}'.format(message_id, title, extension)
             except Exception:
                 return None
         return None
@@ -343,7 +395,11 @@ class PikpakIntegrationManager:
         self._refresh_counts(task_id)
         return True
 
-    def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
+    def get_message_media_target_limit_meta(
+            self,
+            message,
+            post_message_id: Optional[Union[int, str]] = None,
+    ) -> Optional[dict]:
         for dtype in DownloadType():
             media = getattr(message, dtype, None)
             if not media:
@@ -351,7 +407,10 @@ class PikpakIntegrationManager:
             file_size = getattr(media, 'file_size', None)
             if file_size is None:
                 continue
-            archive_file_name = PikpakIntegrationManager.get_message_media_archive_filename(message)
+            archive_file_name = PikpakIntegrationManager.get_message_media_archive_filename(
+                message,
+                post_message_id=post_message_id,
+            )
             return {
                 'media_type': dtype,
                 'file_size': int(file_size),

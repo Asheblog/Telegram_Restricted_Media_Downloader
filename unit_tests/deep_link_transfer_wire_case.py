@@ -49,11 +49,11 @@ def _make_host(store, resolver=None, forward=None):
     host.forward = forward or default_forward
     host.get_deep_link_resolver = lambda: resolver
     host.get_task_target_size_limit_error = lambda task, message: None
-    host.get_message_media_target_limit_meta = lambda message: (
+    host.get_message_media_target_limit_meta = lambda message, post_message_id=None: (
         {'file_name': 'video.mp4', 'file_size': 10}
         if getattr(message, 'video', None) else None
     )
-    host.get_message_media_archive_filename = lambda message: (
+    host.get_message_media_archive_filename = lambda message, post_message_id=None: (
         getattr(getattr(message, 'video', None), 'file_name', None)
     )
     host.is_pikpak_target = lambda target_link, target_profile=None: False
@@ -332,7 +332,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             host.complete_forwarded_pikpak_item = lambda **kwargs: (
                 archive_calls.append(kwargs) or True
             )
-            host.get_message_media_target_limit_meta = lambda message: (
+            host.get_message_media_target_limit_meta = lambda message, post_message_id=None: (
                 {'file_name': 'video.mp4', 'file_size': 10}
                 if getattr(message, 'video', None) else None
             )
@@ -393,7 +393,7 @@ class DeepLinkMultiMediaWireCase(unittest.TestCase):
             ]
             resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
             host = _make_host(store, resolver=resolver)
-            host.get_message_media_target_limit_meta = lambda message: (
+            host.get_message_media_target_limit_meta = lambda message, post_message_id=None: (
                 {'file_name': 'a.mp4', 'file_size': 10}
                 if getattr(message, 'video', None)
                 else (

@@ -772,8 +772,14 @@ class WebTransferRunner:
                         archive_after_success=False,
                         media_types_override=task.get('media_types'),
                     )
-                    media_meta = host.get_message_media_target_limit_meta(send_message)
-                    archive_file_name = host.get_message_media_archive_filename(send_message)
+                    media_meta = host.get_message_media_target_limit_meta(
+                        send_message,
+                        post_message_id=range_message_id,
+                    )
+                    archive_file_name = host.get_message_media_archive_filename(
+                        send_message,
+                        post_message_id=range_message_id,
+                    )
                     task_id = int(task.get('id'))
                     item_id = host.transfer_store.add_item(
                         task_id=task_id,
@@ -783,7 +789,7 @@ class WebTransferRunner:
                         source_link=source_link,
                         target_link=task.get('target_link'),
                         media_type='forward',
-                        file_name=(media_meta or {}).get('file_name'),
+                        file_name=archive_file_name or (media_meta or {}).get('file_name'),
                         file_size=(media_meta or {}).get('file_size'),
                         source_folder=channel_source_folder,
                         archive_status='pending' if task.get('target_profile') == 'pikpak' and media_meta else None,

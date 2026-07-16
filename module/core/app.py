@@ -266,35 +266,35 @@ class DownloadFileName:
             self,
             message: pyrogram.types.Message,
             download_type: Union[str, "DownloadType"],
-            title_override: str = None
+            title_override: str = None,
+            message_id_override: Union[int, str, None] = None,
     ):
         self.message = message
         self.download_type = download_type
         self.title_override = title_override
+        self.message_id_override = message_id_override
+
+    def resolve_message_id(self) -> str:
+        if self.message_id_override is not None:
+            try:
+                return str(int(self.message_id_override))
+            except (TypeError, ValueError):
+                text = str(self.message_id_override).strip()
+                if text:
+                    return text
+        return str(getattr(self.message, 'id', '0'))
 
     def get_message_title(self) -> Union[str, None]:
-        """从消息正文或网页预览中提取可读标题。"""
+        """从消息正文、网页预览或媒体文件名提取可读标题。"""
+        from module.source_folders import extract_message_body_title
+
         if isinstance(self.title_override, str):
             title = self.title_override.strip()
             if title:
                 return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
-        inherited_title = getattr(self.message, '_trmd_source_title', None)
-        if isinstance(inherited_title, str):
-            inherited_title = inherited_title.strip()
-            if inherited_title:
-                return validate_title(inherited_title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
-        for attr in ('caption', 'text'):
-            title = getattr(self.message, attr, None)
-            if isinstance(title, str):
-                title = next((line.strip() for line in title.splitlines() if line.strip()), '')
-                if title:
-                    return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
-        web_page = getattr(self.message, 'web_page', None)
-        title = getattr(web_page, 'title', None)
-        if isinstance(title, str):
-            title = title.strip()
-            if title:
-                return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
+        title = extract_message_body_title(self.message)
+        if title:
+            return validate_title(title[:self.TITLE_MAX_CHARS]).strip(' ._') or None
         return None
 
     def build_message_title_filename(self, extension: str) -> Union[str, None]:
@@ -302,7 +302,7 @@ class DownloadFileName:
         if not title:
             return None
         extension = (extension or 'unknown').lstrip('.') or 'unknown'
-        return '{} - {}.{}'.format(getattr(self.message, 'id', '0'), title, extension)
+        return '{} - {}.{}'.format(self.resolve_message_id(), title, extension)
 
     def get_video_filename(self):
         """处理视频文件的文件名。"""
@@ -329,7 +329,7 @@ class DownloadFileName:
             title: str = 'None'
             log.warning(f'获取文件名时出错,已重命名为:"{title}",{_t(KeyWord.REASON)}:"{e}"')
         return '{} - {}.{}'.format(
-            getattr(self.message, 'id', '0'),
+            self.resolve_message_id(),
             title,
             extension
         )
@@ -355,7 +355,7 @@ class DownloadFileName:
         if title_filename:
             return title_filename
         return '{} - {}.{}'.format(
-            getattr(self.message, 'id', '0'),
+            self.resolve_message_id(),
             getattr(media_object, 'file_unique_id', 'None'),
             extension
         )
@@ -379,7 +379,7 @@ class DownloadFileName:
 
         except (AttributeError, Exception) as e:
             log.info(f'无法找到该文档文件的扩展名,{_t(KeyWord.REASON)}:"{e}"')
-            file_id = getattr(self.message, 'id', '0')
+            file_id = self.resolve_message_id()
             time_format = '%Y-%m-%d_%H-%M-%S'
             return f'{file_id} - {datetime.datetime.now().strftime(time_format)}.unknown'
 
@@ -401,12 +401,12 @@ class DownloadFileName:
                 )
 
             return '{} - {}.{}'.format(
-                getattr(self.message, 'id', '0'),
+                self.resolve_message_id(),
                 getattr(media_obj, 'file_unique_id', 'None'),
                 origin_extension
             )
         except Exception as e:
             log.info(f'无法找到该{_t(self.download_type)}文件的扩展名,{_t(KeyWord.REASON)}:"{e}"')
-            file_id = getattr(self.message, 'id', '0')
+            file_id = self.resolve_message_id()
             time_format = '%Y-%m-%d_%H-%M-%S'
             return f'{file_id} - {datetime.datetime.now().strftime(time_format)}.unknown'

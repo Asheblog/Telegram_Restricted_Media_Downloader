@@ -1,10 +1,11 @@
 # coding=UTF-8
+import os
 import re
 
 from typing import Optional, Union
 from urllib.parse import urlparse
 
-from module.path_tool import validate_title
+from module.path_tool import extract_full_extension, validate_title
 
 
 WINDOWS_RESERVED_NAMES = {
@@ -13,7 +14,18 @@ WINDOWS_RESERVED_NAMES = {
     *(f'LPT{i}' for i in range(1, 10))
 }
 
-POST_TITLE_BYTE_LIMIT = 60
+POST_TITLE_CHAR_LIMIT = 120
+POST_TITLE_BYTE_LIMIT = 360
+POST_FOLDER_SEGMENT_BYTE_LIMIT = 400
+
+MEDIA_FILE_NAME_ATTRS = (
+    'video', 'document', 'animation', 'audio', 'voice', 'video_note', 'photo'
+)
+GENERIC_FILE_NAME_PREFIXES = ('video_', 'photo_', 'audio_', 'animation_')
+GENERIC_FILE_NAME_STEMS = frozenset({
+    'video', 'photo', 'image', 'audio', 'document', 'file', 'none', 'unknown', 'animation',
+})
+LEADING_ID_IN_STEM = re.compile(r'^\d+[\s._-]+')
 
 
 def source_folder_from_link(link: Optional[str]) -> Optional[str]:
@@ -93,29 +105,87 @@ def sanitize_source_folder(value, limit: int = 80) -> Optional[str]:
     return raw.decode('utf-8', errors='ignore').strip('. ') or None
 
 
-def post_title_from_message(message) -> Optional[str]:
+def _first_non_empty_line(text: Optional[str]) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _stem_from_media_file_name(file_name: Optional[str]) -> Optional[str]:
+    if not isinstance(file_name, str):
+        return None
+    name = file_name.strip()
+    if not name:
+        return None
+    extension = extract_full_extension(name)
+    if extension:
+        suffix = f'.{extension}'
+        if name.lower().endswith(suffix.lower()):
+            stem = name[: -len(suffix)]
+        else:
+            stem = os.path.splitext(name)[0]
+    else:
+        stem = os.path.splitext(name)[0]
+    stem = stem.strip()
+    if not stem:
+        return None
+    lowered = stem.casefold()
+    if lowered in GENERIC_FILE_NAME_STEMS:
+        return None
+    if any(lowered.startswith(prefix) for prefix in GENERIC_FILE_NAME_PREFIXES):
+        return None
+    stem = LEADING_ID_IN_STEM.sub('', stem).strip(' ._')
+    if not stem or stem.casefold() in GENERIC_FILE_NAME_STEMS:
+        return None
+    return stem or None
+
+
+def title_from_media_file_name(message) -> Optional[str]:
+    if message is None:
+        return None
+    for attr in MEDIA_FILE_NAME_ATTRS:
+        media = getattr(message, attr, None)
+        if media is None:
+            continue
+        stem = _stem_from_media_file_name(getattr(media, 'file_name', None))
+        if stem:
+            return stem
+    return None
+
+
+def extract_message_body_title(message) -> Optional[str]:
+    """Raw body title: inherited/caption/text/web_page, else media file_name stem."""
     if message is None:
         return None
     inherited_title = getattr(message, '_trmd_source_title', None)
     if isinstance(inherited_title, str) and inherited_title.strip():
-        return sanitize_source_folder(inherited_title.strip(), limit=POST_TITLE_BYTE_LIMIT)
+        return inherited_title.strip()
     for attr in ('caption', 'text'):
-        title = getattr(message, attr, None)
-        if isinstance(title, str):
-            title = next((line.strip() for line in title.splitlines() if line.strip()), '')
-            if title:
-                return sanitize_source_folder(title, limit=POST_TITLE_BYTE_LIMIT)
+        title = _first_non_empty_line(getattr(message, attr, None))
+        if title:
+            return title
     web_page = getattr(message, 'web_page', None)
     title = getattr(web_page, 'title', None)
     if isinstance(title, str) and title.strip():
-        return sanitize_source_folder(title.strip(), limit=POST_TITLE_BYTE_LIMIT)
-    return None
+        return title.strip()
+    return title_from_media_file_name(message)
+
+
+def post_title_from_message(message) -> Optional[str]:
+    title = extract_message_body_title(message)
+    if not title:
+        return None
+    return sanitize_source_folder(title[:POST_TITLE_CHAR_LIMIT], limit=POST_TITLE_BYTE_LIMIT)
 
 
 def post_folder_segment(
         message_id: Optional[Union[int, str]],
         title: Optional[str] = None,
-        limit: int = 80,
+        limit: int = POST_FOLDER_SEGMENT_BYTE_LIMIT,
 ) -> Optional[str]:
     if message_id is None:
         return None
@@ -125,7 +195,12 @@ def post_folder_segment(
         mid = sanitize_source_folder(message_id, limit=limit)
         if not mid:
             return None
-    title_part = sanitize_source_folder(title, limit=POST_TITLE_BYTE_LIMIT) if title else None
+    title_part = None
+    if title:
+        title_part = sanitize_source_folder(
+            str(title)[:POST_TITLE_CHAR_LIMIT],
+            limit=POST_TITLE_BYTE_LIMIT,
+        )
     if title_part:
         combined = f'{mid} - {title_part}'
         return sanitize_source_folder(combined, limit=limit) or mid
@@ -138,7 +213,7 @@ def join_archive_source_folder(*segments: Optional[str]) -> str:
         if segment is None:
             continue
         for part in str(segment).replace('\\', '/').split('/'):
-            cleaned = sanitize_source_folder(part)
+            cleaned = sanitize_source_folder(part, limit=POST_FOLDER_SEGMENT_BYTE_LIMIT)
             if cleaned:
                 parts.append(cleaned)
     return '/'.join(parts) if parts else 'UNKNOWN_SOURCE'
@@ -222,13 +297,24 @@ def resolve_forward_archive_source_folder(
     if not source_folder:
         return built
     if title and not archive_folder_has_post_title(source_folder):
+        channel = channel_folder_from_archive_path(source_folder)
+        if channel:
+            msg_id = post_message_id
+            if msg_id is None:
+                parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+                if len(parts) >= 2:
+                    head = parts[-1].split(' - ', 1)[0].strip()
+                    if head:
+                        msg_id = head
+            post_segment = post_folder_segment(msg_id, title)
+            if post_segment:
+                return join_archive_source_folder(channel, post_segment)
+            return channel
         return built
     return source_folder
 
 
 def join_local_source_folder(base_directory: str, source_folder: Optional[str]) -> str:
-    import os
-
     if not source_folder:
         return base_directory
     parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]

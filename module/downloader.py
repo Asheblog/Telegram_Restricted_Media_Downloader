@@ -541,11 +541,17 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]:
         return self.pikpak_manager.get_task_target_size_limit_error(task, message)
 
-    def get_message_media_target_limit_meta(self, message) -> Optional[dict]:
-        return self.pikpak_manager.get_message_media_target_limit_meta(message)
+    def get_message_media_target_limit_meta(self, message, post_message_id=None) -> Optional[dict]:
+        return self.pikpak_manager.get_message_media_target_limit_meta(
+            message,
+            post_message_id=post_message_id,
+        )
 
-    def get_message_media_archive_filename(self, message) -> Optional[str]:
-        return PikpakIntegrationManager.get_message_media_archive_filename(message)
+    def get_message_media_archive_filename(self, message, post_message_id=None) -> Optional[str]:
+        return PikpakIntegrationManager.get_message_media_archive_filename(
+            message,
+            post_message_id=post_message_id,
+        )
 
     def forwarded_message_has_identity(self, forwarded_message) -> bool:
         return PikpakIntegrationManager.forwarded_message_has_identity(forwarded_message)
@@ -2170,14 +2176,9 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
-        for attr in ('caption', 'text'):
-            title = getattr(message, attr, None)
-            if isinstance(title, str):
-                title = next((line.strip() for line in title.splitlines() if line.strip()), '')
-                if title:
-                    return title
-        inherited_title = getattr(message, '_trmd_source_title', None)
-        return inherited_title if isinstance(inherited_title, str) and inherited_title.strip() else None
+        from module.source_folders import extract_message_body_title
+
+        return extract_message_body_title(message)
 
     @staticmethod
     def inherit_media_group_title(messages: Union[list, None]) -> None:

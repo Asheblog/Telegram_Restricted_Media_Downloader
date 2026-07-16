@@ -116,14 +116,9 @@ class TransferEngine:
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
-        for attr in ('caption', 'text'):
-            title = getattr(message, attr, None)
-            if isinstance(title, str):
-                title = next((line.strip() for line in title.splitlines() if line.strip()), '')
-                if title:
-                    return title
-        inherited_title = getattr(message, '_trmd_source_title', None)
-        return inherited_title if isinstance(inherited_title, str) and inherited_title.strip() else None
+        from module.source_folders import extract_message_body_title
+
+        return extract_message_body_title(message)
 
     # ── 核心 transfer 操作 ──
 

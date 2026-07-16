@@ -37,6 +37,8 @@ class SourceFolderArchiveCase(unittest.TestCase):
             caption='正文标题第一行\n第二行',
             text=None,
             web_page=None,
+            video=None,
+            document=None,
             chat=SimpleNamespace(id=-1001, username='gokaidanbao', title='x'),
             link='https://t.me/gokaidanbao/3404',
         )
@@ -44,6 +46,92 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual(
             'gokaidanbao/3404 - 正文标题第一行',
             archive_source_folder(message),
+        )
+
+    def test_archive_source_folder_falls_back_to_media_file_name_stem(self):
+        from module.source_folders import archive_source_folder, post_title_from_message
+
+        message = SimpleNamespace(
+            id=88,
+            caption=None,
+            text=None,
+            web_page=None,
+            video=None,
+            document=SimpleNamespace(
+                file_name='#fhheese35 #tag__推特高颜值示例正文.jpg',
+                file_id='d1',
+                mime_type='image/jpeg',
+            ),
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(id=-1001, username='demochan', title='x'),
+            link='https://t.me/demochan/88',
+        )
+
+        self.assertEqual('#fhheese35 #tag__推特高颜值示例正文', post_title_from_message(message))
+        self.assertEqual(
+            'demochan/88 - #fhheese35 #tag__推特高颜值示例正文',
+            archive_source_folder(message),
+        )
+
+    def test_archive_source_folder_strips_leading_id_from_file_name_stem(self):
+        from module.source_folders import archive_source_folder
+
+        message = SimpleNamespace(
+            id=198,
+            caption=None,
+            text=None,
+            web_page=None,
+            document=None,
+            video=SimpleNamespace(
+                file_name='198_会所技女技师按摩放松.mp4',
+                file_id='v1',
+                mime_type='video/mp4',
+            ),
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='ctuxas'),
+            link='https://t.me/ctuxas/198',
+        )
+
+        self.assertEqual(
+            'ctuxas/198 - 会所技女技师按摩放松',
+            archive_source_folder(message),
+        )
+
+    def test_get_message_media_archive_filename_uses_post_message_id_and_file_name(self):
+        from module.adapters.pikpak.integration import PikpakIntegrationManager
+
+        bot_media = SimpleNamespace(
+            id=9999,
+            caption=None,
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(
+                file_name='会所技女技师按摩放松.mp4',
+                file_id='v1',
+                mime_type='video/mp4',
+                file_size=10,
+            ),
+            document=None,
+            photo=None,
+            audio=None,
+            voice=None,
+            animation=None,
+            video_note=None,
+            sticker=None,
+        )
+
+        self.assertEqual(
+            '198 - 会所技女技师按摩放松.mp4',
+            PikpakIntegrationManager.get_message_media_archive_filename(
+                bot_media,
+                post_message_id=198,
+            ),
         )
 
     def test_archive_source_folder_from_link_uses_message_id_without_title(self):
