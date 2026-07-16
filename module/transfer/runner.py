@@ -187,7 +187,10 @@ class WebTransferRunner:
                     start_id=int(start_id),
                     end_id=int(end_id)
                 )
+                album_skip_ids: set[int] = set()
                 for message_id in range(int(start_id), int(end_id) + 1):
+                    if message_id in album_skip_ids:
+                        continue
                     if await self.settle_web_task_pause_request(task_id, before=str(message_id)):
                         return
                     host.transfer_store.suppress_duplicate_active_items_for_range(
@@ -267,29 +270,89 @@ class WebTransferRunner:
                             )
                             continue
                         message_link = f'{source_prefix}/{getattr(message, "id", "")}'
-                        range_video_seq += 1
-                        host.transfer_store.update_task_range_runtime(
-                            task_id,
-                            current_range_message_id=message_id,
-                            current_range_video_captured=range_video_seq,
-                            current_range_video_index=range_video_seq
-                        )
-                        used_fallback = await self._resolve_method('transfer_message_to_web_target')(
-                            task=task,
-                            message=message,
+                        members, shared_post_id, shared_folder = await self._resolve_web_range_album(
+                            message,
                             origin_chat_id=origin_chat_id,
-                            target_chat_id=target_chat_id,
                             source_link=message_link,
-                            range_message_id=message_id
                         )
-                        fallback_count += 1 if used_fallback else 0
+                        if shared_post_id is None:
+                            shared_post_id = int(message_id)
+                        for member in members:
+                            mid = getattr(member, 'id', None)
+                            if mid is None:
+                                continue
+                            mid = int(mid)
+                            if mid != int(message_id) and int(start_id) <= mid <= int(end_id):
+                                album_skip_ids.add(mid)
+                        anchor = next(
+                            (
+                                member for member in members
+                                if getattr(member, 'id', None) == shared_post_id
+                            ),
+                            message,
+                        )
+                        for member in members:
+                            mid = getattr(member, 'id', None)
+                            if mid is None:
+                                continue
+                            mid = int(mid)
+                            if not (int(start_id) <= mid <= int(end_id)):
+                                continue
+                            if host.transfer_store.is_source_message_terminal(
+                                    task_id, mid, origin_chat_id
+                            ):
+                                continue
+                            member_link = f'{source_prefix}/{mid}'
+                            member_resumable = host.find_resumable_transfer_item(
+                                task_id, mid, origin_chat_id
+                            )
+                            if member_resumable:
+                                try:
+                                    await self._resolve_method('wait_between_transfer_messages')()
+                                    await self.resume_transfer_item_download(
+                                        task=task,
+                                        item=member_resumable,
+                                        range_message_id=shared_post_id,
+                                    )
+                                    fallback_count += 1
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as e:
+                                    log.error(
+                                        f'Web transfer resume download failed: task={task_id}, message={mid}, reason="{e}"',
+                                        exc_info=True
+                                    )
+                                    host.transfer_store.add_event(
+                                        task_id,
+                                        f'Resume download failed: {mid}: {e}',
+                                        level='error'
+                                    )
+                                continue
+                            range_video_seq += 1
+                            host.transfer_store.update_task_range_runtime(
+                                task_id,
+                                current_range_message_id=shared_post_id,
+                                current_range_video_captured=range_video_seq,
+                                current_range_video_index=range_video_seq
+                            )
+                            used_fallback = await self._resolve_method('transfer_message_to_web_target')(
+                                task=task,
+                                message=member,
+                                origin_chat_id=origin_chat_id,
+                                target_chat_id=target_chat_id,
+                                source_link=member_link,
+                                range_message_id=shared_post_id,
+                                source_folder=shared_folder,
+                                archive_post_message=anchor if len(members) > 1 else None,
+                            )
+                            fallback_count += 1 if used_fallback else 0
                         if include_comment:
                             reply_count, reply_fallback_count = await self._resolve_method(
                                 'transfer_web_discussion_replies_to_target'
                             )(
                                 task=task,
                                 source_chat_id=origin_chat_id,
-                                source_message_id=message_id,
+                                source_message_id=shared_post_id,
                                 target_chat_id=target_chat_id,
                                 expected_total=expected_total,
                                 range_video_seq=range_video_seq
@@ -573,6 +636,39 @@ class WebTransferRunner:
             error = task_result.get('e_code') or {}
             raise RuntimeError(error.get('error_msg') or error.get('all_member') or 'Failed to create transfer item.')
 
+    async def _resolve_web_range_album(
+            self,
+            message,
+            *,
+            origin_chat_id,
+            source_link: str,
+    ) -> tuple[list, Optional[int], Optional[str]]:
+        """Load media-group members and one shared Source Post Archive Path for a range hit."""
+        host = self._host
+        members = [message]
+        group_messages = None
+        if getattr(message, 'media_group_id', None):
+            get_media_group = getattr(message, 'get_media_group', None)
+            if callable(get_media_group):
+                try:
+                    group_messages = await get_media_group()
+                except Exception:
+                    group_messages = None
+        if not group_messages:
+            return members, getattr(message, 'id', None), None
+        inherit = getattr(host, 'inherit_media_group_title', None)
+        if callable(inherit):
+            inherit(group_messages)
+        members = list(group_messages)
+        shared_post_id = media_group_post_message_id(members)
+        shared_folder = archive_source_folder_for_messages(
+            members,
+            fallback_chat_id=origin_chat_id,
+            fallback_link=source_link,
+            post_message_id=shared_post_id,
+        )
+        return members, shared_post_id, shared_folder
+
     async def transfer_message_to_web_target(
             self,
             task: dict,
@@ -610,14 +706,15 @@ class WebTransferRunner:
                 inherit = getattr(host, 'inherit_media_group_title', None)
                 if callable(inherit):
                     inherit(group_messages)
+                # Never let a caller's member message_id split the album folder.
+                shared_post_id = media_group_post_message_id(group_messages)
                 channel_source_folder = archive_source_folder_for_messages(
                     group_messages,
                     fallback_chat_id=origin_chat_id,
                     fallback_link=source_link,
-                    post_message_id=range_message_id,
+                    post_message_id=shared_post_id,
                 )
-                if range_message_id is None:
-                    range_message_id = media_group_post_message_id(group_messages)
+                range_message_id = shared_post_id
             else:
                 channel_source_folder = archive_source_folder(
                     channel_message,

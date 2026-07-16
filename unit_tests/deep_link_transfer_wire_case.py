@@ -781,5 +781,191 @@ class DeepLinkListenForwardFolderCase(unittest.TestCase):
         self.assertEqual(expected, archive_calls[1]['source_folder'])
 
 
+class WebRangeAlbumArchiveCase(unittest.TestCase):
+    def test_web_target_album_uses_min_id_even_when_caller_passes_member_range_id(self):
+        """Range loop used to pass each member id as range_message_id, splitting folders."""
+        from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
+        from module.transfer.runner import WebTransferRunner
+        from module.transfer_store import TransferStore, TransferStatus
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/chengdudiyi8',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                start_id=73464,
+                end_id=73465,
+            )
+            task = store.get_task(task_id)
+            members = []
+
+            async def get_media_group():
+                return members
+
+            photo = SimpleNamespace(
+                id=73464,
+                caption=(
+                    '#示例\n'
+                    '\n'
+                    '【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插\n'
+                ),
+                text=None,
+                web_page=None,
+                photo=SimpleNamespace(file_id='p1', file_unique_id='pu1', file_size=10),
+                video=None,
+                document=None,
+                audio=None,
+                animation=None,
+                voice=None,
+                video_note=None,
+                media_group_id='album-1',
+                empty=False,
+                chat=SimpleNamespace(id=-1001, username='chengdudiyi8', title=None),
+                link='https://t.me/chengdudiyi8/73464',
+                get_media_group=get_media_group,
+            )
+            video = SimpleNamespace(
+                id=73465,
+                caption=None,
+                text=None,
+                web_page=None,
+                photo=None,
+                video=SimpleNamespace(
+                    file_name='5月13日.mp4',
+                    file_id='v1',
+                    mime_type='video/mp4',
+                    file_size=20,
+                ),
+                document=None,
+                audio=None,
+                animation=None,
+                voice=None,
+                video_note=None,
+                media_group_id='album-1',
+                empty=False,
+                chat=SimpleNamespace(id=-1001, username='chengdudiyi8', title=None),
+                link='https://t.me/chengdudiyi8/73465',
+                get_media_group=get_media_group,
+            )
+            members.extend([photo, video])
+
+            host = SimpleNamespace(
+                app=SimpleNamespace(client=object()),
+                gc=SimpleNamespace(
+                    message_filter={
+                        'enabled': False,
+                        'media_types': dict(MEDIA_TYPES_DEFAULT),
+                    },
+                    get_deep_link_bot_whitelist=lambda: [],
+                    get_deep_link_timeout_seconds=lambda: 30,
+                    get_deep_link_min_interval_seconds=lambda: 0,
+                    get_deep_link_settle_seconds=lambda: 0,
+                ),
+                transfer_store=store,
+                inherit_media_group_title=lambda group: None,
+                # Non-PikPak path still writes source_folder on the item; enough to assert album id.
+                is_pikpak_target=lambda *_a, **_k: False,
+                get_task_target_size_limit_error=lambda *_a, **_k: None,
+                get_message_media_target_limit_meta=lambda message, post_message_id=None: {
+                    'file_name': getattr(getattr(message, 'video', None), 'file_name', None)
+                    or 'photo.jpg',
+                    'file_size': 10,
+                },
+                get_message_media_archive_filename=lambda message, post_message_id=None: None,
+                refresh_transfer_task_counts=lambda tid: store.refresh_task_counts(tid),
+                skip_empty_transfer_source_message=lambda **_k: None,
+                skip_transfer_item_for_media_type=lambda **_k: None,
+                skip_transfer_item_for_target_limit=lambda **_k: None,
+                get_deep_link_resolver=lambda: None,
+            )
+            host.runtime_message_filter = lambda override=None: build_runtime_message_filter(
+                host.gc.message_filter,
+                override,
+            )
+
+            async def fake_forward(**_kwargs):
+                return SimpleNamespace(id=900)
+
+            host.forward = fake_forward
+            runner = WebTransferRunner(host)
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=video,
+                origin_chat_id=-1001,
+                target_chat_id='pikpak',
+                source_link='https://t.me/chengdudiyi8/73465',
+                range_message_id=73465,
+            ))
+
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            expected = (
+                'chengdudiyi8/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插'
+            )
+            self.assertEqual(expected, items[0]['source_folder'])
+            self.assertEqual(73464, items[0]['range_message_id'])
+            self.assertEqual(73465, items[0]['source_message_id'])
+            self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
+            _close_store(store)
+
+    def test_resolve_web_range_album_skips_secondary_ids_via_shared_folder(self):
+        from module.transfer.runner import WebTransferRunner
+
+        members = []
+
+        async def get_media_group():
+            return members
+
+        photo = SimpleNamespace(
+            id=10,
+            caption='正文标题',
+            text=None,
+            web_page=None,
+            photo=SimpleNamespace(file_id='p1'),
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            media_group_id='g',
+            chat=SimpleNamespace(username='chan'),
+            link='https://t.me/chan/10',
+            get_media_group=get_media_group,
+        )
+        video = SimpleNamespace(
+            id=11,
+            caption=None,
+            text=None,
+            web_page=None,
+            photo=None,
+            video=SimpleNamespace(file_name='x.mp4', file_id='v1'),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            media_group_id='g',
+            chat=SimpleNamespace(username='chan'),
+            link='https://t.me/chan/11',
+            get_media_group=get_media_group,
+        )
+        members.extend([photo, video])
+        host = SimpleNamespace(inherit_media_group_title=lambda group: None)
+        runner = WebTransferRunner(host)
+        got_members, shared_id, shared_folder = asyncio.run(
+            runner._resolve_web_range_album(
+                video,
+                origin_chat_id=-1001,
+                source_link='https://t.me/chan/11',
+            )
+        )
+        self.assertEqual([photo, video], got_members)
+        self.assertEqual(10, shared_id)
+        self.assertEqual('chan/10 - 正文标题', shared_folder)
+
+
 if __name__ == '__main__':
     unittest.main()
