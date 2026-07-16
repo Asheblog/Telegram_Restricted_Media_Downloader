@@ -4645,6 +4645,68 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(33, task_model['range_progress_percent'])
             self.assertEqual('1/3', f"{task_model['range_completed_ids']}/{task_model['range_total_ids']}")
 
+    def test_range_progress_advances_past_album_when_members_use_own_range_ids(self):
+        """Album archive shares one folder, but each member must keep its own range_message_id.
+
+        If every album member is stored under the min id, range_transfer_progress hits a hole at
+        the next member id and freezes completed_ids (UI stuck at ID 1/N).
+        """
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/chengdudiyi8',
+                target_link='https://t.me/pikpak_bot',
+                start_id=73464,
+                end_id=73466,
+            )
+            # Wrong shape (pre-fix regression): both members under min id → progress freezes at 1.
+            store.add_item(
+                task_id=task_id,
+                source_chat_id=-1001,
+                source_message_id=73464,
+                range_message_id=73464,
+                source_link='https://t.me/chengdudiyi8/73464',
+                target_link='https://t.me/pikpak_bot',
+                source_folder='chengdudiyi8/73464 - title',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS,
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id=-1001,
+                source_message_id=73465,
+                range_message_id=73464,
+                source_link='https://t.me/chengdudiyi8/73465',
+                target_link='https://t.me/pikpak_bot',
+                source_folder='chengdudiyi8/73464 - title',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS,
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id=-1001,
+                source_message_id=73466,
+                range_message_id=73466,
+                source_link='https://t.me/chengdudiyi8/73466',
+                target_link='https://t.me/pikpak_bot',
+                source_folder='chengdudiyi8/73466 - next',
+                phase='forwarded',
+                status=TransferStatus.RUNNING,
+            )
+            stuck = store.range_transfer_progress(store.get_task(task_id))
+            self.assertEqual(1, stuck['range_completed_ids'])
+            self.assertEqual(73465, stuck['current_range_message_id'])
+
+            # Correct shape: member keeps own range_message_id, shared folder for archive only.
+            with store.connect() as conn:
+                conn.execute(
+                    'UPDATE transfer_items SET range_message_id = 73465 WHERE source_message_id = 73465'
+                )
+            progress = store.range_transfer_progress(store.get_task(task_id))
+            self.assertEqual(2, progress['range_completed_ids'])
+            self.assertEqual(73466, progress['current_range_message_id'])
+            self.assertEqual(67, progress['range_progress_percent'])
+
     def test_is_range_message_complete_requires_all_comment_items_terminal(self):
         with tempfile.TemporaryDirectory() as directory:
             store = TransferStore(directory=directory)

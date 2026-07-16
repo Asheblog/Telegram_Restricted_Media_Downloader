@@ -905,7 +905,7 @@ class WebRangeAlbumArchiveCase(unittest.TestCase):
                 'chengdudiyi8/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插'
             )
             self.assertEqual(expected, items[0]['source_folder'])
-            self.assertEqual(73464, items[0]['range_message_id'])
+            self.assertEqual(73465, items[0]['range_message_id'])
             self.assertEqual(73465, items[0]['source_message_id'])
             self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
             _close_store(store)

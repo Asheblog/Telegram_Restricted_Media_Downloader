@@ -312,7 +312,7 @@ class WebTransferRunner:
                                     await self.resume_transfer_item_download(
                                         task=task,
                                         item=member_resumable,
-                                        range_message_id=shared_post_id,
+                                        range_message_id=mid,
                                     )
                                     fallback_count += 1
                                 except asyncio.CancelledError:
@@ -331,7 +331,7 @@ class WebTransferRunner:
                             range_video_seq += 1
                             host.transfer_store.update_task_range_runtime(
                                 task_id,
-                                current_range_message_id=shared_post_id,
+                                current_range_message_id=mid,
                                 current_range_video_captured=range_video_seq,
                                 current_range_video_index=range_video_seq
                             )
@@ -341,7 +341,9 @@ class WebTransferRunner:
                                 origin_chat_id=origin_chat_id,
                                 target_chat_id=target_chat_id,
                                 source_link=member_link,
-                                range_message_id=shared_post_id,
+                                # Keep per-member range id so range_transfer_progress can advance
+                                # past album holes; archive path still uses shared_folder.
+                                range_message_id=mid,
                                 source_folder=shared_folder,
                                 archive_post_message=anchor if len(members) > 1 else None,
                             )
@@ -714,7 +716,10 @@ class WebTransferRunner:
                     fallback_link=source_link,
                     post_message_id=shared_post_id,
                 )
-                range_message_id = shared_post_id
+                # Preserve caller range_message_id (per-member) for range progress; only
+                # default to the shared album id when the caller did not pass one.
+                if range_message_id is None:
+                    range_message_id = shared_post_id
             else:
                 channel_source_folder = archive_source_folder(
                     channel_message,
