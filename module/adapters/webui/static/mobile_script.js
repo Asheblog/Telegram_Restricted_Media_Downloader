@@ -251,6 +251,7 @@ async function loadCurrentView() {
   if (subActive) {
     if (subActive.id === 'mob-subpage-statistics') { await loadMobileStatistics(); }
     else if (subActive.id === 'mob-subpage-records') { await loadMobileRecords(); }
+    else if (subActive.id === 'mob-subpage-system-logs') { await loadMobileSystemLogs(); }
   }
 }
 
@@ -263,7 +264,8 @@ var profileTitles = {
   statistics: '统计面板',
   records: '下载记录',
   media: '媒体管理',
-  settings: '系统设置'
+  settings: '系统设置',
+  'system-logs': '系统日志'
 };
 
 var MOBILE_MAIN_TABS = {
@@ -277,7 +279,8 @@ var MOBILE_PROFILE_SUBPAGES = {
   statistics: true,
   records: true,
   media: true,
-  settings: true
+  settings: true,
+  'system-logs': true
 };
 
 function mobSwitchView(view, options) {
@@ -285,6 +288,8 @@ function mobSwitchView(view, options) {
   if (!MOBILE_MAIN_TABS[view]) {
     view = 'transfers';
   }
+
+  stopMobileSystemLogsAutoRefresh();
 
   // Hide all main views
   var views = document.querySelectorAll('.mob-view');
@@ -365,10 +370,12 @@ function mobNavigateTo(subpage, options) {
   else if (subpage === 'records') { loadMobileRecords(); }
   else if (subpage === 'media') { loadMediaMobile(); }
   else if (subpage === 'settings') { loadMobileSettings(); }
+  else if (subpage === 'system-logs') { loadMobileSystemLogs(); startMobileSystemLogsAutoRefresh(); }
 }
 
 function mobNavigateBack(options) {
   options = options || {};
+  stopMobileSystemLogsAutoRefresh();
   exitSubPage();
 
   // Hide all subpages
@@ -390,11 +397,15 @@ function applyMobileRouteFromLocation() {
   var path = normalizeSpaPathname(window.location.pathname);
   var view = viewFromPath(path);
 
-  if (!view || view === 'system-logs') {
+  if (path === '/' || path === '/index.html') {
     mobSwitchView('transfers', { replaceUrl: true });
     return;
   }
-  if (path === '/' || path === '/index.html') {
+  if (view === 'system-logs') {
+    mobNavigateTo('system-logs', { syncUrl: false });
+    return;
+  }
+  if (!view) {
     mobSwitchView('transfers', { replaceUrl: true });
     return;
   }
@@ -1846,6 +1857,362 @@ document.getElementById('mob-records-clear-btn')?.addEventListener('click', asyn
 });
 
 // ---------------------------------------------------------------------------
+// System Logs (profile subpage)
+// ---------------------------------------------------------------------------
+var MOBILE_SYSTEM_LOGS_PAGE_SIZE = 50;
+var MOBILE_SYSTEM_LOGS_AUTO_REFRESH_KEY = 'trmd-system-logs-auto-refresh';
+var MOBILE_SYSTEM_LOGS_AUTO_REFRESH_MS = 5000;
+var mobileSystemLogsAutoRefreshTimer = null;
+
+function mobSystemLogLevelClass(level) {
+  var value = String(level || 'info').toLowerCase();
+  if (value === 'error') return 'system-log-level-error';
+  if (value === 'warning') return 'system-log-level-warning';
+  return 'system-log-level-info';
+}
+
+function mobSystemLogCategoryLabel(category) {
+  var key = {
+    watch: 'systemLogs.categoryWatch',
+    filter: 'systemLogs.categoryFilter',
+    forward: 'systemLogs.categoryForward',
+    transfer: 'systemLogs.categoryTransfer',
+    archive: 'systemLogs.categoryArchive'
+  }[category];
+  return key ? t(key) : (category || '-');
+}
+
+function isMobileSystemLogsAutoRefreshEnabled() {
+  return localStorage.getItem(MOBILE_SYSTEM_LOGS_AUTO_REFRESH_KEY) === '1';
+}
+
+function setMobileSystemLogsAutoRefreshEnabled(enabled) {
+  localStorage.setItem(MOBILE_SYSTEM_LOGS_AUTO_REFRESH_KEY, enabled ? '1' : '0');
+}
+
+function stopMobileSystemLogsAutoRefresh() {
+  if (mobileSystemLogsAutoRefreshTimer) {
+    clearInterval(mobileSystemLogsAutoRefreshTimer);
+    mobileSystemLogsAutoRefreshTimer = null;
+  }
+}
+
+function startMobileSystemLogsAutoRefresh() {
+  stopMobileSystemLogsAutoRefresh();
+  if (!isMobileSystemLogsAutoRefreshEnabled()) return;
+  if (currentProfileSub !== 'system-logs') return;
+  mobileSystemLogsAutoRefreshTimer = setInterval(function() {
+    if (currentProfileSub !== 'system-logs') {
+      stopMobileSystemLogsAutoRefresh();
+      return;
+    }
+    loadMobileSystemLogs(1);
+  }, MOBILE_SYSTEM_LOGS_AUTO_REFRESH_MS);
+}
+
+function syncMobileSystemLogsAutoRefreshUI() {
+  var checkbox = document.getElementById('mob-system-logs-auto-refresh');
+  if (checkbox) checkbox.checked = isMobileSystemLogsAutoRefreshEnabled();
+}
+
+function formatMobileSystemLogDetails(entry) {
+  if (entry.details == null || entry.details === '') return '';
+  try {
+    var parsed = typeof entry.details === 'string' ? JSON.parse(entry.details) : entry.details;
+    return typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2);
+  } catch (e) {
+    return String(entry.details);
+  }
+}
+
+function formatMobileSystemLogContext(entry) {
+  var parts = [];
+  if (entry.trace_id) parts.push(t('systemLogs.trace') + ': ' + entry.trace_id);
+  if (entry.watch_id) parts.push(t('systemLogs.watch') + ': ' + entry.watch_id);
+  if (entry.source_chat_id) parts.push('chat: ' + entry.source_chat_id);
+  if (entry.source_message_id) parts.push('msg: ' + entry.source_message_id);
+  if (entry.target_link) parts.push('target: ' + entry.target_link);
+  if (entry.details) {
+    try {
+      var parsed = typeof entry.details === 'string' ? JSON.parse(entry.details) : entry.details;
+      parts.push(JSON.stringify(parsed));
+    } catch (e) {
+      parts.push(String(entry.details));
+    }
+  }
+  return parts.join(' · ');
+}
+
+function formatMobileSystemLogCopyLine(entry) {
+  var time = entry.created_at ? new Date(entry.created_at).toISOString() : '-';
+  var context = formatMobileSystemLogContext(entry);
+  return '[' + time + '] [' + (entry.level || 'info').toUpperCase() + '] '
+    + '[' + (entry.category || '-') + '/' + (entry.stage || '-') + '] '
+    + (entry.message || '') + (context ? ' | ' + context : '');
+}
+
+function mobileSystemLogsFilterQuery() {
+  var category = document.getElementById('mob-system-logs-category');
+  var level = document.getElementById('mob-system-logs-level');
+  var today = document.getElementById('mob-system-logs-today');
+  var categoryVal = category ? category.value : '';
+  var levelVal = level ? level.value : '';
+  var todayOnly = today && today.checked ? '1' : '0';
+  return '?today=' + todayOnly
+    + (categoryVal ? '&category=' + encodeURIComponent(categoryVal) : '')
+    + (levelVal ? '&level=' + encodeURIComponent(levelVal) : '');
+}
+
+function renderMobileSystemLogDetailRow(label, valueHtml, mono) {
+  return '<div class="system-log-detail-row">' +
+    '<div class="system-log-detail-label">' + esc(label) + '</div>' +
+    '<div class="system-log-detail-value' + (mono ? ' font-mono' : '') + '">' + valueHtml + '</div>' +
+  '</div>';
+}
+
+function openMobileSystemLogDetail(entry) {
+  var overlay = document.getElementById('mob-sheet-overlay');
+  var sheet = document.getElementById('mob-sheet');
+  if (!overlay || !sheet || !entry) return;
+  sheetState.sheetType = 'system-log-detail';
+  var timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
+  var detailsText = formatMobileSystemLogDetails(entry);
+  var html = '<div class="mob-sheet__title">' + esc(t('systemLogs.detailTitle')) + '</div>' +
+    '<div class="mob-system-log-detail">' +
+      renderMobileSystemLogDetailRow(t('systemLogs.time'), esc(timeText)) +
+      renderMobileSystemLogDetailRow(
+        t('systemLogs.level'),
+        '<span class="system-log-level ' + mobSystemLogLevelClass(entry.level) + '">' +
+          esc((entry.level || 'info').toUpperCase()) + '</span>'
+      ) +
+      renderMobileSystemLogDetailRow(t('systemLogs.category'), esc(mobSystemLogCategoryLabel(entry.category))) +
+      renderMobileSystemLogDetailRow(t('systemLogs.stage'), esc(entry.stage || '-'), true) +
+      renderMobileSystemLogDetailRow(t('systemLogs.message'), esc(entry.message || '-'));
+  if (entry.trace_id) {
+    html += renderMobileSystemLogDetailRow(t('systemLogs.trace'), esc(entry.trace_id), true);
+  }
+  if (entry.watch_id) {
+    html += renderMobileSystemLogDetailRow(t('systemLogs.watch'), esc(entry.watch_id), true);
+  }
+  if (entry.source_chat_id) {
+    html += renderMobileSystemLogDetailRow(t('systemLogs.sourceChat'), esc(String(entry.source_chat_id)), true);
+  }
+  if (entry.source_message_id != null && entry.source_message_id !== '') {
+    html += renderMobileSystemLogDetailRow(t('systemLogs.sourceMessage'), esc(String(entry.source_message_id)), true);
+  }
+  if (entry.target_link) {
+    html += renderMobileSystemLogDetailRow(t('systemLogs.target'), esc(entry.target_link), true);
+  }
+  if (detailsText) {
+    html += renderMobileSystemLogDetailRow(
+      t('systemLogs.details'),
+      '<pre class="system-log-detail-json">' + esc(detailsText) + '</pre>'
+    );
+  }
+  html += '</div>' +
+    '<div class="mob-sheet__footer">' +
+      '<button type="button" class="mob-btn mob-btn-muted" id="mob-system-log-detail-close">' + esc(t('action.cancel')) + '</button>' +
+    '</div>';
+  sheet.className = 'mob-sheet mob-sheet--system-log';
+  sheet.innerHTML = html;
+  var closeBtn = document.getElementById('mob-system-log-detail-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeSheet);
+  overlay.classList.add('open');
+}
+
+async function loadMobileSystemLogs(page) {
+  if (page !== undefined) state.systemLogsPage = page;
+  var currentPage = state.systemLogsPage || 1;
+  var container = document.getElementById('mob-system-logs-list');
+  var pagEl = document.getElementById('mob-system-logs-pagination');
+  var retentionEl = document.getElementById('mob-system-logs-retention');
+  if (!container) return;
+  syncMobileSystemLogsAutoRefreshUI();
+  var category = document.getElementById('mob-system-logs-category');
+  var level = document.getElementById('mob-system-logs-level');
+  var today = document.getElementById('mob-system-logs-today');
+  var categoryVal = category ? category.value : '';
+  var levelVal = level ? level.value : '';
+  var todayOnly = today && today.checked ? '1' : '0';
+  try {
+    var offset = (currentPage - 1) * MOBILE_SYSTEM_LOGS_PAGE_SIZE;
+    var query = '/api/system-logs?limit=' + MOBILE_SYSTEM_LOGS_PAGE_SIZE + '&offset=' + offset
+      + '&today=' + todayOnly
+      + (categoryVal ? '&category=' + encodeURIComponent(categoryVal) : '')
+      + (levelVal ? '&level=' + encodeURIComponent(levelVal) : '');
+    var data = await fetchJson(withClientTzQuery(query));
+    var logs = data.logs || [];
+    var total = Number(data.total || 0);
+    state.systemLogs = logs;
+    state.systemLogsTotal = total;
+    if (retentionEl) {
+      retentionEl.textContent = t('systemLogs.retentionHint').replace('{days}', data.retention_days || 2);
+    }
+    var totalPages = Math.max(1, Math.ceil(total / MOBILE_SYSTEM_LOGS_PAGE_SIZE) || 1);
+    if (currentPage > totalPages && total > 0) {
+      state.systemLogsPage = totalPages;
+      return loadMobileSystemLogs(totalPages);
+    }
+    if (!logs.length) {
+      container.innerHTML = '<div class="mob-empty" data-i18n="systemLogs.empty">' + esc(t('systemLogs.empty')) + '</div>';
+      if (pagEl) pagEl.innerHTML = '';
+      return;
+    }
+    var html = '';
+    logs.forEach(function(entry) {
+      var timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
+      var context = formatMobileSystemLogContext(entry);
+      var summary = [entry.stage || '-', context].filter(Boolean).join(' · ');
+      html += '<button type="button" class="mob-card mob-system-log-card" data-log-id="' + esc(String(entry.id || '')) + '">' +
+        '<div class="mob-card__head">' +
+          '<span class="system-log-level ' + mobSystemLogLevelClass(entry.level) + '">' +
+            esc((entry.level || 'info').toUpperCase()) +
+          '</span>' +
+          '<span class="mob-system-log-card__category">' + esc(mobSystemLogCategoryLabel(entry.category)) + '</span>' +
+          '<span class="mob-system-log-card__time">' + esc(timeText) + '</span>' +
+        '</div>' +
+        '<div class="mob-system-log-card__message">' + esc(entry.message || '-') + '</div>' +
+        (summary ? '<div class="mob-system-log-card__meta">' + esc(summary) + '</div>' : '') +
+      '</button>';
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('.mob-system-log-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        var logId = card.dataset.logId;
+        var entry = (state.systemLogs || []).find(function(item) {
+          return String(item.id) === String(logId);
+        });
+        if (entry) openMobileSystemLogDetail(entry);
+      });
+    });
+    if (pagEl) {
+      pagEl.innerHTML = renderPaginationBar({
+        prefix: 'mob-system-logs',
+        page: currentPage,
+        pageSize: MOBILE_SYSTEM_LOGS_PAGE_SIZE,
+        total: total,
+        variant: 'mobile'
+      });
+      bindPaginationBar('mob-system-logs', currentPage, totalPages, function(newPage) {
+        state.systemLogsPage = newPage;
+        loadMobileSystemLogs(newPage);
+      });
+    }
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') {
+      redirectToLoginPage();
+      return;
+    }
+    container.innerHTML = '<div class="mob-empty">加载失败</div>';
+    if (pagEl) pagEl.innerHTML = '';
+  }
+}
+
+function copyMobileSystemLogsPage() {
+  var logs = state.systemLogs || [];
+  if (!logs.length) return;
+  var text = logs.map(formatMobileSystemLogCopyLine).join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast(t('systemLogs.copied'));
+    }).catch(function() {
+      prompt(t('systemLogs.copyPage'), text);
+    });
+  } else {
+    prompt(t('systemLogs.copyPage'), text);
+  }
+}
+
+async function downloadMobileSystemLogsAll() {
+  var btn = document.getElementById('mob-system-logs-download-btn');
+  if (btn && btn.disabled) return;
+  var originalLabel = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t('systemLogs.downloading');
+  }
+  try {
+    var query = withClientTzQuery('/api/system-logs/export' + mobileSystemLogsFilterQuery());
+    var resp = await fetch(query, { credentials: 'same-origin' });
+    if (resp.status === 401) {
+      redirectToLoginPage();
+      return;
+    }
+    if (!resp.ok) throw new Error('download_failed');
+    var text = await resp.text();
+    if (!text.trim()) {
+      showToast(t('systemLogs.downloadEmpty'));
+      return;
+    }
+    var disposition = resp.headers.get('content-disposition') || '';
+    var match = disposition.match(/filename=\"([^\"]+)\"/);
+    var filename = match ? match[1] : ('system-logs-' + Date.now() + '.txt');
+    var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') redirectToLoginPage();
+    else showToast(t('systemLogs.downloadFailed'));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel || t('systemLogs.downloadAll');
+    }
+  }
+}
+
+function bindMobileSystemLogsControls() {
+  var refreshBtn = document.getElementById('mob-system-logs-refresh-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function() { loadMobileSystemLogs(1); });
+  }
+  var copyBtn = document.getElementById('mob-system-logs-copy-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', copyMobileSystemLogsPage);
+  }
+  var downloadBtn = document.getElementById('mob-system-logs-download-btn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', downloadMobileSystemLogsAll);
+  }
+  var category = document.getElementById('mob-system-logs-category');
+  if (category) {
+    category.addEventListener('change', function() {
+      state.systemLogsPage = 1;
+      loadMobileSystemLogs(1);
+    });
+  }
+  var level = document.getElementById('mob-system-logs-level');
+  if (level) {
+    level.addEventListener('change', function() {
+      state.systemLogsPage = 1;
+      loadMobileSystemLogs(1);
+    });
+  }
+  var today = document.getElementById('mob-system-logs-today');
+  if (today) {
+    today.addEventListener('change', function() {
+      state.systemLogsPage = 1;
+      loadMobileSystemLogs(1);
+    });
+  }
+  var autoRefresh = document.getElementById('mob-system-logs-auto-refresh');
+  if (autoRefresh) {
+    autoRefresh.addEventListener('change', function() {
+      setMobileSystemLogsAutoRefreshEnabled(this.checked);
+      if (this.checked) startMobileSystemLogsAutoRefresh();
+      else stopMobileSystemLogsAutoRefresh();
+    });
+  }
+  syncMobileSystemLogsAutoRefreshUI();
+}
+
+// ---------------------------------------------------------------------------
 // Statistics
 // ---------------------------------------------------------------------------
 async function loadMobileStatistics() {
@@ -1966,6 +2333,8 @@ async function loadMediaMobile() {
       });
     });
   }
+
+  bindMobileSystemLogsControls();
 
   // Language button (toggle zh/en)
   var langBtn = document.getElementById('mob-btn-language');

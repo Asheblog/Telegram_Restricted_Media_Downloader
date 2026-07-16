@@ -419,6 +419,11 @@
           <span class="mob-menu-item__label" data-i18n="nav.settings">系统设置</span>
           <span class="mob-menu-item__arrow">›</span>
         </button>
+        <button class="mob-menu-item" data-profile-nav="system-logs">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="mob-menu-item__label" data-i18n="nav.systemLogs">系统日志</span>
+          <span class="mob-menu-item__arrow">›</span>
+        </button>
         <button class="mob-menu-item" id="mob-btn-language">
           <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" stroke="currentColor" stroke-width="2"/></svg>
           <span class="mob-menu-item__label">语言 <span id="mob-lang-label">中文</span></span>
@@ -489,6 +494,44 @@
       </div>
       <button id="mob-save-settings" class="mob-btn" style="width:100%;margin-top:4px;" data-i18n="settings.save">保存设置</button>
       <p id="mob-settings-notice" class="mob-form-notice hidden"></p>
+    </div>
+    <div class="mob-subpage" id="mob-subpage-system-logs">
+      <p class="text-xs text-muted mb-2" id="mob-system-logs-retention" data-i18n="systemLogs.retentionHint">全链路调试日志，自动保留 2 天</p>
+      <div class="mob-system-logs-toolbar">
+        <div class="mob-system-logs-filters">
+          <select class="form-select" id="mob-system-logs-category">
+            <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
+            <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
+            <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
+            <option value="forward" data-i18n="systemLogs.categoryForward">转发</option>
+            <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
+            <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
+          </select>
+          <select class="form-select" id="mob-system-logs-level">
+            <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
+            <option value="info">INFO</option>
+            <option value="warning">WARNING</option>
+            <option value="error">ERROR</option>
+          </select>
+        </div>
+        <div class="mob-system-logs-toggles">
+          <label class="mob-system-logs-toggle">
+            <input type="checkbox" id="mob-system-logs-today">
+            <span data-i18n="systemLogs.todayOnly">仅今天</span>
+          </label>
+          <label class="mob-system-logs-toggle">
+            <input type="checkbox" id="mob-system-logs-auto-refresh">
+            <span data-i18n="systemLogs.autoRefresh">自动刷新</span>
+          </label>
+        </div>
+        <div class="mob-system-logs-actions">
+          <button type="button" class="mob-btn mob-btn-sm" id="mob-system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
+          <button type="button" class="mob-btn mob-btn-sm mob-btn-muted" id="mob-system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
+          <button type="button" class="mob-btn mob-btn-sm mob-btn-muted" id="mob-system-logs-download-btn" data-i18n="systemLogs.downloadAll">下载日志</button>
+        </div>
+      </div>
+      <div id="mob-system-logs-list"></div>
+      <div id="mob-system-logs-pagination"></div>
     </div>
   </div>
 </div>

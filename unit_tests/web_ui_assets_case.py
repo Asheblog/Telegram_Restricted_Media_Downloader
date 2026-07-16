@@ -136,7 +136,7 @@ class WebUiAssetsCase(unittest.TestCase):
             '.mob-content{box-sizing:border-box;flex-direction:column;gap:10px;width:100%;min-width:0;max-width:100%',
             '.mob-collapse{border:1px solid var(--color-line);background:var(--color-surface);box-sizing:border-box;border-radius:10px;width:100%;min-width:0;max-width:100%',
             '.mob-card{background:var(--color-surface);border:1px solid var(--color-line);border-left:3px solid var(--color-line);box-sizing:border-box;cursor:pointer;border-radius:10px;width:100%;max-width:100%',
-            '#mob-tasks-list,#mob-watches-list,#mob-watches-list-comment,#mob-operations-list,#mob-statistics-list,#mob-records-list,#mob-media-result,#mob-profile-menu{width:100%;min-width:0;max-width:100%',
+            '#mob-tasks-list,#mob-watches-list,#mob-watches-list-comment,#mob-operations-list,#mob-statistics-list,#mob-records-list,#mob-media-result,#mob-system-logs-list,#mob-profile-menu{width:100%;min-width:0;max-width:100%',
         ):
             self.assertIn(fragment, WEB_UI_MOBILE_HTML)
 
@@ -443,6 +443,28 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn("创建失败: ' + (e.message || '')", WEB_UI_MOBILE_HTML)
         self.assertIn("'error.deep_link_whitelist_required'", WEB_UI_MOBILE_HTML)
         self.assertIn('id="mob-form-notice" class="mob-form-notice hidden"', WEB_UI_MOBILE_HTML)
+
+    def test_mobile_profile_hosts_system_logs_subpage(self):
+        """系统日志并入「我的」子页：入口、路由、列表与导出能力齐全。"""
+        self.assertIn('data-profile-nav="system-logs"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-subpage-system-logs"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-list"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-category"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-level"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-today"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-auto-refresh"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-refresh-btn"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-copy-btn"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-system-logs-download-btn"', WEB_UI_MOBILE_HTML)
+        self.assertIn("'system-logs': true", WEB_UI_MOBILE_HTML)
+        self.assertIn("'system-logs': '系统日志'", WEB_UI_MOBILE_HTML)
+        self.assertIn('function loadMobileSystemLogs', WEB_UI_MOBILE_HTML)
+        self.assertIn('function openMobileSystemLogDetail', WEB_UI_MOBILE_HTML)
+        self.assertIn("mobNavigateTo('system-logs'", WEB_UI_MOBILE_HTML)
+        self.assertIn('/api/system-logs', WEB_UI_MOBILE_HTML)
+        self.assertIn('/api/system-logs/export', WEB_UI_MOBILE_HTML)
+        # 不得再把 /system-logs 误踢回转存页
+        self.assertNotIn("!view || view === 'system-logs'", WEB_UI_MOBILE_HTML)
 
 
 if __name__ == '__main__':
