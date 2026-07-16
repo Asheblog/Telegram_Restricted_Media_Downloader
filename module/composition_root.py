@@ -72,6 +72,9 @@ class TrmdCompositionRoot:
         self.gc = GlobalConfig()
         self.diagnostic = RichDiagnosticAdapter(console, log)
         self.system_log = SystemLogTracer(diagnostic=self.diagnostic)
+        # on_listen / handle_forwarded_media must be host overrides: Bot.on_listen only
+        # parses/validates (returns meta); host.on_listen registers the real watch handlers.
+        # Without these overrides, bare /listen_* and forwarded-media paths stay no-ops.
         self.bot = Bot(
             handler_overrides={
                 'start': self.start,

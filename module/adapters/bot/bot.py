@@ -102,6 +102,10 @@ class Bot:
         self.keyword_handler: Union[MessageHandler, None] = None  # 关键词输入模式的handler。
         self.guide_wizard = BotGuideWizard(self)
 
+    def _resolved_handler(self, name: str, default: Callable) -> Callable:
+        """Prefer host-provided handler_overrides; fall back to Bot's own method."""
+        return self._handler_overrides.get(name, default)
+
     @staticmethod
     def _command_token(text: str) -> str:
         """Normalize `/cmd` or `/cmd@BotName` to `/cmd`."""
@@ -1059,10 +1063,12 @@ class Bot:
             bot = await self.bot.get_me()
             bot_username = getattr(bot, 'username', None)
 
-            start_handler = self._handler_overrides.get('start', self.start)
-            callback_handler = self._handler_overrides.get('callback_data', self.callback_data)
-            forwarded_handler = self._handler_overrides.get('handle_forwarded_media', self.handle_forwarded_media)
-            on_listen_handler = self._handler_overrides.get('on_listen', self.on_listen)
+            start_handler = self._resolved_handler('start', self.start)
+            callback_handler = self._resolved_handler('callback_data', self.callback_data)
+            forwarded_handler = self._resolved_handler(
+                'handle_forwarded_media', self.handle_forwarded_media
+            )
+            on_listen_handler = self._resolved_handler('on_listen', self.on_listen)
 
             self.bot.add_handler(
                 MessageHandler(

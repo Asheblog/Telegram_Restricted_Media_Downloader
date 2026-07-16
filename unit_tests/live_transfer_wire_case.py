@@ -111,6 +111,104 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertIn("'callback_data': self.callback_data", src)
         self.assertIn('LiveTransferService(host=self)', src)
 
+    def test_bot_resolved_handler_prefers_host_overrides(self):
+        """Regression: without overrides, /listen_* stayed on Bot.on_listen (meta discarded)."""
+        from module.adapters.bot.bot import Bot
+
+        host_on_listen = object()
+        host_forwarded = object()
+        bot = Bot(handler_overrides={
+            'on_listen': host_on_listen,
+            'handle_forwarded_media': host_forwarded,
+        })
+        self.assertIs(bot._resolved_handler('on_listen', bot.on_listen), host_on_listen)
+        self.assertIs(
+            bot._resolved_handler('handle_forwarded_media', bot.handle_forwarded_media),
+            host_forwarded,
+        )
+        bare = Bot(handler_overrides={})
+        default_on_listen = bare.on_listen
+        default_forwarded = bare.handle_forwarded_media
+        self.assertIs(bare._resolved_handler('on_listen', default_on_listen), default_on_listen)
+        self.assertIs(
+            bare._resolved_handler('handle_forwarded_media', default_forwarded),
+            default_forwarded,
+        )
+
+    def test_host_on_listen_registers_watch_after_bot_meta(self):
+        """Host on_listen must call Bot.on_listen then register a real chat handler."""
+        import pyrogram
+        from unittest.mock import patch
+        from module.transfer.live_transfer import LiveTransferService
+
+        registered = []
+        bot_meta = {
+            'command': '/listen_download',
+            'links': ['https://t.me/source'],
+            'include_comment': False,
+        }
+
+        async def bot_on_listen(client, message):
+            return bot_meta
+
+        chat = SimpleNamespace(id=-100123, is_forum=False)
+        user = SimpleNamespace(
+            get_chat=AsyncMock(return_value=chat),
+            add_handler=lambda handler: registered.append(handler),
+        )
+        client = SimpleNamespace(
+            send_message=AsyncMock(return_value=SimpleNamespace(id=1, text='✅')),
+        )
+        message = SimpleNamespace(
+            id=9,
+            from_user=SimpleNamespace(id=42),
+            text='/listen_download https://t.me/source',
+        )
+        host = SimpleNamespace(
+            bot=SimpleNamespace(on_listen=bot_on_listen),
+            user=user,
+            listen_download_chat={},
+            listen_forward_chat={},
+            listen_download=AsyncMock(),
+            safe_edit_message=AsyncMock(
+                return_value=SimpleNamespace(id=1, text='✅\nhttps://t.me/source')
+            ),
+        )
+        service = LiveTransferService(host=host)
+
+        # pyrogram stub's Dummy filters has no dynamic .chat; provide a minimal stand-in.
+        pyrogram.filters.chat = lambda *args, **kwargs: SimpleNamespace(args=args, kwargs=kwargs)
+        with patch(
+            'module.transfer.live_transfer.MessageHandler',
+            side_effect=lambda *args, **kwargs: SimpleNamespace(args=args, kwargs=kwargs),
+        ):
+            asyncio.run(service.on_listen(client, message))
+
+        self.assertIn('https://t.me/source', host.listen_download_chat)
+        self.assertEqual(1, len(registered))
+
+    def test_host_on_listen_delegates_to_bot_parser(self):
+        """Host path always starts with Bot.on_listen (wizard/validate); None stops registration."""
+        from module.transfer.live_transfer import LiveTransferService
+
+        called = []
+
+        async def bot_on_listen(client, message):
+            called.append(message.text)
+            return None
+
+        host = SimpleNamespace(
+            bot=SimpleNamespace(on_listen=bot_on_listen),
+            listen_download_chat={},
+            listen_forward_chat={},
+        )
+        service = LiveTransferService(host=host)
+        result = asyncio.run(
+            service.on_listen(object(), SimpleNamespace(text='/listen_download'))
+        )
+        self.assertIsNone(result)
+        self.assertEqual(['/listen_download'], called)
+
     def test_bot_dead_listen_stubs_removed(self):
         from module.adapters.bot.bot import Bot
 

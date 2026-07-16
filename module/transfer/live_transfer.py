@@ -63,7 +63,11 @@ class LiveTransferService:
         return getattr(object.__getattribute__(self, '_host'), name)
 
     async def _invoke(self, name: str, *args, **kwargs):
-        """Prefer host instance monkeypatch; otherwise call local implementation."""
+        """Prefer host instance monkeypatch; otherwise call local implementation.
+
+        Only used for `forward`: unit tests historically patch `host.forward`.
+        Sibling listen helpers call `self.X` directly (production-equivalent).
+        """
         host = object.__getattribute__(self, '_host')
         if name in getattr(host, '__dict__', {}):
             method = host.__dict__[name]
