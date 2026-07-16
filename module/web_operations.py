@@ -1093,6 +1093,10 @@ class WebOperationsMixin:
             recovered_archives = progress_tracker.recover_pending_upload_archives()
         if recovered_archives:
             self.diagnostic.info(f'Recovered {recovered_archives} pending PikPak upload archive job(s).')
+        if self.transfer_store:
+            reconciled = self.transfer_store.reconcile_active_tasks(force=True)
+            if reconciled:
+                self.diagnostic.info(f'Reconciled {reconciled} stale transfer task(s).')
         try:
             self._ensure_comment_delay_scheduler()
         except Exception as e:

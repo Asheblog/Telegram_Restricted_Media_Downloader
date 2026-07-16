@@ -1853,6 +1853,11 @@ const i18n = {
     'items.title': '文件进度',
     'items.selectTask': '选择一个任务查看详情',
     'items.empty': '该任务还没有文件记录。',
+    'items.empty.running': '当前没有进行中的文件。',
+    'items.empty.pending': '当前没有排队中的文件。',
+    'items.empty.success': '当前没有已完成的文件。',
+    'items.empty.skipped': '当前没有跳过的文件。',
+    'items.empty.failure': '当前没有失败的文件。',
     'items.colFile': '文件',
     'items.colSize': '大小',
     'items.colProgress': '进度/速度',
@@ -2270,6 +2275,11 @@ const i18n = {
     'items.title': 'File Progress',
     'items.selectTask': 'Select a task to view details',
     'items.empty': 'No file records for this task yet.',
+    'items.empty.running': 'No in-progress files right now.',
+    'items.empty.pending': 'No queued files right now.',
+    'items.empty.success': 'No completed files right now.',
+    'items.empty.skipped': 'No skipped files right now.',
+    'items.empty.failure': 'No failed files right now.',
     'items.colFile': 'File',
     'items.colSize': 'Size',
     'items.colProgress': 'Progress / Speed',
@@ -4855,6 +4865,9 @@ function renderWatchDownloadTaskRow(task) {
         '</div>';
     }
   }
+  const retryBtn = task.can_retry
+    ? '<button class="task-icon-btn btn-danger" data-watch-download-retry="' + task.id + '" title="' + t('tasks.retryFailed') + '">' + TASK_ICON_RETRY + '</button>'
+    : '';
   const deleteBtn = task.can_delete
     ? '<button class="task-icon-btn btn-danger" data-watch-download-delete="' + task.id + '" title="' + t('tasks.delete') + '">' + TASK_ICON_DELETE + '</button>'
     : '';
@@ -4865,7 +4878,7 @@ function renderWatchDownloadTaskRow(task) {
       '<div class="task-row-title">' + esc(title) + '</div>' +
       '<div class="task-row-route">' + esc(route) + '</div>' +
     '</div>' +
-    '<div class="task-row-actions"><div class="task-row-actions-inner">' + deleteBtn + '</div></div>' +
+    '<div class="task-row-actions"><div class="task-row-actions-inner">' + retryBtn + deleteBtn + '</div></div>' +
     progressHtml +
   '</div>';
 }
@@ -5274,21 +5287,40 @@ $('#watch-detail-body')?.addEventListener('click', async function(e) {
   }
 
   const btn = e.target.closest('[data-watch-download-delete]');
-  if (!btn) return;
+  if (btn) {
+    e.stopPropagation();
+    const taskId = parseInt(btn.dataset.watchDownloadDelete, 10);
+    if (!confirm('确定删除任务 #' + taskId + '？')) return;
+    try {
+      const resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+      if (!resp.ok) {
+        let data = {};
+        try { data = await resp.json(); } catch (err) {}
+        alert(data.detail || data.error || data.message || '删除失败');
+        return;
+      }
+      await loadWatchDownloadRecords(true);
+    } catch (err) {
+      alert('删除失败');
+    }
+    return;
+  }
+
+  const retryBtn = e.target.closest('[data-watch-download-retry]');
+  if (!retryBtn) return;
   e.stopPropagation();
-  const taskId = parseInt(btn.dataset.watchDownloadDelete, 10);
-  if (!confirm('确定删除任务 #' + taskId + '？')) return;
+  const retryTaskId = parseInt(retryBtn.dataset.watchDownloadRetry, 10);
   try {
-    const resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+    const resp = await fetch('/api/tasks/' + retryTaskId + '/retry-failed', { method: 'POST' });
     if (!resp.ok) {
       let data = {};
       try { data = await resp.json(); } catch (err) {}
-      alert(data.detail || data.error || data.message || '删除失败');
+      alert(data.detail || data.error || data.message || '重试失败');
       return;
     }
     await loadWatchDownloadRecords(true);
   } catch (err) {
-    alert('删除失败');
+    alert('重试失败');
   }
 });
 
@@ -7256,6 +7288,11 @@ const i18n = {
     'items.title': '文件进度',
     'items.selectTask': '选择一个任务查看详情',
     'items.empty': '该任务还没有文件记录。',
+    'items.empty.running': '当前没有进行中的文件。',
+    'items.empty.pending': '当前没有排队中的文件。',
+    'items.empty.success': '当前没有已完成的文件。',
+    'items.empty.skipped': '当前没有跳过的文件。',
+    'items.empty.failure': '当前没有失败的文件。',
     'items.colFile': '文件',
     'items.colSize': '大小',
     'items.colProgress': '进度/速度',
@@ -7673,6 +7710,11 @@ const i18n = {
     'items.title': 'File Progress',
     'items.selectTask': 'Select a task to view details',
     'items.empty': 'No file records for this task yet.',
+    'items.empty.running': 'No in-progress files right now.',
+    'items.empty.pending': 'No queued files right now.',
+    'items.empty.success': 'No completed files right now.',
+    'items.empty.skipped': 'No skipped files right now.',
+    'items.empty.failure': 'No failed files right now.',
     'items.colFile': 'File',
     'items.colSize': 'Size',
     'items.colProgress': 'Progress / Speed',
@@ -9957,7 +9999,17 @@ function renderMobileWatchDownloadSections(groups) {
             (fileDetail ? '<div class="text-xs" style="word-break:break-all;">' + esc(fileDetail) + '</div>' : '') +
             '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(route) + '</div>' +
             '<div class="text-xs text-muted">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
-            (task.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>' : '') +
+            (task.error_message ? '<div class="text-xs text-danger" style="word-break:break-word;margin-top:4px;">' + esc(task.error_message) + '</div>' : '') +
+            ((task.can_retry || task.can_delete)
+              ? '<div class="mob-watch-download-actions">' +
+                  (task.can_retry
+                    ? '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-download-retry="' + task.id + '">' + esc(t('tasks.retryFailed')) + '</button>'
+                    : '') +
+                  (task.can_delete
+                    ? '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>'
+                    : '') +
+                '</div>'
+              : '') +
           '</div>' +
         '</div>';
       });
@@ -9984,6 +10036,24 @@ function bindMobileWatchDownloadActions(body) {
         await loadMobileWatchDownloads(true);
       } catch (err) {
         alert('删除失败');
+      }
+    });
+  });
+  body.querySelectorAll('[data-mob-watch-download-retry]').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      var taskId = parseInt(btn.dataset.mobWatchDownloadRetry, 10);
+      try {
+        var resp = await fetch('/api/tasks/' + taskId + '/retry-failed', { method: 'POST' });
+        if (!resp.ok) {
+          var errData = {};
+          try { errData = await resp.json(); } catch (err) {}
+          alert(errData.detail || errData.error || errData.message || '重试失败');
+          return;
+        }
+        await loadMobileWatchDownloads(true);
+      } catch (err) {
+        alert('重试失败');
       }
     });
   });

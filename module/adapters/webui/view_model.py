@@ -331,6 +331,8 @@ class WebUiViewModel:
             active_item: Optional[dict[str, Any]] = None,
             preferred_file_name: Optional[str] = None,
     ) -> dict[str, Any]:
+        from module.transfer.watch_inline import is_watch_inline_task
+
         counts = counts or {}
         summary = self.summary_model(task, counts)
         status = str(task.get('status') or TransferStatus.PENDING)
@@ -340,6 +342,15 @@ class WebUiViewModel:
         display_file_name = str(
             active.get('active_file_name') or preferred_file_name or ''
         ).strip()
+        watch_inline = is_watch_inline_task(task)
+        can_delete = (
+            status in TASK_TERMINAL_STATUSES
+            or status == TransferStatus.PAUSED
+            or (watch_inline and status in WATCH_DOWNLOAD_ACTIVE_STATUSES)
+        )
+        can_retry = summary['failed'] > 0 or (
+            watch_inline and status == TransferStatus.FAILURE
+        )
         return {
             'id': task_id,
             'title': task.get('title') or f'#{task_id}',
@@ -371,8 +382,8 @@ class WebUiViewModel:
             'finished_at': task.get('finished_at'),
             'can_pause': status in TASK_ACTIVE_STATUSES,
             'can_resume': status in (TransferStatus.PAUSED, TransferStatus.PAUSING),
-            'can_retry': summary['failed'] > 0,
-            'can_delete': status in TASK_TERMINAL_STATUSES or status == TransferStatus.PAUSED,
+            'can_retry': can_retry,
+            'can_delete': can_delete,
             **active,
             **range_progress,
         }

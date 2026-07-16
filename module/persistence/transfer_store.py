@@ -36,6 +36,9 @@ class DeferredDiscussionCaptureStatus:
 class TransferStore:
     FILE_NAME = 'transfer_tasks.sqlite3'
     DEFAULT_MAINTENANCE_MIN_INTERVAL_SECONDS = 6 * 60 * 60
+    DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS = 60
+    STALE_TRANSFER_ITEM_TIMEOUT_SECONDS = 30 * 60
+    STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS = 10 * 60
     DEFAULT_EVENT_PURGE_MIN_INTERVAL_SECONDS = 7 * 24 * 60 * 60
     TRANSFER_EVENTS_RETENTION_DAYS = 90
     LIVE_WATCH_EVENTS_RETENTION_DAYS = 30
@@ -48,6 +51,7 @@ class TransferStore:
         os.makedirs(directory, exist_ok=True)
         self.path = os.path.join(directory, self.FILE_NAME)
         self._last_maintenance_check = 0.0
+        self._last_reconcile_check = 0.0
         self._schema_ready = False
         self._tls = threading.local()
         self._init_schema()
@@ -120,6 +124,8 @@ class TransferStore:
     def connect(self, run_maintenance: bool = True) -> sqlite3.Connection:
         if run_maintenance and self._schema_ready:
             self.maintain()
+            if not getattr(self._tls, 'reconciling', False):
+                self.reconcile_active_tasks()
         return self._get_conn()
 
     @staticmethod
@@ -1249,6 +1255,11 @@ class TransferStore:
                 'SELECT COUNT(*) FROM transfer_events WHERE task_id = ?', (task_id,)
             ).fetchone()[0]
 
+    @staticmethod
+    def _iso_before_now(seconds: int) -> str:
+        cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=max(0, int(seconds)))
+        return cutoff.isoformat(timespec='seconds')
+
     def refresh_task_counts(
             self,
             task_id: int,
@@ -1259,7 +1270,7 @@ class TransferStore:
         if not task:
             return
         expected = expected_total if expected_total is not None else task.get('total_items')
-        with self.connect() as conn:
+        with self.connect(run_maintenance=False) as conn:
             rows = conn.execute(
                 '''
                 SELECT status, COUNT(*) AS count
@@ -1274,24 +1285,46 @@ class TransferStore:
         expected = int(expected or item_count)
         completed = counts.get(TransferStatus.SUCCESS, 0) + counts.get(TransferStatus.SKIPPED, 0)
         failed = counts.get(TransferStatus.FAILURE, 0)
-        terminal = completed + failed
+        active = counts.get(TransferStatus.RUNNING, 0) + counts.get(TransferStatus.PENDING, 0)
         assigned = bool(task.get('assignment_completed'))
         if assignment_completed is not None:
             assigned = assignment_completed
-        elif expected_total is not None:
-            assigned = True
 
         status = TransferStatus.RUNNING
         finished = False
+        error_message = task.get('error_message')
         if task.get('status') == TransferStatus.PAUSED:
             status = TransferStatus.PAUSED
         elif task.get('status') == TransferStatus.PAUSING:
             status = TransferStatus.PAUSING
         elif task.get('status') == TransferStatus.PENDING:
             status = TransferStatus.PENDING
-        if expected > 0 and assigned and item_count >= expected and terminal >= expected:
-            status = TransferStatus.FAILURE if failed > 0 else TransferStatus.SUCCESS
-            finished = True
+
+        can_finalize = False
+        if assigned and active == 0:
+            can_finalize = True
+        elif (
+                active == 0
+                and item_count > 0
+                and expected_total is not None
+                and item_count >= expected
+                and (completed + failed) >= item_count
+        ):
+            # Backward compatible: explicit expected_total refresh after all items terminal.
+            can_finalize = True
+            assigned = True
+
+        if can_finalize:
+            if item_count == 0:
+                status = TransferStatus.FAILURE
+                finished = True
+                expected = 0
+                if not error_message:
+                    error_message = 'No transfer items were produced.'
+            else:
+                status = TransferStatus.FAILURE if failed > 0 else TransferStatus.SUCCESS
+                finished = True
+                expected = item_count
         elif status == TransferStatus.PENDING and item_count == 0:
             status = TransferStatus.PENDING
 
@@ -1301,9 +1334,143 @@ class TransferStore:
             total_items=expected,
             completed_items=completed,
             failed_items=failed,
+            error_message=error_message,
             finished=finished,
             assignment_completed=assigned
         )
+
+    def reconcile_active_tasks(
+            self,
+            *,
+            min_interval_seconds: int = DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS,
+            force: bool = False,
+            item_timeout_seconds: int = STALE_TRANSFER_ITEM_TIMEOUT_SECONDS,
+            empty_watch_timeout_seconds: int = STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS,
+    ) -> int:
+        if getattr(self._tls, 'reconciling', False):
+            return 0
+        now = datetime.datetime.now(datetime.UTC).timestamp()
+        if (
+                not force
+                and now - self._last_reconcile_check < max(1, int(min_interval_seconds))
+        ):
+            return 0
+        self._last_reconcile_check = now
+        self._tls.reconciling = True
+        try:
+            changed = 0
+            changed += self._fail_stale_active_items(item_timeout_seconds)
+            changed += self._fail_stale_empty_watch_inline_tasks(empty_watch_timeout_seconds)
+
+            with self.connect(run_maintenance=False) as conn:
+                rows = conn.execute(
+                    '''
+                    SELECT id
+                    FROM transfer_tasks
+                    WHERE status IN (?, ?, ?)
+                    ''',
+                    (
+                        TransferStatus.PENDING,
+                        TransferStatus.RUNNING,
+                        TransferStatus.PAUSING,
+                    )
+                ).fetchall()
+            for row in rows:
+                task_id = int(row['id'])
+                before = self.get_task(task_id)
+                self.refresh_task_counts(task_id)
+                after = self.get_task(task_id)
+                if before and after and (
+                        before.get('status') != after.get('status')
+                        or bool(before.get('finished')) != bool(after.get('finished'))
+                ):
+                    changed += 1
+            return changed
+        finally:
+            self._tls.reconciling = False
+
+    def _fail_stale_active_items(self, timeout_seconds: int) -> int:
+        cutoff = self._iso_before_now(timeout_seconds)
+        timeout_label = max(1, int(timeout_seconds) // 60)
+        with self.connect(run_maintenance=False) as conn:
+            rows = conn.execute(
+                '''
+                SELECT id, task_id
+                FROM transfer_items
+                WHERE status IN (?, ?)
+                  AND updated_at < ?
+                ''',
+                (TransferStatus.PENDING, TransferStatus.RUNNING, cutoff)
+            ).fetchall()
+        if not rows:
+            return 0
+        now = self.utc_now()
+        message = f'Transfer item timed out after {timeout_label} minutes without progress.'
+        affected_tasks: set[int] = set()
+        with self.connect(run_maintenance=False) as conn:
+            for row in rows:
+                item_id = int(row['id'])
+                task_id = int(row['task_id'])
+                conn.execute(
+                    '''
+                    UPDATE transfer_items
+                    SET status = ?,
+                        phase = 'failure',
+                        error_message = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    ''',
+                    (TransferStatus.FAILURE, message, now, item_id)
+                )
+                affected_tasks.add(task_id)
+        for task_id in affected_tasks:
+            self.add_event(task_id, message, level='warning')
+            self.refresh_task_counts(task_id)
+        return len(rows)
+
+    def _fail_stale_empty_watch_inline_tasks(self, timeout_seconds: int) -> int:
+        cutoff = self._iso_before_now(timeout_seconds)
+        timeout_label = max(1, int(timeout_seconds) // 60)
+        with self.connect(run_maintenance=False) as conn:
+            rows = conn.execute(
+                '''
+                SELECT t.id
+                FROM transfer_tasks AS t
+                LEFT JOIN transfer_items AS i ON i.task_id = t.id
+                WHERE t.execution_mode = ?
+                  AND t.status IN (?, ?, ?)
+                  AND COALESCE(t.assignment_completed, 0) = 1
+                  AND COALESCE(t.updated_at, t.created_at) < ?
+                GROUP BY t.id
+                HAVING COUNT(i.id) = 0
+                ''',
+                (
+                    ExecutionMode.WATCH_INLINE,
+                    TransferStatus.PENDING,
+                    TransferStatus.RUNNING,
+                    TransferStatus.PAUSING,
+                    cutoff,
+                )
+            ).fetchall()
+        changed = 0
+        message = (
+            f'Watch inline download timed out after {timeout_label} minutes '
+            f'without producing transfer items.'
+        )
+        for row in rows:
+            task_id = int(row['id'])
+            self.update_task(
+                task_id,
+                status=TransferStatus.FAILURE,
+                total_items=0,
+                completed_items=0,
+                failed_items=0,
+                error_message=message,
+                finished=True,
+            )
+            self.add_event(task_id, message, level='warning')
+            changed += 1
+        return changed
 
     def update_task_range_runtime(
             self,

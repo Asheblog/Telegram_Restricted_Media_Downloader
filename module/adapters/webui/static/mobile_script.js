@@ -1185,7 +1185,17 @@ function renderMobileWatchDownloadSections(groups) {
             (fileDetail ? '<div class="text-xs" style="word-break:break-all;">' + esc(fileDetail) + '</div>' : '') +
             '<div class="text-xs text-muted" style="word-break:break-all;">' + esc(route) + '</div>' +
             '<div class="text-xs text-muted">' + pct + '% · ' + esc(taskCompletedLabel(task)) + '</div>' +
-            (task.can_delete ? '<button class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" style="margin-top:8px;" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>' : '') +
+            (task.error_message ? '<div class="text-xs text-danger" style="word-break:break-word;margin-top:4px;">' + esc(task.error_message) + '</div>' : '') +
+            ((task.can_retry || task.can_delete)
+              ? '<div class="mob-watch-download-actions">' +
+                  (task.can_retry
+                    ? '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-download-retry="' + task.id + '">' + esc(t('tasks.retryFailed')) + '</button>'
+                    : '') +
+                  (task.can_delete
+                    ? '<button type="button" class="mob-btn mob-btn-sm mob-btn-danger watch-touch-btn" data-mob-watch-download-delete="' + task.id + '">' + esc(t('tasks.delete')) + '</button>'
+                    : '') +
+                '</div>'
+              : '') +
           '</div>' +
         '</div>';
       });
@@ -1212,6 +1222,24 @@ function bindMobileWatchDownloadActions(body) {
         await loadMobileWatchDownloads(true);
       } catch (err) {
         alert('删除失败');
+      }
+    });
+  });
+  body.querySelectorAll('[data-mob-watch-download-retry]').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      var taskId = parseInt(btn.dataset.mobWatchDownloadRetry, 10);
+      try {
+        var resp = await fetch('/api/tasks/' + taskId + '/retry-failed', { method: 'POST' });
+        if (!resp.ok) {
+          var errData = {};
+          try { errData = await resp.json(); } catch (err) {}
+          alert(errData.detail || errData.error || errData.message || '重试失败');
+          return;
+        }
+        await loadMobileWatchDownloads(true);
+      } catch (err) {
+        alert('重试失败');
       }
     });
   });

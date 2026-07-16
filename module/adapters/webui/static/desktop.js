@@ -1486,6 +1486,9 @@ function renderWatchDownloadTaskRow(task) {
         '</div>';
     }
   }
+  const retryBtn = task.can_retry
+    ? '<button class="task-icon-btn btn-danger" data-watch-download-retry="' + task.id + '" title="' + t('tasks.retryFailed') + '">' + TASK_ICON_RETRY + '</button>'
+    : '';
   const deleteBtn = task.can_delete
     ? '<button class="task-icon-btn btn-danger" data-watch-download-delete="' + task.id + '" title="' + t('tasks.delete') + '">' + TASK_ICON_DELETE + '</button>'
     : '';
@@ -1496,7 +1499,7 @@ function renderWatchDownloadTaskRow(task) {
       '<div class="task-row-title">' + esc(title) + '</div>' +
       '<div class="task-row-route">' + esc(route) + '</div>' +
     '</div>' +
-    '<div class="task-row-actions"><div class="task-row-actions-inner">' + deleteBtn + '</div></div>' +
+    '<div class="task-row-actions"><div class="task-row-actions-inner">' + retryBtn + deleteBtn + '</div></div>' +
     progressHtml +
   '</div>';
 }
@@ -1905,21 +1908,40 @@ $('#watch-detail-body')?.addEventListener('click', async function(e) {
   }
 
   const btn = e.target.closest('[data-watch-download-delete]');
-  if (!btn) return;
+  if (btn) {
+    e.stopPropagation();
+    const taskId = parseInt(btn.dataset.watchDownloadDelete, 10);
+    if (!confirm('确定删除任务 #' + taskId + '？')) return;
+    try {
+      const resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+      if (!resp.ok) {
+        let data = {};
+        try { data = await resp.json(); } catch (err) {}
+        alert(data.detail || data.error || data.message || '删除失败');
+        return;
+      }
+      await loadWatchDownloadRecords(true);
+    } catch (err) {
+      alert('删除失败');
+    }
+    return;
+  }
+
+  const retryBtn = e.target.closest('[data-watch-download-retry]');
+  if (!retryBtn) return;
   e.stopPropagation();
-  const taskId = parseInt(btn.dataset.watchDownloadDelete, 10);
-  if (!confirm('确定删除任务 #' + taskId + '？')) return;
+  const retryTaskId = parseInt(retryBtn.dataset.watchDownloadRetry, 10);
   try {
-    const resp = await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
+    const resp = await fetch('/api/tasks/' + retryTaskId + '/retry-failed', { method: 'POST' });
     if (!resp.ok) {
       let data = {};
       try { data = await resp.json(); } catch (err) {}
-      alert(data.detail || data.error || data.message || '删除失败');
+      alert(data.detail || data.error || data.message || '重试失败');
       return;
     }
     await loadWatchDownloadRecords(true);
   } catch (err) {
-    alert('删除失败');
+    alert('重试失败');
   }
 });
 

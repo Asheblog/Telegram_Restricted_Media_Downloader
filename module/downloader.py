@@ -618,6 +618,69 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     async def process_web_transfer_task(self, task_id: int) -> None:
         return await self._ensure_transfer_runner().process_task(task_id)
 
+    async def retry_watch_inline_task(self, task_id: int) -> None:
+        store = self.transfer_store
+        if not store:
+            return
+        task = store.get_task(int(task_id))
+        if not task:
+            return
+        from module.transfer.watch_inline import is_watch_inline_task
+        if not is_watch_inline_task(task):
+            return
+        store.update_task(
+            int(task_id),
+            status=TransferStatus.RUNNING,
+            error_message='',
+            finished=False,
+            assignment_completed=True,
+        )
+        store.add_event(int(task_id), 'Watch inline download retry requested.')
+        runner = self._ensure_transfer_runner()
+        pending_items = [
+            item for item in store.list_items(int(task_id))
+            if item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
+        ]
+        if pending_items:
+            for item in pending_items:
+                try:
+                    await runner.resume_transfer_item_download(task=task, item=item)
+                except Exception as e:
+                    log.error(
+                        f'Watch inline retry failed: task={task_id}, item={item.get("id")}, reason="{e}"',
+                        exc_info=True,
+                    )
+                    store.add_event(
+                        int(task_id),
+                        f'Watch inline retry failed: {item.get("file_name") or item.get("id")}: {e}',
+                        level='error',
+                        item_id=item.get('id'),
+                    )
+            return
+        source_link = task.get('source_link')
+        target_link = task.get('target_link')
+        if not source_link or not target_link:
+            store.update_task(
+                int(task_id),
+                status=TransferStatus.FAILURE,
+                error_message='Missing source or target link for watch inline retry.',
+                finished=True,
+            )
+            return
+        upload_meta = self.build_download_upload_meta(
+            target_link=target_link,
+            source_link=source_link,
+            source_folder=archive_source_folder(fallback_link=source_link),
+        )
+        upload_meta['task_id'] = int(task_id)
+        await self.create_download_task(
+            message_ids=source_link,
+            retry=None,
+            single_link=True,
+            with_upload=upload_meta,
+            diy_download_type=[_ for _ in DownloadType()],
+        )
+
 
     def _record_watch_event(self, watch_id, origin_chat_id, message_id, target_chat_id, target_link, status, message):
         try:

@@ -34,6 +34,7 @@ class WebUITaskManager:
         archive_pikpak_item_getter=None,
         refresh_transfer_task_counts_getter=None,
         process_web_transfer_task_getter=None,
+        retry_watch_inline_task_getter=None,
         process_web_task_queue_getter=None,
         cleanup_task_files_getter=None,
         cancel_task_uploads_getter=None,
@@ -64,6 +65,7 @@ class WebUITaskManager:
         self._archive_pikpak_item = archive_pikpak_item_getter
         self._refresh_transfer_task_counts = refresh_transfer_task_counts_getter
         self._process_web_transfer_task = process_web_transfer_task_getter
+        self._retry_watch_inline_task = retry_watch_inline_task_getter
         self._process_web_task_queue = process_web_task_queue_getter
         self._cleanup_task_files = cleanup_task_files_getter
         self._cancel_task_uploads = cancel_task_uploads_getter
@@ -378,6 +380,8 @@ class WebUITaskManager:
         task = self.transfer_store.get_task(task_id)
         if not task:
             return 0
+        from module.transfer.watch_inline import is_watch_inline_task
+        watch_inline = is_watch_inline_task(task)
         failed_items = [
             item for item in self.transfer_store.list_items(task_id)
             if PikpakIntegrationManager.is_pikpak_archive_recoverable_item(item)
@@ -389,11 +393,46 @@ class WebUITaskManager:
             if not self.recover_pikpak_failed_item_before_retry(task, item)
         ]
         reset_items = self.transfer_store.retry_failed_item_ids(task_id, retry_item_ids)
+        if watch_inline:
+            empty_failure = (
+                task.get('status') == TransferStatus.FAILURE
+                and not self.transfer_store.list_items(task_id)
+            )
+            if empty_failure:
+                self.transfer_store.update_task(
+                    task_id,
+                    status=TransferStatus.RUNNING,
+                    error_message='',
+                    finished=False,
+                    assignment_completed=True,
+                )
+                self.transfer_store.add_event(task_id, 'Watch inline empty failure retry requested.')
+                self._schedule_watch_inline_retry(task_id)
+                return 1
+            if reset_items:
+                self._schedule_watch_inline_retry(task_id)
+            return reset_items
         if reset_items:
             self.loop.call_soon_threadsafe(
                 lambda tid=task_id: self._enqueue_and_process_web_task(tid)
             )
         return reset_items
+
+    def _schedule_watch_inline_retry(self, task_id: int) -> None:
+        retry_runner = self._retry_watch_inline_task
+        if not callable(retry_runner):
+            return
+
+        def launch() -> None:
+            self.loop.create_task(retry_runner(task_id))
+
+        try:
+            if asyncio.get_running_loop() is self.loop:
+                launch()
+                return
+        except RuntimeError:
+            pass
+        self.loop.call_soon_threadsafe(launch)
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
         if not PikpakIntegrationManager.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):

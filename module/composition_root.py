@@ -195,6 +195,7 @@ class TrmdCompositionRoot:
             archive_pikpak_item_getter=self.archive_pikpak_item,
             refresh_transfer_task_counts_getter=self.refresh_transfer_task_counts,
             process_web_transfer_task_getter=self.process_web_transfer_task,
+            retry_watch_inline_task_getter=self.retry_watch_inline_task,
             process_web_task_queue_getter=self.process_web_task_queue,
             cleanup_task_files_getter=lambda task_id: (
                 self._ensure_media_manager().cleanup_task_files(task_id)

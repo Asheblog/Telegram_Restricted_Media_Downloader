@@ -1457,6 +1457,16 @@
     min-height: 44px;
     min-width: 44px;
   }
+  .mob-watch-download-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .mob-watch-download-actions .mob-btn {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+  }
   .mob-btn svg {
     width: 18px; height: 18px;
     flex-shrink: 0;
