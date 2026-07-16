@@ -41,7 +41,7 @@ const i18n = {
     'new.optional': '可选',
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
-    'new.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'new.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'mediaOverride.label': '媒体类型',
@@ -60,7 +60,7 @@ const i18n = {
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
-    'watches.resolveDeepLinkHint': '勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。',
+    'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -417,6 +417,7 @@ const i18n = {
     'error.range_ids_required': '起始 ID 和结束 ID 必须同时填写。',
     'error.range_end_before_start': '结束 ID 必须大于或等于起始 ID。',
     'error.invalid_payload': '请求内容无效。',
+    'error.deep_link_whitelist_required': '已开启深链取片，请先在系统设置填写资源 bot 白名单。',
   },
   en: {
     'app.subtitle': 'Transfer Console',
@@ -457,7 +458,7 @@ const i18n = {
     'new.optional': 'Optional',
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
-    'new.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'new.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'mediaOverride.label': 'Media types',
@@ -476,7 +477,7 @@ const i18n = {
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
-    'watches.resolveDeepLinkHint': 'When checked, fetch media from whitelisted bot ?start= links before transfer. Configure the whitelist in Settings first.',
+    'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -833,6 +834,7 @@ const i18n = {
     'error.range_ids_required': 'Start and end IDs required together.',
     'error.range_end_before_start': 'End ID must be >= Start ID.',
     'error.invalid_payload': 'Invalid payload.',
+    'error.deep_link_whitelist_required': 'Deep link resolve is on; add resource bot whitelist in Settings first.',
   }
 };
 

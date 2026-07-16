@@ -434,6 +434,16 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('global.forward.types', combined)
         self.assertNotIn('settings.downloadTypes ||', combined)
 
+    def test_mobile_form_errors_use_translate_api_error_and_toast(self):
+        """API 错误体是 {error_code, error}，手机端不得只读 e.message。"""
+        self.assertIn('function showMobFormError', WEB_UI_MOBILE_HTML)
+        self.assertIn("translateApiError(err, fallbackKey || 'form.createFailed')", WEB_UI_MOBILE_HTML)
+        self.assertIn('showToast(msg, 4500)', WEB_UI_MOBILE_HTML)
+        self.assertIn("showMobFormError(notice, e, 'form.createFailed')", WEB_UI_MOBILE_HTML)
+        self.assertNotIn("创建失败: ' + (e.message || '')", WEB_UI_MOBILE_HTML)
+        self.assertIn("'error.deep_link_whitelist_required'", WEB_UI_MOBILE_HTML)
+        self.assertIn('id="mob-form-notice" class="mob-form-notice hidden"', WEB_UI_MOBILE_HTML)
+
 
 if __name__ == '__main__':
     unittest.main()

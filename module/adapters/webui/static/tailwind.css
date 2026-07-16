@@ -1983,7 +1983,9 @@
     z-index: 400;
     opacity: 0;
     pointer-events: none;
-    white-space: nowrap;
+    white-space: normal;
+    max-width: 90vw;
+    text-align: center;
     transition: opacity .25s;
   }
   .mob-toast.show {
@@ -2100,6 +2102,36 @@
     color: var(--color-muted);
     padding: 32px 16px;
     @apply text-sm leading-normal;
+  }
+
+  .mob-form-notice {
+    @apply text-sm leading-normal;
+    text-align: left;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 0;
+  }
+  .mob-form-notice.hidden { display: none; }
+  .mob-form-notice.is-error {
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  .mob-form-notice.is-success {
+    color: var(--color-success);
+    background: var(--color-success-bg);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+  .mob-form-hint {
+    @apply text-xs leading-normal;
+    margin: 0;
+  }
+  .mob-form-hint--warn {
+    color: #92400e;
+    background: var(--color-warning-bg);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 8px;
+    padding: 8px 10px;
   }
 
   /* --- Section Header --- */

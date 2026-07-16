@@ -430,9 +430,37 @@ function showToast(message, duration) {
   var el = document.getElementById('mob-toast');
   if (!el) return;
   el.textContent = message;
+  el.style.whiteSpace = 'normal';
+  el.style.maxWidth = '90vw';
+  el.style.textAlign = 'center';
   el.classList.add('show');
   clearTimeout(el._timeout);
   el._timeout = setTimeout(function() { el.classList.remove('show'); }, duration || 2000);
+}
+
+function showMobFormError(noticeEl, err, fallbackKey) {
+  var msg = typeof translateApiError === 'function'
+    ? translateApiError(err, fallbackKey || 'form.createFailed')
+    : ((err && (err.error || err.message)) || '请求失败');
+  if (noticeEl) {
+    noticeEl.classList.remove('hidden');
+    noticeEl.classList.add('is-error');
+    noticeEl.classList.remove('is-success');
+    noticeEl.textContent = msg;
+    noticeEl.style.color = '';
+  }
+  showToast(msg, 4500);
+  return msg;
+}
+
+function showMobFormSuccess(noticeEl, message) {
+  if (noticeEl) {
+    noticeEl.classList.remove('hidden');
+    noticeEl.classList.add('is-success');
+    noticeEl.classList.remove('is-error');
+    noticeEl.textContent = message;
+    noticeEl.style.color = '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -872,14 +900,14 @@ function openMobileWatchEditSheet(watchId) {
       if (!resp.ok) {
         var data = {};
         try { data = await resp.json(); } catch (e) {}
-        alert(data.detail || data.error || data.message || t('form.requestFailed'));
+        showMobFormError(null, data, 'form.requestFailed');
         return;
       }
       closeSheet();
       await loadMobileWatches();
       if (typeof loadWatches === 'function') loadWatches();
     } catch (e) {
-      alert(t('form.requestFailed'));
+      showMobFormError(null, e, 'form.requestFailed');
     }
   });
 }
@@ -2035,7 +2063,7 @@ async function loadMediaMobile() {
       var notice = document.getElementById('mob-form-notice');
       try {
         await postJson('/api/tasks', payload);
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        showMobFormSuccess(notice, t('form.createSuccess'));
         transferForm.reset();
         setMediaTypesPicker(transferForm.querySelector('[data-media-types-picker]'), null);
         await loadMobileTasks();
@@ -2043,7 +2071,7 @@ async function loadMediaMobile() {
         setTimeout(function() { loadMobileTasks(); }, 800);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 1000);
       } catch (e) {
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+        showMobFormError(notice, e, 'form.createFailed');
       }
     });
   }
@@ -2068,12 +2096,12 @@ async function loadMediaMobile() {
       var notice = document.getElementById('mob-watch-notice');
       try {
         await postJson('/api/watches', payload);
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        showMobFormSuccess(notice, t('form.createSuccess'));
         watchForm.reset();
         setMediaTypesPicker(watchForm.querySelector('[data-media-types-picker]'), null);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+        showMobFormError(notice, e, 'form.createFailed');
       }
     });
   }
@@ -2095,11 +2123,11 @@ async function loadMediaMobile() {
       var notice = document.getElementById('mob-channel-notice');
       try {
         await postJson('/api/channel-downloads', payload);
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        showMobFormSuccess(notice, t('form.createSuccess'));
         channelForm.reset();
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileOperations(); }, 1000);
       } catch (e) {
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+        showMobFormError(notice, e, 'form.createFailed');
       }
     });
   }
@@ -2114,11 +2142,11 @@ async function loadMediaMobile() {
       var notice = document.getElementById('mob-upload-notice');
       try {
         await postJson('/api/uploads', payload);
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建成功'; notice.style.color = 'var(--color-success)'; }
+        showMobFormSuccess(notice, t('form.createSuccess'));
         uploadForm.reset();
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileOperations(); }, 1000);
       } catch (e) {
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '创建失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+        showMobFormError(notice, e, 'form.createFailed');
       }
     });
   }
@@ -2185,10 +2213,10 @@ async function loadMediaMobile() {
 
       try {
         await postJson('/api/settings', payload, 'PATCH');
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存成功'; notice.style.color = 'var(--color-success)'; }
+        showMobFormSuccess(notice, t('settings.saved'));
         setTimeout(function() { if (notice) notice.classList.add('hidden'); }, 2000);
       } catch (e) {
-        if (notice) { notice.classList.remove('hidden'); notice.textContent = '保存失败: ' + (e.message || ''); notice.style.color = 'var(--color-danger)'; }
+        showMobFormError(notice, e, 'form.requestFailed');
       }
     });
   }
@@ -2219,9 +2247,7 @@ async function loadMediaMobile() {
       try {
         var result = await importForwardWatchBackupFile(file);
         if (notice) {
-          notice.classList.remove('hidden');
-          notice.textContent = formatForwardWatchImportResult(result);
-          notice.style.color = 'var(--color-success)';
+          showMobFormSuccess(notice, formatForwardWatchImportResult(result));
         }
         if (typeof loadMobileWatches === 'function') loadMobileWatches();
       } catch (e) {
@@ -2229,11 +2255,7 @@ async function loadMediaMobile() {
           redirectToLoginPage();
           return;
         }
-        if (notice) {
-          notice.classList.remove('hidden');
-          notice.textContent = translateApiError(e, 'settings.forwardWatchImportFailed');
-          notice.style.color = 'var(--color-danger)';
-        }
+        showMobFormError(notice, e, 'settings.forwardWatchImportFailed');
       }
     });
   }

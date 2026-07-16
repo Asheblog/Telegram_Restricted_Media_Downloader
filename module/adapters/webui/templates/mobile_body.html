@@ -234,8 +234,8 @@
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
           </div>
-          <p class="text-xs text-muted" data-i18n="new.resolveDeepLinkHint">
-            勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+          <p class="mob-form-hint mob-form-hint--warn" data-i18n="new.resolveDeepLinkHint">
+            勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
           <div class="media-types-picker" data-media-types-picker>
             <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
@@ -253,7 +253,7 @@
             <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-transfer-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="new.create">创建任务</button>
-          <p class="mob-empty hidden" id="mob-form-notice"></p>
+          <p id="mob-form-notice" class="mob-form-notice hidden"></p>
         </form>
       </div>
     </div>
@@ -294,8 +294,8 @@
                 <span data-i18n="watches.resolveDeepLink">深链取片</span>
               </label>
             </div>
-            <p class="text-xs text-muted" data-i18n="watches.resolveDeepLinkHint">
-              勾选后，对白名单 bot 的 ?start= 链接取片再转存；需先在系统设置填写白名单。
+            <p class="mob-form-hint mob-form-hint--warn" data-i18n="watches.resolveDeepLinkHint">
+              勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
             </p>
           </div>
           <div class="media-types-picker" data-media-types-picker>
@@ -314,7 +314,7 @@
             <div class="media-types-picker__grid hidden" data-media-types-grid id="mob-watch-media-types-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin-top:4px;"></div>
           </div>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="watches.createDownload">新增监听</button>
-          <p class="mob-empty hidden" id="mob-watch-notice"></p>
+          <p id="mob-watch-notice" class="mob-form-notice hidden"></p>
         </form>
       </div>
     </div>
@@ -359,7 +359,7 @@
             <span data-i18n="dl.includeComment">包含评论区</span>
           </label>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="dl.create">创建下载任务</button>
-          <p class="mob-empty hidden" id="mob-channel-notice"></p>
+          <p id="mob-channel-notice" class="mob-form-notice hidden"></p>
         </form>
       </div>
     </div>
@@ -380,7 +380,7 @@
             <span data-i18n="dl.recursive">递归上传文件夹</span>
           </label>
           <button type="submit" class="mob-btn" style="width:100%;" data-i18n="dl.createUpload">创建上传任务</button>
-          <p class="mob-empty hidden" id="mob-upload-notice"></p>
+          <p id="mob-upload-notice" class="mob-form-notice hidden"></p>
         </form>
       </div>
     </div>
@@ -480,7 +480,7 @@
               <input type="file" id="mob-forward-watch-import-input" accept=".json,application/json" hidden>
             </label>
           </div>
-          <p class="mob-empty hidden" id="mob-forward-watch-import-notice" style="margin-top:8px;"></p>
+          <p id="mob-forward-watch-import-notice" class="mob-form-notice hidden" style="margin-top:8px;"></p>
         </div>
       </div>
       <div class="mob-collapse" id="collapse-settings-exports">
@@ -488,7 +488,7 @@
         <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>
       </div>
       <button id="mob-save-settings" class="mob-btn" style="width:100%;margin-top:4px;" data-i18n="settings.save">保存设置</button>
-      <p class="mob-empty hidden" id="mob-settings-notice"></p>
+      <p id="mob-settings-notice" class="mob-form-notice hidden"></p>
     </div>
   </div>
 </div>
