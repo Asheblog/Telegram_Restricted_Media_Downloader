@@ -26,6 +26,18 @@ GENERIC_FILE_NAME_STEMS = frozenset({
     'video', 'photo', 'image', 'audio', 'document', 'file', 'none', 'unknown', 'animation',
 })
 LEADING_ID_IN_STEM = re.compile(r'^\d+[\s._-]+')
+HASHTAG_TOKEN = re.compile(r'#\S+')
+DATE_ONLY_LINE = re.compile(
+    r'^('
+    r'\d{1,2}月\d{1,2}日(\(\d+\))?'
+    r'|\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?'
+    r'|\d{1,2}[-/.]\d{1,2}([-/]\d{2,4})?'
+    r')$'
+)
+NUMBERED_TITLE_LINE = re.compile(r'^\d+[\.、．]\s*\S')
+BOILERPLATE_TITLE_LINES = frozenset({
+    '帖子内容', '转发内容', '消息内容', '正文', '内容', 'title', 'caption',
+})
 
 
 def source_folder_from_link(link: Optional[str]) -> Optional[str]:
@@ -115,6 +127,82 @@ def _first_non_empty_line(text: Optional[str]) -> Optional[str]:
     return None
 
 
+def _is_hashtag_only_line(line: str) -> bool:
+    remainder = HASHTAG_TOKEN.sub('', line)
+    remainder = re.sub(r'[\s|｜,/，、\-—_]+', '', remainder)
+    return not remainder
+
+
+def _is_date_only_line(line: str) -> bool:
+    compact = re.sub(r'\s+', '', line)
+    return bool(DATE_ONLY_LINE.match(compact))
+
+
+def _is_boilerplate_title_line(line: str) -> bool:
+    return line.casefold() in BOILERPLATE_TITLE_LINES
+
+
+def score_title_line(line: Optional[str]) -> float:
+    """Higher is better. Non-positive means the line should not win on its own."""
+    if not isinstance(line, str):
+        return 0.0
+    text = re.sub(r'\s+', ' ', line).strip()
+    if not text:
+        return 0.0
+    if _is_boilerplate_title_line(text):
+        return 0.0
+    if _is_date_only_line(text):
+        return 0.0
+    if _is_hashtag_only_line(text):
+        return 0.0
+    score = float(min(len(text), 80))
+    if '【' in text or '】' in text:
+        score += 50.0
+    if NUMBERED_TITLE_LINE.match(text):
+        score += 40.0
+    hashtag_count = len(HASHTAG_TOKEN.findall(text))
+    if hashtag_count:
+        plain = HASHTAG_TOKEN.sub('', text).strip()
+        if len(plain) < 8:
+            score *= 0.25
+        else:
+            score += 5.0
+    cjk_count = len(re.findall(r'[\u4e00-\u9fff]', text))
+    if cjk_count:
+        score += min(cjk_count, 40) * 0.5
+    return score
+
+
+def pick_best_title_line(text: Optional[str]) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
+    candidates = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        score = score_title_line(stripped)
+        if score > 0:
+            candidates.append((score, stripped))
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
+    return _first_non_empty_line(text)
+
+
+def pick_best_message_title(messages) -> Optional[str]:
+    best_title = None
+    best_score = 0.0
+    for message in messages or []:
+        title = extract_message_body_title(message, allow_inherited=True)
+        if not title:
+            continue
+        score = score_title_line(title)
+        if score > best_score:
+            best_score = score
+            best_title = title
+    return best_title
+
+
 def _stem_from_media_file_name(file_name: Optional[str]) -> Optional[str]:
     if not isinstance(file_name, str):
         return None
@@ -157,22 +245,47 @@ def title_from_media_file_name(message) -> Optional[str]:
     return None
 
 
-def extract_message_body_title(message) -> Optional[str]:
-    """Raw body title: inherited/caption/text/web_page, else media file_name stem."""
+def extract_message_body_title(message, *, allow_inherited: bool = True) -> Optional[str]:
+    """Raw body title: inherited/caption/text/web_page, else media file_name stem.
+
+    Caption/text lines are scored so hashtag-only / date-only / boilerplate lines lose to
+    real titles such as ``【...】`` or ``27. ...``.
+    """
     if message is None:
         return None
-    inherited_title = getattr(message, '_trmd_source_title', None)
-    if isinstance(inherited_title, str) and inherited_title.strip():
-        return inherited_title.strip()
+    if allow_inherited:
+        inherited_title = getattr(message, '_trmd_source_title', None)
+        if isinstance(inherited_title, str) and inherited_title.strip():
+            inherited = inherited_title.strip()
+            # Weak inherited titles (tags/dates) must not block a better caption on this message.
+            if score_title_line(inherited) > 0:
+                caption_title = pick_best_title_line(getattr(message, 'caption', None))
+                text_title = pick_best_title_line(getattr(message, 'text', None))
+                best_local = None
+                best_score = score_title_line(inherited)
+                for candidate in (caption_title, text_title):
+                    if not candidate:
+                        continue
+                    score = score_title_line(candidate)
+                    if score > best_score:
+                        best_score = score
+                        best_local = candidate
+                return best_local or inherited
+    candidates = []
     for attr in ('caption', 'text'):
-        title = _first_non_empty_line(getattr(message, attr, None))
+        title = pick_best_title_line(getattr(message, attr, None))
         if title:
-            return title
+            candidates.append(title)
     web_page = getattr(message, 'web_page', None)
     title = getattr(web_page, 'title', None)
     if isinstance(title, str) and title.strip():
-        return title.strip()
-    return title_from_media_file_name(message)
+        candidates.append(title.strip())
+    file_title = title_from_media_file_name(message)
+    if file_title:
+        candidates.append(file_title)
+    if not candidates:
+        return None
+    return max(candidates, key=score_title_line)
 
 
 def post_title_from_message(message) -> Optional[str]:
@@ -281,11 +394,7 @@ def resolve_forward_archive_source_folder(
 ) -> str:
     """Prefer an explicit Source Post Archive Path; enrich ID-only paths with album caption."""
     message_list = list(messages or [])
-    title = None
-    for message in message_list:
-        title = post_title_from_message(message)
-        if title:
-            break
+    title = pick_best_message_title(message_list)
     folder_message = message_list[0] if message_list else None
     built = archive_source_folder(
         folder_message,
@@ -311,6 +420,21 @@ def resolve_forward_archive_source_folder(
                 return join_archive_source_folder(channel, post_segment)
             return channel
         return built
+    if title and archive_folder_has_post_title(source_folder):
+        # Replace weak titles already baked into an ID-only-enriched path.
+        channel = channel_folder_from_archive_path(source_folder)
+        parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+        if channel and len(parts) >= 2 and ' - ' in parts[-1]:
+            existing_title = parts[-1].split(' - ', 1)[1].strip()
+            if score_title_line(title) > score_title_line(existing_title):
+                msg_id = post_message_id
+                if msg_id is None:
+                    head = parts[-1].split(' - ', 1)[0].strip()
+                    if head:
+                        msg_id = head
+                post_segment = post_folder_segment(msg_id, title)
+                if post_segment:
+                    return join_archive_source_folder(channel, post_segment)
     return source_folder
 
 

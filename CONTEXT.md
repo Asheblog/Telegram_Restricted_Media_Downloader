@@ -134,7 +134,7 @@ _Avoid_: Preset, mode
 **Source Channel Folder** — 来源频道对应的顶层文件夹名（归档路径第一段）；频道统计与来源身份按此聚合。
 _Avoid_: Target folder, chat title cache, full archive path
 
-**Source Post Archive Path** — 相对归档路径 `{Source Channel Folder}/{message_id} - {正文摘要}`（无摘要则仅 message_id）。正文摘要优先取 caption/text/网页标题，否则取媒体原始 `file_name` 去扩展名；目录段与可控文件名统一为 `{message_id} - {正文}`。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。
+**Source Post Archive Path** — 相对归档路径 `{Source Channel Folder}/{message_id} - {正文摘要}`（无摘要则仅 message_id）。正文摘要优先取 caption/text 中得分最高的一行（跳过纯标签、纯日期、`帖子内容` 等套话；偏好 `【标题】` / `27. ...` 等实标题），否则取媒体原始 `file_name` 去扩展名；目录段与可控文件名统一为 `{message_id} - {正文}`。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。
 _Avoid_: Discussion group folder, bot chat folder, flat channel dump
 
 **Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。

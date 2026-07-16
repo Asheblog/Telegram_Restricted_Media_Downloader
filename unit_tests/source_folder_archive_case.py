@@ -48,6 +48,107 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder(message),
         )
 
+    def test_archive_prefers_bracket_title_over_leading_hashtags(self):
+        from module.source_folders import archive_source_folder, extract_message_body_title
+
+        caption = (
+            '#示例 #清纯 #姐姐 #舔逼\n'
+            '\n'
+            '【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教\n'
+            '#白皮肤 #灰丝加高跟 #露出\n'
+            '作者：@会喷水的辛姐姐\n'
+        )
+        message = SimpleNamespace(
+            id=73466,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='5月13日.mp4', file_id='v1', mime_type='video/mp4'),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73466',
+        )
+
+        self.assertEqual(
+            '【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            extract_message_body_title(message),
+        )
+        self.assertEqual(
+            'chengdudiyi8/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            archive_source_folder(message),
+        )
+
+    def test_archive_skips_date_only_and_post_content_label(self):
+        from module.source_folders import extract_message_body_title
+
+        message = SimpleNamespace(
+            id=73465,
+            caption=(
+                '帖子内容\n'
+                '27. 我姐喝多了，超级狂野，边回答我妈边给我吃鸡巴\n'
+                '#示例社区 #乱伦\n'
+            ),
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='5月13日(1).mp4', file_id='v1', mime_type='video/mp4'),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+        )
+
+        self.assertEqual(
+            '27. 我姐喝多了，超级狂野，边回答我妈边给我吃鸡巴',
+            extract_message_body_title(message),
+        )
+
+    def test_media_group_picks_best_title_not_first_weak_caption(self):
+        from module.source_folders import resolve_forward_archive_source_folder
+
+        weak = SimpleNamespace(
+            id=73465,
+            caption='5月13日',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='5月13日.mp4', file_id='v1', mime_type='video/mp4'),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73465',
+        )
+        strong = SimpleNamespace(
+            id=73466,
+            caption='#示例 #清纯\n\n【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插\n',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='clip.mp4', file_id='v2', mime_type='video/mp4'),
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/73466',
+        )
+
+        self.assertEqual(
+            'chengdudiyi8/73465 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插',
+            resolve_forward_archive_source_folder(
+                source_folder='chengdudiyi8/73465',
+                messages=[weak, strong],
+                post_message_id=73465,
+                fallback_link='https://t.me/chengdudiyi8/73465',
+            ),
+        )
+
     def test_archive_source_folder_falls_back_to_media_file_name_stem(self):
         from module.source_folders import archive_source_folder, post_title_from_message
 

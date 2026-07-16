@@ -2184,19 +2184,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
     def inherit_media_group_title(messages: Union[list, None]) -> None:
         if not isinstance(messages, list):
             return
-        title = None
-        for message in messages:
-            title = TelegramRestrictedMediaDownloader.get_download_message_title(message)
-            if title:
-                break
+        from module.source_folders import pick_best_message_title
+
+        title = pick_best_message_title(messages)
         if not title:
             return
         for message in messages:
-            if not TelegramRestrictedMediaDownloader.get_download_message_title(message):
-                try:
-                    setattr(message, '_trmd_source_title', title)
-                except Exception:
-                    pass
+            try:
+                setattr(message, '_trmd_source_title', title)
+            except Exception:
+                pass
 
     async def __add_task(
             self,
