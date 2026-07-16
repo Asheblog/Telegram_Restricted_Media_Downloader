@@ -383,12 +383,23 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('partitionWatchesByComment', WEB_UI_MOBILE_HTML)
         self.assertIn('mob-watch-list-section', WEB_UI_MOBILE_HTML)
 
-    def test_watches_table_cells_preserve_native_table_layout(self):
-        # td 必须保留 table-cell；改成 flex 会让所有字段挤进第一列。
-        # 行高用 tr{height:1px} + cell min-height:100% 做垂直居中，避免再给 td 设 display:flex。
+    def test_watches_table_alignment_matches_headers(self):
+        # 水平对齐契约：文本列 th/td 左对齐，指标/操作列居中。
+        # td 必须保留 table-cell；禁止再用 flex/height:1px 假垂直居中（会破坏列宽或掩盖表头错位）。
+        self.assertIn('class="data-table watches-table"', WEB_UI_HTML)
+        self.assertIn('watch-col-text', WEB_UI_HTML)
+        self.assertIn('watch-col-metric', WEB_UI_HTML)
         self.assertRegex(
             WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row\{[^}]*height:1px',
+            r'\.data-table\.watches-table thead th\.watch-col-text,'
+            r'\.data-table\.watches-table tbody tr\.watch-row>td\.watch-col-text\{[^}]*text-align:left',
+        )
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'\.data-table\.watches-table thead th\.watch-col-metric,'
+            r'\.data-table\.watches-table tbody tr\.watch-row>td\.watch-col-metric,'
+            r'\.data-table\.watches-table thead th\.watch-col-actions,'
+            r'\.data-table\.watches-table tbody tr\.watch-row>td\.watch-col-actions\{[^}]*text-align:center',
         )
         self.assertRegex(
             WEB_UI_HTML,
@@ -398,16 +409,12 @@ class WebUiAssetsCase(unittest.TestCase):
             WEB_UI_HTML,
             r'\.data-table tbody tr\.watch-row>td\{[^}]*display:flex',
         )
-        self.assertRegex(
+        self.assertNotRegex(
             WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*align-items:center',
+            r'\.data-table tbody tr\.watch-row\{[^}]*height:1px',
         )
-        self.assertRegex(
-            WEB_UI_HTML,
-            r'\.data-table tbody tr\.watch-row \.watch-cell\{[^}]*min-height:100%',
-        )
-        self.assertIn('class="watch-cell watch-cell--start"', WEB_UI_HTML)
-        self.assertIn('class="watch-cell"', WEB_UI_HTML)
+        self.assertIn('class="watch-col-text"', WEB_UI_HTML)
+        self.assertIn('class="watch-col-metric', WEB_UI_HTML)
 
     def test_watch_history_supports_today_range(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML

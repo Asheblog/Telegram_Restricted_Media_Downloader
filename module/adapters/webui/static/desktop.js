@@ -1100,20 +1100,18 @@ function buildWatchRowHtml(w) {
     ? '<button type="button" class="watch-count-btn watch-count-btn--primary" data-watch-detail="' + esc(w.id) + '" data-watch-detail-mode="history" data-watch-detail-today="0" title="' + esc(historyLabel) + '" aria-label="' + esc(t('watches.totalEvents') + ': ' + eventCount) + '">' + esc(String(eventCount)) + '</button>'
     : esc(String(eventCount));
   return '<tr class="watch-row" data-watch-id="' + esc(w.id) + '">' +
-    '<td><div class="watch-cell watch-cell--start"><span class="badge ' + typeCls + '">' + typeLabel + '</span></div></td>' +
-    '<td class="font-mono text-left max-w-[200px]" title="' + esc(source) + '"><div class="watch-cell watch-cell--start"><span class="watch-cell-text">' + esc(sourceShort) + '</span></div></td>' +
-    '<td class="font-mono text-left max-w-[160px]" title="' + esc(target) + '"><div class="watch-cell watch-cell--start"><span class="watch-cell-text">' + esc(targetShort) + '</span></div></td>' +
-    '<td><div class="watch-cell"><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></div></td>' +
-    '<td class="font-semibold tabular-nums"><div class="watch-cell">' + queueCell + '</div></td>' +
-    '<td class="font-semibold tabular-nums"><div class="watch-cell">' + completedDownloadCell + '</div></td>' +
-    '<td class="font-semibold tabular-nums"><div class="watch-cell">' + todayCell + '</div></td>' +
-    '<td class="font-semibold tabular-nums text-primary"><div class="watch-cell">' + totalCell + '</div></td>' +
+    '<td class="watch-col-text"><span class="badge ' + typeCls + '">' + typeLabel + '</span></td>' +
+    '<td class="watch-col-text font-mono max-w-[200px]" title="' + esc(source) + '"><span class="watch-cell-text">' + esc(sourceShort) + '</span></td>' +
+    '<td class="watch-col-text font-mono max-w-[160px]" title="' + esc(target) + '"><span class="watch-cell-text">' + esc(targetShort) + '</span></td>' +
+    '<td class="watch-col-metric"><span class="watch-status-cell"><span class="watch-status-dot ' + statusCls + '" aria-hidden="true"></span>' + esc(statusLabel) + '</span></td>' +
+    '<td class="watch-col-metric font-semibold tabular-nums">' + queueCell + '</td>' +
+    '<td class="watch-col-metric font-semibold tabular-nums">' + completedDownloadCell + '</td>' +
+    '<td class="watch-col-metric font-semibold tabular-nums">' + todayCell + '</td>' +
+    '<td class="watch-col-metric font-semibold tabular-nums text-primary">' + totalCell + '</td>' +
     '<td class="watch-col-actions">' +
-      '<div class="watch-cell">' +
-        '<div class="table-actions">' +
-          deferredBadge +
-          '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
-        '</div>' +
+      '<div class="table-actions">' +
+        deferredBadge +
+        '<button class="btn btn-sm btn-icon" data-watch-menu="' + esc(w.id) + '" aria-haspopup="menu" aria-label="' + esc(t('watches.moreActions')) + '">⋯</button>' +
       '</div>' +
     '</td>' +
     '</tr>';

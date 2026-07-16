@@ -1070,35 +1070,27 @@
     background: var(--color-surface-hover);
   }
 
-  /* height:1px 让行内百分比高度相对最终行高解析；td 仍用 table-cell 保列宽。 */
-  .data-table tbody tr.watch-row {
-    height: 1px;
-  }
-
-  /* td 必须保留原生 table-cell 布局，否则浏览器无法按表头分配列宽。 */
-  .data-table tbody tr.watch-row > td {
-    display: table-cell;
-    vertical-align: middle;
-    height: 100%;
-    line-height: 1;
-  }
-
-  .data-table tbody tr.watch-row > td:first-child {
+  /*
+   * 活跃监听表对齐契约（表头必须与单元格一致）：
+   * - 文本列左对齐；状态/数字/操作列居中。
+   * - td 保持 table-cell + vertical-align:middle；禁止 display:flex / height:1px 假居中。
+   */
+  .data-table.watches-table thead th.watch-col-text,
+  .data-table.watches-table tbody tr.watch-row > td.watch-col-text {
     text-align: left;
   }
 
-  .data-table tbody tr.watch-row .watch-cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    width: 100%;
-    min-height: 100%;
-    min-width: 0;
+  .data-table.watches-table thead th.watch-col-metric,
+  .data-table.watches-table tbody tr.watch-row > td.watch-col-metric,
+  .data-table.watches-table thead th.watch-col-actions,
+  .data-table.watches-table tbody tr.watch-row > td.watch-col-actions {
+    text-align: center;
   }
 
-  .data-table tbody tr.watch-row .watch-cell--start {
-    justify-content: flex-start;
+  .data-table tbody tr.watch-row > td {
+    display: table-cell;
+    vertical-align: middle;
+    line-height: 1.25;
   }
 
   .watch-cell-text {
