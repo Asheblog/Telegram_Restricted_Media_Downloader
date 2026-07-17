@@ -48,6 +48,31 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder(message),
         )
 
+    def test_archive_source_folder_limits_each_segment_for_linux_filesystems(self):
+        from module.source_folders import archive_source_folder, join_local_source_folder
+
+        message = SimpleNamespace(
+            id=270,
+            caption='很长的中文标题' * 30,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            chat=SimpleNamespace(id=-1001, username='long_titles', title='x'),
+            link='https://t.me/long_titles/270',
+        )
+
+        source_folder = archive_source_folder(message)
+        post_segment = source_folder.split('/')[-1]
+
+        self.assertTrue(post_segment.startswith('270 - '))
+        self.assertLessEqual(len(post_segment.encode('utf-8')), 230)
+
+        legacy_source_folder = f'long_titles/270 - {"很长的中文标题" * 30}'
+        local_path = join_local_source_folder('downloads', legacy_source_folder)
+        self.assertTrue(os.path.basename(local_path).startswith('270 - '))
+        self.assertLessEqual(len(os.path.basename(local_path).encode('utf-8')), 230)
+
     def test_archive_prefers_bracket_title_over_leading_hashtags(self):
         from module.source_folders import archive_source_folder, extract_message_body_title
 

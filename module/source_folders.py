@@ -16,7 +16,8 @@ WINDOWS_RESERVED_NAMES = {
 
 POST_TITLE_CHAR_LIMIT = 120
 POST_TITLE_BYTE_LIMIT = 360
-POST_FOLDER_SEGMENT_BYTE_LIMIT = 400
+# Keep every local/archive path component below common Linux NAME_MAX (255 bytes).
+POST_FOLDER_SEGMENT_BYTE_LIMIT = 230
 
 MEDIA_FILE_NAME_ATTRS = (
     'video', 'document', 'animation', 'audio', 'voice', 'video_note', 'photo'
@@ -487,7 +488,11 @@ def resolve_forward_archive_source_folder(
 def join_local_source_folder(base_directory: str, source_folder: Optional[str]) -> str:
     if not source_folder:
         return base_directory
-    parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+    parts = []
+    for part in str(source_folder).replace('\\', '/').split('/'):
+        cleaned = sanitize_source_folder(part, limit=POST_FOLDER_SEGMENT_BYTE_LIMIT)
+        if cleaned:
+            parts.append(cleaned)
     if not parts:
         return base_directory
     return os.path.join(base_directory, *parts)
