@@ -912,7 +912,12 @@ class WebOperationsMixin:
             return []
         return self.transfer_store.list_cleanup_logs()
 
-    def _run_telegram_coro(self, coro, timeout: float = 300):
+    def _run_telegram_coro(self, coro, timeout: float | None = 300):
+        """Run a coroutine on the Telegram loop from a worker thread.
+
+        ``timeout=None`` waits indefinitely — required for long FloodWait-heavy
+        archive author scans.
+        """
         loop = getattr(self, 'loop', None)
         if loop is None:
             raise RuntimeError('Telegram event loop is unavailable.')

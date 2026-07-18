@@ -15,7 +15,7 @@ from module.source_folders import (
 )
 
 
-MESSAGE_FETCH_BATCH = 80
+MESSAGE_FETCH_BATCH = 40
 ProgressCallback = Optional[Callable[..., None]]
 
 
@@ -275,46 +275,100 @@ class ArchiveAuthorReorganizeService:
         if self.telegram_client is None:
             return {mid: None for mid in message_ids}
 
-        async def _fetch():
-            authors = {mid: None for mid in message_ids}
-            client = self.telegram_client
-            total = len(message_ids)
-            done = 0
-            for offset in range(0, len(message_ids), MESSAGE_FETCH_BATCH):
-                batch = message_ids[offset:offset + MESSAGE_FETCH_BATCH]
-                try:
-                    messages = await client.get_messages(channel_folder, batch)
-                except Exception:
-                    # Fall back to one-by-one so a single bad id doesn't abort the scan.
-                    messages = []
-                    for mid in batch:
-                        try:
-                            messages.append(await client.get_messages(channel_folder, mid))
-                        except Exception:
-                            messages.append(None)
-                if not isinstance(messages, list):
-                    messages = [messages]
-                for message in messages:
-                    if message is None:
-                        continue
-                    mid = getattr(message, 'id', None)
-                    if mid is None:
-                        continue
-                    authors[int(mid)] = post_author_from_message(message)
-                done = min(offset + len(batch), total)
-                self._report(
-                    on_progress,
-                    phase='resolving',
-                    current=done,
-                    total=total,
-                    message=f'正在拉取 Telegram 主贴作者 {done}/{total}…',
-                )
-            return authors
+        import asyncio
 
-        if self.run_coro is not None:
-            return self.run_coro(_fetch())
-        # Sync callers without an event loop helper cannot await Telegram.
-        return {mid: None for mid in message_ids}
+        flood_types: tuple = ()
+        try:
+            from pyrogram.errors import FloodWait, FloodPremiumWait
+            flood_types = (FloodWait, FloodPremiumWait)
+        except Exception:  # pragma: no cover - stub environments
+            flood_types = ()
+
+        authors = {mid: None for mid in message_ids}
+        client = self.telegram_client
+        total = len(message_ids)
+
+        async def _fetch_batch(batch: list[int], *, progress_current: int):
+            while True:
+                try:
+                    return await client.get_messages(channel_folder, batch)
+                except Exception as error:
+                    if not flood_types or not isinstance(error, flood_types):
+                        raise
+                    wait_seconds = int(
+                        getattr(error, 'value', None)
+                        or getattr(error, 'x', None)
+                        or 30
+                    )
+                    wait_seconds = max(wait_seconds, 1)
+                    self._report(
+                        on_progress,
+                        phase='resolving',
+                        current=progress_current,
+                        total=total,
+                        message=f'Telegram 限流，等待 {wait_seconds}s 后继续（{progress_current}/{total}）…',
+                    )
+                    await asyncio.sleep(wait_seconds + 1)
+
+        for offset in range(0, len(message_ids), MESSAGE_FETCH_BATCH):
+            batch = message_ids[offset:offset + MESSAGE_FETCH_BATCH]
+            self._report(
+                on_progress,
+                phase='resolving',
+                current=offset,
+                total=total,
+                message=f'正在拉取 Telegram 主贴作者 {offset}/{total}…',
+            )
+            try:
+                if self.run_coro is None:
+                    return {mid: None for mid in message_ids}
+                # No overall timeout: FloodWait loops can take tens of minutes.
+                messages = self.run_coro(
+                    _fetch_batch(batch, progress_current=offset),
+                    timeout=None,
+                )
+            except Exception:
+                # Fall back to one-by-one so a single bad id doesn't abort the scan.
+                messages = []
+                for mid in batch:
+                    try:
+                        one = self.run_coro(
+                            _fetch_batch([mid], progress_current=offset),
+                            timeout=None,
+                        )
+                        if isinstance(one, list):
+                            messages.extend(one)
+                        else:
+                            messages.append(one)
+                    except Exception:
+                        messages.append(None)
+            if not isinstance(messages, list):
+                messages = [messages]
+            for message in messages:
+                if message is None:
+                    continue
+                mid = getattr(message, 'id', None)
+                if mid is None:
+                    continue
+                authors[int(mid)] = post_author_from_message(message)
+            done = min(offset + len(batch), total)
+            self._report(
+                on_progress,
+                phase='resolving',
+                current=done,
+                total=total,
+                message=f'正在拉取 Telegram 主贴作者 {done}/{total}…',
+            )
+            # Light pacing between batches to reduce FloodWait frequency.
+            if done < total:
+                async def _pause():
+                    await asyncio.sleep(0.35)
+
+                try:
+                    self.run_coro(_pause(), timeout=5)
+                except Exception:
+                    pass
+        return authors
 
     def _rewrite_store_paths(self, channel_folder: str, from_relative: str, to_relative: str) -> None:
         store = self.transfer_store
