@@ -803,7 +803,12 @@ class WebUiServer:
                 if parsed.path == '/api/archive/author-job':
                     query = parse_qs(parsed.query)
                     job_id = (query.get('id') or [None])[0]
+                    active = (query.get('active') or ['0'])[0]
+                    channel_folder = (query.get('channel_folder') or [None])[0]
                     try:
+                        if str(active) in ('1', 'true', 'yes'):
+                            self._send_json(server.get_active_archive_author_job(channel_folder))
+                            return
                         if not job_id:
                             raise ValueError('id is required')
                         self._send_json(server.get_archive_author_job(str(job_id)))
@@ -1792,6 +1797,16 @@ class WebUiServer:
         op = self._operation('get_archive_author_job')
         if op:
             return op(job_id)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def get_active_archive_author_job(self, channel_folder: str | None = None) -> dict:
+        op = self._operation('get_active_archive_author_job')
+        if op:
+            return op(channel_folder)
         raise WebUiApiError(
             'archive_author_unavailable',
             'Archive author tools are unavailable.',

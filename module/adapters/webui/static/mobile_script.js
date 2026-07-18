@@ -2384,6 +2384,24 @@ async function loadArchiveOrganizeMobile() {
   } catch (e) {
     select.innerHTML = '<option value="">' + esc(e.message || '') + '</option>';
   }
+  try {
+    var channel = select.value || '';
+    var active = await fetchJson(
+      '/api/archive/author-job?active=1' +
+      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '')
+    );
+    if (active && active.id && active.status === 'running') {
+      if (active.channel_folder) select.value = active.channel_folder;
+      showMobArchiveOrganizeProgress(active);
+      var finished = await pollMobArchiveOrganizeJob(active.id);
+      if (finished.status === 'success' && finished.result) {
+        renderMobArchiveOrganizePlan(finished.result);
+      }
+    } else if (active && active.id && active.status === 'success' && active.result) {
+      showMobArchiveOrganizeProgress(active);
+      renderMobArchiveOrganizePlan(active.result);
+    }
+  } catch (e) {}
 }
 
 function renderMobArchiveOrganizePlan(data) {

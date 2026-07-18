@@ -6262,6 +6262,35 @@ document.addEventListener('change', function(e) {
 /* ====== Archive Organize (by Post Author) ====== */
 var archiveOrganizePlan = null;
 var archiveOrganizePollTimer = null;
+var ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
+
+function saveArchiveOrganizeJob(job) {
+  try {
+    if (!job || !job.id) {
+      localStorage.removeItem(ARCHIVE_AUTHOR_JOB_KEY);
+      return;
+    }
+    localStorage.setItem(ARCHIVE_AUTHOR_JOB_KEY, JSON.stringify({
+      id: job.id,
+      channel_folder: job.channel_folder || '',
+      kind: job.kind || ''
+    }));
+  } catch (e) {}
+}
+
+function loadSavedArchiveOrganizeJob() {
+  try {
+    var raw = localStorage.getItem(ARCHIVE_AUTHOR_JOB_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearSavedArchiveOrganizeJob() {
+  try { localStorage.removeItem(ARCHIVE_AUTHOR_JOB_KEY); } catch (e) {}
+}
 
 function setArchiveOrganizeBusy(busy, labelKey) {
   const scanBtn = $('#archive-organize-scan-btn');
@@ -6326,10 +6355,67 @@ async function pollArchiveOrganizeJob(jobId) {
   while (true) {
     const job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showArchiveOrganizeProgress(job);
+    saveArchiveOrganizeJob(job);
     if (job.status === 'success' || job.status === 'failure') {
       return job;
     }
     await sleepMs(800);
+  }
+}
+
+async function resumeArchiveOrganizeJobIfAny() {
+  const select = $('#archive-organize-channel');
+  const saved = loadSavedArchiveOrganizeJob();
+  let job = null;
+  try {
+    if (saved && saved.id) {
+      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
+    }
+  } catch (e) {
+    job = null;
+  }
+  if (!job || !job.id) {
+    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
+    const url = '/api/archive/author-job?active=1' +
+      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
+    try {
+      job = await fetchJson(url);
+    } catch (e) {
+      job = null;
+    }
+  }
+  if (!job || !job.id) return;
+  if (select && job.channel_folder) {
+    select.value = job.channel_folder;
+  }
+  if (job.status === 'running') {
+    const busyKey = job.kind === 'reorganize' ? 'run' : 'scan';
+    setArchiveOrganizeBusy(true, busyKey);
+    showArchiveOrganizeProgress(job);
+    try {
+      const finished = await pollArchiveOrganizeJob(job.id);
+      if (finished.status === 'failure') {
+        throw new Error(finished.error || finished.message || 'job failed');
+      }
+      if (finished.result) {
+        renderArchiveOrganizePlan(finished.result);
+      }
+    } catch (e) {
+      const msg = translateApiError(e, 'form.requestFailed');
+      showArchiveOrganizeProgress({ percent: 0, current: 0, total: 0, phase: 'error', message: msg });
+    } finally {
+      setArchiveOrganizeBusy(false);
+      clearSavedArchiveOrganizeJob();
+    }
+    return;
+  }
+  if (job.status === 'success' && job.result) {
+    showArchiveOrganizeProgress(job);
+    renderArchiveOrganizePlan(job.result);
+    clearSavedArchiveOrganizeJob();
+  } else if (job.status === 'failure') {
+    showArchiveOrganizeProgress(job);
+    clearSavedArchiveOrganizeJob();
   }
 }
 
@@ -6357,6 +6443,7 @@ async function loadArchiveOrganizeChannels() {
 
 async function loadArchiveOrganize() {
   await loadArchiveOrganizeChannels();
+  await resumeArchiveOrganizeJobIfAny();
 }
 
 function renderArchiveOrganizePlan(data) {
@@ -6411,12 +6498,14 @@ async function scanArchiveOrganize() {
   });
   try {
     const started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'scan failed');
     }
     renderArchiveOrganizePlan(job.result || {});
-    } catch (e) {
+    clearSavedArchiveOrganizeJob();
+  } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
     showArchiveOrganizeProgress({
       percent: 0,
@@ -6454,6 +6543,7 @@ async function runArchiveOrganize() {
   });
   try {
     const started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'reorganize failed');
@@ -6464,10 +6554,12 @@ async function runArchiveOrganize() {
       ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     );
     const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    saveArchiveOrganizeJob(refreshed);
     const scanJob = await pollArchiveOrganizeJob(refreshed.id);
     if (scanJob.status === 'success') {
       renderArchiveOrganizePlan(scanJob.result || {});
     }
+    clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
     showArchiveOrganizeProgress({
@@ -11688,6 +11780,24 @@ async function loadArchiveOrganizeMobile() {
   } catch (e) {
     select.innerHTML = '<option value="">' + esc(e.message || '') + '</option>';
   }
+  try {
+    var channel = select.value || '';
+    var active = await fetchJson(
+      '/api/archive/author-job?active=1' +
+      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '')
+    );
+    if (active && active.id && active.status === 'running') {
+      if (active.channel_folder) select.value = active.channel_folder;
+      showMobArchiveOrganizeProgress(active);
+      var finished = await pollMobArchiveOrganizeJob(active.id);
+      if (finished.status === 'success' && finished.result) {
+        renderMobArchiveOrganizePlan(finished.result);
+      }
+    } else if (active && active.id && active.status === 'success' && active.result) {
+      showMobArchiveOrganizeProgress(active);
+      renderMobArchiveOrganizePlan(active.result);
+    }
+  } catch (e) {}
 }
 
 function renderMobArchiveOrganizePlan(data) {

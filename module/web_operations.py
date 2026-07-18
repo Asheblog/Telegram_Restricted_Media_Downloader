@@ -972,7 +972,12 @@ class WebOperationsMixin:
         from module.archive_author_jobs import ArchiveAuthorJobStore
         store = getattr(self, '_archive_author_jobs', None)
         if store is None:
-            store = ArchiveAuthorJobStore()
+            transfer_store = None
+            try:
+                transfer_store = self._ensure_transfer_store()
+            except Exception:
+                transfer_store = getattr(self, 'transfer_store', None)
+            store = ArchiveAuthorJobStore(transfer_store=transfer_store)
             self._archive_author_jobs = store
         return store
 
@@ -985,6 +990,10 @@ class WebOperationsMixin:
         if not channel_folder:
             raise ValueError('channel_folder is required')
         jobs = self._archive_author_job_store()
+        existing = jobs.find_running(channel_folder=channel_folder)
+        if existing:
+            # Refresh reconnects to the same background job instead of starting another.
+            return public_job_view(existing)
         job = jobs.create(kind=kind, channel_folder=channel_folder)
         job_id = job['id']
         on_progress = jobs.progress_callback(job_id)
@@ -1057,6 +1066,15 @@ class WebOperationsMixin:
         if not job:
             raise ValueError('job not found')
         return public_job_view(job)
+
+    def get_active_archive_author_job(self, channel_folder: str | None = None) -> dict:
+        from module.archive_author_jobs import public_job_view
+
+        jobs = self._archive_author_job_store()
+        channel = str(channel_folder or '').strip() or None
+        job = jobs.find_running(channel_folder=channel) or jobs.latest(channel_folder=channel)
+        view = public_job_view(job)
+        return view or {'id': None, 'status': None}
 
     def list_system_logs(
             self,
@@ -1685,6 +1703,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
     'list_archive_author_channels', 'scan_archive_author_reorganize',
     'execute_archive_author_reorganize', 'get_archive_author_job',
+    'get_active_archive_author_job',
 )
 
 

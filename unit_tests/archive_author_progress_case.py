@@ -73,6 +73,31 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertEqual(200, len(public['result']['moves']))
         self.assertEqual(250, public['result']['moves_total'])
 
+    def test_job_store_persists_and_finds_running(self):
+        import tempfile
+        from module.transfer_store import TransferStore
+
+        directory = tempfile.mkdtemp()
+        try:
+            transfer_store = TransferStore(directory=directory)
+            jobs = ArchiveAuthorJobStore(transfer_store=transfer_store)
+            created = jobs.create(kind='scan', channel_folder='chengdudiyi8')
+            jobs.update(created['id'], phase='resolving', current=10, total=100, message='go')
+            # Force immediate persist path via update already; ensure DB row exists.
+            jobs._persist(jobs.get(created['id']), force=True)
+            found = jobs.find_running(channel_folder='chengdudiyi8')
+            self.assertIsNotNone(found)
+            self.assertEqual(created['id'], found['id'])
+            reloaded = ArchiveAuthorJobStore(transfer_store=transfer_store)
+            stale = reloaded.get(created['id'])
+            self.assertEqual('failure', stale['status'])
+        finally:
+            try:
+                import shutil
+                shutil.rmtree(directory, ignore_errors=True)
+            except Exception:
+                pass
+
 
 if __name__ == '__main__':
     unittest.main()
