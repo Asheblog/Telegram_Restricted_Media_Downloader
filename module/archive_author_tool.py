@@ -16,6 +16,7 @@ from module.source_folders import (
 
 
 MESSAGE_FETCH_BATCH = 80
+ProgressCallback = Optional[Callable[..., None]]
 
 
 class ArchiveAuthorReorganizeService:
@@ -40,12 +41,30 @@ class ArchiveAuthorReorganizeService:
             return []
         return list(client.list_archive_channel_folders())
 
-    def scan(self, channel_folder: str) -> dict:
+    @staticmethod
+    def _report(
+            on_progress: ProgressCallback,
+            *,
+            phase: str,
+            current: int = 0,
+            total: int = 0,
+            message: str = '',
+    ) -> None:
+        if on_progress is None:
+            return
+        on_progress(phase=phase, current=current, total=total, message=message)
+
+    def scan(self, channel_folder: str, on_progress: ProgressCallback = None) -> dict:
         channel = normalize_source_folder_path(channel_folder)
         if not channel or '/' in channel:
             raise ValueError('请输入单个频道文件夹名（Source Channel Folder）。')
         client = self._require_client()
         root = self._channel_remote_root(client, channel)
+        self._report(
+            on_progress,
+            phase='listing',
+            message='正在列出 PikPak 目录（大目录可能较久）…',
+        )
         directory_paths = [
             f'{channel}/{path}' if path else channel
             for path in client.list_directories(root, recursive=True)
@@ -55,6 +74,13 @@ class ArchiveAuthorReorganizeService:
             directory_paths = [
                 f'{channel}/{name}' for name in client.list_directories(root, recursive=False)
             ]
+        self._report(
+            on_progress,
+            phase='listing',
+            current=len(directory_paths),
+            total=len(directory_paths),
+            message=f'已列出 {len(directory_paths)} 个目录',
+        )
         message_ids = []
         for path in directory_paths:
             parts = [part for part in path.replace('\\', '/').split('/') if part]
@@ -62,7 +88,26 @@ class ArchiveAuthorReorganizeService:
                 mid = message_id_from_post_folder_segment(parts[-1])
                 if mid is not None:
                     message_ids.append(mid)
-        author_by_id = self._resolve_authors(channel, sorted(set(message_ids)))
+        unique_ids = sorted(set(message_ids))
+        self._report(
+            on_progress,
+            phase='resolving',
+            current=0,
+            total=len(unique_ids),
+            message=f'正在拉取 Telegram 主贴作者 0/{len(unique_ids)}…',
+        )
+        author_by_id = self._resolve_authors(
+            channel,
+            unique_ids,
+            on_progress=on_progress,
+        )
+        self._report(
+            on_progress,
+            phase='planning',
+            current=len(unique_ids),
+            total=max(len(unique_ids), 1),
+            message='正在生成移动计划…',
+        )
         plan = plan_author_reorganize(
             channel_folder=channel,
             directory_paths=directory_paths,
@@ -70,17 +115,34 @@ class ArchiveAuthorReorganizeService:
         )
         payload = plan.to_dict()
         payload['channel_remote_root'] = root
+        self._report(
+            on_progress,
+            phase='done',
+            current=payload.get('move_count') or 0,
+            total=max(int(payload.get('move_count') or 0) + int(payload.get('skip_count') or 0), 1),
+            message=(
+                f'扫描完成：{payload.get("author_count") or 0} 位作者，'
+                f'待移动 {payload.get("move_count") or 0}，跳过 {payload.get("skip_count") or 0}'
+            ),
+        )
         return payload
 
-    def execute(self, channel_folder: str) -> dict:
-        plan = self.scan(channel_folder)
+    def execute(self, channel_folder: str, on_progress: ProgressCallback = None) -> dict:
+        plan = self.scan(channel_folder, on_progress=on_progress)
         client = self._require_client()
         root = plan.get('channel_remote_root') or self._channel_remote_root(client, plan['channel_folder'])
+        move_items = [item for item in (plan.get('moves') or []) if item.get('action') == 'move']
         moved = []
         errors = []
-        for item in plan.get('moves') or []:
-            if item.get('action') != 'move':
-                continue
+        total = len(move_items)
+        self._report(
+            on_progress,
+            phase='moving',
+            current=0,
+            total=total,
+            message=f'开始移动目录 0/{total}…',
+        )
+        for index, item in enumerate(move_items, start=1):
             from_rel = item['from_relative']
             to_rel = item['to_relative']
             source = join_remote_path(root, from_rel)
@@ -96,7 +158,14 @@ class ArchiveAuthorReorganizeService:
                     'to_relative': to_rel,
                     'error': str(error),
                 })
-        return {
+            self._report(
+                on_progress,
+                phase='moving',
+                current=index,
+                total=total,
+                message=f'正在移动目录 {index}/{total}…',
+            )
+        result = {
             'channel_folder': plan['channel_folder'],
             'author_count': plan['author_count'],
             'authors': plan['authors'],
@@ -107,6 +176,14 @@ class ArchiveAuthorReorganizeService:
             'errors': errors,
             'skips': [item for item in plan.get('moves') or [] if item.get('action') != 'move'],
         }
+        self._report(
+            on_progress,
+            phase='done',
+            current=total,
+            total=max(total, 1),
+            message=f'整理完成：已移动 {len(moved)}，失败 {len(errors)}',
+        )
+        return result
 
     def _require_client(self):
         client = self.archive_client
@@ -121,7 +198,12 @@ class ArchiveAuthorReorganizeService:
         archive_root = (client.config or {}).get('root_directory') or ''
         return join_remote_path(archive_root, channel)
 
-    def _resolve_authors(self, channel_folder: str, message_ids: list[int]) -> dict:
+    def _resolve_authors(
+            self,
+            channel_folder: str,
+            message_ids: list[int],
+            on_progress: ProgressCallback = None,
+    ) -> dict:
         if not message_ids:
             return {}
         if self.telegram_client is None:
@@ -130,6 +212,8 @@ class ArchiveAuthorReorganizeService:
         async def _fetch():
             authors = {mid: None for mid in message_ids}
             client = self.telegram_client
+            total = len(message_ids)
+            done = 0
             for offset in range(0, len(message_ids), MESSAGE_FETCH_BATCH):
                 batch = message_ids[offset:offset + MESSAGE_FETCH_BATCH]
                 try:
@@ -151,6 +235,14 @@ class ArchiveAuthorReorganizeService:
                     if mid is None:
                         continue
                     authors[int(mid)] = post_author_from_message(message)
+                done = min(offset + len(batch), total)
+                self._report(
+                    on_progress,
+                    phase='resolving',
+                    current=done,
+                    total=total,
+                    message=f'正在拉取 Telegram 主贴作者 {done}/{total}…',
+                )
             return authors
 
         if self.run_coro is not None:

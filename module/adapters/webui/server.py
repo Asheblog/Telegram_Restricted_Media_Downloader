@@ -800,6 +800,25 @@ class WebUiServer:
                             HTTPStatus.BAD_REQUEST
                         )
                     return
+                if parsed.path == '/api/archive/author-job':
+                    query = parse_qs(parsed.query)
+                    job_id = (query.get('id') or [None])[0]
+                    try:
+                        if not job_id:
+                            raise ValueError('id is required')
+                        self._send_json(server.get_archive_author_job(str(job_id)))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 查询归档整理进度失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_job_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path == '/api/system-logs':
                     query = parse_qs(parsed.query)
                     limit = self._query_int(query, 'limit', 50)
@@ -1763,6 +1782,16 @@ class WebUiServer:
         op = self._operation('execute_archive_author_reorganize')
         if op:
             return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def get_archive_author_job(self, job_id: str) -> dict:
+        op = self._operation('get_archive_author_job')
+        if op:
+            return op(job_id)
         raise WebUiApiError(
             'archive_author_unavailable',
             'Archive author tools are unavailable.',

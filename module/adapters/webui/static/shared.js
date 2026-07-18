@@ -395,6 +395,8 @@ const i18n = {
     'archiveOrganize.errors': '失败',
     'archiveOrganize.emptyChannels': '未找到归档频道目录',
     'archiveOrganize.pickChannel': '请选择频道',
+    'archiveOrganize.progress': '进度',
+    'archiveOrganize.truncatedMoves': '共 {total} 条，仅显示前 {shown} 条',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -837,6 +839,8 @@ const i18n = {
     'archiveOrganize.errors': 'Failed',
     'archiveOrganize.emptyChannels': 'No archive channel folders found',
     'archiveOrganize.pickChannel': 'Select a channel',
+    'archiveOrganize.progress': 'Progress',
+    'archiveOrganize.truncatedMoves': 'Showing {shown} of {total} rows',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -1277,12 +1281,25 @@ function withClientTzQuery(url) {
 async function fetchJson(url) {
   const resp = await fetch(url);
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  if (!resp.ok) {
-    let data;
-    try { data = await resp.json(); } catch(e) { data = {}; }
-    throw data;
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
   }
-  return resp.json();
+  if (!resp.ok) throw data;
+  return data;
 }
 
 async function postJson(url, payload, method) {
@@ -1292,7 +1309,23 @@ async function postJson(url, payload, method) {
     body: JSON.stringify(payload),
   });
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  const data = await resp.json();
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
+  }
   if (!resp.ok) throw data;
   return data;
 }
@@ -1357,11 +1390,25 @@ async function importForwardWatchBackupFile(file) {
 }
 
 function translateApiError(data, fallbackKey) {
+  if (data == null || data === '') {
+    return t(fallbackKey || 'form.requestFailed');
+  }
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+  if (typeof Error !== 'undefined' && data instanceof Error && data.message) {
+    return data.message;
+  }
   if (data && data.error_code && data.error) {
     const key = 'error.' + data.error_code;
     const translated = t(key);
     if (translated !== key) return translated;
     return data.error;
+  }
+  if (data && data.error) return String(data.error);
+  if (data && data.message) return String(data.message);
+  if (data && data.status) {
+    return t(fallbackKey || 'form.requestFailed') + ' (HTTP ' + data.status + ')';
   }
   return t(fallbackKey || 'form.requestFailed');
 }

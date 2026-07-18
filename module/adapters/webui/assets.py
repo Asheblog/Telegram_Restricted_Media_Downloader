@@ -1252,6 +1252,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <select class="form-input" id="archive-organize-channel"></select>
         </div>
       </div>
+      <div id="archive-organize-progress" class="hidden mb-4 p-4 bg-surface-alt rounded-lg">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div id="archive-organize-progress-message" class="text-sm text-text">-</div>
+          <div id="archive-organize-progress-pct" class="text-sm font-semibold text-text whitespace-nowrap">0%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="archive-organize-progress-fill" style="width:0%"></div>
+        </div>
+        <div id="archive-organize-progress-count" class="text-xs text-muted mt-2">0 / 0</div>
+      </div>
       <div id="archive-organize-result" class="hidden">
         <div id="archive-organize-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
         <div class="overflow-x-auto rounded-lg border border-line">
@@ -2059,6 +2069,8 @@ const i18n = {
     'archiveOrganize.errors': '失败',
     'archiveOrganize.emptyChannels': '未找到归档频道目录',
     'archiveOrganize.pickChannel': '请选择频道',
+    'archiveOrganize.progress': '进度',
+    'archiveOrganize.truncatedMoves': '共 {total} 条，仅显示前 {shown} 条',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -2501,6 +2513,8 @@ const i18n = {
     'archiveOrganize.errors': 'Failed',
     'archiveOrganize.emptyChannels': 'No archive channel folders found',
     'archiveOrganize.pickChannel': 'Select a channel',
+    'archiveOrganize.progress': 'Progress',
+    'archiveOrganize.truncatedMoves': 'Showing {shown} of {total} rows',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -2941,12 +2955,25 @@ function withClientTzQuery(url) {
 async function fetchJson(url) {
   const resp = await fetch(url);
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  if (!resp.ok) {
-    let data;
-    try { data = await resp.json(); } catch(e) { data = {}; }
-    throw data;
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
   }
-  return resp.json();
+  if (!resp.ok) throw data;
+  return data;
 }
 
 async function postJson(url, payload, method) {
@@ -2956,7 +2983,23 @@ async function postJson(url, payload, method) {
     body: JSON.stringify(payload),
   });
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  const data = await resp.json();
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
+  }
   if (!resp.ok) throw data;
   return data;
 }
@@ -3021,11 +3064,25 @@ async function importForwardWatchBackupFile(file) {
 }
 
 function translateApiError(data, fallbackKey) {
+  if (data == null || data === '') {
+    return t(fallbackKey || 'form.requestFailed');
+  }
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+  if (typeof Error !== 'undefined' && data instanceof Error && data.message) {
+    return data.message;
+  }
   if (data && data.error_code && data.error) {
     const key = 'error.' + data.error_code;
     const translated = t(key);
     if (translated !== key) return translated;
     return data.error;
+  }
+  if (data && data.error) return String(data.error);
+  if (data && data.message) return String(data.message);
+  if (data && data.status) {
+    return t(fallbackKey || 'form.requestFailed') + ' (HTTP ' + data.status + ')';
   }
   return t(fallbackKey || 'form.requestFailed');
 }
@@ -6204,6 +6261,77 @@ document.addEventListener('change', function(e) {
 
 /* ====== Archive Organize (by Post Author) ====== */
 var archiveOrganizePlan = null;
+var archiveOrganizePollTimer = null;
+
+function setArchiveOrganizeBusy(busy, labelKey) {
+  const scanBtn = $('#archive-organize-scan-btn');
+  const runBtn = $('#archive-organize-run-btn');
+  if (scanBtn) {
+    scanBtn.disabled = !!busy;
+    scanBtn.textContent = busy && labelKey === 'scan'
+      ? t('archiveOrganize.scanning')
+      : t('archiveOrganize.scan');
+  }
+  if (runBtn) {
+    if (busy && labelKey === 'run') {
+      runBtn.disabled = true;
+      runBtn.textContent = t('archiveOrganize.running');
+    } else if (!busy) {
+      runBtn.textContent = t('archiveOrganize.run');
+      runBtn.disabled = !(archiveOrganizePlan && archiveOrganizePlan.move_count > 0);
+    } else {
+      runBtn.disabled = true;
+    }
+  }
+}
+
+function showArchiveOrganizeProgress(job) {
+  const box = $('#archive-organize-progress');
+  const message = $('#archive-organize-progress-message');
+  const pctEl = $('#archive-organize-progress-pct');
+  const fill = $('#archive-organize-progress-fill');
+  const count = $('#archive-organize-progress-count');
+  if (!box) return;
+  box.classList.remove('hidden');
+  const percent = Math.max(0, Math.min(100, Number(job && job.percent || 0)));
+  const current = Number(job && job.current || 0);
+  const total = Number(job && job.total || 0);
+  if (message) message.textContent = (job && job.message) || t('archiveOrganize.progress');
+  if (pctEl) pctEl.textContent = percent + '%';
+  if (fill) fill.style.width = percent + '%';
+  if (count) {
+    count.textContent = total > 0
+      ? (current + ' / ' + total)
+      : (job && job.phase === 'listing' ? t('archiveOrganize.scanning') : '-');
+  }
+}
+
+function hideArchiveOrganizeProgress() {
+  const box = $('#archive-organize-progress');
+  if (box) box.classList.add('hidden');
+}
+
+function stopArchiveOrganizePoll() {
+  if (archiveOrganizePollTimer) {
+    clearTimeout(archiveOrganizePollTimer);
+    archiveOrganizePollTimer = null;
+  }
+}
+
+function sleepMs(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function pollArchiveOrganizeJob(jobId) {
+  while (true) {
+    const job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
+    showArchiveOrganizeProgress(job);
+    if (job.status === 'success' || job.status === 'failure') {
+      return job;
+    }
+    await sleepMs(800);
+  }
+}
 
 async function loadArchiveOrganizeChannels() {
   const select = $('#archive-organize-channel');
@@ -6239,13 +6367,21 @@ function renderArchiveOrganizePlan(data) {
   const runBtn = $('#archive-organize-run-btn');
   if (!result || !summary || !tbody) return;
   result.classList.remove('hidden');
+  const moves = data.moves || [];
+  const movesTotal = data.moves_total || moves.length;
   summary.innerHTML = [
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
   ].join('');
-  const moves = data.moves || [];
+  if (data.moves_truncated) {
+    summary.innerHTML += '<div class="w-full text-xs text-muted mt-1">' +
+      t('archiveOrganize.truncatedMoves')
+        .replace('{total}', String(movesTotal))
+        .replace('{shown}', String(moves.length)) +
+      '</div>';
+  }
   tbody.innerHTML = moves.map(function(item) {
     return '<tr>' +
       '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
@@ -6264,23 +6400,34 @@ async function scanArchiveOrganize() {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
-  const scanBtn = $('#archive-organize-scan-btn');
-  const runBtn = $('#archive-organize-run-btn');
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'scan');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'listing',
+    message: t('archiveOrganize.scanning')
+  });
   try {
-    if (scanBtn) {
-      scanBtn.disabled = true;
-      scanBtn.textContent = t('archiveOrganize.scanning');
+    const started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'scan failed');
     }
-    if (runBtn) runBtn.disabled = true;
-    const data = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderArchiveOrganizePlan(data);
-  } catch (e) {
-    alert(translateApiError(e, 'form.requestFailed'));
+    renderArchiveOrganizePlan(job.result || {});
+    } catch (e) {
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+    alert(msg);
   } finally {
-    if (scanBtn) {
-      scanBtn.disabled = false;
-      scanBtn.textContent = t('archiveOrganize.scan');
-    }
+    setArchiveOrganizeBusy(false);
   }
 }
 
@@ -6296,26 +6443,43 @@ async function runArchiveOrganize() {
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
     return;
   }
-  const runBtn = $('#archive-organize-run-btn');
-  const scanBtn = $('#archive-organize-scan-btn');
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'run');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: archiveOrganizePlan.move_count || 0,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
   try {
-    if (runBtn) {
-      runBtn.disabled = true;
-      runBtn.textContent = t('archiveOrganize.running');
+    const started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'reorganize failed');
     }
-    if (scanBtn) scanBtn.disabled = true;
-    const data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const data = job.result || {};
     alert(
       t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
       ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     );
     const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderArchiveOrganizePlan(refreshed);
+    const scanJob = await pollArchiveOrganizeJob(refreshed.id);
+    if (scanJob.status === 'success') {
+      renderArchiveOrganizePlan(scanJob.result || {});
+    }
   } catch (e) {
-    alert(translateApiError(e, 'form.requestFailed'));
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+    alert(msg);
   } finally {
-    if (runBtn) runBtn.textContent = t('archiveOrganize.run');
-    if (scanBtn) scanBtn.disabled = false;
+    setArchiveOrganizeBusy(false);
   }
 }
 
@@ -7038,6 +7202,14 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
         <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描作者分布</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
       </div>
+      <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;">
+          <div id="mob-archive-organize-progress-message" class="text-xs">-</div>
+          <div id="mob-archive-organize-progress-pct" class="text-xs" style="font-weight:600;">0%</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="mob-archive-organize-progress-fill" style="width:0%"></div></div>
+        <div id="mob-archive-organize-progress-count" class="text-xs text-muted" style="margin-top:6px;">0 / 0</div>
+      </div>
       <div id="mob-archive-organize-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-settings">
@@ -7673,6 +7845,8 @@ const i18n = {
     'archiveOrganize.errors': '失败',
     'archiveOrganize.emptyChannels': '未找到归档频道目录',
     'archiveOrganize.pickChannel': '请选择频道',
+    'archiveOrganize.progress': '进度',
+    'archiveOrganize.truncatedMoves': '共 {total} 条，仅显示前 {shown} 条',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -8115,6 +8289,8 @@ const i18n = {
     'archiveOrganize.errors': 'Failed',
     'archiveOrganize.emptyChannels': 'No archive channel folders found',
     'archiveOrganize.pickChannel': 'Select a channel',
+    'archiveOrganize.progress': 'Progress',
+    'archiveOrganize.truncatedMoves': 'Showing {shown} of {total} rows',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -8555,12 +8731,25 @@ function withClientTzQuery(url) {
 async function fetchJson(url) {
   const resp = await fetch(url);
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  if (!resp.ok) {
-    let data;
-    try { data = await resp.json(); } catch(e) { data = {}; }
-    throw data;
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
   }
-  return resp.json();
+  if (!resp.ok) throw data;
+  return data;
 }
 
 async function postJson(url, payload, method) {
@@ -8570,7 +8759,23 @@ async function postJson(url, payload, method) {
     body: JSON.stringify(payload),
   });
   if (resp.status === 401) { redirectToLoginPage(); throw { error_code: 'auth_required' }; }
-  const data = await resp.json();
+  const text = await resp.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = {
+        error_code: 'bad_response',
+        error: 'HTTP ' + resp.status + '：' + String(text).slice(0, 200)
+      };
+    }
+  } else if (!resp.ok) {
+    data = {
+      error_code: 'empty_response',
+      error: 'HTTP ' + resp.status + ' 空响应（常见于网关超时，请重试或查看系统日志）'
+    };
+  }
   if (!resp.ok) throw data;
   return data;
 }
@@ -8635,11 +8840,25 @@ async function importForwardWatchBackupFile(file) {
 }
 
 function translateApiError(data, fallbackKey) {
+  if (data == null || data === '') {
+    return t(fallbackKey || 'form.requestFailed');
+  }
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+  if (typeof Error !== 'undefined' && data instanceof Error && data.message) {
+    return data.message;
+  }
   if (data && data.error_code && data.error) {
     const key = 'error.' + data.error_code;
     const translated = t(key);
     if (translated !== key) return translated;
     return data.error;
+  }
+  if (data && data.error) return String(data.error);
+  if (data && data.message) return String(data.message);
+  if (data && data.status) {
+    return t(fallbackKey || 'form.requestFailed') + ' (HTTP ' + data.status + ')';
   }
   return t(fallbackKey || 'form.requestFailed');
 }
@@ -11422,6 +11641,37 @@ async function loadMediaMobile() {
 
 var mobArchiveOrganizePlan = null;
 
+function showMobArchiveOrganizeProgress(job) {
+  var box = document.getElementById('mob-archive-organize-progress');
+  var message = document.getElementById('mob-archive-organize-progress-message');
+  var pctEl = document.getElementById('mob-archive-organize-progress-pct');
+  var fill = document.getElementById('mob-archive-organize-progress-fill');
+  var count = document.getElementById('mob-archive-organize-progress-count');
+  if (!box) return;
+  box.classList.remove('hidden');
+  box.style.display = '';
+  var percent = Math.max(0, Math.min(100, Number(job && job.percent || 0)));
+  var current = Number(job && job.current || 0);
+  var total = Number(job && job.total || 0);
+  if (message) message.textContent = (job && job.message) || t('archiveOrganize.progress');
+  if (pctEl) pctEl.textContent = percent + '%';
+  if (fill) fill.style.width = percent + '%';
+  if (count) count.textContent = total > 0 ? (current + ' / ' + total) : '-';
+}
+
+function sleepMs(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function pollMobArchiveOrganizeJob(jobId) {
+  while (true) {
+    var job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
+    showMobArchiveOrganizeProgress(job);
+    if (job.status === 'success' || job.status === 'failure') return job;
+    await sleepMs(800);
+  }
+}
+
 async function loadArchiveOrganizeMobile() {
   var select = document.getElementById('mob-archive-organize-channel');
   if (!select) return;
@@ -11445,12 +11695,20 @@ function renderMobArchiveOrganizePlan(data) {
   var result = document.getElementById('mob-archive-organize-result');
   var runBtn = document.getElementById('mob-archive-organize-run-btn');
   if (!result) return;
+  var moves = data.moves || [];
   var html = '<div class="text-sm" style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
     '<div><strong>' + t('archiveOrganize.authors') + '</strong><br>' + (data.author_count || 0) + '</div>' +
     '<div><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (data.move_count || 0) + '</div>' +
     '<div><strong>' + t('archiveOrganize.skips') + '</strong><br>' + (data.skip_count || 0) + '</div>' +
     '</div>';
-  (data.moves || []).slice(0, 40).forEach(function(item) {
+  if (data.moves_truncated) {
+    html += '<div class="text-xs text-muted" style="margin-bottom:8px;">' +
+      t('archiveOrganize.truncatedMoves')
+        .replace('{total}', String(data.moves_total || moves.length))
+        .replace('{shown}', String(moves.length)) +
+      '</div>';
+  }
+  moves.slice(0, 40).forEach(function(item) {
     html += '<div class="text-xs" style="padding:8px 0;border-bottom:1px solid var(--color-line);">' +
       '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
       '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
@@ -11467,12 +11725,16 @@ async function scanArchiveOrganizeMobile() {
     showToast(t('archiveOrganize.pickChannel'));
     return;
   }
-  var result = document.getElementById('mob-archive-organize-result');
-  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.scanning') + '</div>';
+  showMobArchiveOrganizeProgress({
+    percent: 0, current: 0, total: 0, phase: 'listing', message: t('archiveOrganize.scanning')
+  });
   try {
-    var data = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderMobArchiveOrganizePlan(data);
+    var started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
+    renderMobArchiveOrganizePlan(job.result || {});
   } catch (e) {
+    var result = document.getElementById('mob-archive-organize-result');
     if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
   }
 }
@@ -11482,14 +11744,23 @@ async function runArchiveOrganizeMobile() {
   var channel = select ? select.value : '';
   if (!channel || !mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) return;
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
-  var result = document.getElementById('mob-archive-organize-result');
-  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.running') + '</div>';
+  showMobArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: mobArchiveOrganizePlan.move_count || 0,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
   try {
-    var data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
-    showToast(t('archiveOrganize.moved') + ': ' + (data.moved_count || 0));
+    var started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
+    showToast(t('archiveOrganize.moved') + ': ' + ((job.result && job.result.moved_count) || 0));
     var refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderMobArchiveOrganizePlan(refreshed);
+    var scanJob = await pollMobArchiveOrganizeJob(refreshed.id);
+    if (scanJob.status === 'success') renderMobArchiveOrganizePlan(scanJob.result || {});
   } catch (e) {
+    var result = document.getElementById('mob-archive-organize-result');
     if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
   }
 }

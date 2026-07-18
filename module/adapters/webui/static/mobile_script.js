@@ -2337,6 +2337,37 @@ async function loadMediaMobile() {
 
 var mobArchiveOrganizePlan = null;
 
+function showMobArchiveOrganizeProgress(job) {
+  var box = document.getElementById('mob-archive-organize-progress');
+  var message = document.getElementById('mob-archive-organize-progress-message');
+  var pctEl = document.getElementById('mob-archive-organize-progress-pct');
+  var fill = document.getElementById('mob-archive-organize-progress-fill');
+  var count = document.getElementById('mob-archive-organize-progress-count');
+  if (!box) return;
+  box.classList.remove('hidden');
+  box.style.display = '';
+  var percent = Math.max(0, Math.min(100, Number(job && job.percent || 0)));
+  var current = Number(job && job.current || 0);
+  var total = Number(job && job.total || 0);
+  if (message) message.textContent = (job && job.message) || t('archiveOrganize.progress');
+  if (pctEl) pctEl.textContent = percent + '%';
+  if (fill) fill.style.width = percent + '%';
+  if (count) count.textContent = total > 0 ? (current + ' / ' + total) : '-';
+}
+
+function sleepMs(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function pollMobArchiveOrganizeJob(jobId) {
+  while (true) {
+    var job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
+    showMobArchiveOrganizeProgress(job);
+    if (job.status === 'success' || job.status === 'failure') return job;
+    await sleepMs(800);
+  }
+}
+
 async function loadArchiveOrganizeMobile() {
   var select = document.getElementById('mob-archive-organize-channel');
   if (!select) return;
@@ -2360,12 +2391,20 @@ function renderMobArchiveOrganizePlan(data) {
   var result = document.getElementById('mob-archive-organize-result');
   var runBtn = document.getElementById('mob-archive-organize-run-btn');
   if (!result) return;
+  var moves = data.moves || [];
   var html = '<div class="text-sm" style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
     '<div><strong>' + t('archiveOrganize.authors') + '</strong><br>' + (data.author_count || 0) + '</div>' +
     '<div><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (data.move_count || 0) + '</div>' +
     '<div><strong>' + t('archiveOrganize.skips') + '</strong><br>' + (data.skip_count || 0) + '</div>' +
     '</div>';
-  (data.moves || []).slice(0, 40).forEach(function(item) {
+  if (data.moves_truncated) {
+    html += '<div class="text-xs text-muted" style="margin-bottom:8px;">' +
+      t('archiveOrganize.truncatedMoves')
+        .replace('{total}', String(data.moves_total || moves.length))
+        .replace('{shown}', String(moves.length)) +
+      '</div>';
+  }
+  moves.slice(0, 40).forEach(function(item) {
     html += '<div class="text-xs" style="padding:8px 0;border-bottom:1px solid var(--color-line);">' +
       '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
       '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
@@ -2382,12 +2421,16 @@ async function scanArchiveOrganizeMobile() {
     showToast(t('archiveOrganize.pickChannel'));
     return;
   }
-  var result = document.getElementById('mob-archive-organize-result');
-  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.scanning') + '</div>';
+  showMobArchiveOrganizeProgress({
+    percent: 0, current: 0, total: 0, phase: 'listing', message: t('archiveOrganize.scanning')
+  });
   try {
-    var data = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderMobArchiveOrganizePlan(data);
+    var started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
+    renderMobArchiveOrganizePlan(job.result || {});
   } catch (e) {
+    var result = document.getElementById('mob-archive-organize-result');
     if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
   }
 }
@@ -2397,14 +2440,23 @@ async function runArchiveOrganizeMobile() {
   var channel = select ? select.value : '';
   if (!channel || !mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) return;
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
-  var result = document.getElementById('mob-archive-organize-result');
-  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.running') + '</div>';
+  showMobArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: mobArchiveOrganizePlan.move_count || 0,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
   try {
-    var data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
-    showToast(t('archiveOrganize.moved') + ': ' + (data.moved_count || 0));
+    var started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
+    showToast(t('archiveOrganize.moved') + ': ' + ((job.result && job.result.moved_count) || 0));
     var refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderMobArchiveOrganizePlan(refreshed);
+    var scanJob = await pollMobArchiveOrganizeJob(refreshed.id);
+    if (scanJob.status === 'success') renderMobArchiveOrganizePlan(scanJob.result || {});
   } catch (e) {
+    var result = document.getElementById('mob-archive-organize-result');
     if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
   }
 }

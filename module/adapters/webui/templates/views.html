@@ -754,6 +754,16 @@
           <select class="form-input" id="archive-organize-channel"></select>
         </div>
       </div>
+      <div id="archive-organize-progress" class="hidden mb-4 p-4 bg-surface-alt rounded-lg">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div id="archive-organize-progress-message" class="text-sm text-text">-</div>
+          <div id="archive-organize-progress-pct" class="text-sm font-semibold text-text whitespace-nowrap">0%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="archive-organize-progress-fill" style="width:0%"></div>
+        </div>
+        <div id="archive-organize-progress-count" class="text-xs text-muted mt-2">0 / 0</div>
+      </div>
       <div id="archive-organize-result" class="hidden">
         <div id="archive-organize-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
         <div class="overflow-x-auto rounded-lg border border-line">

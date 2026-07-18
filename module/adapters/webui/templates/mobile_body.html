@@ -466,6 +466,14 @@
         <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描作者分布</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
       </div>
+      <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;">
+          <div id="mob-archive-organize-progress-message" class="text-xs">-</div>
+          <div id="mob-archive-organize-progress-pct" class="text-xs" style="font-weight:600;">0%</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="mob-archive-organize-progress-fill" style="width:0%"></div></div>
+        <div id="mob-archive-organize-progress-count" class="text-xs text-muted" style="margin-top:6px;">0 / 0</div>
+      </div>
       <div id="mob-archive-organize-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-settings">

@@ -968,17 +968,95 @@ class WebOperationsMixin:
         service = self._archive_author_service()
         return {'channels': service.list_channels()}
 
-    def scan_archive_author_reorganize(self, payload: dict) -> dict:
-        channel_folder = str((payload or {}).get('channel_folder') or '').strip()
+    def _archive_author_job_store(self):
+        from module.archive_author_jobs import ArchiveAuthorJobStore
+        store = getattr(self, '_archive_author_jobs', None)
+        if store is None:
+            store = ArchiveAuthorJobStore()
+            self._archive_author_jobs = store
+        return store
+
+    def _start_archive_author_job(self, *, kind: str, channel_folder: str) -> dict:
+        import threading
+
+        from module.archive_author_jobs import public_job_view
+
+        channel_folder = str(channel_folder or '').strip()
         if not channel_folder:
             raise ValueError('channel_folder is required')
-        return self._archive_author_service().scan(channel_folder)
+        jobs = self._archive_author_job_store()
+        job = jobs.create(kind=kind, channel_folder=channel_folder)
+        job_id = job['id']
+        on_progress = jobs.progress_callback(job_id)
+        service = self._archive_author_service()
+
+        def runner():
+            try:
+                if kind == 'scan':
+                    result = service.scan(channel_folder, on_progress=on_progress)
+                else:
+                    result = service.execute(channel_folder, on_progress=on_progress)
+                jobs.update(
+                    job_id,
+                    status='success',
+                    phase='done',
+                    result=result,
+                    message=(
+                        f'扫描完成：{result.get("author_count") or 0} 位作者，'
+                        f'待移动 {result.get("move_count") or 0}，跳过 {result.get("skip_count") or 0}'
+                        if kind == 'scan'
+                        else (
+                            f'整理完成：已移动 {result.get("moved_count") or 0}，'
+                            f'失败 {result.get("error_count") or 0}'
+                        )
+                    ),
+                    percent=100,
+                )
+            except Exception as error:
+                message = str(error) or error.__class__.__name__
+                jobs.update(
+                    job_id,
+                    status='failure',
+                    phase='error',
+                    error=message,
+                    message=message,
+                )
+                diagnostic = getattr(self, 'diagnostic', None)
+                if diagnostic is not None:
+                    try:
+                        diagnostic.exception(f'[ArchiveAuthor] {kind} failed: {message}')
+                    except Exception:
+                        pass
+                system_log = getattr(self, 'system_log', None)
+                if system_log is not None and hasattr(system_log, 'log'):
+                    try:
+                        system_log.log(
+                            category='archive_author',
+                            stage=kind,
+                            message=message,
+                            level='error',
+                        )
+                    except Exception:
+                        pass
+
+        threading.Thread(target=runner, name=f'archive-author-{kind}', daemon=True).start()
+        return public_job_view(jobs.get(job_id))
+
+    def scan_archive_author_reorganize(self, payload: dict) -> dict:
+        channel_folder = str((payload or {}).get('channel_folder') or '').strip()
+        return self._start_archive_author_job(kind='scan', channel_folder=channel_folder)
 
     def execute_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
-        if not channel_folder:
-            raise ValueError('channel_folder is required')
-        return self._archive_author_service().execute(channel_folder)
+        return self._start_archive_author_job(kind='reorganize', channel_folder=channel_folder)
+
+    def get_archive_author_job(self, job_id: str) -> dict:
+        from module.archive_author_jobs import public_job_view
+
+        job = self._archive_author_job_store().get(str(job_id or '').strip())
+        if not job:
+            raise ValueError('job not found')
+        return public_job_view(job)
 
     def list_system_logs(
             self,
@@ -1606,7 +1684,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
     'list_archive_author_channels', 'scan_archive_author_reorganize',
-    'execute_archive_author_reorganize',
+    'execute_archive_author_reorganize', 'get_archive_author_job',
 )
 
 

@@ -1,0 +1,78 @@
+# coding=UTF-8
+import unittest
+
+from unit_tests.pyrogram_stub import install_pyrogram_stub
+
+install_pyrogram_stub()
+
+from module.archive_author_jobs import ArchiveAuthorJobStore, public_job_view
+from module.archive_author_tool import ArchiveAuthorReorganizeService
+from module.source_folders import UNKNOWN_AUTHOR_FOLDER
+
+
+class FakeArchiveClient:
+    def __init__(self):
+        self.config = {
+            'remote': 'pikpak',
+            'root_directory': 'Telegram',
+            'enable': True,
+        }
+        self.moved = []
+
+    def list_archive_channel_folders(self):
+        return ['chengdudiyi8']
+
+    def list_directories(self, remote_path, *, recursive=False):
+        if recursive:
+            return [
+                '92862 - title-a',
+                '92850 - title-b',
+                f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown',
+            ]
+        return ['92862 - title-a', '92850 - title-b']
+
+    def move_directory(self, source, target):
+        self.moved.append((source, target))
+
+
+class ArchiveAuthorProgressCase(unittest.TestCase):
+    def test_scan_reports_progress_phases(self):
+        events = []
+
+        def on_progress(**kwargs):
+            events.append(kwargs)
+
+        service = ArchiveAuthorReorganizeService(
+            archive_client=FakeArchiveClient(),
+            telegram_client=None,
+        )
+        plan = service.scan('chengdudiyi8', on_progress=on_progress)
+        self.assertGreaterEqual(plan['move_count'], 2)
+        phases = [item['phase'] for item in events]
+        self.assertIn('listing', phases)
+        self.assertIn('planning', phases)
+        self.assertIn('done', phases)
+        self.assertTrue(any(item.get('message') for item in events))
+
+    def test_job_store_tracks_percent_and_truncates_moves(self):
+        store = ArchiveAuthorJobStore()
+        job = store.create(kind='scan', channel_folder='chengdudiyi8')
+        store.update(job['id'], phase='resolving', current=50, total=200, message='halfway')
+        view = store.get(job['id'])
+        self.assertEqual(25, view['percent'])
+        store.update(
+            job['id'],
+            status='success',
+            result={
+                'moves': [{'action': 'move', 'from_relative': str(i)} for i in range(250)],
+                'move_count': 250,
+            },
+        )
+        public = public_job_view(store.get(job['id']))
+        self.assertTrue(public['result']['moves_truncated'])
+        self.assertEqual(200, len(public['result']['moves']))
+        self.assertEqual(250, public['result']['moves_total'])
+
+
+if __name__ == '__main__':
+    unittest.main()

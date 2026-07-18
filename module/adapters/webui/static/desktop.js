@@ -2733,6 +2733,77 @@ document.addEventListener('change', function(e) {
 
 /* ====== Archive Organize (by Post Author) ====== */
 var archiveOrganizePlan = null;
+var archiveOrganizePollTimer = null;
+
+function setArchiveOrganizeBusy(busy, labelKey) {
+  const scanBtn = $('#archive-organize-scan-btn');
+  const runBtn = $('#archive-organize-run-btn');
+  if (scanBtn) {
+    scanBtn.disabled = !!busy;
+    scanBtn.textContent = busy && labelKey === 'scan'
+      ? t('archiveOrganize.scanning')
+      : t('archiveOrganize.scan');
+  }
+  if (runBtn) {
+    if (busy && labelKey === 'run') {
+      runBtn.disabled = true;
+      runBtn.textContent = t('archiveOrganize.running');
+    } else if (!busy) {
+      runBtn.textContent = t('archiveOrganize.run');
+      runBtn.disabled = !(archiveOrganizePlan && archiveOrganizePlan.move_count > 0);
+    } else {
+      runBtn.disabled = true;
+    }
+  }
+}
+
+function showArchiveOrganizeProgress(job) {
+  const box = $('#archive-organize-progress');
+  const message = $('#archive-organize-progress-message');
+  const pctEl = $('#archive-organize-progress-pct');
+  const fill = $('#archive-organize-progress-fill');
+  const count = $('#archive-organize-progress-count');
+  if (!box) return;
+  box.classList.remove('hidden');
+  const percent = Math.max(0, Math.min(100, Number(job && job.percent || 0)));
+  const current = Number(job && job.current || 0);
+  const total = Number(job && job.total || 0);
+  if (message) message.textContent = (job && job.message) || t('archiveOrganize.progress');
+  if (pctEl) pctEl.textContent = percent + '%';
+  if (fill) fill.style.width = percent + '%';
+  if (count) {
+    count.textContent = total > 0
+      ? (current + ' / ' + total)
+      : (job && job.phase === 'listing' ? t('archiveOrganize.scanning') : '-');
+  }
+}
+
+function hideArchiveOrganizeProgress() {
+  const box = $('#archive-organize-progress');
+  if (box) box.classList.add('hidden');
+}
+
+function stopArchiveOrganizePoll() {
+  if (archiveOrganizePollTimer) {
+    clearTimeout(archiveOrganizePollTimer);
+    archiveOrganizePollTimer = null;
+  }
+}
+
+function sleepMs(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function pollArchiveOrganizeJob(jobId) {
+  while (true) {
+    const job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
+    showArchiveOrganizeProgress(job);
+    if (job.status === 'success' || job.status === 'failure') {
+      return job;
+    }
+    await sleepMs(800);
+  }
+}
 
 async function loadArchiveOrganizeChannels() {
   const select = $('#archive-organize-channel');
@@ -2768,13 +2839,21 @@ function renderArchiveOrganizePlan(data) {
   const runBtn = $('#archive-organize-run-btn');
   if (!result || !summary || !tbody) return;
   result.classList.remove('hidden');
+  const moves = data.moves || [];
+  const movesTotal = data.moves_total || moves.length;
   summary.innerHTML = [
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
     '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
   ].join('');
-  const moves = data.moves || [];
+  if (data.moves_truncated) {
+    summary.innerHTML += '<div class="w-full text-xs text-muted mt-1">' +
+      t('archiveOrganize.truncatedMoves')
+        .replace('{total}', String(movesTotal))
+        .replace('{shown}', String(moves.length)) +
+      '</div>';
+  }
   tbody.innerHTML = moves.map(function(item) {
     return '<tr>' +
       '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
@@ -2793,23 +2872,34 @@ async function scanArchiveOrganize() {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
-  const scanBtn = $('#archive-organize-scan-btn');
-  const runBtn = $('#archive-organize-run-btn');
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'scan');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'listing',
+    message: t('archiveOrganize.scanning')
+  });
   try {
-    if (scanBtn) {
-      scanBtn.disabled = true;
-      scanBtn.textContent = t('archiveOrganize.scanning');
+    const started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'scan failed');
     }
-    if (runBtn) runBtn.disabled = true;
-    const data = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderArchiveOrganizePlan(data);
-  } catch (e) {
-    alert(translateApiError(e, 'form.requestFailed'));
+    renderArchiveOrganizePlan(job.result || {});
+    } catch (e) {
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+    alert(msg);
   } finally {
-    if (scanBtn) {
-      scanBtn.disabled = false;
-      scanBtn.textContent = t('archiveOrganize.scan');
-    }
+    setArchiveOrganizeBusy(false);
   }
 }
 
@@ -2825,26 +2915,43 @@ async function runArchiveOrganize() {
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
     return;
   }
-  const runBtn = $('#archive-organize-run-btn');
-  const scanBtn = $('#archive-organize-scan-btn');
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'run');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: archiveOrganizePlan.move_count || 0,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
   try {
-    if (runBtn) {
-      runBtn.disabled = true;
-      runBtn.textContent = t('archiveOrganize.running');
+    const started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'reorganize failed');
     }
-    if (scanBtn) scanBtn.disabled = true;
-    const data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const data = job.result || {};
     alert(
       t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
       ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     );
     const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    renderArchiveOrganizePlan(refreshed);
+    const scanJob = await pollArchiveOrganizeJob(refreshed.id);
+    if (scanJob.status === 'success') {
+      renderArchiveOrganizePlan(scanJob.result || {});
+    }
   } catch (e) {
-    alert(translateApiError(e, 'form.requestFailed'));
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+    alert(msg);
   } finally {
-    if (runBtn) runBtn.textContent = t('archiveOrganize.run');
-    if (scanBtn) scanBtn.disabled = false;
+    setArchiveOrganizeBusy(false);
   }
 }
 
