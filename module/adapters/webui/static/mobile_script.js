@@ -264,6 +264,7 @@ var profileTitles = {
   statistics: '统计面板',
   records: '下载记录',
   media: '媒体管理',
+  'archive-organize': '归档整理',
   settings: '系统设置',
   'system-logs': '系统日志'
 };
@@ -279,6 +280,7 @@ var MOBILE_PROFILE_SUBPAGES = {
   statistics: true,
   records: true,
   media: true,
+  'archive-organize': true,
   settings: true,
   'system-logs': true
 };
@@ -369,6 +371,7 @@ function mobNavigateTo(subpage, options) {
   if (subpage === 'statistics') { loadMobileStatistics(); }
   else if (subpage === 'records') { loadMobileRecords(); }
   else if (subpage === 'media') { loadMediaMobile(); }
+  else if (subpage === 'archive-organize') { loadArchiveOrganizeMobile(); }
   else if (subpage === 'settings') { loadMobileSettings(); }
   else if (subpage === 'system-logs') { loadMobileSystemLogs(); startMobileSystemLogsAutoRefresh(); }
 }
@@ -2332,6 +2335,80 @@ async function loadMediaMobile() {
   }
 }
 
+var mobArchiveOrganizePlan = null;
+
+async function loadArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  if (!select) return;
+  try {
+    var data = await fetchJson('/api/archive/author-channels');
+    var channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(e.message || '') + '</option>';
+  }
+}
+
+function renderMobArchiveOrganizePlan(data) {
+  mobArchiveOrganizePlan = data;
+  var result = document.getElementById('mob-archive-organize-result');
+  var runBtn = document.getElementById('mob-archive-organize-run-btn');
+  if (!result) return;
+  var html = '<div class="text-sm" style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
+    '<div><strong>' + t('archiveOrganize.authors') + '</strong><br>' + (data.author_count || 0) + '</div>' +
+    '<div><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (data.move_count || 0) + '</div>' +
+    '<div><strong>' + t('archiveOrganize.skips') + '</strong><br>' + (data.skip_count || 0) + '</div>' +
+    '</div>';
+  (data.moves || []).slice(0, 40).forEach(function(item) {
+    html += '<div class="text-xs" style="padding:8px 0;border-bottom:1px solid var(--color-line);">' +
+      '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
+      '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
+      '</div>';
+  });
+  result.innerHTML = html;
+  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+async function scanArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  var result = document.getElementById('mob-archive-organize-result');
+  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.scanning') + '</div>';
+  try {
+    var data = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderMobArchiveOrganizePlan(data);
+  } catch (e) {
+    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+  }
+}
+
+async function runArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel || !mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) return;
+  if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
+  var result = document.getElementById('mob-archive-organize-result');
+  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.running') + '</div>';
+  try {
+    var data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    showToast(t('archiveOrganize.moved') + ': ' + (data.moved_count || 0));
+    var refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderMobArchiveOrganizePlan(refreshed);
+  } catch (e) {
+    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event bindings (init)
 // ---------------------------------------------------------------------------
@@ -2662,6 +2739,11 @@ async function loadMediaMobile() {
   // Media scan button
   var mediaBtn = document.getElementById('mob-media-scan-btn');
   if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);
+
+  var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
+  if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
+  var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
+  if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);

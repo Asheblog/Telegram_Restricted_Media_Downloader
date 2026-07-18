@@ -215,7 +215,7 @@ class PikpakRcloneIngestCase(unittest.TestCase):
                 'target_profile': 'pikpak',
                 'with_delete': True,
                 'source_link': 'https://t.me/ctuxas/1',
-                'source_folder': 'ctuxas/1 - title',
+                'source_folder': 'ctuxas/_未知作者/1 - title',
                 'file_name': '1 - title.mp4',
                 'task_id': 7,
                 'item_id': 9,

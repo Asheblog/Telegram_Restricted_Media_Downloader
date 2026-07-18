@@ -912,6 +912,74 @@ class WebOperationsMixin:
             return []
         return self.transfer_store.list_cleanup_logs()
 
+    def _run_telegram_coro(self, coro, timeout: float = 300):
+        loop = getattr(self, 'loop', None)
+        if loop is None:
+            raise RuntimeError('Telegram event loop is unavailable.')
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result(timeout=timeout)
+
+    def _archive_author_service(self):
+        from module.archive_author_tool import ArchiveAuthorReorganizeService
+        from module.pikpak_archive import build_pikpak_archive_client
+
+        client = getattr(self, 'pikpak_archive_client', None)
+        manager = getattr(self, 'pikpak_manager', None)
+        if client is None and manager is not None:
+            getter = getattr(manager, '_pikpak_archive_client_getter', None)
+            if callable(getter):
+                try:
+                    client = getter()
+                except Exception:
+                    client = None
+            if client is None:
+                existing = getattr(manager, '_pikpak_archive_client', None)
+                if existing is not None:
+                    client = existing
+        if client is None:
+            config = {}
+            gc = getattr(self, 'gc', None)
+            raw = getattr(gc, 'config', None) if gc is not None else None
+            if isinstance(raw, dict):
+                config = (
+                    (raw.get('target_profiles') or {})
+                    .get('pikpak', {})
+                    .get('archive')
+                    or {}
+                )
+            client = build_pikpak_archive_client(config if isinstance(config, dict) else {})
+        app = getattr(self, 'app', None)
+        telegram = getattr(self, 'user', None)
+        if telegram is None and app is not None:
+            telegram = getattr(app, 'client', None)
+        store = None
+        try:
+            store = self._ensure_transfer_store()
+        except Exception:
+            store = getattr(self, 'transfer_store', None)
+        return ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=telegram,
+            transfer_store=store,
+            run_coro=self._run_telegram_coro,
+        )
+
+    def list_archive_author_channels(self) -> dict:
+        service = self._archive_author_service()
+        return {'channels': service.list_channels()}
+
+    def scan_archive_author_reorganize(self, payload: dict) -> dict:
+        channel_folder = str((payload or {}).get('channel_folder') or '').strip()
+        if not channel_folder:
+            raise ValueError('channel_folder is required')
+        return self._archive_author_service().scan(channel_folder)
+
+    def execute_archive_author_reorganize(self, payload: dict) -> dict:
+        channel_folder = str((payload or {}).get('channel_folder') or '').strip()
+        if not channel_folder:
+            raise ValueError('channel_folder is required')
+        return self._archive_author_service().execute(channel_folder)
+
     def list_system_logs(
             self,
             limit: int = 50,
@@ -1537,6 +1605,8 @@ _WEB_UI_DELEGATE_METHODS = (
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
+    'list_archive_author_channels', 'scan_archive_author_reorganize',
+    'execute_archive_author_reorganize',
 )
 
 

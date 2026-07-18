@@ -736,6 +736,43 @@
   </div>
 </div>
 
+<!-- ====== Archive Organize View ====== -->
+<div class="view" id="view-archive-organize">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="archiveOrganize.title">归档整理</h3>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+        <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。</p>
+      <div class="form-row mb-4">
+        <div class="form-group" style="min-width:240px;flex:1">
+          <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
+          <select class="form-input" id="archive-organize-channel"></select>
+        </div>
+      </div>
+      <div id="archive-organize-result" class="hidden">
+        <div id="archive-organize-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div class="overflow-x-auto rounded-lg border border-line">
+          <table class="data-table min-w-[640px]">
+            <thead><tr>
+              <th data-i18n="archiveOrganize.messageId">主贴 ID</th>
+              <th data-i18n="archiveOrganize.author">作者</th>
+              <th data-i18n="archiveOrganize.from">原路径</th>
+              <th data-i18n="archiveOrganize.to">目标路径</th>
+              <th data-i18n="archiveOrganize.action">动作</th>
+            </tr></thead>
+            <tbody id="archive-organize-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ====== Settings View ====== -->
 <div class="view panel min-h-0" id="view-settings">
   <div class="panel-header">

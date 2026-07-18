@@ -411,6 +411,11 @@
           <span class="mob-menu-item__label" data-i18n="nav.media">媒体管理</span>
           <span class="mob-menu-item__arrow">›</span>
         </button>
+        <button class="mob-menu-item" data-profile-nav="archive-organize">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v10H3V7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 13h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="mob-menu-item__label" data-i18n="nav.archiveOrganize">归档整理</span>
+          <span class="mob-menu-item__arrow">›</span>
+        </button>
       </div>
       <div class="mob-menu-group">
         <div class="mob-menu-label" data-i18n="nav.section.system">系统</div>
@@ -452,6 +457,16 @@
     <div class="mob-subpage" id="mob-subpage-media">
       <button id="mob-media-scan-btn" class="mob-btn mob-btn-sm" style="width:100%;" data-i18n="media.scan">扫描可清理文件</button>
       <div id="mob-media-result"></div>
+    </div>
+    <div class="mob-subpage" id="mob-subpage-archive-organize">
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。</p>
+      <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
+      <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+        <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+      </div>
+      <div id="mob-archive-organize-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-settings">
       <div class="mob-collapse open" id="collapse-settings-paths">

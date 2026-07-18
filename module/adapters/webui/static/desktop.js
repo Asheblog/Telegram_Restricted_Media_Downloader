@@ -26,6 +26,7 @@ function switchView(view, options) {
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
   if (view === 'media') loadMedia();
+  if (view === 'archive-organize') loadArchiveOrganize();
   if (view === 'system-logs') {
     loadSystemLogs();
     startSystemLogsAutoRefresh();
@@ -2729,6 +2730,126 @@ document.addEventListener('change', function(e) {
     updateMediaCleanupButton();
   }
 });
+
+/* ====== Archive Organize (by Post Author) ====== */
+var archiveOrganizePlan = null;
+
+async function loadArchiveOrganizeChannels() {
+  const select = $('#archive-organize-channel');
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const data = await fetchJson('/api/archive/author-channels');
+    const channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+    if (previous && channels.indexOf(previous) >= 0) {
+      select.value = previous;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+  }
+}
+
+async function loadArchiveOrganize() {
+  await loadArchiveOrganizeChannels();
+}
+
+function renderArchiveOrganizePlan(data) {
+  archiveOrganizePlan = data;
+  const result = $('#archive-organize-result');
+  const summary = $('#archive-organize-summary');
+  const tbody = $('#archive-organize-tbody');
+  const runBtn = $('#archive-organize-run-btn');
+  if (!result || !summary || !tbody) return;
+  result.classList.remove('hidden');
+  summary.innerHTML = [
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
+  ].join('');
+  const moves = data.moves || [];
+  tbody.innerHTML = moves.map(function(item) {
+    return '<tr>' +
+      '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
+      '<td>' + esc(item.author || '-') + '</td>' +
+      '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
+      '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
+      '<td>' + esc(item.action || '') + '</td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="5" class="text-center text-muted">-</td></tr>';
+  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+async function scanArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  const scanBtn = $('#archive-organize-scan-btn');
+  const runBtn = $('#archive-organize-run-btn');
+  try {
+    if (scanBtn) {
+      scanBtn.disabled = true;
+      scanBtn.textContent = t('archiveOrganize.scanning');
+    }
+    if (runBtn) runBtn.disabled = true;
+    const data = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderArchiveOrganizePlan(data);
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  } finally {
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = t('archiveOrganize.scan');
+    }
+  }
+}
+
+async function runArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  if (!archiveOrganizePlan || !(archiveOrganizePlan.move_count > 0)) {
+    return;
+  }
+  if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
+    return;
+  }
+  const runBtn = $('#archive-organize-run-btn');
+  const scanBtn = $('#archive-organize-scan-btn');
+  try {
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.textContent = t('archiveOrganize.running');
+    }
+    if (scanBtn) scanBtn.disabled = true;
+    const data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    alert(
+      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    );
+    const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderArchiveOrganizePlan(refreshed);
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  } finally {
+    if (runBtn) runBtn.textContent = t('archiveOrganize.run');
+    if (scanBtn) scanBtn.disabled = false;
+  }
+}
+
+$('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
+$('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
 
 /* ====== Init ====== */
 (function init() {

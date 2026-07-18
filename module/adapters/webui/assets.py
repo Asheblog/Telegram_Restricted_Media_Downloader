@@ -267,6 +267,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <svg viewBox="0 0 24 24" fill="none"><path d="M3 6h18M5 6v13a2 2 0 002 2h10a2 2 0 002-2V6M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span data-i18n="nav.media">媒体管理</span>
     </button>
+    <button class="sidebar-nav-item" data-nav="archive-organize">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v10H3V7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 13h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span data-i18n="nav.archiveOrganize">归档整理</span>
+    </button>
 
     <div class="sidebar-nav-label" data-i18n="nav.section.system">系统</div>
     <button class="sidebar-nav-item" data-nav="system-logs">
@@ -1230,6 +1234,43 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ====== Archive Organize View ====== -->
+<div class="view" id="view-archive-organize">
+  <div class="panel">
+    <div class="panel-header">
+      <h3 data-i18n="archiveOrganize.title">归档整理</h3>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+        <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。</p>
+      <div class="form-row mb-4">
+        <div class="form-group" style="min-width:240px;flex:1">
+          <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
+          <select class="form-input" id="archive-organize-channel"></select>
+        </div>
+      </div>
+      <div id="archive-organize-result" class="hidden">
+        <div id="archive-organize-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div class="overflow-x-auto rounded-lg border border-line">
+          <table class="data-table min-w-[640px]">
+            <thead><tr>
+              <th data-i18n="archiveOrganize.messageId">主贴 ID</th>
+              <th data-i18n="archiveOrganize.author">作者</th>
+              <th data-i18n="archiveOrganize.from">原路径</th>
+              <th data-i18n="archiveOrganize.to">目标路径</th>
+              <th data-i18n="archiveOrganize.action">动作</th>
+            </tr></thead>
+            <tbody id="archive-organize-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ====== Settings View ====== -->
 <div class="view panel min-h-0" id="view-settings">
   <div class="panel-header">
@@ -1637,6 +1678,7 @@ const i18n = {
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
     'nav.media': '媒体管理',
+    'nav.archiveOrganize': '归档整理',
     'nav.systemLogs': '系统日志',
     'nav.profile': '我的',
     'nav.logout': '退出登录',
@@ -1998,6 +2040,25 @@ const i18n = {
     'media.title': '媒体管理',
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
+    'archiveOrganize.title': '归档整理',
+    'archiveOrganize.hint': '从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。',
+    'archiveOrganize.channel': '频道文件夹',
+    'archiveOrganize.scan': '扫描作者分布',
+    'archiveOrganize.run': '按作者整理',
+    'archiveOrganize.scanning': '正在扫描…',
+    'archiveOrganize.running': '正在整理…',
+    'archiveOrganize.messageId': '主贴 ID',
+    'archiveOrganize.author': '作者',
+    'archiveOrganize.from': '原路径',
+    'archiveOrganize.to': '目标路径',
+    'archiveOrganize.action': '动作',
+    'archiveOrganize.authors': '作者数',
+    'archiveOrganize.moves': '待移动',
+    'archiveOrganize.skips': '跳过',
+    'archiveOrganize.moved': '已移动',
+    'archiveOrganize.errors': '失败',
+    'archiveOrganize.emptyChannels': '未找到归档频道目录',
+    'archiveOrganize.pickChannel': '请选择频道',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -2059,6 +2120,7 @@ const i18n = {
     'nav.settings': 'Settings',
     'nav.records': 'Records',
     'nav.media': 'Media Mgmt',
+    'nav.archiveOrganize': 'Archive Organize',
     'nav.systemLogs': 'System Logs',
     'nav.profile': 'Me',
     'nav.logout': 'Log Out',
@@ -2420,6 +2482,25 @@ const i18n = {
     'media.title': 'Media Management',
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
+    'archiveOrganize.title': 'Archive Organize',
+    'archiveOrganize.hint': 'Parse Author author tags from Telegram posts and rclone-move post folders under author directories.',
+    'archiveOrganize.channel': 'Channel folder',
+    'archiveOrganize.scan': 'Scan authors',
+    'archiveOrganize.run': 'Reorganize by author',
+    'archiveOrganize.scanning': 'Scanning…',
+    'archiveOrganize.running': 'Reorganizing…',
+    'archiveOrganize.messageId': 'Post ID',
+    'archiveOrganize.author': 'Author',
+    'archiveOrganize.from': 'From',
+    'archiveOrganize.to': 'To',
+    'archiveOrganize.action': 'Action',
+    'archiveOrganize.authors': 'Authors',
+    'archiveOrganize.moves': 'To move',
+    'archiveOrganize.skips': 'Skipped',
+    'archiveOrganize.moved': 'Moved',
+    'archiveOrganize.errors': 'Failed',
+    'archiveOrganize.emptyChannels': 'No archive channel folders found',
+    'archiveOrganize.pickChannel': 'Select a channel',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -2802,6 +2883,7 @@ var SPA_VIEW_PATHS = {
   statistics: '/statistics',
   records: '/records',
   media: '/media',
+  'archive-organize': '/archive-organize',
   'system-logs': '/system-logs',
   settings: '/settings',
   profile: '/profile'
@@ -3415,6 +3497,7 @@ function switchView(view, options) {
   if (view === 'records') loadRecords();
   if (view === 'statistics') loadStatistics();
   if (view === 'media') loadMedia();
+  if (view === 'archive-organize') loadArchiveOrganize();
   if (view === 'system-logs') {
     loadSystemLogs();
     startSystemLogsAutoRefresh();
@@ -6119,6 +6202,126 @@ document.addEventListener('change', function(e) {
   }
 });
 
+/* ====== Archive Organize (by Post Author) ====== */
+var archiveOrganizePlan = null;
+
+async function loadArchiveOrganizeChannels() {
+  const select = $('#archive-organize-channel');
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const data = await fetchJson('/api/archive/author-channels');
+    const channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+    if (previous && channels.indexOf(previous) >= 0) {
+      select.value = previous;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+  }
+}
+
+async function loadArchiveOrganize() {
+  await loadArchiveOrganizeChannels();
+}
+
+function renderArchiveOrganizePlan(data) {
+  archiveOrganizePlan = data;
+  const result = $('#archive-organize-result');
+  const summary = $('#archive-organize-summary');
+  const tbody = $('#archive-organize-tbody');
+  const runBtn = $('#archive-organize-run-btn');
+  if (!result || !summary || !tbody) return;
+  result.classList.remove('hidden');
+  summary.innerHTML = [
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
+    '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
+  ].join('');
+  const moves = data.moves || [];
+  tbody.innerHTML = moves.map(function(item) {
+    return '<tr>' +
+      '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
+      '<td>' + esc(item.author || '-') + '</td>' +
+      '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
+      '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
+      '<td>' + esc(item.action || '') + '</td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="5" class="text-center text-muted">-</td></tr>';
+  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+async function scanArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  const scanBtn = $('#archive-organize-scan-btn');
+  const runBtn = $('#archive-organize-run-btn');
+  try {
+    if (scanBtn) {
+      scanBtn.disabled = true;
+      scanBtn.textContent = t('archiveOrganize.scanning');
+    }
+    if (runBtn) runBtn.disabled = true;
+    const data = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderArchiveOrganizePlan(data);
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  } finally {
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = t('archiveOrganize.scan');
+    }
+  }
+}
+
+async function runArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  if (!archiveOrganizePlan || !(archiveOrganizePlan.move_count > 0)) {
+    return;
+  }
+  if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
+    return;
+  }
+  const runBtn = $('#archive-organize-run-btn');
+  const scanBtn = $('#archive-organize-scan-btn');
+  try {
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.textContent = t('archiveOrganize.running');
+    }
+    if (scanBtn) scanBtn.disabled = true;
+    const data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    alert(
+      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    );
+    const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderArchiveOrganizePlan(refreshed);
+  } catch (e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  } finally {
+    if (runBtn) runBtn.textContent = t('archiveOrganize.run');
+    if (scanBtn) scanBtn.disabled = false;
+  }
+}
+
+$('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
+$('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+
 /* ====== Init ====== */
 (function init() {
   applyLanguage();
@@ -6780,6 +6983,11 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
           <span class="mob-menu-item__label" data-i18n="nav.media">媒体管理</span>
           <span class="mob-menu-item__arrow">›</span>
         </button>
+        <button class="mob-menu-item" data-profile-nav="archive-organize">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3 7h7l2 2h9v10H3V7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 13h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="mob-menu-item__label" data-i18n="nav.archiveOrganize">归档整理</span>
+          <span class="mob-menu-item__arrow">›</span>
+        </button>
       </div>
       <div class="mob-menu-group">
         <div class="mob-menu-label" data-i18n="nav.section.system">系统</div>
@@ -6821,6 +7029,16 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
     <div class="mob-subpage" id="mob-subpage-media">
       <button id="mob-media-scan-btn" class="mob-btn mob-btn-sm" style="width:100%;" data-i18n="media.scan">扫描可清理文件</button>
       <div id="mob-media-result"></div>
+    </div>
+    <div class="mob-subpage" id="mob-subpage-archive-organize">
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。</p>
+      <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
+      <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+        <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+      </div>
+      <div id="mob-archive-organize-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-settings">
       <div class="mob-collapse open" id="collapse-settings-paths">
@@ -7074,6 +7292,7 @@ const i18n = {
     'nav.settings': '系统设置',
     'nav.records': '下载记录',
     'nav.media': '媒体管理',
+    'nav.archiveOrganize': '归档整理',
     'nav.systemLogs': '系统日志',
     'nav.profile': '我的',
     'nav.logout': '退出登录',
@@ -7435,6 +7654,25 @@ const i18n = {
     'media.title': '媒体管理',
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
+    'archiveOrganize.title': '归档整理',
+    'archiveOrganize.hint': '从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。',
+    'archiveOrganize.channel': '频道文件夹',
+    'archiveOrganize.scan': '扫描作者分布',
+    'archiveOrganize.run': '按作者整理',
+    'archiveOrganize.scanning': '正在扫描…',
+    'archiveOrganize.running': '正在整理…',
+    'archiveOrganize.messageId': '主贴 ID',
+    'archiveOrganize.author': '作者',
+    'archiveOrganize.from': '原路径',
+    'archiveOrganize.to': '目标路径',
+    'archiveOrganize.action': '动作',
+    'archiveOrganize.authors': '作者数',
+    'archiveOrganize.moves': '待移动',
+    'archiveOrganize.skips': '跳过',
+    'archiveOrganize.moved': '已移动',
+    'archiveOrganize.errors': '失败',
+    'archiveOrganize.emptyChannels': '未找到归档频道目录',
+    'archiveOrganize.pickChannel': '请选择频道',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -7496,6 +7734,7 @@ const i18n = {
     'nav.settings': 'Settings',
     'nav.records': 'Records',
     'nav.media': 'Media Mgmt',
+    'nav.archiveOrganize': 'Archive Organize',
     'nav.systemLogs': 'System Logs',
     'nav.profile': 'Me',
     'nav.logout': 'Log Out',
@@ -7857,6 +8096,25 @@ const i18n = {
     'media.title': 'Media Management',
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
+    'archiveOrganize.title': 'Archive Organize',
+    'archiveOrganize.hint': 'Parse Author author tags from Telegram posts and rclone-move post folders under author directories.',
+    'archiveOrganize.channel': 'Channel folder',
+    'archiveOrganize.scan': 'Scan authors',
+    'archiveOrganize.run': 'Reorganize by author',
+    'archiveOrganize.scanning': 'Scanning…',
+    'archiveOrganize.running': 'Reorganizing…',
+    'archiveOrganize.messageId': 'Post ID',
+    'archiveOrganize.author': 'Author',
+    'archiveOrganize.from': 'From',
+    'archiveOrganize.to': 'To',
+    'archiveOrganize.action': 'Action',
+    'archiveOrganize.authors': 'Authors',
+    'archiveOrganize.moves': 'To move',
+    'archiveOrganize.skips': 'Skipped',
+    'archiveOrganize.moved': 'Moved',
+    'archiveOrganize.errors': 'Failed',
+    'archiveOrganize.emptyChannels': 'No archive channel folders found',
+    'archiveOrganize.pickChannel': 'Select a channel',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -8239,6 +8497,7 @@ var SPA_VIEW_PATHS = {
   statistics: '/statistics',
   records: '/records',
   media: '/media',
+  'archive-organize': '/archive-organize',
   'system-logs': '/system-logs',
   settings: '/settings',
   profile: '/profile'
@@ -9090,6 +9349,7 @@ var profileTitles = {
   statistics: '统计面板',
   records: '下载记录',
   media: '媒体管理',
+  'archive-organize': '归档整理',
   settings: '系统设置',
   'system-logs': '系统日志'
 };
@@ -9105,6 +9365,7 @@ var MOBILE_PROFILE_SUBPAGES = {
   statistics: true,
   records: true,
   media: true,
+  'archive-organize': true,
   settings: true,
   'system-logs': true
 };
@@ -9195,6 +9456,7 @@ function mobNavigateTo(subpage, options) {
   if (subpage === 'statistics') { loadMobileStatistics(); }
   else if (subpage === 'records') { loadMobileRecords(); }
   else if (subpage === 'media') { loadMediaMobile(); }
+  else if (subpage === 'archive-organize') { loadArchiveOrganizeMobile(); }
   else if (subpage === 'settings') { loadMobileSettings(); }
   else if (subpage === 'system-logs') { loadMobileSystemLogs(); startMobileSystemLogsAutoRefresh(); }
 }
@@ -11158,6 +11420,80 @@ async function loadMediaMobile() {
   }
 }
 
+var mobArchiveOrganizePlan = null;
+
+async function loadArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  if (!select) return;
+  try {
+    var data = await fetchJson('/api/archive/author-channels');
+    var channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(e.message || '') + '</option>';
+  }
+}
+
+function renderMobArchiveOrganizePlan(data) {
+  mobArchiveOrganizePlan = data;
+  var result = document.getElementById('mob-archive-organize-result');
+  var runBtn = document.getElementById('mob-archive-organize-run-btn');
+  if (!result) return;
+  var html = '<div class="text-sm" style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
+    '<div><strong>' + t('archiveOrganize.authors') + '</strong><br>' + (data.author_count || 0) + '</div>' +
+    '<div><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (data.move_count || 0) + '</div>' +
+    '<div><strong>' + t('archiveOrganize.skips') + '</strong><br>' + (data.skip_count || 0) + '</div>' +
+    '</div>';
+  (data.moves || []).slice(0, 40).forEach(function(item) {
+    html += '<div class="text-xs" style="padding:8px 0;border-bottom:1px solid var(--color-line);">' +
+      '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
+      '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
+      '</div>';
+  });
+  result.innerHTML = html;
+  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+async function scanArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  var result = document.getElementById('mob-archive-organize-result');
+  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.scanning') + '</div>';
+  try {
+    var data = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderMobArchiveOrganizePlan(data);
+  } catch (e) {
+    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+  }
+}
+
+async function runArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel || !mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) return;
+  if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
+  var result = document.getElementById('mob-archive-organize-result');
+  if (result) result.innerHTML = '<div class="mob-empty">' + t('archiveOrganize.running') + '</div>';
+  try {
+    var data = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    showToast(t('archiveOrganize.moved') + ': ' + (data.moved_count || 0));
+    var refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    renderMobArchiveOrganizePlan(refreshed);
+  } catch (e) {
+    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event bindings (init)
 // ---------------------------------------------------------------------------
@@ -11488,6 +11824,11 @@ async function loadMediaMobile() {
   // Media scan button
   var mediaBtn = document.getElementById('mob-media-scan-btn');
   if (mediaBtn) mediaBtn.addEventListener('click', loadMediaMobile);
+
+  var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
+  if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
+  var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
+  if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);

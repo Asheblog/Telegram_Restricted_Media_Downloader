@@ -44,6 +44,15 @@ class DisabledPikPakArchiveClient:
     def upload_to_ingest(self, *args, **kwargs) -> PikPakArchiveResult:
         return PikPakArchiveResult(False, 'disabled', 'PikPak rclone remote is not configured.')
 
+    def list_directories(self, *args, **kwargs) -> list:
+        return []
+
+    def move_directory(self, *args, **kwargs) -> None:
+        raise RuntimeError('PikPak archive is disabled or remote is missing.')
+
+    def list_archive_channel_folders(self) -> list:
+        return []
+
 
 class RclonePikPakArchiveClient:
     def __init__(
@@ -292,6 +301,45 @@ class RclonePikPakArchiveClient:
 
     def moveto(self, source_path: str, target_path: str) -> None:
         self._run(['moveto', self.remote(source_path), self.remote(target_path)])
+
+    def list_directories(self, remote_path: str, *, recursive: bool = False) -> list[str]:
+        """Return directory paths relative to ``remote_path`` (rclone lsjson --dirs-only)."""
+        args = ['lsjson', self.remote(remote_path), '--dirs-only']
+        if recursive:
+            args.append('--recursive')
+        result = self._run(args)
+        try:
+            items = json.loads(result.stdout or '[]')
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f'Unable to parse rclone lsjson output: {e}')
+        paths = []
+        for item in items or []:
+            if item.get('IsDir') is False:
+                continue
+            path = item.get('Path') or item.get('Name')
+            if path:
+                paths.append(clean_remote_path(path))
+        return paths
+
+    def move_directory(self, source_path: str, target_path: str) -> None:
+        """Server-side move/rename of a remote directory via rclone moveto."""
+        source = clean_remote_path(source_path)
+        target = clean_remote_path(target_path)
+        if not source or not target:
+            raise RuntimeError('Source and target directory paths are required.')
+        parent = posixpath.dirname(target)
+        if parent:
+            self.ensure_directory(parent)
+        self.moveto(source, target)
+
+    def list_archive_channel_folders(self) -> list[str]:
+        """List top-level Source Channel Folder names under the archive root."""
+        if not self.config.get('remote'):
+            return []
+        root = clean_remote_path(self.config.get('root_directory') or '')
+        if not root:
+            return []
+        return sorted(self.list_directories(root, recursive=False))
 
     def upload_to_ingest(
             self,

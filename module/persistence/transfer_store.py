@@ -871,6 +871,34 @@ class TransferStore:
             return None
         return 1 if bool(value) else 0
 
+    def rewrite_source_folder_path(
+            self,
+            *,
+            channel_folder: str,
+            from_relative: str,
+            to_relative: str,
+    ) -> int:
+        """Rewrite Transfer Item source_folder rows that match a channel-relative move."""
+        channel = str(channel_folder or '').replace('\\', '/').strip('/')
+        from_rel = str(from_relative or '').replace('\\', '/').strip('/')
+        to_rel = str(to_relative or '').replace('\\', '/').strip('/')
+        if not channel or not from_rel or not to_rel or from_rel == to_rel:
+            return 0
+        old_path = f'{channel}/{from_rel}'
+        new_path = f'{channel}/{to_rel}'
+        now = self.utc_now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                '''
+                UPDATE transfer_items
+                SET source_folder = ?,
+                    updated_at = ?
+                WHERE REPLACE(TRIM(COALESCE(source_folder, '')), '\\', '/') = ?
+                ''',
+                (new_path, now, old_path),
+            )
+            return int(cursor.rowcount or 0)
+
     def update_item_progress(
             self,
             item_id: int,

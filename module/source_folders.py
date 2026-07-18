@@ -39,6 +39,10 @@ NUMBERED_TITLE_LINE = re.compile(r'^\d+[\.、．]\s*\S')
 BOILERPLATE_TITLE_LINES = frozenset({
     '帖子内容', '转发内容', '消息内容', '正文', '内容', 'title', 'caption',
 })
+# Nested under Source Channel Folder when body has no Author-style author line.
+UNKNOWN_AUTHOR_FOLDER = '_未知作者'
+POST_AUTHOR_LINE = re.compile(r'示例社区作者\s*[：:]\s*#?([^\s#]+)')
+POST_FOLDER_SEGMENT_RE = re.compile(r'^\d+(?:\s+-\s+.+)?$')
 
 
 def source_folder_from_link(link: Optional[str]) -> Optional[str]:
@@ -143,6 +147,99 @@ def _is_boilerplate_title_line(line: str) -> bool:
     return line.casefold() in BOILERPLATE_TITLE_LINES
 
 
+def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
+    """Parse Author-style author from caption/text: ``示例社区作者：#名字``."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    match = POST_AUTHOR_LINE.search(text)
+    if not match:
+        return None
+    author = match.group(1).strip().lstrip('#')
+    return author or None
+
+
+def post_author_from_message(message) -> Optional[str]:
+    if message is None:
+        return None
+    for attr in ('caption', 'text'):
+        author = extract_post_author_from_text(getattr(message, attr, None))
+        if author:
+            return author
+    return None
+
+
+def post_author_from_messages(messages) -> Optional[str]:
+    for message in messages or []:
+        author = post_author_from_message(message)
+        if author:
+            return author
+    return None
+
+
+def author_folder_segment(author: Optional[str]) -> str:
+    cleaned = sanitize_source_folder(author, limit=POST_FOLDER_SEGMENT_BYTE_LIMIT) if author else None
+    return cleaned or UNKNOWN_AUTHOR_FOLDER
+
+
+def is_post_folder_segment(segment: Optional[str]) -> bool:
+    if not isinstance(segment, str) or not segment.strip():
+        return False
+    return bool(POST_FOLDER_SEGMENT_RE.match(segment.strip()))
+
+
+def message_id_from_post_folder_segment(segment: Optional[str]) -> Optional[int]:
+    if not is_post_folder_segment(segment):
+        return None
+    head = str(segment).split(' - ', 1)[0].strip()
+    try:
+        return int(head)
+    except (TypeError, ValueError):
+        return None
+
+
+def split_archive_source_folder(
+        source_folder: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Return (channel, author_or_none, post_segment_or_none).
+
+    Legacy flat paths ``{channel}/{post}`` yield author=None.
+    Nested paths ``{channel}/{author}/{post}`` yield the author segment(s).
+    """
+    parts = [part for part in str(source_folder or '').replace('\\', '/').split('/') if part]
+    if not parts:
+        return None, None, None
+    channel = parts[0]
+    if len(parts) == 1:
+        return channel, None, None
+    if is_post_folder_segment(parts[-1]):
+        if len(parts) == 2:
+            return channel, None, parts[1]
+        return channel, '/'.join(parts[1:-1]), parts[-1]
+    if len(parts) == 2:
+        return channel, parts[1], None
+    return channel, '/'.join(parts[1:]), None
+
+
+def resolve_post_author_folder(
+        *,
+        message=None,
+        messages=None,
+        source_folder: Optional[str] = None,
+        post_author: Optional[str] = None,
+) -> str:
+    if post_author:
+        return author_folder_segment(post_author)
+    author = post_author_from_messages(messages) if messages else None
+    if not author:
+        author = post_author_from_message(message)
+    if author:
+        return author_folder_segment(author)
+    _channel, existing_author, _post = split_archive_source_folder(source_folder)
+    if existing_author:
+        return author_folder_segment(existing_author)
+    return UNKNOWN_AUTHOR_FOLDER
+
+
 def score_title_line(line: Optional[str]) -> float:
     """Higher is better. Non-positive means the line should not win on its own."""
     if not isinstance(line, str):
@@ -151,6 +248,8 @@ def score_title_line(line: Optional[str]) -> float:
     if not text:
         return 0.0
     if _is_boilerplate_title_line(text):
+        return 0.0
+    if POST_AUTHOR_LINE.match(text):
         return 0.0
     if _is_date_only_line(text):
         return 0.0
@@ -350,8 +449,9 @@ def archive_source_folder(
         post_message=None,
         post_message_id: Optional[Union[int, str]] = None,
         post_title: Optional[str] = None,
+        post_author: Optional[str] = None,
 ) -> str:
-    """Build relative archive path: {channel}/{postId - title} (post segment omitted if no id)."""
+    """Build relative archive path: {channel}/{author}/{postId - title}."""
     folder_message = post_message if post_message is not None else message
     channel = source_folder_from_message(
         folder_message,
@@ -370,10 +470,14 @@ def archive_source_folder(
     title = post_title
     if title is None:
         title = post_title_from_message(folder_message if folder_message is not None else message)
+    author = resolve_post_author_folder(
+        message=folder_message if folder_message is not None else message,
+        post_author=post_author,
+    )
     post_segment = post_folder_segment(msg_id, title)
     if not post_segment:
-        return channel
-    return join_archive_source_folder(channel, post_segment)
+        return join_archive_source_folder(channel, author) if channel else channel
+    return join_archive_source_folder(channel, author, post_segment)
 
 
 def media_group_post_message_id(messages) -> Optional[int]:
@@ -419,6 +523,7 @@ def archive_source_folder_for_messages(
             else media_group_post_message_id(message_list)
         ),
         post_title=pick_best_message_title(message_list),
+        post_author=post_author_from_messages(message_list),
     )
 
 
@@ -448,40 +553,55 @@ def resolve_forward_archive_source_folder(
         else media_group_post_message_id(message_list)
     )
     folder_message = message_list[0] if message_list else None
+    author = resolve_post_author_folder(
+        message=folder_message,
+        messages=message_list,
+        source_folder=source_folder,
+        post_author=post_author_from_messages(message_list),
+    )
     built = archive_source_folder(
         folder_message,
         fallback_chat_id=fallback_chat_id,
         fallback_link=fallback_link,
         post_message_id=group_post_id,
         post_title=title,
+        post_author=author,
     )
     if not source_folder:
         return built
-    channel = channel_folder_from_archive_path(source_folder)
-    parts = [part for part in str(source_folder).replace('\\', '/').split('/') if part]
+    channel, _existing_author, existing_post = split_archive_source_folder(source_folder)
+    if not channel:
+        channel = channel_folder_from_archive_path(source_folder)
     existing_id = None
     existing_title = None
-    if len(parts) >= 2:
-        if ' - ' in parts[-1]:
-            head, existing_title = parts[-1].split(' - ', 1)
+    if existing_post:
+        if ' - ' in existing_post:
+            head, existing_title = existing_post.split(' - ', 1)
             existing_id = head.strip() or None
             existing_title = existing_title.strip() or None
         else:
-            existing_id = parts[-1].strip() or None
+            existing_id = existing_post.strip() or None
     # Never let a later album member rewrite the canonical post id already stored on the path.
     stable_id = existing_id if existing_id is not None else group_post_id
     if title and channel and stable_id is not None:
         if not existing_title or score_title_line(title) > score_title_line(existing_title):
             post_segment = post_folder_segment(stable_id, title)
             if post_segment:
-                return join_archive_source_folder(channel, post_segment)
+                return join_archive_source_folder(channel, author, post_segment)
     if title and not archive_folder_has_post_title(source_folder):
         if channel:
             post_segment = post_folder_segment(stable_id, title)
             if post_segment:
-                return join_archive_source_folder(channel, post_segment)
-            return channel
+                return join_archive_source_folder(channel, author, post_segment)
+            return join_archive_source_folder(channel, author)
         return built
+    if channel and existing_post and _existing_author is None:
+        # Lift legacy flat {channel}/{post} into {channel}/{author}/{post}.
+        return join_archive_source_folder(channel, author, existing_post)
+    if channel and existing_post and _existing_author and _existing_author != author:
+        # Prefer freshly resolved author when body now yields one.
+        if author != UNKNOWN_AUTHOR_FOLDER:
+            return join_archive_source_folder(channel, author, existing_post)
     return source_folder
 
 

@@ -43,6 +43,7 @@ SPA_VIEW_PATHS = frozenset({
     '/statistics',
     '/records',
     '/media',
+    '/archive-organize',
     '/system-logs',
     '/settings',
     '/profile',
@@ -784,6 +785,21 @@ class WebUiServer:
                 if parsed.path == '/api/media/cleanup-logs':
                     self._send_json({'logs': server.list_cleanup_logs()})
                     return
+                if parsed.path == '/api/archive/author-channels':
+                    try:
+                        self._send_json(server.list_archive_author_channels())
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 列出归档频道失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_channels_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path == '/api/system-logs':
                     query = parse_qs(parsed.query)
                     limit = self._query_int(query, 'limit', 50)
@@ -1058,6 +1074,38 @@ class WebUiServer:
                         self._send_json(
                             {
                                 'error_code': 'media_cleanup_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/archive/author-scan':
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.scan_archive_author_reorganize(payload))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 作者归档扫描失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_scan_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
+                if parsed.path == '/api/archive/author-reorganize':
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.execute_archive_author_reorganize(payload))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 作者归档整理失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_reorganize_failed',
                                 'error': str(e)
                             },
                             HTTPStatus.BAD_REQUEST
@@ -1690,6 +1738,36 @@ class WebUiServer:
         if cleanup_media_files:
             return cleanup_media_files(payload)
         raise WebUiApiError('media_operations_unavailable', 'Media operations are unavailable.', HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def list_archive_author_channels(self) -> dict:
+        op = self._operation('list_archive_author_channels')
+        if op:
+            return op()
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def scan_archive_author_reorganize(self, payload: dict) -> dict:
+        op = self._operation('scan_archive_author_reorganize')
+        if op:
+            return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def execute_archive_author_reorganize(self, payload: dict) -> dict:
+        op = self._operation('execute_archive_author_reorganize')
+        if op:
+            return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
 
     def list_cleanup_logs(self) -> list:
         list_cleanup_logs = self._operation('list_cleanup_logs')

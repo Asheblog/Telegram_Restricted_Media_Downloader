@@ -57,7 +57,7 @@ class TransferStoreChannelStatsCase(unittest.TestCase):
         self._add(
             message_id=8,
             status=TransferStatus.SUCCESS,
-            source_folder='alpha/100 - post title',
+            source_folder='alpha/_未知作者/100 - post title',
         )
 
         rows = self.store.aggregate_channel_download_stats(days=7, tz_offset_minutes=0)

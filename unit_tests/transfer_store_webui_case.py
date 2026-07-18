@@ -2384,7 +2384,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             self.assertEqual(1, len(archive_calls))
             self.assertEqual(
-                'chengdudiyi8/73962 - 作者_ #示例社区 #示例标签',
+                'chengdudiyi8/_未知作者/73962 - 作者_ #示例社区 #示例标签',
                 archive_calls[0]['source_folder']
             )
             self.assertEqual(
@@ -4719,7 +4719,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 range_message_id=73464,
                 source_link='https://t.me/chengdudiyi8/73464',
                 target_link='https://t.me/pikpak_bot',
-                source_folder='chengdudiyi8/73464 - title',
+                source_folder='chengdudiyi8/_未知作者/73464 - title',
                 phase='forwarded',
                 status=TransferStatus.SUCCESS,
             )
@@ -4730,7 +4730,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 range_message_id=73464,
                 source_link='https://t.me/chengdudiyi8/73465',
                 target_link='https://t.me/pikpak_bot',
-                source_folder='chengdudiyi8/73464 - title',
+                source_folder='chengdudiyi8/_未知作者/73464 - title',
                 phase='forwarded',
                 status=TransferStatus.SUCCESS,
             )
@@ -4741,7 +4741,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 range_message_id=73466,
                 source_link='https://t.me/chengdudiyi8/73466',
                 target_link='https://t.me/pikpak_bot',
-                source_folder='chengdudiyi8/73466 - next',
+                source_folder='chengdudiyi8/_未知作者/73466 - next',
                 phase='forwarded',
                 status=TransferStatus.RUNNING,
             )
