@@ -302,12 +302,25 @@ class RclonePikPakArchiveClient:
     def moveto(self, source_path: str, target_path: str) -> None:
         self._run(['moveto', self.remote(source_path), self.remote(target_path)])
 
-    def list_directories(self, remote_path: str, *, recursive: bool = False) -> list[str]:
-        """Return directory paths relative to ``remote_path`` (rclone lsjson --dirs-only)."""
+    def list_directories(
+            self,
+            remote_path: str,
+            *,
+            recursive: bool = False,
+            timeout: Optional[float] = None,
+    ) -> list[str]:
+        """Return directory paths relative to ``remote_path`` (rclone lsjson --dirs-only).
+
+        Prefer non-recursive listing for large trees; recursive listing can take
+        far longer than the default archive command timeout.
+        """
         args = ['lsjson', self.remote(remote_path), '--dirs-only']
         if recursive:
             args.append('--recursive')
-        result = self._run(args)
+        # Large PikPak trees routinely exceed the generic 300s archive timeout.
+        if timeout is None:
+            timeout = 3600.0 if recursive else 900.0
+        result = self._run(args, timeout=timeout)
         try:
             items = json.loads(result.stdout or '[]')
         except json.JSONDecodeError as e:

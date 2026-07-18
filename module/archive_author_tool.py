@@ -19,6 +19,13 @@ MESSAGE_FETCH_BATCH = 80
 ProgressCallback = Optional[Callable[..., None]]
 
 
+def clean_leaf_name(path: Optional[str]) -> str:
+    text = str(path or '').replace('\\', '/').strip('/')
+    if not text:
+        return ''
+    return text.rsplit('/', 1)[-1]
+
+
 class ArchiveAuthorReorganizeService:
     def __init__(
             self,
@@ -60,26 +67,11 @@ class ArchiveAuthorReorganizeService:
             raise ValueError('请输入单个频道文件夹名（Source Channel Folder）。')
         client = self._require_client()
         root = self._channel_remote_root(client, channel)
-        self._report(
-            on_progress,
-            phase='listing',
-            message='正在列出 PikPak 目录（大目录可能较久）…',
-        )
-        directory_paths = [
-            f'{channel}/{path}' if path else channel
-            for path in client.list_directories(root, recursive=True)
-        ]
-        # Also include top-level names when recursive returns relative paths only.
-        if not directory_paths:
-            directory_paths = [
-                f'{channel}/{name}' for name in client.list_directories(root, recursive=False)
-            ]
-        self._report(
-            on_progress,
-            phase='listing',
-            current=len(directory_paths),
-            total=len(directory_paths),
-            message=f'已列出 {len(directory_paths)} 个目录',
+        directory_paths = self._list_channel_directories(
+            client=client,
+            channel=channel,
+            root=root,
+            on_progress=on_progress,
         )
         message_ids = []
         for path in directory_paths:
@@ -126,6 +118,80 @@ class ArchiveAuthorReorganizeService:
             ),
         )
         return payload
+
+    def _list_channel_directories(
+            self,
+            *,
+            client,
+            channel: str,
+            root: str,
+            on_progress: ProgressCallback = None,
+    ) -> list[str]:
+        """List post folders with layered rclone lsjson (no full-tree --recursive).
+
+        Flat layout: ``channel/{post}``
+        Nested layout: ``channel/{author}/{post}`` — list each author folder once.
+        """
+        self._report(
+            on_progress,
+            phase='listing',
+            message='正在列出频道顶层目录…',
+        )
+        top_level = client.list_directories(root, recursive=False)
+        post_paths: list[str] = []
+        author_dirs: list[str] = []
+        for raw in top_level:
+            name = clean_leaf_name(raw)
+            if not name:
+                continue
+            if is_post_folder_segment(name):
+                post_paths.append(f'{channel}/{name}')
+            else:
+                author_dirs.append(name)
+
+        total_steps = max(len(author_dirs), 1)
+        self._report(
+            on_progress,
+            phase='listing',
+            current=0,
+            total=total_steps,
+            message=(
+                f'顶层主贴 {len(post_paths)} 个，作者目录 {len(author_dirs)} 个；'
+                f'开始逐个列出作者子目录…'
+            ),
+        )
+        for index, author in enumerate(author_dirs, start=1):
+            self._report(
+                on_progress,
+                phase='listing',
+                current=index - 1,
+                total=total_steps,
+                message=f'正在列出作者目录 {index}/{len(author_dirs)}：{author}',
+            )
+            author_root = join_remote_path(root, author)
+            children = client.list_directories(author_root, recursive=False)
+            for child in children:
+                leaf = clean_leaf_name(child)
+                if leaf and is_post_folder_segment(leaf):
+                    post_paths.append(f'{channel}/{author}/{leaf}')
+            self._report(
+                on_progress,
+                phase='listing',
+                current=index,
+                total=total_steps,
+                message=(
+                    f'已处理作者目录 {index}/{len(author_dirs)}，'
+                    f'累计主贴目录 {len(post_paths)}'
+                ),
+            )
+        self._report(
+            on_progress,
+            phase='listing',
+            current=len(post_paths),
+            total=max(len(post_paths), 1),
+            message=f'已列出 {len(post_paths)} 个主贴目录',
+        )
+        return post_paths
 
     def execute(self, channel_folder: str, on_progress: ProgressCallback = None) -> dict:
         plan = self.scan(channel_folder, on_progress=on_progress)

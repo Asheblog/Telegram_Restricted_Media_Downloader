@@ -18,18 +18,28 @@ class FakeArchiveClient:
             'enable': True,
         }
         self.moved = []
+        self.list_calls = []
 
     def list_archive_channel_folders(self):
         return ['chengdudiyi8']
 
-    def list_directories(self, remote_path, *, recursive=False):
+    def list_directories(self, remote_path, *, recursive=False, timeout=None):
+        self.list_calls.append((remote_path, recursive))
+        path = str(remote_path or '').replace('\\', '/').strip('/')
         if recursive:
+            raise AssertionError('author scan must not use recursive lsjson')
+        if path.endswith('chengdudiyi8'):
             return [
                 '92862 - title-a',
                 '92850 - title-b',
-                f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown',
+                UNKNOWN_AUTHOR_FOLDER,
+                '我的羞涩女儿',
             ]
-        return ['92862 - title-a', '92850 - title-b']
+        if path.endswith(UNKNOWN_AUTHOR_FOLDER):
+            return ['99999 - unknown']
+        if path.endswith('我的羞涩女儿'):
+            return ['92840 - nested']
+        return []
 
     def move_directory(self, source, target):
         self.moved.append((source, target))
@@ -42,8 +52,9 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         def on_progress(**kwargs):
             events.append(kwargs)
 
+        client = FakeArchiveClient()
         service = ArchiveAuthorReorganizeService(
-            archive_client=FakeArchiveClient(),
+            archive_client=client,
             telegram_client=None,
         )
         plan = service.scan('chengdudiyi8', on_progress=on_progress)
@@ -53,6 +64,12 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertIn('planning', phases)
         self.assertIn('done', phases)
         self.assertTrue(any(item.get('message') for item in events))
+        self.assertTrue(client.list_calls)
+        self.assertTrue(all(not recursive for _path, recursive in client.list_calls))
+        from_paths = {item['from_relative'] for item in plan['moves']}
+        self.assertIn('92862 - title-a', from_paths)
+        self.assertIn(f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown', from_paths)
+        self.assertIn('我的羞涩女儿/92840 - nested', from_paths)
 
     def test_job_store_tracks_percent_and_truncates_moves(self):
         store = ArchiveAuthorJobStore()
