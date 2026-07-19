@@ -212,7 +212,7 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             item = store.list_items(task_id)[0]
             self.assertEqual('source-chat', item['source_chat_id'])
             self.assertEqual(1, item['source_message_id'])
-            self.assertEqual('source/_未知作者/1 - teaser', item['source_folder'])
+            self.assertEqual('source/1 - teaser', item['source_folder'])
             events = store.list_events(task_id)
             self.assertTrue(
                 any('resolved_via=' in (event.get('message') or '') for event in events),
@@ -357,10 +357,10 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             ))
 
             item = store.list_items(task_id)[0]
-            self.assertEqual('swag_vip/_未知作者/1 - teaser', item['source_folder'])
+            self.assertEqual('swag_vip/1 - teaser', item['source_folder'])
             self.assertEqual(1, len(archive_calls))
             self.assertEqual(
-                'swag_vip/_未知作者/1 - teaser',
+                'swag_vip/1 - teaser',
                 archive_calls[0].get('source_folder'),
                 archive_calls[0],
             )
@@ -531,7 +531,7 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
         )
 
         self.assertTrue(result.ok)
-        self.assertEqual(['swag_vip/_未知作者/1'], archive_folders)
+        self.assertEqual(['swag_vip/1'], archive_folders)
 
     def test_archive_recovers_parent_folder_for_discussion_item_without_folder(self):
         from module.pikpak_integration import PikpakIntegrationManager
@@ -590,8 +590,8 @@ class DeepLinkArchiveFolderCase(unittest.TestCase):
             )
 
             self.assertTrue(result.ok)
-            self.assertEqual(['mychannel/_未知作者/7'], archive_folders)
-            self.assertEqual('mychannel/_未知作者/7', store.get_item(item_id)['source_folder'])
+            self.assertEqual(['mychannel/7'], archive_folders)
+            self.assertEqual('mychannel/7', store.get_item(item_id)['source_folder'])
             _close_store(store)
 
     def test_archive_skips_text_only_message_without_creating_folder(self):
@@ -778,7 +778,7 @@ class DeepLinkListenForwardFolderCase(unittest.TestCase):
         ))
 
         self.assertEqual(2, len(archive_calls))
-        expected = 'chengdudiyi8/_未知作者/93670 - 继父出差了妈妈自己在家'
+        expected = 'chengdudiyi8/93670 - 继父出差了妈妈自己在家'
         self.assertEqual(expected, archive_calls[0]['source_folder'])
         self.assertEqual(expected, archive_calls[1]['source_folder'])
 
@@ -906,7 +906,7 @@ class WebRangeAlbumArchiveCase(unittest.TestCase):
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
             expected = (
-                'chengdudiyi8/_未知作者/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插'
+                'chengdudiyi8/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插'
             )
             self.assertEqual(expected, items[0]['source_folder'])
             self.assertEqual(73465, items[0]['range_message_id'])
@@ -968,7 +968,7 @@ class WebRangeAlbumArchiveCase(unittest.TestCase):
         )
         self.assertEqual([photo, video], got_members)
         self.assertEqual(10, shared_id)
-        self.assertEqual('chan/_未知作者/10 - 正文标题', shared_folder)
+        self.assertEqual('chan/10 - 正文标题', shared_folder)
 
 
 if __name__ == '__main__':

@@ -190,6 +190,7 @@ class TransferEngine:
             fallback_chat_id=chat_id,
             fallback_link=link,
             post_message_id=task_with_upload.get('range_message_id'),
+            archive_by_author=bool(task_with_upload.get('archive_by_author')),
         )
         file_base_name = os.path.basename(final_path)
         final_path = os.path.join(
@@ -309,7 +310,8 @@ class TransferEngine:
         task_id: Optional[int] = None,
         media_type: Optional[str] = None,
         send_as_media_group: Optional[bool] = None,
-        range_message_id: Optional[int] = None
+        range_message_id: Optional[int] = None,
+        archive_by_author: bool = False,
     ) -> dict:
         profile = self.infer_target_profile(target_link, target_profile)
         return {
@@ -322,10 +324,12 @@ class TransferEngine:
             'source_folder': source_folder or archive_source_folder(
                 fallback_link=source_link,
                 post_message_id=range_message_id,
+                archive_by_author=archive_by_author,
             ),
             'target_profile': profile,
             'media_type': media_type,
             'range_message_id': range_message_id,
+            'archive_by_author': bool(archive_by_author),
             'on_file_ready': self.ports.progress.on_transfer_file_ready,
             'status_callback': self.ports.progress.on_transfer_upload_status,
             'progress_callback': self.ports.progress.on_transfer_upload_progress,

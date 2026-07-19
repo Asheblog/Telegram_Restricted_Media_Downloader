@@ -499,8 +499,13 @@ def archive_source_folder(
         post_message_id: Optional[Union[int, str]] = None,
         post_title: Optional[str] = None,
         post_author: Optional[str] = None,
+        archive_by_author: bool = False,
 ) -> str:
-    """Build relative archive path: {channel}/{author}/{postId - title}."""
+    """Build relative archive path.
+
+    Default (archive_by_author=False): ``{channel}/{postId - title}``.
+    Opt-in author nesting: ``{channel}/{author}/{postId - title}``.
+    """
     folder_message = post_message if post_message is not None else message
     channel = source_folder_from_message(
         folder_message,
@@ -519,11 +524,15 @@ def archive_source_folder(
     title = post_title
     if title is None:
         title = post_title_from_message(folder_message if folder_message is not None else message)
+    post_segment = post_folder_segment(msg_id, title)
+    if not archive_by_author:
+        if not post_segment:
+            return channel
+        return join_archive_source_folder(channel, post_segment)
     author = resolve_post_author_folder(
         message=folder_message if folder_message is not None else message,
         post_author=post_author,
     )
-    post_segment = post_folder_segment(msg_id, title)
     if not post_segment:
         return join_archive_source_folder(channel, author) if channel else channel
     return join_archive_source_folder(channel, author, post_segment)
@@ -547,6 +556,7 @@ def archive_source_folder_for_messages(
         fallback_chat_id=None,
         fallback_link: Optional[str] = None,
         post_message_id: Optional[Union[int, str]] = None,
+        archive_by_author: bool = False,
 ) -> str:
     """Build one Source Post Archive Path shared by all media-group members."""
     message_list = [message for message in (messages or []) if message is not None]
@@ -555,6 +565,7 @@ def archive_source_folder_for_messages(
             fallback_chat_id=fallback_chat_id,
             fallback_link=fallback_link,
             post_message_id=post_message_id,
+            archive_by_author=archive_by_author,
         )
     folder_message = message_list[0]
     for message in message_list:
@@ -572,7 +583,8 @@ def archive_source_folder_for_messages(
             else media_group_post_message_id(message_list)
         ),
         post_title=pick_best_message_title(message_list),
-        post_author=post_author_from_messages(message_list),
+        post_author=post_author_from_messages(message_list) if archive_by_author else None,
+        archive_by_author=archive_by_author,
     )
 
 
@@ -592,6 +604,7 @@ def resolve_forward_archive_source_folder(
         post_message_id: Optional[Union[int, str]] = None,
         fallback_chat_id=None,
         fallback_link: Optional[str] = None,
+        archive_by_author: bool = False,
 ) -> str:
     """Prefer an explicit Source Post Archive Path; enrich ID-only paths with album caption."""
     message_list = list(messages or [])
@@ -602,12 +615,14 @@ def resolve_forward_archive_source_folder(
         else media_group_post_message_id(message_list)
     )
     folder_message = message_list[0] if message_list else None
-    author = resolve_post_author_folder(
-        message=folder_message,
-        messages=message_list,
-        source_folder=source_folder,
-        post_author=post_author_from_messages(message_list),
-    )
+    author = None
+    if archive_by_author:
+        author = resolve_post_author_folder(
+            message=folder_message,
+            messages=message_list,
+            source_folder=source_folder,
+            post_author=post_author_from_messages(message_list),
+        )
     built = archive_source_folder(
         folder_message,
         fallback_chat_id=fallback_chat_id,
@@ -615,12 +630,21 @@ def resolve_forward_archive_source_folder(
         post_message_id=group_post_id,
         post_title=title,
         post_author=author,
+        archive_by_author=archive_by_author,
     )
     if not source_folder:
         return built
     channel, _existing_author, existing_post = split_archive_source_folder(source_folder)
     if not channel:
         channel = channel_folder_from_archive_path(source_folder)
+
+    def _join_channel_post(post_segment: Optional[str]) -> Optional[str]:
+        if not channel or not post_segment:
+            return None
+        if archive_by_author and author:
+            return join_archive_source_folder(channel, author, post_segment)
+        return join_archive_source_folder(channel, post_segment)
+
     existing_id = None
     existing_title = None
     if existing_post:
@@ -635,22 +659,32 @@ def resolve_forward_archive_source_folder(
     if title and channel and stable_id is not None:
         if not existing_title or score_title_line(title) > score_title_line(existing_title):
             post_segment = post_folder_segment(stable_id, title)
-            if post_segment:
-                return join_archive_source_folder(channel, author, post_segment)
+            joined = _join_channel_post(post_segment)
+            if joined:
+                return joined
     if title and not archive_folder_has_post_title(source_folder):
         if channel:
             post_segment = post_folder_segment(stable_id, title)
-            if post_segment:
-                return join_archive_source_folder(channel, author, post_segment)
-            return join_archive_source_folder(channel, author)
+            joined = _join_channel_post(post_segment)
+            if joined:
+                return joined
+            if archive_by_author and author:
+                return join_archive_source_folder(channel, author)
+            return channel
         return built
-    if channel and existing_post and _existing_author is None:
-        # Lift legacy flat {channel}/{post} into {channel}/{author}/{post}.
+    if archive_by_author and channel and existing_post and _existing_author is None:
+        # Lift legacy flat {channel}/{post} into {channel}/{author}/{post} only when opted in.
         return join_archive_source_folder(channel, author, existing_post)
-    if channel and existing_post and _existing_author and _existing_author != author:
-        # Prefer freshly resolved author when body now yields one.
-        if author != UNKNOWN_AUTHOR_FOLDER:
-            return join_archive_source_folder(channel, author, existing_post)
+    if (
+            archive_by_author
+            and channel
+            and existing_post
+            and _existing_author
+            and _existing_author != author
+            and author
+            and author != UNKNOWN_AUTHOR_FOLDER
+    ):
+        return join_archive_source_folder(channel, author, existing_post)
     return source_folder
 
 

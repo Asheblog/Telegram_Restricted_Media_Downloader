@@ -110,7 +110,12 @@
               <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+              <span data-i18n="new.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -203,6 +208,11 @@
             <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
             <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-download-media-types-grid"></div>
           </div>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+            <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+          </label>
+          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -243,7 +253,12 @@
               <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
               <span data-i18n="watches.resolveDeepLink">深链取片</span>
             </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+              <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -367,7 +382,12 @@
           <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
           <span data-i18n="watches.resolveDeepLink">深链取片</span>
         </label>
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input type="checkbox" name="archive_by_author" id="edit-watch-archive-author" class="w-4 h-4">
+          <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+        </label>
       </div>
+      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
       </p>

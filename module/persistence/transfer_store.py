@@ -242,6 +242,7 @@ class TransferStore:
                     'execution_mode': "TEXT NOT NULL DEFAULT 'web_queue'",
                     'watch_id': 'TEXT',
                     'media_types': 'TEXT',
+                    'archive_by_author': 'INTEGER NOT NULL DEFAULT 0',
                 }
             )
             self._ensure_columns(
@@ -349,6 +350,7 @@ class TransferStore:
                     'status': f"TEXT NOT NULL DEFAULT '{TransferStatus.PENDING}'",
                     'error_message': 'TEXT',
                     'media_types': 'TEXT',
+                    'archive_by_author': 'INTEGER NOT NULL DEFAULT 0',
                 }
             )
             self._ensure_indexes(conn)
@@ -536,6 +538,7 @@ class TransferStore:
             end_id: Optional[int] = None,
             include_comment: bool = False,
             resolve_deep_link: bool = False,
+            archive_by_author: bool = False,
             execution_mode: str = ExecutionMode.WEB_QUEUE,
             watch_id: Optional[str] = None,
             media_types: Optional[dict] = None,
@@ -550,13 +553,15 @@ class TransferStore:
                 '''
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
-                    include_comment, resolve_deep_link, execution_mode, watch_id,
+                    include_comment, resolve_deep_link, archive_by_author,
+                    execution_mode, watch_id,
                     media_types, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
+                    int(bool(archive_by_author)),
                     mode, watch_id or None, media_types_json,
                     TransferStatus.PENDING, now, now
                 )
@@ -575,6 +580,7 @@ class TransferStore:
     def _task_row(row: sqlite3.Row) -> Dict[str, Any]:
         task = dict(row)
         task['resolve_deep_link'] = bool(task.get('resolve_deep_link'))
+        task['archive_by_author'] = bool(task.get('archive_by_author'))
         task['assignment_completed'] = bool(task.get('assignment_completed'))
         task['execution_mode'] = task.get('execution_mode') or ExecutionMode.WEB_QUEUE
         task['watch_id'] = task.get('watch_id') or None
@@ -1957,6 +1963,7 @@ class TransferStore:
         watch = dict(row)
         watch['include_comment'] = bool(watch.get('include_comment'))
         watch['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
+        watch['archive_by_author'] = bool(watch.get('archive_by_author'))
         watch['media_types'] = normalize_media_types(watch.get('media_types'))
         return watch
 
@@ -1968,6 +1975,7 @@ class TransferStore:
             target_link: Optional[str] = None,
             include_comment: bool = False,
             resolve_deep_link: bool = False,
+            archive_by_author: bool = False,
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None,
             media_types: Optional[dict] = None,
@@ -1979,14 +1987,15 @@ class TransferStore:
                 '''
                 INSERT INTO live_transfer_watches (
                     id, type, source_link, target_link, include_comment, resolve_deep_link,
-                    media_types, status, error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    archive_by_author, media_types, status, error_message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     type = excluded.type,
                     source_link = excluded.source_link,
                     target_link = excluded.target_link,
                     include_comment = excluded.include_comment,
                     resolve_deep_link = excluded.resolve_deep_link,
+                    archive_by_author = excluded.archive_by_author,
                     media_types = excluded.media_types,
                     status = excluded.status,
                     error_message = excluded.error_message,
@@ -1995,6 +2004,7 @@ class TransferStore:
                 (
                     watch_id, watch_type, source_link, target_link,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
+                    int(bool(archive_by_author)),
                     media_types_json, status, error_message, now, now
                 )
             )
@@ -2005,6 +2015,7 @@ class TransferStore:
             'target_link': target_link,
             'include_comment': bool(include_comment),
             'resolve_deep_link': bool(resolve_deep_link),
+            'archive_by_author': bool(archive_by_author),
             'media_types': normalize_media_types(media_types),
             'status': status,
             'error_message': error_message,

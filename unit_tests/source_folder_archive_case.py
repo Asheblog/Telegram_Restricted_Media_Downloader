@@ -70,8 +70,12 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
         self.assertEqual('我的羞涩女儿', post_author_from_message(message))
         self.assertEqual(
-            'chengdudiyi8/我的羞涩女儿/92862 - 湿逼是真的奇妙，几天不操，一操进去就感',
+            'chengdudiyi8/92862 - 湿逼是真的奇妙，几天不操，一操进去就感',
             archive_source_folder(message),
+        )
+        self.assertEqual(
+            'chengdudiyi8/我的羞涩女儿/92862 - 湿逼是真的奇妙，几天不操，一操进去就感',
+            archive_source_folder(message, archive_by_author=True),
         )
         self.assertNotEqual(UNKNOWN_AUTHOR_FOLDER, '我的羞涩女儿')
 
@@ -89,8 +93,12 @@ class SourceFolderArchiveCase(unittest.TestCase):
             link='https://t.me/gokaidanbao/3404',
         )
         self.assertEqual(
-            f'gokaidanbao/{UNKNOWN_AUTHOR_FOLDER}/3404 - 正文标题第一行',
+            'gokaidanbao/3404 - 正文标题第一行',
             archive_source_folder(message),
+        )
+        self.assertEqual(
+            f'gokaidanbao/{UNKNOWN_AUTHOR_FOLDER}/3404 - 正文标题第一行',
+            archive_source_folder(message, archive_by_author=True),
         )
 
     def test_source_folder_uses_public_channel_username_from_link(self):
@@ -124,7 +132,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'gokaidanbao/_未知作者/3404 - 正文标题第一行',
+            'gokaidanbao/3404 - 正文标题第一行',
             archive_source_folder(message),
         )
 
@@ -183,8 +191,12 @@ class SourceFolderArchiveCase(unittest.TestCase):
             extract_message_body_title(message),
         )
         self.assertEqual(
-            'chengdudiyi8/会喷水的辛姐姐/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            'chengdudiyi8/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
             archive_source_folder(message),
+        )
+        self.assertEqual(
+            'chengdudiyi8/会喷水的辛姐姐/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            archive_source_folder(message, archive_by_author=True),
         )
 
     def test_archive_skips_date_only_and_post_content_label(self):
@@ -245,7 +257,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'chengdudiyi8/_未知作者/73465 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插',
+            'chengdudiyi8/73465 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插',
             resolve_forward_archive_source_folder(
                 source_folder='chengdudiyi8/73465',
                 messages=[weak, strong],
@@ -303,7 +315,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             fallback_link='https://t.me/chengdudiyi8/73465',
         )
         self.assertEqual(
-            'chengdudiyi8/_未知作者/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            'chengdudiyi8/73464 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
             shared,
         )
         # Video-only resolution must not invent a separate date folder when group is known.
@@ -332,7 +344,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'chengdudiyi8/_未知作者/73464 - 更好的标题正文',
+            'chengdudiyi8/73464 - 更好的标题正文',
             resolve_forward_archive_source_folder(
                 source_folder='chengdudiyi8/73464 - 5月13日',
                 messages=[video],
@@ -365,7 +377,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         self.assertEqual('#fhheese35 #tag__推特高颜值示例正文', post_title_from_message(message))
         self.assertEqual(
-            'demochan/_未知作者/88 - #fhheese35 #tag__推特高颜值示例正文',
+            'demochan/88 - #fhheese35 #tag__推特高颜值示例正文',
             archive_source_folder(message),
         )
 
@@ -392,7 +404,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'ctuxas/_未知作者/198 - 会所技女技师按摩放松',
+            'ctuxas/198 - 会所技女技师按摩放松',
             archive_source_folder(message),
         )
 
@@ -431,7 +443,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         from module.source_folders import archive_source_folder
 
         self.assertEqual(
-            'swag_vip/_未知作者/730',
+            'swag_vip/730',
             archive_source_folder(fallback_link='https://t.me/swag_vip/730'),
         )
 
@@ -449,7 +461,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'chengdudiyi8/_未知作者/93670 - 继父出差了妈妈自己在家',
+            'chengdudiyi8/93670 - 继父出差了妈妈自己在家',
             resolve_forward_archive_source_folder(
                 source_folder='chengdudiyi8/93670',
                 messages=[trigger],
@@ -501,7 +513,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'gokaidanbao/_未知作者/100 - 主贴资源合集',
+            'gokaidanbao/100 - 主贴资源合集',
             archive_source_folder(
                 comment,
                 post_message=parent,

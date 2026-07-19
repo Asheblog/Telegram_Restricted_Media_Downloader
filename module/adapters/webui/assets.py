@@ -608,7 +608,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
               <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+              <span data-i18n="new.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -701,6 +706,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
             <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-download-media-types-grid"></div>
           </div>
+          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
+            <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+            <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+          </label>
+          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -741,7 +751,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
               <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
               <span data-i18n="watches.resolveDeepLink">深链取片</span>
             </label>
+            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+              <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -865,7 +880,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
           <span data-i18n="watches.resolveDeepLink">深链取片</span>
         </label>
+        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input type="checkbox" name="archive_by_author" id="edit-watch-archive-author" class="w-4 h-4">
+          <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+        </label>
       </div>
+      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
       </p>
@@ -1718,6 +1738,8 @@ const i18n = {
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
     'new.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
+    'new.archiveByAuthor': '按作者归档',
+    'new.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'mediaOverride.label': '媒体类型',
@@ -1737,6 +1759,8 @@ const i18n = {
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
+    'watches.archiveByAuthor': '按作者归档',
+    'watches.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -2166,6 +2190,8 @@ const i18n = {
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
     'new.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
+    'new.archiveByAuthor': 'Archive by author',
+    'new.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'mediaOverride.label': 'Media types',
@@ -2185,6 +2211,8 @@ const i18n = {
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
+    'watches.archiveByAuthor': 'Archive by author',
+    'watches.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -3941,6 +3969,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+    archive_by_author: Boolean(fd.get('archive_by_author')),
     media_types: readMediaTypesOverride(this),
   };
 
@@ -5130,6 +5159,7 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
     await postJson('/api/watches', {
       type: 'download',
       source_links: links,
+      archive_by_author: Boolean(fd.get('archive_by_author')),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -5150,6 +5180,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+      archive_by_author: Boolean(fd.get('archive_by_author')),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -5377,6 +5408,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
+  const archiveAuthor = $('#edit-watch-archive-author');
+  if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
   ensureOverrideMediaTypeGrids();
   setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
   $('#watch-edit-overlay').classList.add('open');
@@ -5496,6 +5529,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+        archive_by_author: Boolean(fd.get('archive_by_author')),
         media_types: readMediaTypesOverride(this),
       }),
     });
@@ -7127,7 +7161,12 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
               <input type="checkbox" name="resolve_deep_link">
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="archive_by_author">
+              <span data-i18n="new.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="mob-form-hint" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="mob-form-hint mob-form-hint--warn" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -7192,6 +7231,13 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
               勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
             </p>
           </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="archive_by_author">
+              <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+            </label>
+          </div>
+          <p class="mob-form-hint" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <div class="media-types-picker" data-media-types-picker>
             <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
@@ -7652,6 +7698,8 @@ const i18n = {
     'new.includeComment': '包含评论区',
     'new.resolveDeepLink': '深链取片',
     'new.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
+    'new.archiveByAuthor': '按作者归档',
+    'new.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'mediaOverride.label': '媒体类型',
@@ -7671,6 +7719,8 @@ const i18n = {
     'watches.includeComment': '包含评论区',
     'watches.resolveDeepLink': '深链取片',
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
+    'watches.archiveByAuthor': '按作者归档',
+    'watches.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -8100,6 +8150,8 @@ const i18n = {
     'new.includeComment': 'Include comments',
     'new.resolveDeepLink': 'Resolve deep links',
     'new.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
+    'new.archiveByAuthor': 'Archive by author',
+    'new.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'mediaOverride.label': 'Media types',
@@ -8119,6 +8171,8 @@ const i18n = {
     'watches.includeComment': 'Include comments',
     'watches.resolveDeepLink': 'Resolve deep links',
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
+    'watches.archiveByAuthor': 'Archive by author',
+    'watches.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -10357,6 +10411,7 @@ function openMobileWatchEditSheet(watchId) {
       '<label><span>' + esc(t('watches.target')) + '</span><input name="target_link" required value="' + escAttr(watch.target_link || '') + '"></label>' +
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
+      '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
       mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
@@ -10374,6 +10429,7 @@ function openMobileWatchEditSheet(watchId) {
       target_link: form.querySelector('[name="target_link"]').value.trim(),
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
+      archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
       media_types: readMediaTypesOverride(form)
     };
     try {
@@ -12207,6 +12263,7 @@ async function runArchiveOrganizeMobile() {
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
+      payload.archive_by_author = transferForm.querySelector('[name="archive_by_author"]') ? transferForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
@@ -12240,6 +12297,7 @@ async function runArchiveOrganizeMobile() {
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
+      payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {

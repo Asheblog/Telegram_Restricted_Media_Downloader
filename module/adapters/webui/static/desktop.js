@@ -404,6 +404,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     end_id: fd.get('end_id') ? Number(fd.get('end_id')) : null,
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+    archive_by_author: Boolean(fd.get('archive_by_author')),
     media_types: readMediaTypesOverride(this),
   };
 
@@ -1593,6 +1594,7 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
     await postJson('/api/watches', {
       type: 'download',
       source_links: links,
+      archive_by_author: Boolean(fd.get('archive_by_author')),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -1613,6 +1615,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       target_link: fd.get('target_link'),
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+      archive_by_author: Boolean(fd.get('archive_by_author')),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -1840,6 +1843,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-target').value = watch.target_link || '';
   $('#edit-watch-comment').checked = watch.include_comment || false;
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
+  const archiveAuthor = $('#edit-watch-archive-author');
+  if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
   ensureOverrideMediaTypeGrids();
   setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
   $('#watch-edit-overlay').classList.add('open');
@@ -1959,6 +1964,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         target_link: fd.get('target_link'),
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
+        archive_by_author: Boolean(fd.get('archive_by_author')),
         media_types: readMediaTypesOverride(this),
       }),
     });

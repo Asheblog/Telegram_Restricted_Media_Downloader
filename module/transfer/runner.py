@@ -274,6 +274,7 @@ class WebTransferRunner:
                             message,
                             origin_chat_id=origin_chat_id,
                             source_link=message_link,
+                            archive_by_author=bool(task.get('archive_by_author')),
                         )
                         if shared_post_id is None:
                             shared_post_id = int(message_id)
@@ -644,6 +645,7 @@ class WebTransferRunner:
             *,
             origin_chat_id,
             source_link: str,
+            archive_by_author: bool = False,
     ) -> tuple[list, Optional[int], Optional[str]]:
         """Load media-group members and one shared Source Post Archive Path for a range hit."""
         host = self._host
@@ -668,6 +670,7 @@ class WebTransferRunner:
             fallback_chat_id=origin_chat_id,
             fallback_link=source_link,
             post_message_id=shared_post_id,
+            archive_by_author=archive_by_author,
         )
         return members, shared_post_id, shared_folder
 
@@ -715,6 +718,7 @@ class WebTransferRunner:
                     fallback_chat_id=origin_chat_id,
                     fallback_link=source_link,
                     post_message_id=shared_post_id,
+                    archive_by_author=bool(task.get('archive_by_author')),
                 )
                 # Preserve caller range_message_id (per-member) for range progress; only
                 # default to the shared album id when the caller did not pass one.
@@ -726,6 +730,7 @@ class WebTransferRunner:
                     fallback_chat_id=origin_chat_id,
                     fallback_link=source_link,
                     post_message_id=range_message_id if archive_post_message is not None else None,
+                    archive_by_author=bool(task.get('archive_by_author')),
                 )
         resolved_list = None
         if bool(task.get('resolve_deep_link')):
@@ -1106,6 +1111,7 @@ class WebTransferRunner:
             fallback_chat_id=source_chat_id,
             fallback_link=task.get('source_link'),
             post_message_id=source_message_id,
+            archive_by_author=bool(task.get('archive_by_author')),
         )
 
         try:

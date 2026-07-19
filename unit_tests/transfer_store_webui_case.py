@@ -2384,7 +2384,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             self.assertEqual(1, len(archive_calls))
             self.assertEqual(
-                'chengdudiyi8/_未知作者/73962 - 作者_ #示例社区 #示例标签',
+                'chengdudiyi8/73962 - 【合集】 示例标题',
                 archive_calls[0]['source_folder']
             )
             self.assertEqual(

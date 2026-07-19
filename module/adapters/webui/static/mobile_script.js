@@ -886,6 +886,7 @@ function openMobileWatchEditSheet(watchId) {
       '<label><span>' + esc(t('watches.target')) + '</span><input name="target_link" required value="' + escAttr(watch.target_link || '') + '"></label>' +
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
+      '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
       mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
@@ -903,6 +904,7 @@ function openMobileWatchEditSheet(watchId) {
       target_link: form.querySelector('[name="target_link"]').value.trim(),
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
+      archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
       media_types: readMediaTypesOverride(form)
     };
     try {
@@ -2736,6 +2738,7 @@ async function runArchiveOrganizeMobile() {
       if (payload.end_id) payload.end_id = Number(payload.end_id);
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
+      payload.archive_by_author = transferForm.querySelector('[name="archive_by_author"]') ? transferForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
@@ -2769,6 +2772,7 @@ async function runArchiveOrganizeMobile() {
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
       }
+      payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {

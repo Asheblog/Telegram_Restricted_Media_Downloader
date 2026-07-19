@@ -67,6 +67,12 @@ class PikpakIntegrationManager:
         store = self.transfer_store
         item = None
         post_message_id = None
+        archive_by_author = False
+        task = None
+        if store and task_id:
+            task = store.get_task(int(task_id))
+            if task:
+                archive_by_author = bool(task.get('archive_by_author'))
         if store and item_id:
             item = store.get_item(int(item_id))
             if item:
@@ -74,7 +80,8 @@ class PikpakIntegrationManager:
                     folder = item.get('source_folder')
                 post_message_id = item.get('range_message_id')
         if not folder and store and task_id:
-            task = store.get_task(int(task_id))
+            if task is None:
+                task = store.get_task(int(task_id))
             if task:
                 task_source_link = task.get('source_link')
                 item_source_link = (item or {}).get('source_link')
@@ -93,10 +100,12 @@ class PikpakIntegrationManager:
                     folder = archive_source_folder(
                         fallback_link=task_source_link,
                         post_message_id=post_message_id,
+                        archive_by_author=archive_by_author,
                     )
         if post_message_id is None and item:
             item_source_link = item.get('source_link')
-            task = store.get_task(int(task_id)) if store and task_id else None
+            if task is None and store and task_id:
+                task = store.get_task(int(task_id))
             task_source_link = (task or {}).get('source_link')
             task_source_folder = source_folder_from_link(task_source_link)
             item_source_folder = source_folder_from_link(item_source_link)
@@ -114,6 +123,7 @@ class PikpakIntegrationManager:
                 folder = archive_source_folder(
                     fallback_link=source_link,
                     post_message_id=post_message_id,
+                    archive_by_author=archive_by_author,
                 )
             else:
                 folder = archive_source_folder(
@@ -121,6 +131,7 @@ class PikpakIntegrationManager:
                     fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
                     fallback_link=source_link,
                     post_message_id=post_message_id,
+                    archive_by_author=archive_by_author,
                 )
         if message is not None:
             folder = resolve_forward_archive_source_folder(
@@ -129,6 +140,7 @@ class PikpakIntegrationManager:
                 post_message_id=post_message_id if post_message_id is not None else getattr(message, 'id', None),
                 fallback_chat_id=getattr(getattr(message, 'chat', None), 'id', None),
                 fallback_link=source_link,
+                archive_by_author=archive_by_author,
             )
         media_meta = self.get_message_media_target_limit_meta(
             message,

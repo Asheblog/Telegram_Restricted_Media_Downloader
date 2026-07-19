@@ -454,6 +454,7 @@ class WebUITaskManager:
                 or archive_source_folder(
                     fallback_link=item.get('source_link') or task.get('source_link'),
                     post_message_id=item.get('range_message_id') or item.get('source_message_id'),
+                    archive_by_author=bool(task.get('archive_by_author')),
                 )
             ),
             file_name=item.get('file_name'),

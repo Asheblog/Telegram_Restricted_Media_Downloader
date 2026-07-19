@@ -233,7 +233,12 @@
               <input type="checkbox" name="resolve_deep_link">
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="archive_by_author">
+              <span data-i18n="new.archiveByAuthor">按作者归档</span>
+            </label>
           </div>
+          <p class="mob-form-hint" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="mob-form-hint mob-form-hint--warn" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -298,6 +303,13 @@
               勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
             </p>
           </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
+            <label style="display:flex;flex-direction:row;align-items:center;gap:8px;">
+              <input type="checkbox" name="archive_by_author">
+              <span data-i18n="watches.archiveByAuthor">按作者归档</span>
+            </label>
+          </div>
+          <p class="mob-form-hint" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <div class="media-types-picker" data-media-types-picker>
             <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">

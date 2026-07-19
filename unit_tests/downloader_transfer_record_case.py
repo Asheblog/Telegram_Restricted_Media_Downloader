@@ -247,10 +247,10 @@ class DownloaderTransferRecordCase(unittest.TestCase):
                 file_size=9
             )
 
-            self.assertEqual('ctuxas/_未知作者/7', meta['source_folder'])
+            self.assertEqual('ctuxas/7', meta['source_folder'])
             item = downloader.transfer_store.list_items(task_id)[0]
-            self.assertEqual('ctuxas/_未知作者/7', item['source_folder'])
-            self.assertEqual(os.path.join(directory, 'ctuxas', '_未知作者', '7', 'video.mp4'), item['local_path'])
+            self.assertEqual('ctuxas/7', item['source_folder'])
+            self.assertEqual(os.path.join(directory, 'ctuxas', '7', 'video.mp4'), item['local_path'])
 
     def test_bot_progress_is_updated_for_download_upload_lifecycle(self):
         from module.transfer_progress import TransferProgressTracker

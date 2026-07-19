@@ -1311,6 +1311,7 @@ class WebUiServer:
         target_profile = str(payload.get('target_profile') or 'pikpak').strip()
         include_comment = bool(payload.get('include_comment'))
         resolve_deep_link = bool(payload.get('resolve_deep_link'))
+        archive_by_author = bool(payload.get('archive_by_author'))
         if not source_link:
             raise WebUiApiError('source_link_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
         if not target_link:
@@ -1350,6 +1351,7 @@ class WebUiServer:
             end_id=end_id,
             include_comment=include_comment,
             resolve_deep_link=resolve_deep_link,
+            archive_by_author=archive_by_author,
             media_types=media_types,
         )
         if self.task_submitter:
@@ -1415,6 +1417,7 @@ class WebUiServer:
             payload = {
                 **payload,
                 'source_links': source_links,
+                'archive_by_author': bool(payload.get('archive_by_author')),
                 'media_types': parse_media_types_payload(payload.get('media_types')),
             }
         else:
@@ -1423,6 +1426,7 @@ class WebUiServer:
             target_link = str(payload.get('target_link') or '').strip()
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
+            archive_by_author = bool(payload.get('archive_by_author'))
             if not source_link:
                 raise WebUiApiError('watch_source_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
             if not target_link:
@@ -1438,6 +1442,7 @@ class WebUiServer:
                 'target_link': target_link,
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
+                'archive_by_author': archive_by_author,
                 'media_types': parse_media_types_payload(payload.get('media_types')),
             }
         create_watch = self._operation('create_watch')
@@ -1469,6 +1474,7 @@ class WebUiServer:
         payload = {
             **payload,
             'resolve_deep_link': resolve_deep_link,
+            'archive_by_author': bool(payload.get('archive_by_author')),
             'media_types': parse_media_types_payload(payload.get('media_types')),
         }
         update_watch = self._operation('update_watch')

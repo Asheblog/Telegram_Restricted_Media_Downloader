@@ -253,7 +253,7 @@ class DiscussionDeepLinkFilterWebCase(unittest.TestCase):
                 range_message_id=7,
                 source_link='https://t.me/discussgrp/12',
                 target_link='https://t.me/mypikpakbot',
-                source_folder='mychannel/_未知作者/7 - parent title',
+                source_folder='mychannel/7 - parent title',
                 phase='downloading',
                 status='running',
             )
@@ -263,7 +263,7 @@ class DiscussionDeepLinkFilterWebCase(unittest.TestCase):
                 return {
                     'link': kwargs.get('task', task).get('target_link'),
                     'source_link': kwargs.get('source_link'),
-                    'source_folder': kwargs.get('source_folder') or 'discussgrp/_未知作者/7',
+                    'source_folder': kwargs.get('source_folder') or 'discussgrp/7',
                     'range_message_id': kwargs.get('range_message_id'),
                 }
 
@@ -285,7 +285,7 @@ class DiscussionDeepLinkFilterWebCase(unittest.TestCase):
 
             self.assertEqual(1, len(created_downloads))
             self.assertEqual(
-                'mychannel/_未知作者/7 - parent title',
+                'mychannel/7 - parent title',
                 created_downloads[0]['with_upload']['source_folder'],
             )
             _close_store(store)

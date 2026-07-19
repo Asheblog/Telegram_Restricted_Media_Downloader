@@ -361,6 +361,7 @@ class WebUiViewModel:
             'end_id': task.get('end_id'),
             'include_comment': bool(task.get('include_comment')),
             'resolve_deep_link': bool(task.get('resolve_deep_link')),
+            'archive_by_author': bool(task.get('archive_by_author')),
             'execution_mode': task.get('execution_mode') or 'web_queue',
             'watch_id': task.get('watch_id') or None,
             'status': status,

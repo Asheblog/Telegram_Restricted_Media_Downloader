@@ -107,6 +107,7 @@ class LiveTransferService:
             transferred_at: Optional[float] = None,
             source_folder: Optional[str] = None,
             source_link: Optional[str] = None,
+            archive_by_author: bool = False,
     ) -> None:
         transferred_at = transferred_at or datetime.datetime.now(datetime.UTC).timestamp()
         messages = [message]
@@ -129,6 +130,7 @@ class LiveTransferService:
             post_message_id=shared_post_id,
             fallback_chat_id=origin_chat_id,
             fallback_link=shared_source_link,
+            archive_by_author=archive_by_author,
         )
         for group_message in messages:
             group_source_link = (
@@ -196,6 +198,7 @@ class LiveTransferService:
             source_folder: Optional[str] = None,
             archive_source_link: Optional[str] = None,
             media_types_override=None,
+            archive_by_author: bool = False,
     ):
         try:
             if trace_id is None:
@@ -222,12 +225,14 @@ class LiveTransferService:
                         group_messages,
                         fallback_chat_id=origin_chat_id,
                         fallback_link=archive_source_link or getattr(message, 'link', None),
+                        archive_by_author=archive_by_author,
                     )
                 else:
                     channel_source_folder = archive_source_folder(
                         message,
                         fallback_chat_id=origin_chat_id,
                         fallback_link=archive_source_link or getattr(message, 'link', None),
+                        archive_by_author=archive_by_author,
                     )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
             runtime_filter = self.message_filter
@@ -405,6 +410,7 @@ class LiveTransferService:
                     media_group=media_group,
                     source_folder=channel_source_folder,
                     source_link=channel_source_link,
+                    archive_by_author=archive_by_author,
                 )
             return forwarded_message
         except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
@@ -730,6 +736,7 @@ class LiveTransferService:
             done_notice: Optional[bool] = True,
             watch_id: Optional[str] = None,
             resolve_deep_link: bool = False,
+            archive_by_author: bool = False,
     ) -> int:
         from module.transfer.deep_link import (
             DeepLinkResolveError,
@@ -764,6 +771,7 @@ class LiveTransferService:
             post_message=parent_message,
             fallback_chat_id=source_chat_id,
             post_message_id=source_message_id,
+            archive_by_author=archive_by_author,
         )
 
         try:
@@ -886,6 +894,7 @@ class LiveTransferService:
                 listen_link = rule.get('source_link')
                 target_link = rule.get('target_link')
                 include_comment = bool(rule.get('include_comment'))
+                archive_by_author = bool(rule.get('archive_by_author'))
                 _listen_link_meta = await parse_link(
                     client=self.app.client,
                     link=listen_link
@@ -913,6 +922,7 @@ class LiveTransferService:
                             'listen_link': listen_link,
                             'include_comment': include_comment,
                             'resolve_deep_link': resolve_deep_link,
+                            'archive_by_author': archive_by_author,
                         }
                     )
                     forward_origin_chat_id = _listen_chat_id
@@ -930,12 +940,14 @@ class LiveTransferService:
                             group_messages,
                             fallback_chat_id=_listen_chat_id,
                             fallback_link=link,
+                            archive_by_author=archive_by_author,
                         )
                     else:
                         channel_source_folder = archive_source_folder(
                             message,
                             fallback_chat_id=_listen_chat_id,
                             fallback_link=link,
+                            archive_by_author=archive_by_author,
                         )
                     media_types_override = self._watch_media_types_override(watch_id)
                     runtime_filter = self.runtime_message_filter(media_types_override)
@@ -1051,6 +1063,7 @@ class LiveTransferService:
                                     source_folder=channel_source_folder,
                                     archive_source_link=channel_source_link,
                                     media_types_override=media_types_override,
+                                    archive_by_author=archive_by_author,
                                 )
                                 continue
                             continue
@@ -1078,6 +1091,7 @@ class LiveTransferService:
                             source_folder=channel_source_folder,
                             archive_source_link=channel_source_link,
                             media_types_override=media_types_override,
+                            archive_by_author=archive_by_author,
                         )
                     if include_comment:
                         await self.schedule_or_forward_discussion_replies(

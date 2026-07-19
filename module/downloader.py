@@ -456,10 +456,12 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             source_folder=source_folder or archive_source_folder(
                 fallback_link=source_link,
                 post_message_id=range_message_id,
+                archive_by_author=bool(task.get('archive_by_author')),
             ),
             task_id=task.get('id'),
             media_type=media_type,
-            range_message_id=range_message_id
+            range_message_id=range_message_id,
+            archive_by_author=bool(task.get('archive_by_author')),
         )
 
 
@@ -671,7 +673,11 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         upload_meta = self.build_download_upload_meta(
             target_link=target_link,
             source_link=source_link,
-            source_folder=archive_source_folder(fallback_link=source_link),
+            source_folder=archive_source_folder(
+                fallback_link=source_link,
+                archive_by_author=bool(task.get('archive_by_author')),
+            ),
+            archive_by_author=bool(task.get('archive_by_author')),
         )
         upload_meta['task_id'] = int(task_id)
         await self.create_download_task(
@@ -1018,6 +1024,20 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             return None
         return watch.get('media_types')
 
+    def _watch_archive_by_author(self, watch_id) -> bool:
+        if not watch_id:
+            return False
+        store = getattr(self, 'transfer_store', None)
+        if store is None:
+            return False
+        getter = getattr(store, 'get_live_transfer_watch', None)
+        if not callable(getter):
+            return False
+        watch = getter(watch_id)
+        if not isinstance(watch, dict):
+            return False
+        return bool(watch.get('archive_by_author'))
+
     async def forward_discussion_replies(self, *args, **kwargs):
         return await self._ensure_live_transfer().forward_discussion_replies(*args, **kwargs)
 
@@ -1242,6 +1262,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     message,
                     fallback_chat_id=chat_id,
                     fallback_link=link,
+                    archive_by_author=bool(with_upload.get('archive_by_author')),
                 )
                 with_upload = dict(with_upload)
                 with_upload['source_folder'] = shared_folder

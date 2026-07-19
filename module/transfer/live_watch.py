@@ -72,6 +72,9 @@ class LiveWatchManager:
             payload['target_link'] = watch.get('target_link')
             payload['include_comment'] = bool(watch.get('include_comment'))
             payload['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
+            payload['archive_by_author'] = bool(watch.get('archive_by_author'))
+        elif watch.get('type') == 'download':
+            payload['archive_by_author'] = bool(watch.get('archive_by_author'))
         if watch.get('media_types') is not None:
             payload['media_types'] = watch.get('media_types')
         return payload
@@ -93,6 +96,7 @@ class LiveWatchManager:
             target_link=watch.get('target_link'),
             include_comment=bool(watch.get('include_comment')),
             resolve_deep_link=bool(watch.get('resolve_deep_link')),
+            archive_by_author=bool(watch.get('archive_by_author')),
             status=watch.get('status') or TransferStatus.PENDING,
             error_message=watch.get('error_message'),
             media_types=watch.get('media_types'),
@@ -118,14 +122,16 @@ class LiveWatchManager:
         }
         for link in sorted(self.listen_download_chat):
             watch_id = self.download_watch_id(link)
+            previous = watches_by_id.get(watch_id, {})
             watches_by_id[watch_id] = {
-                **watches_by_id.get(watch_id, {}),
+                **previous,
                 'id': watch_id,
                 'type': 'download',
                 'source_link': link,
                 'target_link': None,
                 'include_comment': False,
                 'resolve_deep_link': False,
+                'archive_by_author': bool(previous.get('archive_by_author')),
                 'status': TransferStatus.RUNNING
             }
         for rule in sorted(self.listen_forward_chat):
@@ -139,6 +145,7 @@ class LiveWatchManager:
                 'target_link': parsed.get('target_link'),
                 'include_comment': bool(parsed.get('include_comment')),
                 'resolve_deep_link': bool(parsed.get('resolve_deep_link')),
+                'archive_by_author': bool(parsed.get('archive_by_author')),
                 'status': TransferStatus.RUNNING
             }
         running_ids = set(watches_by_id)
@@ -213,6 +220,7 @@ class LiveWatchManager:
                 payload.get('target_link'),
                 bool(payload.get('include_comment')),
                 bool(payload.get('resolve_deep_link')),
+                bool(payload.get('archive_by_author')),
             )
             watch_id = f'forward:{rule}'
         else:
@@ -240,6 +248,7 @@ class LiveWatchManager:
                     'source_link': link,
                     'target_link': None,
                     'include_comment': False,
+                    'archive_by_author': bool(payload.get('archive_by_author')),
                     'media_types': payload.get('media_types'),
                     'status': TransferStatus.PENDING
                 }
@@ -247,7 +256,11 @@ class LiveWatchManager:
                 self.web_pending_watches[watch['id']] = watch
                 self._create_live_watch_operation(
                     'download',
-                    {'source_link': link, 'media_types': payload.get('media_types')},
+                    {
+                        'source_link': link,
+                        'media_types': payload.get('media_types'),
+                        'archive_by_author': bool(payload.get('archive_by_author')),
+                    },
                 )
                 created.append(watch)
             return {'watches': created}
@@ -256,10 +269,11 @@ class LiveWatchManager:
             target_link = payload.get('target_link')
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
+            archive_by_author = bool(payload.get('archive_by_author'))
             if self.has_download_watch_source(source_link):
                 raise ValueError('watch_source_conflict')
             rule = make_forward_watch_rule(
-                source_link, target_link, include_comment, resolve_deep_link
+                source_link, target_link, include_comment, resolve_deep_link, archive_by_author
             )
             same_target_exists = any(
                 parse_forward_watch_rule(existing).get('source_link') == source_link and
@@ -287,6 +301,7 @@ class LiveWatchManager:
                 'target_link': target_link,
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
+                'archive_by_author': archive_by_author,
                 'media_types': payload.get('media_types'),
                 'status': TransferStatus.PENDING
             }
@@ -299,6 +314,7 @@ class LiveWatchManager:
                     'target_link': target_link,
                     'include_comment': include_comment,
                     'resolve_deep_link': resolve_deep_link,
+                    'archive_by_author': archive_by_author,
                     'media_types': payload.get('media_types'),
                 }
             )
@@ -368,6 +384,7 @@ class LiveWatchManager:
         new_target = str(payload.get('target_link') or '').strip()
         new_include_comment = bool(payload.get('include_comment'))
         new_resolve_deep_link = bool(payload.get('resolve_deep_link'))
+        new_archive_by_author = bool(payload.get('archive_by_author'))
         media_types = payload.get('media_types')
         if 'media_types' not in payload:
             existing = None
@@ -399,6 +416,7 @@ class LiveWatchManager:
             'target_link': new_target,
             'include_comment': new_include_comment,
             'resolve_deep_link': new_resolve_deep_link,
+            'archive_by_author': new_archive_by_author,
             'media_types': media_types,
         })
 
