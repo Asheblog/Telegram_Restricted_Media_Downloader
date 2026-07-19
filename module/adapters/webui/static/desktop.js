@@ -2785,6 +2785,7 @@ function clearSavedArchiveOrganizeJob() {
 function setArchiveOrganizeBusy(busy, labelKey) {
   const scanBtn = $('#archive-organize-scan-btn');
   const resolveBtn = $('#archive-organize-resolve-btn');
+  const resolveUnresolvedBtn = $('#archive-organize-resolve-unresolved-btn');
   const runBtn = $('#archive-organize-run-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
@@ -2797,6 +2798,12 @@ function setArchiveOrganizeBusy(busy, labelKey) {
     resolveBtn.textContent = busy && labelKey === 'resolve'
       ? t('archiveOrganize.resolving')
       : t('archiveOrganize.resolve');
+  }
+  if (resolveUnresolvedBtn) {
+    resolveUnresolvedBtn.disabled = !!busy;
+    resolveUnresolvedBtn.textContent = busy && labelKey === 'resolveUnresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolveUnresolved');
   }
   if (runBtn) {
     if (busy && labelKey === 'run') {
@@ -3017,23 +3024,30 @@ async function scanArchiveOrganize() {
   }
 }
 
-async function resolveArchiveOrganize() {
+async function resolveArchiveOrganize(scope) {
   const channel = ($('#archive-organize-channel') || {}).value || '';
   if (!channel) {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
+  const resolveScope = scope || 'all';
+  const busyKey = resolveScope === 'unresolved' ? 'resolveUnresolved' : 'resolve';
   stopArchiveOrganizePoll();
-  setArchiveOrganizeBusy(true, 'resolve');
+  setArchiveOrganizeBusy(true, busyKey);
   showArchiveOrganizeProgress({
     percent: 0,
     current: 0,
     total: 0,
     phase: 'resolving',
-    message: t('archiveOrganize.resolving')
+    message: resolveScope === 'unresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolving')
   });
   try {
-    const started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    const started = await postJson('/api/archive/author-resolve', {
+      channel_folder: channel,
+      scope: resolveScope
+    });
     saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
@@ -3127,7 +3141,12 @@ async function runArchiveOrganize() {
 }
 
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
-$('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
+$('#archive-organize-resolve-btn')?.addEventListener('click', function() {
+  resolveArchiveOrganize('all');
+});
+$('#archive-organize-resolve-unresolved-btn')?.addEventListener('click', function() {
+  resolveArchiveOrganize('unresolved');
+});
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
 $('#archive-organize-summary')?.addEventListener('click', function(e) {
   var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;

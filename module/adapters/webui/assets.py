@@ -1261,12 +1261,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
         <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
+        <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-unresolved-btn" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2084,10 +2085,12 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
+    'archiveOrganize.resolveUnresolved': '仅解析未识别',
+    'archiveOrganize.resolvingUnresolved': '正在只回查未识别…',
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
@@ -2556,10 +2559,12 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from explicit signatures first, then hashtags matched to known authors. List drive folders, re-resolve, review the migration overview, then Migrate All (high-confidence + pending confirm). Unrecognized posts stay put. Background jobs are slow; refresh reconnects.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags (including album sibling captions) matched to known authors. After the first full resolve, use Resolve unrecognized only to refill misses. Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
+    'archiveOrganize.resolveUnresolved': 'Resolve unrecognized only',
+    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized only…',
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
@@ -6398,6 +6403,7 @@ function clearSavedArchiveOrganizeJob() {
 function setArchiveOrganizeBusy(busy, labelKey) {
   const scanBtn = $('#archive-organize-scan-btn');
   const resolveBtn = $('#archive-organize-resolve-btn');
+  const resolveUnresolvedBtn = $('#archive-organize-resolve-unresolved-btn');
   const runBtn = $('#archive-organize-run-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
@@ -6410,6 +6416,12 @@ function setArchiveOrganizeBusy(busy, labelKey) {
     resolveBtn.textContent = busy && labelKey === 'resolve'
       ? t('archiveOrganize.resolving')
       : t('archiveOrganize.resolve');
+  }
+  if (resolveUnresolvedBtn) {
+    resolveUnresolvedBtn.disabled = !!busy;
+    resolveUnresolvedBtn.textContent = busy && labelKey === 'resolveUnresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolveUnresolved');
   }
   if (runBtn) {
     if (busy && labelKey === 'run') {
@@ -6630,23 +6642,30 @@ async function scanArchiveOrganize() {
   }
 }
 
-async function resolveArchiveOrganize() {
+async function resolveArchiveOrganize(scope) {
   const channel = ($('#archive-organize-channel') || {}).value || '';
   if (!channel) {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
+  const resolveScope = scope || 'all';
+  const busyKey = resolveScope === 'unresolved' ? 'resolveUnresolved' : 'resolve';
   stopArchiveOrganizePoll();
-  setArchiveOrganizeBusy(true, 'resolve');
+  setArchiveOrganizeBusy(true, busyKey);
   showArchiveOrganizeProgress({
     percent: 0,
     current: 0,
     total: 0,
     phase: 'resolving',
-    message: t('archiveOrganize.resolving')
+    message: resolveScope === 'unresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolving')
   });
   try {
-    const started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    const started = await postJson('/api/archive/author-resolve', {
+      channel_folder: channel,
+      scope: resolveScope
+    });
     saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
@@ -6740,7 +6759,12 @@ async function runArchiveOrganize() {
 }
 
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
-$('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
+$('#archive-organize-resolve-btn')?.addEventListener('click', function() {
+  resolveArchiveOrganize('all');
+});
+$('#archive-organize-resolve-unresolved-btn')?.addEventListener('click', function() {
+  resolveArchiveOrganize('unresolved');
+});
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
 $('#archive-organize-summary')?.addEventListener('click', function(e) {
   var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
@@ -7566,11 +7590,12 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
+        <button id="mob-archive-organize-resolve-unresolved-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button id="mob-archive-organize-resolve-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
       </div>
@@ -8203,10 +8228,12 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
+    'archiveOrganize.resolveUnresolved': '仅解析未识别',
+    'archiveOrganize.resolvingUnresolved': '正在只回查未识别…',
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
@@ -8675,10 +8702,12 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from explicit signatures first, then hashtags matched to known authors. List drive folders, re-resolve, review the migration overview, then Migrate All (high-confidence + pending confirm). Unrecognized posts stay put. Background jobs are slow; refresh reconnects.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags (including album sibling captions) matched to known authors. After the first full resolve, use Resolve unrecognized only to refill misses. Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
+    'archiveOrganize.resolveUnresolved': 'Resolve unrecognized only',
+    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized only…',
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
@@ -12317,18 +12346,28 @@ async function scanArchiveOrganizeMobile() {
   }
 }
 
-async function resolveArchiveOrganizeMobile() {
+async function resolveArchiveOrganizeMobile(scope) {
   var select = document.getElementById('mob-archive-organize-channel');
   var channel = select ? select.value : '';
   if (!channel) {
     showToast(t('archiveOrganize.pickChannel'));
     return;
   }
+  var resolveScope = scope || 'all';
   showMobArchiveOrganizeProgress({
-    percent: 0, current: 0, total: 0, phase: 'resolving', message: t('archiveOrganize.resolving')
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'resolving',
+    message: resolveScope === 'unresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolving')
   });
   try {
-    var started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    var started = await postJson('/api/archive/author-resolve', {
+      channel_folder: channel,
+      scope: resolveScope
+    });
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'resolve failed');
@@ -12741,7 +12780,17 @@ async function runArchiveOrganizeMobile() {
   var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
   if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
   var archiveResolveBtn = document.getElementById('mob-archive-organize-resolve-btn');
-  if (archiveResolveBtn) archiveResolveBtn.addEventListener('click', resolveArchiveOrganizeMobile);
+  if (archiveResolveBtn) {
+    archiveResolveBtn.addEventListener('click', function() {
+      resolveArchiveOrganizeMobile('all');
+    });
+  }
+  var archiveResolveUnresolvedBtn = document.getElementById('mob-archive-organize-resolve-unresolved-btn');
+  if (archiveResolveUnresolvedBtn) {
+    archiveResolveUnresolvedBtn.addEventListener('click', function() {
+      resolveArchiveOrganizeMobile('unresolved');
+    });
+  }
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 

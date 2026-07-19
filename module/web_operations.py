@@ -1031,6 +1031,7 @@ class WebOperationsMixin:
             kind: str,
             channel_folder: str,
             execute_mode: str = 'all',
+            resolve_scope: str = 'all',
     ) -> dict:
         import threading
 
@@ -1049,6 +1050,7 @@ class WebOperationsMixin:
         on_progress = jobs.progress_callback(job_id)
         service = self._archive_author_service()
         mode = str(execute_mode or 'all').strip().lower() or 'all'
+        scope = str(resolve_scope or 'all').strip().lower() or 'all'
 
         def runner():
             try:
@@ -1062,8 +1064,13 @@ class WebOperationsMixin:
                         directory_paths=paths or None,
                         prior_plan=prior,
                         on_progress=on_progress,
-                        done_label='解析完成',
+                        done_label=(
+                            '未识别解析完成'
+                            if scope in ('unresolved', 'review', 'needs_review', 'miss')
+                            else '解析完成'
+                        ),
                         require_telegram=True,
+                        resolve_scope=scope,
                     )
                 else:
                     # Reuse last successful scan/resolve plan — never rescan before move.
@@ -1088,15 +1095,23 @@ class WebOperationsMixin:
                         execute_mode=mode,
                     )
                 if kind in ('scan', 'resolve'):
+                    stats = result.get('resolve_stats') or {}
+                    scope_note = ''
+                    if kind == 'resolve' and (stats.get('preserved') or 0):
+                        scope_note = (
+                            f'保留已识别 {stats.get("preserved") or 0}，'
+                            f'回查未识别 {stats.get("refetch") or 0}；'
+                        )
                     done_message = (
                         f'{"扫描" if kind == "scan" else "解析"}完成：'
+                        f'{scope_note}'
                         f'解析到作者 {result.get("resolved_author_count") or 0}/'
                         f'{result.get("message_id_count") or 0}'
-                        f'（抓取 {(result.get("resolve_stats") or {}).get("fetched") or 0}，'
-                        f'相册 {(result.get("resolve_stats") or {}).get("media_group_hits") or 0}，'
-                        f'邻条 {(result.get("resolve_stats") or {}).get("neighbor_hits") or 0}，'
-                        f'标签精确 {(result.get("resolve_stats") or {}).get("hashtag_exact_hits") or 0}，'
-                        f'标签待确认 {(result.get("resolve_stats") or {}).get("hashtag_substring_hits") or 0}），'
+                        f'（抓取 {stats.get("fetched") or 0}，'
+                        f'相册 {stats.get("media_group_hits") or 0}，'
+                        f'邻条 {stats.get("neighbor_hits") or 0}，'
+                        f'标签精确 {stats.get("hashtag_exact_hits") or 0}，'
+                        f'标签待确认 {stats.get("hashtag_substring_hits") or 0}），'
                         f'{result.get("author_count") or 0} 个作者目录，'
                         f'待移动 {result.get("move_count") or 0}，'
                         f'待确认 {result.get("confirm_count") or 0}，'
@@ -1188,7 +1203,16 @@ class WebOperationsMixin:
 
     def resolve_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
-        return self._start_archive_author_job(kind='resolve', channel_folder=channel_folder)
+        scope = str(
+            (payload or {}).get('scope')
+            or (payload or {}).get('resolve_scope')
+            or 'all'
+        ).strip().lower() or 'all'
+        return self._start_archive_author_job(
+            kind='resolve',
+            channel_folder=channel_folder,
+            resolve_scope=scope,
+        )
 
     def execute_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()

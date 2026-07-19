@@ -318,6 +318,148 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertEqual(1, plan.get('confirm_count'))
         self.assertEqual(1, (plan.get('resolve_stats') or {}).get('hashtag_substring_hits'))
 
+    def test_resolve_hashtag_from_media_group_sibling_caption(self):
+        """Album caption often sits on a sibling — hashtags must still be collected."""
+        from types import SimpleNamespace
+        import asyncio
+
+        client = FakeArchiveClient()
+
+        class FakeTelegram:
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids if message_ids is not None else (args[0] if args else None)
+                if not isinstance(ids, list):
+                    ids = [ids]
+                mid = int(ids[0])
+                if mid == 200:
+                    # Known author seed via explicit signature.
+                    return [SimpleNamespace(
+                        id=200,
+                        caption='作者：#喷水的姐姐',
+                        text=None,
+                        empty=False,
+                        media_group_id=None,
+                        get_media_group=None,
+                    )]
+                if mid == 201:
+                    # Primary album member has no caption; tags live on sibling.
+                    primary = SimpleNamespace(
+                        id=201,
+                        caption=None,
+                        text=None,
+                        empty=False,
+                        media_group_id=77,
+                    )
+
+                    async def get_media_group():
+                        return [
+                            primary,
+                            SimpleNamespace(
+                                id=202,
+                                caption='#海角社区 #会喷水的亲姐姐 【55分原创】正文',
+                                text=None,
+                                empty=False,
+                                media_group_id=77,
+                                get_media_group=None,
+                            ),
+                        ]
+
+                    primary.get_media_group = get_media_group
+                    return [primary]
+                return [SimpleNamespace(id=mid, caption=None, text=None, empty=True)]
+
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=FakeTelegram(),
+            run_coro=lambda coro, timeout=None: asyncio.run(coro),
+        )
+        service._pace = lambda _seconds: None
+        plan = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=[
+                'chengdudiyi8/喷水的姐姐/200 - signed',
+                'chengdudiyi8/201 - album tags only',
+            ],
+        )
+        by_id = {item['message_id']: item for item in plan['moves']}
+        self.assertEqual('needs_confirm', by_id[201]['action'])
+        self.assertEqual('喷水的姐姐', by_id[201]['author'])
+        self.assertEqual('hashtag_substring', by_id[201]['resolution_method'])
+        self.assertEqual(1, (plan.get('resolve_stats') or {}).get('hashtag_substring_hits'))
+
+    def test_resolve_unresolved_scope_skips_already_recognized(self):
+        from types import SimpleNamespace
+        import asyncio
+
+        client = FakeArchiveClient()
+        fetched = []
+
+        class FakeTelegram:
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids if message_ids is not None else (args[0] if args else None)
+                if not isinstance(ids, list):
+                    ids = [ids]
+                mid = int(ids[0])
+                fetched.append(mid)
+                if mid == 301:
+                    return [SimpleNamespace(
+                        id=301,
+                        caption='#海角社区 #会喷水的亲姐姐 正文',
+                        text=None,
+                        empty=False,
+                        media_group_id=None,
+                        get_media_group=None,
+                    )]
+                return [SimpleNamespace(id=mid, caption=None, text=None, empty=True)]
+
+        prior = {
+            'channel_folder': 'chengdudiyi8',
+            'directory_paths': [
+                'chengdudiyi8/300 - known',
+                'chengdudiyi8/301 - unknown',
+            ],
+            'moves': [
+                {
+                    'message_id': 300,
+                    'from_relative': '300 - known',
+                    'to_relative': '喷水的姐姐/300 - known',
+                    'author': '喷水的姐姐',
+                    'action': 'move',
+                    'confidence': 'high',
+                    'resolution_method': 'signature',
+                },
+                {
+                    'message_id': 301,
+                    'from_relative': '301 - unknown',
+                    'to_relative': '_未知作者/301 - unknown',
+                    'author': '_未知作者',
+                    'action': 'needs_review',
+                    'confidence': 'none',
+                    'resolution_method': 'none',
+                },
+            ],
+        }
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=FakeTelegram(),
+            run_coro=lambda coro, timeout=None: asyncio.run(coro),
+        )
+        service._pace = lambda _seconds: None
+        plan = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=prior['directory_paths'],
+            prior_plan=prior,
+            resolve_scope='unresolved',
+        )
+        self.assertIn(301, fetched)
+        self.assertNotIn(300, fetched)
+        self.assertEqual(1, (plan.get('resolve_stats') or {}).get('preserved'))
+        self.assertEqual(1, (plan.get('resolve_stats') or {}).get('refetch'))
+        by_id = {item['message_id']: item for item in plan['moves']}
+        self.assertEqual('喷水的姐姐', by_id[300]['author'])
+        self.assertEqual('needs_confirm', by_id[301]['action'])
+        self.assertEqual('喷水的姐姐', by_id[301]['author'])
+
     def test_job_store_persists_and_finds_running(self):
         import tempfile
         from module.transfer_store import TransferStore

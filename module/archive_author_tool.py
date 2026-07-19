@@ -13,6 +13,7 @@ from module.archive_reorganize import (
     AuthorHint,
     known_authors_from_directory_paths,
     plan_author_reorganize,
+    preserved_author_hints_from_plan,
 )
 from module.author_hashtag_match import (
     extract_hashtags_from_text,
@@ -126,6 +127,92 @@ class ArchiveAuthorReorganizeService:
         return '\n'.join(parts)
 
     @classmethod
+    def _hashtags_from_message_body(cls, message) -> list[str]:
+        """Extract #tags from caption/text and Telegram hashtag entities."""
+        from module.author_hashtag_match import normalize_author_label
+
+        tags = extract_hashtags_from_text(cls._message_full_text(message))
+        if message is None:
+            return tags
+        seen = {normalize_author_label(tag) for tag in tags}
+        for attr in ('caption', 'text'):
+            body = getattr(message, attr, None)
+            if not isinstance(body, str) or not body:
+                continue
+            entity_attr = 'caption_entities' if attr == 'caption' else 'entities'
+            for entity in getattr(message, entity_attr, None) or []:
+                type_name = type(entity).__name__
+                entity_type = str(getattr(entity, 'type', '') or '')
+                if (
+                    'Hashtag' not in type_name
+                    and entity_type.lower() not in ('hashtag', 'messageentityhashtag')
+                ):
+                    continue
+                try:
+                    offset = int(getattr(entity, 'offset', 0) or 0)
+                    length = int(getattr(entity, 'length', 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+                if length <= 0:
+                    continue
+                chunk = body[offset:offset + length]
+                source = chunk if '#' in chunk or '＃' in chunk else f'#{chunk}'
+                for tag in extract_hashtags_from_text(source):
+                    key = normalize_author_label(tag)
+                    if key and key not in seen:
+                        seen.add(key)
+                        tags.append(tag)
+        return tags
+
+    @classmethod
+    async def _collect_hashtags_for_resolve(
+            cls,
+            message,
+            *,
+            client=None,
+            chat_id=None,
+    ) -> list[str]:
+        """Collect hashtags from the post, including media-group sibling captions."""
+        from module.author_hashtag_match import normalize_author_label
+
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        def _add_all(values):
+            for tag in values or []:
+                key = normalize_author_label(tag)
+                if key and key not in seen:
+                    seen.add(key)
+                    ordered.append(tag)
+
+        _add_all(cls._hashtags_from_message_body(message))
+        if message is None or getattr(message, 'empty', False):
+            return ordered
+
+        group_messages = None
+        get_media_group = getattr(message, 'get_media_group', None)
+        if callable(get_media_group):
+            try:
+                group_messages = await get_media_group()
+            except Exception:
+                group_messages = None
+        if not group_messages and client is not None and getattr(message, 'media_group_id', None):
+            getter = getattr(client, 'get_media_group', None)
+            if callable(getter):
+                try:
+                    group_messages = await getter(
+                        chat_id=chat_id,
+                        message_id=getattr(message, 'id', None),
+                    )
+                except Exception:
+                    group_messages = None
+        for item in group_messages or []:
+            if item is None or item is message:
+                continue
+            _add_all(cls._hashtags_from_message_body(item))
+        return ordered
+
+    @classmethod
     def _message_text_preview(cls, message, limit: int = 180) -> str:
         text = cls._message_full_text(message)
         if not text:
@@ -197,8 +284,13 @@ class ArchiveAuthorReorganizeService:
             on_progress: ProgressCallback = None,
             done_label: str = '解析完成',
             require_telegram: bool = True,
+            resolve_scope: str = 'all',
     ) -> dict:
-        """Resolve authors from Telegram using folder message ids — no rclone listing."""
+        """Resolve authors from Telegram using folder message ids — no rclone listing.
+
+        ``resolve_scope='unresolved'`` keeps already-recognized authors from
+        ``prior_plan`` and only refetches ``needs_review`` / ``_未知作者`` rows.
+        """
         channel = normalize_source_folder_path(channel_folder)
         if not channel or '/' in channel:
             raise ValueError('请输入单个频道文件夹名（Source Channel Folder）。')
@@ -225,11 +317,27 @@ class ArchiveAuthorReorganizeService:
                 if mid is not None:
                     message_ids.append(mid)
         unique_ids = sorted(set(message_ids))
+        scope = str(resolve_scope or 'all').strip().lower() or 'all'
+        preserved: dict[int, AuthorHint] = {}
+        if scope in ('unresolved', 'review', 'needs_review', 'miss'):
+            preserved = preserved_author_hints_from_plan(prior_plan)
+            if not preserved and not (isinstance(prior_plan, dict) and prior_plan.get('moves')):
+                raise RuntimeError(
+                    '没有可复用的解析计划。请先完整「重新解析作者」一次，'
+                    '之后才能「仅解析未识别」。'
+                )
+        fetch_ids = [mid for mid in unique_ids if mid not in preserved]
+        known_seed = known_authors_from_directory_paths(channel, paths)
+        for hint in preserved.values():
+            if hint.name:
+                known_seed.add(hint.name)
+
         if self.telegram_client is None:
             if require_telegram:
                 raise RuntimeError('Telegram 客户端未就绪，无法按主贴 ID 解析作者。')
             author_by_id = {mid: AuthorHint() for mid in unique_ids}
-            resolved = 0
+            author_by_id.update(preserved)
+            resolved = sum(1 for mid in unique_ids if getattr(author_by_id.get(mid), 'name', None))
             miss_samples = []
             resolve_stats = {
                 'fetched': 0,
@@ -241,23 +349,37 @@ class ArchiveAuthorReorganizeService:
                 'neighbor_hits': 0,
                 'hashtag_exact_hits': 0,
                 'hashtag_substring_hits': 0,
+                'preserved': len(preserved),
+                'refetch': len(fetch_ids),
+                'resolve_scope': scope,
             }
         else:
             self._report(
                 on_progress,
                 phase='resolving',
                 current=0,
-                total=len(unique_ids),
-                message=f'按主贴 ID 回查 Telegram 作者 0/{len(unique_ids)}（不扫网盘）…',
+                total=max(len(fetch_ids), 1),
+                message=(
+                    f'按主贴 ID 回查 Telegram 作者 0/{len(fetch_ids)}'
+                    f'（保留已识别 {len(preserved)}，不扫网盘）…'
+                    if preserved
+                    else f'按主贴 ID 回查 Telegram 作者 0/{len(unique_ids)}（不扫网盘）…'
+                ),
             )
             resolve_payload = self._resolve_authors(
                 channel,
-                unique_ids,
+                fetch_ids,
                 on_progress=on_progress,
-                known_authors=known_authors_from_directory_paths(channel, paths),
+                known_authors=known_seed,
             )
-            author_by_id = resolve_payload.get('resolutions') or {}
-            resolve_stats = resolve_payload.get('stats') or {}
+            author_by_id = dict(preserved)
+            author_by_id.update(resolve_payload.get('resolutions') or {})
+            for mid in unique_ids:
+                author_by_id.setdefault(mid, AuthorHint())
+            resolve_stats = dict(resolve_payload.get('stats') or {})
+            resolve_stats['preserved'] = len(preserved)
+            resolve_stats['refetch'] = len(fetch_ids)
+            resolve_stats['resolve_scope'] = scope
             miss_samples = resolve_payload.get('miss_samples') or []
             resolved = sum(
                 1 for mid in unique_ids
@@ -291,6 +413,7 @@ class ArchiveAuthorReorganizeService:
         payload['directory_paths'] = paths
         payload['resolved_author_count'] = resolved
         payload['message_id_count'] = len(unique_ids)
+        payload['resolve_scope'] = scope
         payload['resolve_stats'] = resolve_stats
         payload['miss_samples'] = miss_samples if self.telegram_client is not None else []
         self._report(
@@ -693,9 +816,12 @@ class ArchiveAuthorReorganizeService:
                 return AuthorHint()
 
             stats['fetched'] += 1
-            full_text = self._message_full_text(message)
             preview = self._message_text_preview(message)
-            tags = extract_hashtags_from_text(full_text)
+            tags = await self._collect_hashtags_for_resolve(
+                message,
+                client=client,
+                chat_id=chat_id,
+            )
             author = await post_author_from_telegram_message(
                 message,
                 client=client,
@@ -721,7 +847,8 @@ class ArchiveAuthorReorganizeService:
                 )
             except Exception as error:
                 _record_error(mid, error)
-                pending_tags[mid] = tags
+                if tags:
+                    pending_tags[mid] = tags
                 _record_miss(
                     mid,
                     reason='no_author_marker',
@@ -749,7 +876,8 @@ class ArchiveAuthorReorganizeService:
             neighbor_preview = self._message_text_preview(
                 next((m for m in _as_list(raw_neighbors) if m is not None), None)
             )
-            pending_tags[mid] = tags
+            if tags:
+                pending_tags[mid] = tags
             _record_miss(
                 mid,
                 reason='no_author_marker',

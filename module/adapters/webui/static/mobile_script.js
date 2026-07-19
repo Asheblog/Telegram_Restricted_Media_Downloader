@@ -2585,18 +2585,28 @@ async function scanArchiveOrganizeMobile() {
   }
 }
 
-async function resolveArchiveOrganizeMobile() {
+async function resolveArchiveOrganizeMobile(scope) {
   var select = document.getElementById('mob-archive-organize-channel');
   var channel = select ? select.value : '';
   if (!channel) {
     showToast(t('archiveOrganize.pickChannel'));
     return;
   }
+  var resolveScope = scope || 'all';
   showMobArchiveOrganizeProgress({
-    percent: 0, current: 0, total: 0, phase: 'resolving', message: t('archiveOrganize.resolving')
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'resolving',
+    message: resolveScope === 'unresolved'
+      ? t('archiveOrganize.resolvingUnresolved')
+      : t('archiveOrganize.resolving')
   });
   try {
-    var started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    var started = await postJson('/api/archive/author-resolve', {
+      channel_folder: channel,
+      scope: resolveScope
+    });
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'resolve failed');
@@ -3009,7 +3019,17 @@ async function runArchiveOrganizeMobile() {
   var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
   if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
   var archiveResolveBtn = document.getElementById('mob-archive-organize-resolve-btn');
-  if (archiveResolveBtn) archiveResolveBtn.addEventListener('click', resolveArchiveOrganizeMobile);
+  if (archiveResolveBtn) {
+    archiveResolveBtn.addEventListener('click', function() {
+      resolveArchiveOrganizeMobile('all');
+    });
+  }
+  var archiveResolveUnresolvedBtn = document.getElementById('mob-archive-organize-resolve-unresolved-btn');
+  if (archiveResolveUnresolvedBtn) {
+    archiveResolveUnresolvedBtn.addEventListener('click', function() {
+      resolveArchiveOrganizeMobile('unresolved');
+    });
+  }
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 

@@ -127,6 +127,43 @@ class AuthorReorganizePlan:
         }
 
 
+def preserved_author_hints_from_plan(plan: Optional[dict]) -> dict[int, AuthorHint]:
+    """Keep already-recognized Post Authors from a prior plan.
+
+    Rows that are ``needs_review`` or target ``_未知作者`` are left out so a
+    scoped re-resolve can refetch only those message ids.
+    """
+    out: dict[int, AuthorHint] = {}
+    if not isinstance(plan, dict):
+        return out
+    for item in plan.get('moves') or []:
+        if not isinstance(item, dict):
+            continue
+        mid = item.get('message_id')
+        if mid is None:
+            continue
+        try:
+            mid_int = int(mid)
+        except (TypeError, ValueError):
+            continue
+        action = str(item.get('action') or '')
+        author = str(item.get('author') or '').strip()
+        if action == 'needs_review':
+            continue
+        if not author or author == UNKNOWN_AUTHOR_FOLDER:
+            continue
+        if action not in ('move', 'needs_confirm', 'skip_already', 'skip_nested'):
+            continue
+        out[mid_int] = AuthorHint(
+            name=author,
+            confidence=str(item.get('confidence') or 'high'),
+            method=str(item.get('resolution_method') or item.get('method') or 'signature'),
+            matched_tag=str(item.get('matched_tag') or ''),
+            preview=str(item.get('preview') or ''),
+        )
+    return out
+
+
 def coerce_author_hint(value: Union[None, str, dict, AuthorHint]) -> AuthorHint:
     if isinstance(value, AuthorHint):
         return value
