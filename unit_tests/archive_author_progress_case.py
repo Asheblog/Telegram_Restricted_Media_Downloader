@@ -133,6 +133,43 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         sibling = SimpleNamespace(id=73465, caption=marker, text=None, media_group_id=99)
         self.assertEqual('橙色晚空', post_author_from_messages([head, sibling]))
 
+    def test_resolve_logs_miss_samples_via_callback(self):
+        from types import SimpleNamespace
+        import asyncio
+
+        client = FakeArchiveClient()
+        events = []
+
+        class FakeTelegram:
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids if message_ids is not None else (args[0] if args else None)
+                if not isinstance(ids, list):
+                    ids = [ids]
+                mid = int(ids[0])
+                return [SimpleNamespace(
+                    id=mid,
+                    caption='只有标题没有作者行',
+                    text=None,
+                    empty=False,
+                    media_group_id=None,
+                )]
+
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=FakeTelegram(),
+            run_coro=lambda coro, timeout=None: asyncio.run(coro),
+            on_log=lambda **kwargs: events.append(kwargs),
+        )
+        service._pace = lambda _seconds: None
+        plan = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=['chengdudiyi8/73464 - demo'],
+        )
+        self.assertEqual(0, plan.get('resolved_author_count') or 0)
+        self.assertTrue(plan.get('miss_samples'))
+        self.assertTrue(any(item.get('stage') == 'author_resolve' for item in events))
+        self.assertTrue(any(item.get('level') == 'warning' for item in events))
+
     def test_resolve_uses_media_group_when_primary_has_no_caption(self):
         from types import SimpleNamespace
         import asyncio

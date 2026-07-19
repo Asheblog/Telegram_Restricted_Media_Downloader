@@ -967,7 +967,45 @@ class WebOperationsMixin:
             telegram_client=telegram,
             transfer_store=store,
             run_coro=self._run_telegram_coro,
+            on_log=self._archive_author_log,
         )
+
+    def _archive_author_log(
+            self,
+            *,
+            stage: str,
+            message: str,
+            level: str = 'info',
+            source_message_id=None,
+            details=None,
+    ) -> None:
+        system_log = getattr(self, 'system_log', None)
+        if system_log is not None and hasattr(system_log, 'log'):
+            try:
+                system_log.log(
+                    category='archive',
+                    stage=stage,
+                    message=message,
+                    level=level,
+                    source_message_id=source_message_id,
+                    details=details,
+                )
+                return
+            except Exception:
+                pass
+        diagnostic = getattr(self, 'diagnostic', None)
+        if diagnostic is None:
+            return
+        line = f'[archive/{stage}] {message}'
+        try:
+            if level == 'error' and hasattr(diagnostic, 'error'):
+                diagnostic.error(line)
+            elif level == 'warning' and hasattr(diagnostic, 'warning'):
+                diagnostic.warning(line)
+            elif hasattr(diagnostic, 'info'):
+                diagnostic.info(line)
+        except Exception:
+            pass
 
     def list_archive_author_channels(self) -> dict:
         service = self._archive_author_service()
@@ -1053,6 +1091,40 @@ class WebOperationsMixin:
                     message=done_message,
                     percent=100,
                 )
+                if kind in ('scan', 'resolve'):
+                    system_log = getattr(self, 'system_log', None)
+                    if system_log is not None and hasattr(system_log, 'log'):
+                        try:
+                            system_log.log(
+                                category='archive',
+                                stage=f'author_{kind}',
+                                message=done_message,
+                                level='info',
+                                details={
+                                    'channel_folder': channel_folder,
+                                    'resolve_stats': result.get('resolve_stats'),
+                                    'miss_samples': (result.get('miss_samples') or [])[:10],
+                                },
+                            )
+                        except Exception:
+                            pass
+                elif kind == 'reorganize':
+                    system_log = getattr(self, 'system_log', None)
+                    if system_log is not None and hasattr(system_log, 'log'):
+                        try:
+                            system_log.log(
+                                category='archive',
+                                stage='author_reorganize',
+                                message=done_message,
+                                level='info' if not (result.get('error_count') or 0) else 'warning',
+                                details={
+                                    'channel_folder': channel_folder,
+                                    'moved_count': result.get('moved_count'),
+                                    'error_count': result.get('error_count'),
+                                },
+                            )
+                        except Exception:
+                            pass
             except Exception as error:
                 message = str(error) or error.__class__.__name__
                 jobs.update(
@@ -1072,10 +1144,11 @@ class WebOperationsMixin:
                 if system_log is not None and hasattr(system_log, 'log'):
                     try:
                         system_log.log(
-                            category='archive_author',
-                            stage=kind,
+                            category='archive',
+                            stage=f'author_{kind}',
                             message=message,
                             level='error',
+                            details={'channel_folder': channel_folder},
                         )
                     except Exception:
                         pass
