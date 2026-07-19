@@ -2336,6 +2336,35 @@ async function loadMediaMobile() {
 }
 
 var mobArchiveOrganizePlan = null;
+var MOB_ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
+
+function saveMobArchiveOrganizeJob(job) {
+  try {
+    if (!job || !job.id) {
+      localStorage.removeItem(MOB_ARCHIVE_AUTHOR_JOB_KEY);
+      return;
+    }
+    localStorage.setItem(MOB_ARCHIVE_AUTHOR_JOB_KEY, JSON.stringify({
+      id: job.id,
+      channel_folder: job.channel_folder || '',
+      kind: job.kind || ''
+    }));
+  } catch (e) {}
+}
+
+function loadSavedMobArchiveOrganizeJob() {
+  try {
+    var raw = localStorage.getItem(MOB_ARCHIVE_AUTHOR_JOB_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearSavedMobArchiveOrganizeJob() {
+  try { localStorage.removeItem(MOB_ARCHIVE_AUTHOR_JOB_KEY); } catch (e) {}
+}
 
 function showMobArchiveOrganizeProgress(job) {
   var box = document.getElementById('mob-archive-organize-progress');
@@ -2363,8 +2392,9 @@ async function pollMobArchiveOrganizeJob(jobId) {
   while (true) {
     var job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showMobArchiveOrganizeProgress(job);
+    saveMobArchiveOrganizeJob(job);
     if (job.status === 'success' || job.status === 'failure') return job;
-    await sleepMs(800);
+    await sleepMs(2000);
   }
 }
 
@@ -2382,26 +2412,67 @@ async function loadArchiveOrganizeMobile() {
       return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
     }).join('');
   } catch (e) {
-    select.innerHTML = '<option value="">' + esc(e.message || '') + '</option>';
+    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
   }
+  var saved = loadSavedMobArchiveOrganizeJob();
+  var job = null;
   try {
-    var channel = select.value || '';
-    var active = await fetchJson(
-      '/api/archive/author-job?active=1' +
-      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '')
-    );
-    if (active && active.id && active.status === 'running') {
-      if (active.channel_folder) select.value = active.channel_folder;
-      showMobArchiveOrganizeProgress(active);
-      var finished = await pollMobArchiveOrganizeJob(active.id);
-      if (finished.status === 'success' && finished.result) {
-        renderMobArchiveOrganizePlan(finished.result);
-      }
-    } else if (active && active.id && active.status === 'success' && active.result) {
-      showMobArchiveOrganizeProgress(active);
-      renderMobArchiveOrganizePlan(active.result);
+    if (saved && saved.id) {
+      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
     }
-  } catch (e) {}
+  } catch (e) {
+    job = null;
+  }
+  if (!job || !job.id) {
+    try {
+      var channel = select.value || (saved && saved.channel_folder) || '';
+      job = await fetchJson(
+        '/api/archive/author-job?active=1' +
+        (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '')
+      );
+    } catch (e) {
+      job = null;
+    }
+  }
+  if (!job || !job.id) return;
+  if (job.channel_folder) select.value = job.channel_folder;
+  if (job.status === 'running') {
+    showMobArchiveOrganizeProgress(job);
+    try {
+      var finished = await pollMobArchiveOrganizeJob(job.id);
+      if (finished.status === 'failure') {
+        showMobArchiveOrganizeProgress({
+          percent: 0, current: 0, total: 0, phase: 'error',
+          message: finished.error || finished.message || t('form.requestFailed')
+        });
+        clearSavedMobArchiveOrganizeJob();
+        return;
+      }
+      if (finished.kind === 'scan' && finished.result) {
+        renderMobArchiveOrganizePlan(finished.result);
+      } else if (finished.kind === 'reorganize') {
+        mobArchiveOrganizePlan = null;
+        var runBtn = document.getElementById('mob-archive-organize-run-btn');
+        if (runBtn) runBtn.disabled = true;
+      }
+      clearSavedMobArchiveOrganizeJob();
+    } catch (e) {
+      showMobArchiveOrganizeProgress({
+        percent: 0, current: 0, total: 0, phase: 'error',
+        message: translateApiError(e, 'form.requestFailed')
+      });
+      clearSavedMobArchiveOrganizeJob();
+    }
+    return;
+  }
+  if (job.status === 'success' && job.result && job.kind === 'scan') {
+    showMobArchiveOrganizeProgress(job);
+    renderMobArchiveOrganizePlan(job.result);
+    clearSavedMobArchiveOrganizeJob();
+  } else if (job.status === 'failure') {
+    showMobArchiveOrganizeProgress(job);
+    clearSavedMobArchiveOrganizeJob();
+  }
 }
 
 function renderMobArchiveOrganizePlan(data) {
@@ -2444,19 +2515,35 @@ async function scanArchiveOrganizeMobile() {
   });
   try {
     var started = await postJson('/api/archive/author-scan', { channel_folder: channel });
+    saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
     renderMobArchiveOrganizePlan(job.result || {});
+    clearSavedMobArchiveOrganizeJob();
   } catch (e) {
-    var result = document.getElementById('mob-archive-organize-result');
-    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+    var msg = translateApiError(e, 'form.requestFailed');
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error', message: msg
+    });
+    showToast(msg);
   }
 }
 
 async function runArchiveOrganizeMobile() {
   var select = document.getElementById('mob-archive-organize-channel');
   var channel = select ? select.value : '';
-  if (!channel || !mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) return;
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  if (!mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) {
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error',
+      message: t('archiveOrganize.needScan')
+    });
+    showToast(t('archiveOrganize.needScan'));
+    return;
+  }
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
   showMobArchiveOrganizeProgress({
     percent: 0,
@@ -2467,15 +2554,33 @@ async function runArchiveOrganizeMobile() {
   });
   try {
     var started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
-    showToast(t('archiveOrganize.moved') + ': ' + ((job.result && job.result.moved_count) || 0));
-    var refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    var scanJob = await pollMobArchiveOrganizeJob(refreshed.id);
-    if (scanJob.status === 'success') renderMobArchiveOrganizePlan(scanJob.result || {});
+    var data = job.result || {};
+    showMobArchiveOrganizeProgress({
+      percent: 100,
+      current: data.moved_count || 0,
+      total: data.planned_moves || mobArchiveOrganizePlan.move_count || 0,
+      phase: 'done',
+      message: (job.message || '') +
+        ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+        ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    });
+    showToast(
+      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    );
+    mobArchiveOrganizePlan = null;
+    var runBtn = document.getElementById('mob-archive-organize-run-btn');
+    if (runBtn) runBtn.disabled = true;
+    clearSavedMobArchiveOrganizeJob();
   } catch (e) {
-    var result = document.getElementById('mob-archive-organize-result');
-    if (result) result.innerHTML = '<div class="mob-empty">' + esc(e.message || '') + '</div>';
+    var msg = translateApiError(e, 'form.requestFailed');
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error', message: msg
+    });
+    showToast(msg);
   }
 }
 

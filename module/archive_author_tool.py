@@ -1,6 +1,10 @@
 # coding=UTF-8
-"""Scan/execute Post Author reorganization on PikPak Archive via rclone."""
+"""Scan/execute Post Author reorganization on PikPak Archive via rclone.
+
+Designed for slow, serial operation to avoid PikPak / Telegram rate limits.
+"""
 from typing import Callable, Optional
+import time
 
 from module.archive_reorganize import plan_author_reorganize
 from module.pikpak_archive import (
@@ -15,7 +19,11 @@ from module.source_folders import (
 )
 
 
-MESSAGE_FETCH_BATCH = 40
+# Conservative pacing — background jobs may take hours; prefer not to trip limits.
+TELEGRAM_FETCH_BATCH = 1
+TELEGRAM_BATCH_PAUSE_SECONDS = 2.0
+RCLONE_LIST_PAUSE_SECONDS = 2.5
+RCLONE_MOVE_PAUSE_SECONDS = 3.5
 ProgressCallback = Optional[Callable[..., None]]
 
 
@@ -61,12 +69,22 @@ class ArchiveAuthorReorganizeService:
             return
         on_progress(phase=phase, current=current, total=total, message=message)
 
+    @staticmethod
+    def _pace(seconds: float) -> None:
+        if seconds and seconds > 0:
+            time.sleep(float(seconds))
+
     def scan(self, channel_folder: str, on_progress: ProgressCallback = None) -> dict:
         channel = normalize_source_folder_path(channel_folder)
         if not channel or '/' in channel:
             raise ValueError('请输入单个频道文件夹名（Source Channel Folder）。')
         client = self._require_client()
         root = self._channel_remote_root(client, channel)
+        self._report(
+            on_progress,
+            phase='listing',
+            message='慢速串行扫描中（避免触发 PikPak/Telegram 限流）…',
+        )
         directory_paths = self._list_channel_directories(
             client=client,
             channel=channel,
@@ -86,7 +104,7 @@ class ArchiveAuthorReorganizeService:
             phase='resolving',
             current=0,
             total=len(unique_ids),
-            message=f'正在拉取 Telegram 主贴作者 0/{len(unique_ids)}…',
+            message=f'逐条拉取 Telegram 主贴作者 0/{len(unique_ids)}…',
         )
         author_by_id = self._resolve_authors(
             channel,
@@ -127,17 +145,14 @@ class ArchiveAuthorReorganizeService:
             root: str,
             on_progress: ProgressCallback = None,
     ) -> list[str]:
-        """List post folders with layered rclone lsjson (no full-tree --recursive).
-
-        Flat layout: ``channel/{post}``
-        Nested layout: ``channel/{author}/{post}`` — list each author folder once.
-        """
+        """List post folders with layered rclone lsjson (no full-tree --recursive)."""
         self._report(
             on_progress,
             phase='listing',
             message='正在列出频道顶层目录…',
         )
         top_level = client.list_directories(root, recursive=False)
+        self._pace(RCLONE_LIST_PAUSE_SECONDS)
         post_paths: list[str] = []
         author_dirs: list[str] = []
         for raw in top_level:
@@ -157,7 +172,7 @@ class ArchiveAuthorReorganizeService:
             total=total_steps,
             message=(
                 f'顶层主贴 {len(post_paths)} 个，作者目录 {len(author_dirs)} 个；'
-                f'开始逐个列出作者子目录…'
+                f'开始逐个慢速列出作者子目录…'
             ),
         )
         for index, author in enumerate(author_dirs, start=1):
@@ -170,6 +185,7 @@ class ArchiveAuthorReorganizeService:
             )
             author_root = join_remote_path(root, author)
             children = client.list_directories(author_root, recursive=False)
+            self._pace(RCLONE_LIST_PAUSE_SECONDS)
             for child in children:
                 leaf = clean_leaf_name(child)
                 if leaf and is_post_folder_segment(leaf):
@@ -193,31 +209,51 @@ class ArchiveAuthorReorganizeService:
         )
         return post_paths
 
-    def execute(self, channel_folder: str, on_progress: ProgressCallback = None) -> dict:
-        plan = self.scan(channel_folder, on_progress=on_progress)
+    def execute(
+            self,
+            channel_folder: str,
+            on_progress: ProgressCallback = None,
+            plan: Optional[dict] = None,
+    ) -> dict:
+        """Move folders. Prefer a prior scan ``plan`` to avoid re-hitting APIs."""
+        if plan is None:
+            plan = self.scan(channel_folder, on_progress=on_progress)
+        return self.execute_plan(plan, on_progress=on_progress)
+
+    def execute_plan(self, plan: dict, on_progress: ProgressCallback = None) -> dict:
         client = self._require_client()
-        root = plan.get('channel_remote_root') or self._channel_remote_root(client, plan['channel_folder'])
+        channel = plan.get('channel_folder') or ''
+        root = plan.get('channel_remote_root') or self._channel_remote_root(client, channel)
         move_items = [item for item in (plan.get('moves') or []) if item.get('action') == 'move']
         moved = []
         errors = []
         total = len(move_items)
+        ensured_parents: set[str] = set()
         self._report(
             on_progress,
             phase='moving',
             current=0,
             total=total,
-            message=f'开始移动目录 0/{total}…',
+            message=f'慢速串行移动目录 0/{total}（间隔 {RCLONE_MOVE_PAUSE_SECONDS:.0f}s）…',
         )
         for index, item in enumerate(move_items, start=1):
             from_rel = item['from_relative']
             to_rel = item['to_relative']
             source = join_remote_path(root, from_rel)
             target = join_remote_path(root, to_rel)
+            parent = '/'.join(str(to_rel).replace('\\', '/').split('/')[:-1])
+            if parent and parent not in ensured_parents:
+                try:
+                    client.ensure_directory(join_remote_path(root, parent))
+                    ensured_parents.add(parent)
+                    self._pace(RCLONE_LIST_PAUSE_SECONDS)
+                except Exception:
+                    pass
             try:
                 client.move_directory(source, target)
                 moved.append(item)
                 if self.transfer_store is not None:
-                    self._rewrite_store_paths(plan['channel_folder'], from_rel, to_rel)
+                    self._rewrite_store_paths(channel, from_rel, to_rel)
             except Exception as error:
                 errors.append({
                     'from_relative': from_rel,
@@ -229,18 +265,21 @@ class ArchiveAuthorReorganizeService:
                 phase='moving',
                 current=index,
                 total=total,
-                message=f'正在移动目录 {index}/{total}…',
+                message=f'正在移动目录 {index}/{total}（串行慢速）…',
             )
+            if index < total:
+                self._pace(RCLONE_MOVE_PAUSE_SECONDS)
         result = {
-            'channel_folder': plan['channel_folder'],
-            'author_count': plan['author_count'],
-            'authors': plan['authors'],
-            'planned_moves': plan['move_count'],
+            'channel_folder': channel,
+            'author_count': plan.get('author_count'),
+            'authors': plan.get('authors') or [],
+            'planned_moves': plan.get('move_count') or total,
             'moved_count': len(moved),
             'error_count': len(errors),
             'moved': moved,
             'errors': errors,
-            'skips': [item for item in plan.get('moves') or [] if item.get('action') != 'move'],
+            'skips': [item for item in (plan.get('moves') or []) if item.get('action') != 'move'],
+            'channel_remote_root': root,
         }
         self._report(
             on_progress,
@@ -306,29 +345,30 @@ class ArchiveAuthorReorganizeService:
                         phase='resolving',
                         current=progress_current,
                         total=total,
-                        message=f'Telegram 限流，等待 {wait_seconds}s 后继续（{progress_current}/{total}）…',
+                        message=(
+                            f'Telegram 限流，等待 {wait_seconds}s 后继续'
+                            f'（{progress_current}/{total}）…'
+                        ),
                     )
                     await asyncio.sleep(wait_seconds + 1)
 
-        for offset in range(0, len(message_ids), MESSAGE_FETCH_BATCH):
-            batch = message_ids[offset:offset + MESSAGE_FETCH_BATCH]
+        for offset in range(0, len(message_ids), TELEGRAM_FETCH_BATCH):
+            batch = message_ids[offset:offset + TELEGRAM_FETCH_BATCH]
             self._report(
                 on_progress,
                 phase='resolving',
                 current=offset,
                 total=total,
-                message=f'正在拉取 Telegram 主贴作者 {offset}/{total}…',
+                message=f'逐条拉取 Telegram 主贴作者 {offset}/{total}…',
             )
             try:
                 if self.run_coro is None:
                     return {mid: None for mid in message_ids}
-                # No overall timeout: FloodWait loops can take tens of minutes.
                 messages = self.run_coro(
                     _fetch_batch(batch, progress_current=offset),
                     timeout=None,
                 )
             except Exception:
-                # Fall back to one-by-one so a single bad id doesn't abort the scan.
                 messages = []
                 for mid in batch:
                     try:
@@ -357,17 +397,10 @@ class ArchiveAuthorReorganizeService:
                 phase='resolving',
                 current=done,
                 total=total,
-                message=f'正在拉取 Telegram 主贴作者 {done}/{total}…',
+                message=f'逐条拉取 Telegram 主贴作者 {done}/{total}…',
             )
-            # Light pacing between batches to reduce FloodWait frequency.
             if done < total:
-                async def _pause():
-                    await asyncio.sleep(0.35)
-
-                try:
-                    self.run_coro(_pause(), timeout=5)
-                except Exception:
-                    pass
+                self._pace(TELEGRAM_BATCH_PAUSE_SECONDS)
         return authors
 
     def _rewrite_store_paths(self, channel_folder: str, from_relative: str, to_relative: str) -> None:

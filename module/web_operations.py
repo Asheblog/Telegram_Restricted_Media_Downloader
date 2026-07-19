@@ -1009,7 +1009,14 @@ class WebOperationsMixin:
                 if kind == 'scan':
                     result = service.scan(channel_folder, on_progress=on_progress)
                 else:
-                    result = service.execute(channel_folder, on_progress=on_progress)
+                    # Reuse last successful scan plan — never rescan before move.
+                    plan = jobs.latest_successful_scan_result(channel_folder)
+                    if not plan or not (plan.get('move_count') or 0):
+                        raise RuntimeError(
+                            '请先完成「扫描作者分布」。整理会复用扫描计划并串行慢速移动，'
+                            '不会再次全量扫描，以避免触发 PikPak/Telegram 限流。'
+                        )
+                    result = service.execute_plan(plan, on_progress=on_progress)
                 jobs.update(
                     job_id,
                     status='success',

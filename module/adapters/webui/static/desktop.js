@@ -2831,7 +2831,8 @@ async function pollArchiveOrganizeJob(jobId) {
     if (job.status === 'success' || job.status === 'failure') {
       return job;
     }
-    await sleepMs(800);
+    // Slow poll — long-running jobs; avoid hammering the API.
+    await sleepMs(2000);
   }
 }
 
@@ -2986,7 +2987,6 @@ async function scanArchiveOrganize() {
       phase: 'error',
       message: msg
     });
-    alert(msg);
   } finally {
     setArchiveOrganizeBusy(false);
   }
@@ -2999,6 +2999,13 @@ async function runArchiveOrganize() {
     return;
   }
   if (!archiveOrganizePlan || !(archiveOrganizePlan.move_count > 0)) {
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: t('archiveOrganize.needScan')
+    });
     return;
   }
   if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
@@ -3021,16 +3028,19 @@ async function runArchiveOrganize() {
       throw new Error(job.error || job.message || 'reorganize failed');
     }
     const data = job.result || {};
-    alert(
-      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
-      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
-    );
-    const refreshed = await postJson('/api/archive/author-scan', { channel_folder: channel });
-    saveArchiveOrganizeJob(refreshed);
-    const scanJob = await pollArchiveOrganizeJob(refreshed.id);
-    if (scanJob.status === 'success') {
-      renderArchiveOrganizePlan(scanJob.result || {});
-    }
+    showArchiveOrganizeProgress({
+      percent: 100,
+      current: data.moved_count || 0,
+      total: data.planned_moves || archiveOrganizePlan.move_count || 0,
+      phase: 'done',
+      message: (job.message || '') +
+        ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+        ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    });
+    // Do not auto-rescan after reorganize (rate-limit safe). Clear plan until next scan.
+    archiveOrganizePlan = null;
+    const runBtn = $('#archive-organize-run-btn');
+    if (runBtn) runBtn.disabled = true;
     clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
@@ -3041,7 +3051,6 @@ async function runArchiveOrganize() {
       phase: 'error',
       message: msg
     });
-    alert(msg);
   } finally {
     setArchiveOrganizeBusy(false);
   }

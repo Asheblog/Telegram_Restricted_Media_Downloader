@@ -141,6 +141,43 @@ class ArchiveAuthorJobStore:
                 return dict(row)
         return None
 
+    def latest_successful_scan_result(self, channel_folder: str) -> Optional[dict]:
+        """Full scan plan for reorganize (not the truncated public view)."""
+        channel_folder = str(channel_folder or '').strip()
+        if not channel_folder:
+            return None
+        with self._lock:
+            candidates = [
+                dict(job)
+                for job in self._jobs.values()
+                if job.get('kind') == 'scan'
+                and job.get('status') == 'success'
+                and job.get('channel_folder') == channel_folder
+                and isinstance(job.get('result'), dict)
+            ]
+            if candidates:
+                candidates.sort(key=lambda item: float(item.get('updated_at') or 0), reverse=True)
+                return dict(candidates[0]['result'])
+        store = self._transfer_store
+        if store is not None and hasattr(store, 'list_archive_author_jobs'):
+            try:
+                rows = store.list_archive_author_jobs(
+                    channel_folder=channel_folder,
+                    status='success',
+                    limit=20,
+                )
+            except Exception:
+                rows = []
+            for row in rows:
+                if row.get('kind') != 'scan':
+                    continue
+                result = row.get('result')
+                if isinstance(result, dict):
+                    with self._lock:
+                        self._jobs[row['id']] = dict(row)
+                    return dict(result)
+        return None
+
     def progress_callback(self, job_id: str) -> Callable[..., None]:
         def _on_progress(
                 *,

@@ -4,4 +4,4 @@
 
 **Considered Options:** 仅改文件夹名塞进作者（仍扁平）；作者放在频道之上；只整理历史不改新路径；抽不到作者时保持扁平。
 
-**Consequences:** 需从正文解析示例作者行；rclone 需列目录并移动整夹；TransferStore 的 `source_folder` 在整理时尽量回写；不回填更早的无主贴目录散文件。
+**Consequences:** 需从正文解析示例作者行；rclone 需列目录并移动整夹；TransferStore 的 `source_folder` 在整理时尽量回写；不回填更早的无主贴目录散文件。历史整理必须串行慢速（Telegram 逐条拉取、rclone 列表/移动带间隔），整理复用最近一次成功扫描计划、禁止执行前再全量扫描，以避免触发 PikPak/Telegram 限流。
