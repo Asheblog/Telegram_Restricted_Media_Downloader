@@ -43,9 +43,14 @@ BOILERPLATE_TITLE_LINES = frozenset({
 UNKNOWN_AUTHOR_FOLDER = '_未知作者'
 # Marker kept as escapes so the public tree has no sensitive site name plaintext.
 _POST_AUTHOR_MARKER = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005'
-# Allow ASCII/fullwidth colon variants and ASCII/fullwidth hash.
+_AUTHOR_COLON = r'[：:﹕∶꞉]'
+_AUTHOR_TAG = r'[#＃@＠]'
+# Full marker (…作者：#名字) or short form commonly used in channel posts (作者：#名字).
 POST_AUTHOR_LINE = re.compile(
-    _POST_AUTHOR_MARKER + r'\s*[：:﹕∶꞉]\s*[#＃]?([^\s#＃]+)'
+    r'(?:'
+    + _POST_AUTHOR_MARKER + r'\s*' + _AUTHOR_COLON + r'\s*' + _AUTHOR_TAG + r'?'
+    + r'|作者\s*' + _AUTHOR_COLON + r'\s*' + _AUTHOR_TAG
+    + r')([^\s#＃@＠]+)'
 )
 POST_FOLDER_SEGMENT_RE = re.compile(r'^\d+(?:\s+-\s+.+)?$')
 
@@ -153,13 +158,13 @@ def _is_boilerplate_title_line(line: str) -> bool:
 
 
 def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
-    """Parse post-author marker line from caption/text (``…作者：#名字``)."""
+    """Parse post-author line from caption/text (full marker or ``作者：#名字``)."""
     if not isinstance(text, str) or not text.strip():
         return None
     match = POST_AUTHOR_LINE.search(text)
     if not match:
         return None
-    author = match.group(1).strip().lstrip('#＃')
+    author = match.group(1).strip().lstrip('#＃@＠')
     return author or None
 
 

@@ -13,6 +13,35 @@ sys.argv = [sys.argv[0]]
 
 
 class SourceFolderArchiveCase(unittest.TestCase):
+    def test_extract_short_author_line_from_channel_caption(self):
+        from module.source_folders import extract_post_author_from_text
+
+        self.assertEqual(
+            '会喷水的亲姐姐',
+            extract_post_author_from_text(
+                '#标签 【60分原创户外】标题 作者：#会喷水的亲姐姐 塞进去以后姐姐'
+            ),
+        )
+        self.assertEqual(
+            '小兽先生',
+            extract_post_author_from_text(
+                '#熟女 标题 作者: #小兽先生 最后面操的时候'
+            ),
+        )
+        self.assertEqual(
+            '高中表妹是我女友',
+            extract_post_author_from_text(
+                '标题 作者：#高中表妹是我女友 今天的我'
+            ),
+        )
+        self.assertEqual(
+            '会喷水的辛姐姐',
+            extract_post_author_from_text('标题\n作者：@会喷水的辛姐姐\n'),
+        )
+        self.assertIsNone(
+            extract_post_author_from_text('#少妇 #人妻 国产战袍少妇酒店开房被猛干的淫叫不停')
+        )
+
     def test_extract_post_author_from_caption(self):
         from module.source_folders import (
             UNKNOWN_AUTHOR_FOLDER,
@@ -27,6 +56,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             + author_line
             + '#示例社区 #标签\n'
         )
+
         self.assertEqual('我的羞涩女儿', extract_post_author_from_text(caption))
         message = SimpleNamespace(
             id=92862,
@@ -153,7 +183,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             extract_message_body_title(message),
         )
         self.assertEqual(
-            'chengdudiyi8/_未知作者/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
+            'chengdudiyi8/会喷水的辛姐姐/73466 - 【60分原创户外】拉着气质姐姐铁路旁裤里丝双洞齐插，晚上又到树林母狗调教',
             archive_source_folder(message),
         )
 
