@@ -1245,7 +1245,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2051,7 +2051,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
+    'archiveOrganize.hint': '作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描作者分布',
     'archiveOrganize.run': '按作者整理',
@@ -2497,7 +2497,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Parse Author author tags from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
+    'archiveOrganize.hint': 'Auto-extract authors from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'Scan authors',
     'archiveOrganize.run': 'Reorganize by author',
@@ -7300,7 +7300,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -7932,7 +7932,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '从 Telegram 主贴正文解析「示例社区作者：#名字」，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
+    'archiveOrganize.hint': '作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描作者分布',
     'archiveOrganize.run': '按作者整理',
@@ -8378,7 +8378,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Parse Author author tags from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
+    'archiveOrganize.hint': 'Auto-extract authors from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'Scan authors',
     'archiveOrganize.run': 'Reorganize by author',
