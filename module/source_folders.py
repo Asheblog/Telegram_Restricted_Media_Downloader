@@ -43,7 +43,10 @@ BOILERPLATE_TITLE_LINES = frozenset({
 UNKNOWN_AUTHOR_FOLDER = '_未知作者'
 # Marker kept as escapes so the public tree has no sensitive site name plaintext.
 _POST_AUTHOR_MARKER = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005'
-POST_AUTHOR_LINE = re.compile(_POST_AUTHOR_MARKER + r'\s*[：:]\s*#?([^\s#]+)')
+# Allow ASCII/fullwidth colon variants and ASCII/fullwidth hash.
+POST_AUTHOR_LINE = re.compile(
+    _POST_AUTHOR_MARKER + r'\s*[：:﹕∶꞉]\s*[#＃]?([^\s#＃]+)'
+)
 POST_FOLDER_SEGMENT_RE = re.compile(r'^\d+(?:\s+-\s+.+)?$')
 
 
@@ -156,15 +159,54 @@ def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
     match = POST_AUTHOR_LINE.search(text)
     if not match:
         return None
-    author = match.group(1).strip().lstrip('#')
+    author = match.group(1).strip().lstrip('#＃')
     return author or None
 
 
 def post_author_from_message(message) -> Optional[str]:
     if message is None:
         return None
+    if getattr(message, 'empty', False):
+        return None
     for attr in ('caption', 'text'):
         author = extract_post_author_from_text(getattr(message, attr, None))
+        if author:
+            return author
+    web_page = getattr(message, 'web_page', None)
+    if web_page is not None:
+        for attr in ('title', 'description', 'display_url'):
+            author = extract_post_author_from_text(getattr(web_page, attr, None))
+            if author:
+                return author
+    return None
+
+
+async def post_author_from_telegram_message(message, *, client=None, chat_id=None) -> Optional[str]:
+    """Resolve author from one message, expanding media-group siblings when needed."""
+    author = post_author_from_message(message)
+    if author:
+        return author
+    if message is None or getattr(message, 'empty', False):
+        return None
+    group_messages = None
+    get_media_group = getattr(message, 'get_media_group', None)
+    if callable(get_media_group):
+        try:
+            group_messages = await get_media_group()
+        except Exception:
+            group_messages = None
+    if not group_messages and client is not None and getattr(message, 'media_group_id', None):
+        getter = getattr(client, 'get_media_group', None)
+        if callable(getter):
+            try:
+                group_messages = await getter(
+                    chat_id=chat_id,
+                    message_id=getattr(message, 'id', None),
+                )
+            except Exception:
+                group_messages = None
+    if group_messages:
+        author = post_author_from_messages(group_messages)
         if author:
             return author
     return None

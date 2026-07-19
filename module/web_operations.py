@@ -1032,7 +1032,10 @@ class WebOperationsMixin:
                     done_message = (
                         f'{"扫描" if kind == "scan" else "解析"}完成：'
                         f'解析到作者 {result.get("resolved_author_count") or 0}/'
-                        f'{result.get("message_id_count") or 0}，'
+                        f'{result.get("message_id_count") or 0}'
+                        f'（抓取 {(result.get("resolve_stats") or {}).get("fetched") or 0}，'
+                        f'相册 {(result.get("resolve_stats") or {}).get("media_group_hits") or 0}，'
+                        f'邻条 {(result.get("resolve_stats") or {}).get("neighbor_hits") or 0}），'
                         f'{result.get("author_count") or 0} 个作者目录，'
                         f'待移动 {result.get("move_count") or 0}，'
                         f'跳过 {result.get("skip_count") or 0}'

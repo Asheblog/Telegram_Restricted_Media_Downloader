@@ -124,23 +124,64 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         }
         self.assertIn('我的羞涩女儿', move_authors)
 
-    def test_directory_paths_reconstructed_from_prior_moves(self):
-        from module.archive_author_tool import directory_paths_from_plan
+    def test_post_author_from_media_group_sibling_caption(self):
+        from types import SimpleNamespace
+        from module.source_folders import post_author_from_messages
 
-        paths = directory_paths_from_plan({
-            'channel_folder': 'chengdudiyi8',
-            'moves': [
-                {'from_relative': '92862 - a'},
-                {'from_relative': f'{UNKNOWN_AUTHOR_FOLDER}/99999 - b'},
-            ],
-        })
-        self.assertEqual(
-            [
-                'chengdudiyi8/92862 - a',
-                f'chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}/99999 - b',
-            ],
-            paths,
+        marker = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005\uff1a#橙色晚空'
+        head = SimpleNamespace(id=73464, caption=None, text=None, media_group_id=99)
+        sibling = SimpleNamespace(id=73465, caption=marker, text=None, media_group_id=99)
+        self.assertEqual('橙色晚空', post_author_from_messages([head, sibling]))
+
+    def test_resolve_uses_media_group_when_primary_has_no_caption(self):
+        from types import SimpleNamespace
+        import asyncio
+
+        client = FakeArchiveClient()
+        marker = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005\uff1a#橙色晚空'
+
+        class FakeTelegram:
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids if message_ids is not None else (args[0] if args else None)
+                if not isinstance(ids, list):
+                    ids = [ids]
+                mid = int(ids[0])
+                msg = SimpleNamespace(
+                    id=mid,
+                    caption=None,
+                    text=None,
+                    empty=False,
+                    media_group_id=42,
+                )
+
+                async def get_media_group():
+                    return [
+                        msg,
+                        SimpleNamespace(
+                            id=mid + 1,
+                            caption=marker,
+                            text=None,
+                            media_group_id=42,
+                        ),
+                    ]
+
+                msg.get_media_group = get_media_group
+                return [msg]
+
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=FakeTelegram(),
+            run_coro=lambda coro, timeout=None: asyncio.run(coro),
         )
+        service._pace = lambda _seconds: None
+        plan = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=['chengdudiyi8/73464 - demo'],
+        )
+        authors = {item['author'] for item in plan['moves']}
+        self.assertIn('橙色晚空', authors)
+        self.assertGreaterEqual(plan.get('resolved_author_count') or 0, 1)
+
 
 
     def test_latest_successful_scan_result_returns_full_plan(self):

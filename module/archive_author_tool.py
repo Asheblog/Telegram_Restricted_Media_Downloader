@@ -15,7 +15,7 @@ from module.pikpak_archive import (
 from module.source_folders import (
     is_post_folder_segment,
     message_id_from_post_folder_segment,
-    post_author_from_message,
+    post_author_from_telegram_message,
 )
 
 
@@ -169,6 +169,14 @@ class ArchiveAuthorReorganizeService:
                 raise RuntimeError('Telegram 客户端未就绪，无法按主贴 ID 解析作者。')
             author_by_id = {mid: None for mid in unique_ids}
             resolved = 0
+            resolve_stats = {
+                'fetched': 0,
+                'empty': 0,
+                'matched': 0,
+                'errors': 0,
+                'media_group_hits': 0,
+                'neighbor_hits': 0,
+            }
         else:
             self._report(
                 on_progress,
@@ -177,18 +185,27 @@ class ArchiveAuthorReorganizeService:
                 total=len(unique_ids),
                 message=f'按主贴 ID 回查 Telegram 作者 0/{len(unique_ids)}（不扫网盘）…',
             )
-            author_by_id = self._resolve_authors(
+            resolve_payload = self._resolve_authors(
                 channel,
                 unique_ids,
                 on_progress=on_progress,
             )
+            author_by_id = resolve_payload.get('authors') or {}
+            resolve_stats = resolve_payload.get('stats') or {}
             resolved = sum(1 for mid in unique_ids if author_by_id.get(mid))
         self._report(
             on_progress,
             phase='planning',
             current=len(unique_ids),
             total=max(len(unique_ids), 1),
-            message=f'已解析作者 {resolved}/{len(unique_ids)}，正在生成移动计划…',
+            message=(
+                f'已解析作者 {resolved}/{len(unique_ids)}'
+                f'（抓取 {resolve_stats.get("fetched") or 0}，'
+                f'空消息 {resolve_stats.get("empty") or 0}，'
+                f'相册补齐 {resolve_stats.get("media_group_hits") or 0}，'
+                f'邻条补齐 {resolve_stats.get("neighbor_hits") or 0}），'
+                f'正在生成移动计划…'
+            ),
         )
         plan = plan_author_reorganize(
             channel_folder=channel,
@@ -200,13 +217,18 @@ class ArchiveAuthorReorganizeService:
         payload['directory_paths'] = paths
         payload['resolved_author_count'] = resolved
         payload['message_id_count'] = len(unique_ids)
+        payload['resolve_stats'] = resolve_stats
         self._report(
             on_progress,
             phase='done',
             current=payload.get('move_count') or 0,
             total=max(int(payload.get('move_count') or 0) + int(payload.get('skip_count') or 0), 1),
             message=(
-                f'{done_label}：解析到作者 {resolved}/{len(unique_ids)}，'
+                f'{done_label}：解析到作者 {resolved}/{len(unique_ids)}'
+                f'（抓取 {resolve_stats.get("fetched") or 0}，'
+                f'空 {resolve_stats.get("empty") or 0}，'
+                f'相册 {resolve_stats.get("media_group_hits") or 0}，'
+                f'邻条 {resolve_stats.get("neighbor_hits") or 0}），'
                 f'{payload.get("author_count") or 0} 个作者目录，'
                 f'待移动 {payload.get("move_count") or 0}，跳过 {payload.get("skip_count") or 0}'
             ),
@@ -386,9 +408,19 @@ class ArchiveAuthorReorganizeService:
             on_progress: ProgressCallback = None,
     ) -> dict:
         if not message_ids:
-            return {}
+            return {'authors': {}, 'stats': {}}
         if self.telegram_client is None:
-            return {mid: None for mid in message_ids}
+            return {
+                'authors': {mid: None for mid in message_ids},
+                'stats': {
+                    'fetched': 0,
+                    'empty': 0,
+                    'matched': 0,
+                    'errors': len(message_ids),
+                    'media_group_hits': 0,
+                    'neighbor_hits': 0,
+                },
+            }
 
         import asyncio
 
@@ -402,17 +434,25 @@ class ArchiveAuthorReorganizeService:
         authors = {mid: None for mid in message_ids}
         client = self.telegram_client
         total = len(message_ids)
+        stats = {
+            'fetched': 0,
+            'empty': 0,
+            'matched': 0,
+            'errors': 0,
+            'media_group_hits': 0,
+            'neighbor_hits': 0,
+        }
+        chat_id = channel_folder
 
-        async def _fetch_batch(batch: list[int], *, progress_current: int):
+        async def _fetch_messages(ids: list[int], *, progress_current: int):
             while True:
                 try:
                     return await client.get_messages(
-                        chat_id=channel_folder,
-                        message_ids=batch,
+                        chat_id=chat_id,
+                        message_ids=ids if len(ids) > 1 else ids[0],
                     )
                 except TypeError:
-                    # Older stubs / alternate signatures.
-                    return await client.get_messages(channel_folder, batch)
+                    return await client.get_messages(chat_id, ids)
                 except Exception as error:
                     if not flood_types or not isinstance(error, flood_types):
                         raise
@@ -434,56 +474,122 @@ class ArchiveAuthorReorganizeService:
                     )
                     await asyncio.sleep(wait_seconds + 1)
 
+        def _as_list(value):
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        async def _resolve_one(mid: int, *, progress_current: int) -> Optional[str]:
+            try:
+                raw = await _fetch_messages([mid], progress_current=progress_current)
+            except Exception:
+                stats['errors'] += 1
+                return None
+            messages = _as_list(raw)
+            message = messages[0] if messages else None
+            if message is None or getattr(message, 'empty', False):
+                stats['empty'] += 1
+                # Folder id may point at a media-only album member; probe nearby ids once.
+                neighbor_ids = [mid + offset for offset in range(1, 6)]
+                try:
+                    raw_neighbors = await _fetch_messages(
+                        neighbor_ids,
+                        progress_current=progress_current,
+                    )
+                except Exception:
+                    return None
+                for item in _as_list(raw_neighbors):
+                    if item is None or getattr(item, 'empty', False):
+                        continue
+                    author = await post_author_from_telegram_message(
+                        item,
+                        client=client,
+                        chat_id=chat_id,
+                    )
+                    if author:
+                        stats['neighbor_hits'] += 1
+                        stats['matched'] += 1
+                        stats['fetched'] += 1
+                        return author
+                return None
+
+            stats['fetched'] += 1
+            from module.source_folders import post_author_from_message as direct_author
+            author = await post_author_from_telegram_message(
+                message,
+                client=client,
+                chat_id=chat_id,
+            )
+            if author:
+                if not direct_author(message):
+                    stats['media_group_hits'] += 1
+                stats['matched'] += 1
+                return author
+
+            # Still nothing — probe a few following messages (text often follows album).
+            neighbor_ids = [mid + offset for offset in range(1, 4)]
+            try:
+                raw_neighbors = await _fetch_messages(
+                    neighbor_ids,
+                    progress_current=progress_current,
+                )
+            except Exception:
+                return None
+            for item in _as_list(raw_neighbors):
+                if item is None or getattr(item, 'empty', False):
+                    continue
+                author = await post_author_from_telegram_message(
+                    item,
+                    client=client,
+                    chat_id=chat_id,
+                )
+                if author:
+                    stats['neighbor_hits'] += 1
+                    stats['matched'] += 1
+                    return author
+            return None
+
         for offset in range(0, len(message_ids), TELEGRAM_FETCH_BATCH):
             batch = message_ids[offset:offset + TELEGRAM_FETCH_BATCH]
+            mid = batch[0]
             self._report(
                 on_progress,
                 phase='resolving',
                 current=offset,
                 total=total,
-                message=f'按主贴 ID 回查 Telegram 作者 {offset}/{total}…',
+                message=(
+                    f'按主贴 ID 回查 Telegram 作者 {offset}/{total}'
+                    f'（已命中 {stats["matched"]}，相册补齐 {stats["media_group_hits"]}，'
+                    f'邻条补齐 {stats["neighbor_hits"]}）…'
+                ),
             )
+            if self.run_coro is None:
+                return {'authors': authors, 'stats': stats}
             try:
-                if self.run_coro is None:
-                    return {mid: None for mid in message_ids}
-                messages = self.run_coro(
-                    _fetch_batch(batch, progress_current=offset),
+                authors[int(mid)] = self.run_coro(
+                    _resolve_one(mid, progress_current=offset),
                     timeout=None,
                 )
             except Exception:
-                messages = []
-                for mid in batch:
-                    try:
-                        one = self.run_coro(
-                            _fetch_batch([mid], progress_current=offset),
-                            timeout=None,
-                        )
-                        if isinstance(one, list):
-                            messages.extend(one)
-                        else:
-                            messages.append(one)
-                    except Exception:
-                        messages.append(None)
-            if not isinstance(messages, list):
-                messages = [messages]
-            for message in messages:
-                if message is None:
-                    continue
-                mid = getattr(message, 'id', None)
-                if mid is None:
-                    continue
-                authors[int(mid)] = post_author_from_message(message)
+                stats['errors'] += 1
+                authors[int(mid)] = None
             done = min(offset + len(batch), total)
             self._report(
                 on_progress,
                 phase='resolving',
                 current=done,
                 total=total,
-                message=f'按主贴 ID 回查 Telegram 作者 {done}/{total}…',
+                message=(
+                    f'按主贴 ID 回查 Telegram 作者 {done}/{total}'
+                    f'（已命中 {stats["matched"]}，空消息 {stats["empty"]}，'
+                    f'失败 {stats["errors"]}）…'
+                ),
             )
             if done < total:
                 self._pace(TELEGRAM_BATCH_PAUSE_SECONDS)
-        return authors
+        return {'authors': authors, 'stats': stats}
 
     def _rewrite_store_paths(self, channel_folder: str, from_relative: str, to_relative: str) -> None:
         store = self.transfer_store
