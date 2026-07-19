@@ -1,0 +1,66 @@
+# coding=UTF-8
+import unittest
+
+from unit_tests.pyrogram_stub import install_pyrogram_stub
+
+install_pyrogram_stub()
+
+from module.author_hashtag_match import (
+    extract_hashtags_from_text,
+    match_author_from_hashtags,
+    normalize_author_label,
+)
+
+
+class AuthorHashtagMatchCase(unittest.TestCase):
+    def test_extract_hashtags_preserves_order_and_dedupes(self):
+        tags = extract_hashtags_from_text(
+            '#海角社区 #会喷水的亲姐姐 【55分原创】发现暧昧 #会喷水的亲姐姐'
+        )
+        self.assertEqual(['海角社区', '会喷水的亲姐姐'], tags)
+
+    def test_topic_tags_alone_do_not_match(self):
+        match = match_author_from_hashtags(
+            ['人妻', '熟女', '视频'],
+            known_authors=['喷水的姐姐'],
+        )
+        self.assertIsNone(match.author)
+        self.assertEqual('none', match.method)
+
+    def test_exact_hashtag_hits_known_author(self):
+        match = match_author_from_hashtags(
+            ['海角社区', '喷水的姐姐', '人妻'],
+            known_authors=['喷水的姐姐', '小兽先生'],
+            extra_deny=['海角社区'],
+        )
+        self.assertEqual('喷水的姐姐', match.author)
+        self.assertEqual('medium', match.confidence)
+        self.assertEqual('hashtag_exact', match.method)
+
+    def test_substring_hashtag_needs_confirm(self):
+        match = match_author_from_hashtags(
+            ['海角社区', '会喷水的亲姐姐', '人妻'],
+            known_authors=['喷水的姐姐'],
+            extra_deny=['海角社区'],
+        )
+        self.assertEqual('喷水的姐姐', match.author)
+        self.assertEqual('low', match.confidence)
+        self.assertEqual('hashtag_substring', match.method)
+
+    def test_unknown_hashtag_stays_unmatched(self):
+        match = match_author_from_hashtags(
+            ['完全陌生作者名'],
+            known_authors=['喷水的姐姐'],
+        )
+        self.assertIsNone(match.author)
+        self.assertEqual('none', match.method)
+
+    def test_normalize_strips_punctuation(self):
+        self.assertEqual(
+            normalize_author_label('#喷水的姐姐，'),
+            normalize_author_label('喷水的姐姐'),
+        )
+
+
+if __name__ == '__main__':
+    unittest.main()

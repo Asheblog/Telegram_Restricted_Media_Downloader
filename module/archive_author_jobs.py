@@ -235,18 +235,34 @@ def public_job_view(job: Optional[dict]) -> Optional[dict]:
     if not job:
         return None
     result = job.get('result')
-    # Cap move rows returned to the browser for huge channels.
+    # Keep browser payloads small: summary only; detail rows via moves API.
     if isinstance(result, dict):
+        from module.archive_reorganize import summarize_move_rows
+
         result = dict(result)
         paths = result.get('directory_paths')
         if isinstance(paths, list):
             result['directory_path_count'] = len(paths)
             result.pop('directory_paths', None)
         moves = result.get('moves')
-        if isinstance(moves, list) and len(moves) > 200:
-            result['moves'] = moves[:200]
-            result['moves_truncated'] = True
+        if isinstance(moves, list):
             result['moves_total'] = len(moves)
+            if not isinstance(result.get('summary'), dict):
+                result['summary'] = summarize_move_rows(moves)
+            # Prefer summary fields even when older plans lack them.
+            summary = result['summary']
+            result.setdefault('move_count', summary.get('move', 0))
+            result.setdefault('confirm_count', summary.get('needs_confirm', 0))
+            result.setdefault('review_count', summary.get('needs_review', 0))
+            result.setdefault('executable_count', summary.get('executable', 0))
+            result.setdefault('skip_count', (
+                int(summary.get('skip_already') or 0)
+                + int(summary.get('skip_nested') or 0)
+                + int(summary.get('skip_invalid') or 0)
+            ))
+            result['moves'] = []
+            result['moves_omitted'] = True
+            result['moves_truncated'] = True
     return {
         'id': job.get('id'),
         'kind': job.get('kind'),
@@ -259,4 +275,41 @@ def public_job_view(job: Optional[dict]) -> Optional[dict]:
         'message': job.get('message') or '',
         'error': job.get('error'),
         'result': result,
+    }
+
+
+def list_job_plan_moves(
+        job: Optional[dict],
+        *,
+        bucket: str = '',
+        offset: int = 0,
+        limit: int = 50,
+) -> dict:
+    from module.archive_reorganize import filter_plan_moves
+
+    if not job:
+        raise ValueError('job not found')
+    result = job.get('result')
+    if not isinstance(result, dict):
+        return {
+            'job_id': job.get('id'),
+            'channel_folder': job.get('channel_folder'),
+            'items': [],
+            'total': 0,
+            'offset': 0,
+            'limit': limit,
+            'bucket': bucket or None,
+            'summary': {},
+        }
+    moves = result.get('moves') if isinstance(result.get('moves'), list) else []
+    page = filter_plan_moves(moves, bucket=bucket, offset=offset, limit=limit)
+    summary = result.get('summary')
+    if not isinstance(summary, dict):
+        from module.archive_reorganize import summarize_move_rows
+        summary = summarize_move_rows(moves)
+    return {
+        'job_id': job.get('id'),
+        'channel_folder': job.get('channel_folder'),
+        'summary': summary,
+        **page,
     }

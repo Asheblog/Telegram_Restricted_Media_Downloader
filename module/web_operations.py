@@ -1025,7 +1025,13 @@ class WebOperationsMixin:
             self._archive_author_jobs = store
         return store
 
-    def _start_archive_author_job(self, *, kind: str, channel_folder: str) -> dict:
+    def _start_archive_author_job(
+            self,
+            *,
+            kind: str,
+            channel_folder: str,
+            execute_mode: str = 'all',
+    ) -> dict:
         import threading
 
         from module.archive_author_jobs import public_job_view
@@ -1042,6 +1048,7 @@ class WebOperationsMixin:
         job_id = job['id']
         on_progress = jobs.progress_callback(job_id)
         service = self._archive_author_service()
+        mode = str(execute_mode or 'all').strip().lower() or 'all'
 
         def runner():
             try:
@@ -1061,12 +1068,25 @@ class WebOperationsMixin:
                 else:
                     # Reuse last successful scan/resolve plan — never rescan before move.
                     plan = jobs.latest_successful_scan_result(channel_folder)
-                    if not plan or not (plan.get('move_count') or 0):
+                    executable = 0
+                    if plan:
+                        executable = int(
+                            plan.get('executable_count')
+                            or plan.get('move_count')
+                            or 0
+                        )
+                        if mode in ('auto', 'high', 'move'):
+                            executable = int(plan.get('move_count') or 0)
+                    if not plan or executable <= 0:
                         raise RuntimeError(
                             '请先完成「扫描作者分布」或「重新解析作者」。'
                             '整理会复用计划并串行慢速移动，不会再次全量扫描网盘。'
                         )
-                    result = service.execute_plan(plan, on_progress=on_progress)
+                    result = service.execute_plan(
+                        plan,
+                        on_progress=on_progress,
+                        execute_mode=mode,
+                    )
                 if kind in ('scan', 'resolve'):
                     done_message = (
                         f'{"扫描" if kind == "scan" else "解析"}完成：'
@@ -1074,9 +1094,13 @@ class WebOperationsMixin:
                         f'{result.get("message_id_count") or 0}'
                         f'（抓取 {(result.get("resolve_stats") or {}).get("fetched") or 0}，'
                         f'相册 {(result.get("resolve_stats") or {}).get("media_group_hits") or 0}，'
-                        f'邻条 {(result.get("resolve_stats") or {}).get("neighbor_hits") or 0}），'
+                        f'邻条 {(result.get("resolve_stats") or {}).get("neighbor_hits") or 0}，'
+                        f'标签精确 {(result.get("resolve_stats") or {}).get("hashtag_exact_hits") or 0}，'
+                        f'标签待确认 {(result.get("resolve_stats") or {}).get("hashtag_substring_hits") or 0}），'
                         f'{result.get("author_count") or 0} 个作者目录，'
                         f'待移动 {result.get("move_count") or 0}，'
+                        f'待确认 {result.get("confirm_count") or 0}，'
+                        f'未识别 {result.get("review_count") or 0}，'
                         f'跳过 {result.get("skip_count") or 0}'
                     )
                 else:
@@ -1122,6 +1146,7 @@ class WebOperationsMixin:
                                     'channel_folder': channel_folder,
                                     'moved_count': result.get('moved_count'),
                                     'error_count': result.get('error_count'),
+                                    'execute_mode': result.get('execute_mode'),
                                 },
                             )
                         except Exception:
@@ -1167,7 +1192,56 @@ class WebOperationsMixin:
 
     def execute_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
-        return self._start_archive_author_job(kind='reorganize', channel_folder=channel_folder)
+        mode = str((payload or {}).get('mode') or 'all').strip().lower() or 'all'
+        return self._start_archive_author_job(
+            kind='reorganize',
+            channel_folder=channel_folder,
+            execute_mode=mode,
+        )
+
+    def list_archive_author_plan_moves(self, payload: dict | None = None) -> dict:
+        from module.archive_author_jobs import list_job_plan_moves
+
+        data = payload or {}
+        job_id = str(data.get('job_id') or '').strip()
+        channel_folder = str(data.get('channel_folder') or '').strip()
+        bucket = str(data.get('bucket') or '').strip()
+        offset = data.get('offset', 0)
+        limit = data.get('limit', 50)
+        jobs = self._archive_author_job_store()
+        job = None
+        if job_id:
+            job = jobs.get(job_id)
+        elif channel_folder:
+            # Prefer latest successful scan/resolve for the channel.
+            with jobs._lock:
+                candidates = [
+                    dict(item)
+                    for item in jobs._jobs.values()
+                    if item.get('channel_folder') == channel_folder
+                    and item.get('kind') in ('scan', 'resolve')
+                    and item.get('status') == 'success'
+                    and isinstance(item.get('result'), dict)
+                ]
+            if candidates:
+                candidates.sort(key=lambda item: float(item.get('updated_at') or 0), reverse=True)
+                job = candidates[0]
+            else:
+                plan = jobs.latest_successful_scan_result(channel_folder)
+                if plan:
+                    job = {
+                        'id': None,
+                        'channel_folder': channel_folder,
+                        'result': plan,
+                    }
+        if not job:
+            raise ValueError('plan not found')
+        return list_job_plan_moves(
+            job,
+            bucket=bucket,
+            offset=offset,
+            limit=limit,
+        )
 
     def get_archive_author_job(self, job_id: str) -> dict:
         from module.archive_author_jobs import public_job_view
@@ -1813,6 +1887,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
     'list_archive_author_channels', 'scan_archive_author_reorganize',
     'resolve_archive_author_reorganize', 'execute_archive_author_reorganize',
+    'list_archive_author_plan_moves',
     'get_archive_author_job',
     'get_active_archive_author_job',
 )

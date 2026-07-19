@@ -63,7 +63,11 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         # Avoid multi-second pacing sleeps in unit tests.
         service._pace = lambda _seconds: None
         plan = service.scan('chengdudiyi8', on_progress=on_progress)
-        self.assertGreaterEqual(plan['move_count'], 2)
+        self.assertGreaterEqual(len(plan['moves']), 2)
+        self.assertGreaterEqual(
+            int(plan.get('review_count') or 0) + int(plan.get('move_count') or 0),
+            2,
+        )
         phases = [item['phase'] for item in events]
         self.assertIn('listing', phases)
         self.assertIn('planning', phases)
@@ -233,7 +237,7 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertEqual(3, plan['move_count'])
         self.assertEqual(3, len(plan['moves']))
 
-    def test_job_store_tracks_percent_and_truncates_moves(self):
+    def test_job_store_tracks_percent_and_omits_moves_in_public_view(self):
         store = ArchiveAuthorJobStore()
         job = store.create(kind='scan', channel_folder='chengdudiyi8')
         store.update(job['id'], phase='resolving', current=50, total=200, message='halfway')
@@ -243,14 +247,76 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
             job['id'],
             status='success',
             result={
-                'moves': [{'action': 'move', 'from_relative': str(i)} for i in range(250)],
+                'moves': [
+                    {'action': 'move', 'from_relative': str(i), 'author': 'A'}
+                    for i in range(250)
+                ],
                 'move_count': 250,
             },
         )
         public = public_job_view(store.get(job['id']))
-        self.assertTrue(public['result']['moves_truncated'])
-        self.assertEqual(200, len(public['result']['moves']))
+        self.assertTrue(public['result']['moves_omitted'])
+        self.assertEqual([], public['result']['moves'])
         self.assertEqual(250, public['result']['moves_total'])
+        self.assertEqual(250, public['result']['summary']['move'])
+
+        from module.archive_author_jobs import list_job_plan_moves
+        page = list_job_plan_moves(store.get(job['id']), bucket='move', offset=0, limit=20)
+        self.assertEqual(250, page['total'])
+        self.assertEqual(20, len(page['items']))
+
+    def test_resolve_hashtag_matches_known_author_folder(self):
+        from types import SimpleNamespace
+        import asyncio
+
+        client = FakeArchiveClient()
+
+        class FakeTelegram:
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids if message_ids is not None else (args[0] if args else None)
+                if not isinstance(ids, list):
+                    ids = [ids]
+                mid = int(ids[0])
+                if mid == 99:
+                    return [SimpleNamespace(
+                        id=99,
+                        caption='标题 作者：#喷水的姐姐',
+                        text=None,
+                        empty=False,
+                        media_group_id=None,
+                        get_media_group=None,
+                    )]
+                if mid == 100:
+                    return [SimpleNamespace(
+                        id=100,
+                        caption='#海角社区 #会喷水的亲姐姐 【55分原创】正文',
+                        text=None,
+                        empty=False,
+                        media_group_id=None,
+                        get_media_group=None,
+                    )]
+                return [SimpleNamespace(id=mid, caption=None, text=None, empty=True)]
+
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=FakeTelegram(),
+            run_coro=lambda coro, timeout=None: asyncio.run(coro),
+        )
+        service._pace = lambda _seconds: None
+        plan = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=[
+                'chengdudiyi8/喷水的姐姐/99 - signed',
+                'chengdudiyi8/100 - only tags',
+            ],
+        )
+        by_id = {item['message_id']: item for item in plan['moves']}
+        self.assertEqual('skip_already', by_id[99]['action'])
+        self.assertEqual('needs_confirm', by_id[100]['action'])
+        self.assertEqual('喷水的姐姐', by_id[100]['author'])
+        self.assertEqual('hashtag_substring', by_id[100]['resolution_method'])
+        self.assertEqual(1, plan.get('confirm_count'))
+        self.assertEqual(1, (plan.get('resolve_stats') or {}).get('hashtag_substring_hits'))
 
     def test_job_store_persists_and_finds_running(self):
         import tempfile

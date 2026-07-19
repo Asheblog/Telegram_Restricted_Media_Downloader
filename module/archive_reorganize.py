@@ -1,7 +1,7 @@
 # coding=UTF-8
 """Plan PikPak Source Post Archive Path moves under Post Author folders."""
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 
 from module.source_folders import (
     UNKNOWN_AUTHOR_FOLDER,
@@ -10,6 +10,20 @@ from module.source_folders import (
     message_id_from_post_folder_segment,
     split_archive_source_folder,
 )
+
+EXECUTABLE_ACTIONS = frozenset({'move', 'needs_confirm'})
+AUTO_ACTIONS = frozenset({'move'})
+
+
+@dataclass(frozen=True)
+class AuthorHint:
+    """Resolved Post Author hint for one main-post directory."""
+
+    name: Optional[str] = None
+    confidence: str = 'none'  # high | medium | low | none
+    method: str = 'none'  # signature | media_group | neighbor | hashtag_* | none
+    matched_tag: str = ''
+    preview: str = ''
 
 
 @dataclass(frozen=True)
@@ -20,7 +34,11 @@ class AuthorReorganizeMove:
     from_relative: str
     to_relative: str
     author: str
-    action: str  # move | skip_already | skip_nested | skip_invalid
+    action: str  # move | needs_confirm | needs_review | skip_already | skip_nested | skip_invalid
+    confidence: str = 'none'
+    resolution_method: str = 'none'
+    matched_tag: str = ''
+    preview: str = ''
 
 
 @dataclass
@@ -33,7 +51,8 @@ class AuthorReorganizePlan:
         names = sorted({
             item.author
             for item in self.moves
-            if item.action == 'move' or item.action == 'skip_already'
+            if item.action in ('move', 'needs_confirm', 'skip_already')
+            and item.author != UNKNOWN_AUTHOR_FOLDER
         })
         return names
 
@@ -46,8 +65,39 @@ class AuthorReorganizePlan:
         return sum(1 for item in self.moves if item.action == 'move')
 
     @property
+    def confirm_count(self) -> int:
+        return sum(1 for item in self.moves if item.action == 'needs_confirm')
+
+    @property
+    def review_count(self) -> int:
+        return sum(1 for item in self.moves if item.action == 'needs_review')
+
+    @property
+    def executable_count(self) -> int:
+        return sum(1 for item in self.moves if item.action in EXECUTABLE_ACTIONS)
+
+    @property
     def skip_count(self) -> int:
-        return sum(1 for item in self.moves if item.action != 'move')
+        return sum(
+            1 for item in self.moves
+            if item.action in ('skip_already', 'skip_nested', 'skip_invalid')
+        )
+
+    def summary(self) -> dict:
+        counts = {
+            'move': 0,
+            'needs_confirm': 0,
+            'needs_review': 0,
+            'skip_already': 0,
+            'skip_nested': 0,
+            'skip_invalid': 0,
+        }
+        for item in self.moves:
+            if item.action in counts:
+                counts[item.action] += 1
+        counts['executable'] = counts['move'] + counts['needs_confirm']
+        counts['authors'] = self.author_count
+        return counts
 
     def to_dict(self) -> dict:
         return {
@@ -55,7 +105,11 @@ class AuthorReorganizePlan:
             'author_count': self.author_count,
             'authors': self.authors,
             'move_count': self.move_count,
+            'confirm_count': self.confirm_count,
+            'review_count': self.review_count,
+            'executable_count': self.executable_count,
             'skip_count': self.skip_count,
+            'summary': self.summary(),
             'moves': [
                 {
                     'message_id': item.message_id,
@@ -63,10 +117,46 @@ class AuthorReorganizePlan:
                     'to_relative': item.to_relative,
                     'author': item.author,
                     'action': item.action,
+                    'confidence': item.confidence,
+                    'resolution_method': item.resolution_method,
+                    'matched_tag': item.matched_tag,
+                    'preview': item.preview,
                 }
                 for item in self.moves
             ],
         }
+
+
+def coerce_author_hint(value: Union[None, str, dict, AuthorHint]) -> AuthorHint:
+    if isinstance(value, AuthorHint):
+        return value
+    if value is None:
+        return AuthorHint()
+    if isinstance(value, str):
+        name = value.strip() or None
+        if not name:
+            return AuthorHint()
+        return AuthorHint(name=name, confidence='high', method='signature')
+    if isinstance(value, dict):
+        name = value.get('name')
+        if name is not None:
+            name = str(name).strip() or None
+        return AuthorHint(
+            name=name,
+            confidence=str(value.get('confidence') or 'none'),
+            method=str(value.get('method') or 'none'),
+            matched_tag=str(value.get('matched_tag') or ''),
+            preview=str(value.get('preview') or ''),
+        )
+    return AuthorHint()
+
+
+def _action_for_resolved_author(hint: AuthorHint) -> str:
+    if not hint.name:
+        return 'needs_review'
+    if hint.method == 'hashtag_substring' or hint.confidence == 'low':
+        return 'needs_confirm'
+    return 'move'
 
 
 def _relative_under_channel(path: str, channel_folder: str) -> Optional[str]:
@@ -82,17 +172,42 @@ def _relative_under_channel(path: str, channel_folder: str) -> Optional[str]:
     return None
 
 
+def known_authors_from_directory_paths(
+        channel_folder: str,
+        directory_paths: Iterable[str],
+) -> set[str]:
+    """Collect Post Author folder names already present under a channel."""
+    channel = str(channel_folder or '').strip().strip('/')
+    known: set[str] = set()
+    if not channel:
+        return known
+    for raw in directory_paths:
+        relative = _relative_under_channel(str(raw or ''), channel)
+        if not relative:
+            continue
+        parts = [part for part in relative.split('/') if part]
+        if len(parts) >= 2 and is_post_folder_segment(parts[-1]):
+            author = parts[0]
+            if author and author != UNKNOWN_AUTHOR_FOLDER:
+                known.add(author)
+        elif len(parts) == 1 and not is_post_folder_segment(parts[0]):
+            author = parts[0]
+            if author and author != UNKNOWN_AUTHOR_FOLDER:
+                known.add(author)
+    return known
+
+
 def plan_author_reorganize(
         *,
         channel_folder: str,
         directory_paths: Iterable[str],
-        author_by_message_id: dict[int, Optional[str]],
+        author_by_message_id: dict[int, Union[None, str, dict, AuthorHint]],
 ) -> AuthorReorganizePlan:
     """Build a move plan for flat (or misplaced) post folders under a channel.
 
     ``directory_paths`` may be absolute-under-archive (``channel/post``) or
     relative names (``post`` / ``author/post``). ``author_by_message_id`` maps
-    Telegram main-post ids to raw author names (or None → unknown).
+    Telegram main-post ids to raw author names or :class:`AuthorHint`.
     """
     channel = str(channel_folder or '').strip().strip('/')
     plan = AuthorReorganizePlan(channel_folder=channel)
@@ -113,9 +228,10 @@ def plan_author_reorganize(
             author_part = '/'.join(parts[:-1])
             post_segment = parts[-1]
             message_id = message_id_from_post_folder_segment(post_segment)
-            desired = author_folder_segment(
+            hint = coerce_author_hint(
                 author_by_message_id.get(message_id) if message_id is not None else None
             )
+            desired = author_folder_segment(hint.name)
             target = f'{desired}/{post_segment}'
             if author_part == desired:
                 plan.moves.append(AuthorReorganizeMove(
@@ -124,47 +240,65 @@ def plan_author_reorganize(
                     to_relative=relative,
                     author=desired,
                     action='skip_already',
+                    confidence=hint.confidence if hint.name else 'none',
+                    resolution_method=hint.method if hint.name else 'none',
+                    matched_tag=hint.matched_tag,
+                    preview=hint.preview,
                 ))
             else:
-                # Nested under wrong/unknown author — still offer a move.
+                action = _action_for_resolved_author(hint)
+                if action in EXECUTABLE_ACTIONS and target in seen_targets:
+                    action = 'skip_nested'
+                elif action in EXECUTABLE_ACTIONS:
+                    seen_targets.add(target)
                 plan.moves.append(AuthorReorganizeMove(
                     message_id=message_id,
                     from_relative=relative,
                     to_relative=target,
                     author=desired,
-                    action='move' if target not in seen_targets else 'skip_nested',
+                    action=action,
+                    confidence=hint.confidence,
+                    resolution_method=hint.method,
+                    matched_tag=hint.matched_tag,
+                    preview=hint.preview,
                 ))
-                if target not in seen_targets:
-                    seen_targets.add(target)
             continue
 
         # Flat legacy: channel/post
         if len(parts) == 1 and is_post_folder_segment(parts[0]):
             post_segment = parts[0]
             message_id = message_id_from_post_folder_segment(post_segment)
-            raw_author = (
-                author_by_message_id.get(message_id)
-                if message_id is not None
-                else None
+            hint = coerce_author_hint(
+                author_by_message_id.get(message_id) if message_id is not None else None
             )
-            author = author_folder_segment(raw_author)
+            author = author_folder_segment(hint.name)
             target = f'{author}/{post_segment}'
-            if target in seen_targets:
+            action = _action_for_resolved_author(hint)
+            if action in EXECUTABLE_ACTIONS and target in seen_targets:
                 plan.moves.append(AuthorReorganizeMove(
                     message_id=message_id,
                     from_relative=relative,
                     to_relative=target,
                     author=author,
                     action='skip_nested',
+                    confidence=hint.confidence,
+                    resolution_method=hint.method,
+                    matched_tag=hint.matched_tag,
+                    preview=hint.preview,
                 ))
                 continue
-            seen_targets.add(target)
+            if action in EXECUTABLE_ACTIONS:
+                seen_targets.add(target)
             plan.moves.append(AuthorReorganizeMove(
                 message_id=message_id,
                 from_relative=relative,
                 to_relative=target,
                 author=author,
-                action='move',
+                action=action,
+                confidence=hint.confidence,
+                resolution_method=hint.method,
+                matched_tag=hint.matched_tag,
+                preview=hint.preview,
             ))
             continue
 
@@ -176,6 +310,66 @@ def plan_author_reorganize(
             action='skip_invalid',
         ))
     return plan
+
+
+def summarize_move_rows(moves: Iterable[dict]) -> dict:
+    counts = {
+        'move': 0,
+        'needs_confirm': 0,
+        'needs_review': 0,
+        'skip_already': 0,
+        'skip_nested': 0,
+        'skip_invalid': 0,
+    }
+    authors: set[str] = set()
+    for item in moves:
+        action = str((item or {}).get('action') or '')
+        if action in counts:
+            counts[action] += 1
+        author = str((item or {}).get('author') or '')
+        if (
+            action in ('move', 'needs_confirm', 'skip_already')
+            and author
+            and author != UNKNOWN_AUTHOR_FOLDER
+        ):
+            authors.add(author)
+    counts['executable'] = counts['move'] + counts['needs_confirm']
+    counts['authors'] = len(authors)
+    return counts
+
+
+def filter_plan_moves(
+        moves: list,
+        *,
+        bucket: str = '',
+        offset: int = 0,
+        limit: int = 50,
+) -> dict:
+    """Paginate plan moves, optionally filtered by summary bucket."""
+    rows = list(moves or [])
+    key = str(bucket or '').strip()
+    if key == 'executable':
+        rows = [item for item in rows if item.get('action') in EXECUTABLE_ACTIONS]
+    elif key == 'auto':
+        rows = [item for item in rows if item.get('action') in AUTO_ACTIONS]
+    elif key:
+        rows = [item for item in rows if item.get('action') == key]
+    total = len(rows)
+    try:
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        limit = max(1, min(200, int(limit)))
+    except (TypeError, ValueError):
+        limit = 50
+    return {
+        'items': rows[offset:offset + limit],
+        'total': total,
+        'offset': offset,
+        'limit': limit,
+        'bucket': key or None,
+    }
 
 
 def rewrite_transfer_source_folder(

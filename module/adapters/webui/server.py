@@ -824,6 +824,28 @@ class WebUiServer:
                             HTTPStatus.BAD_REQUEST
                         )
                     return
+                if parsed.path == '/api/archive/author-plan-moves':
+                    query = parse_qs(parsed.query)
+                    try:
+                        self._send_json(server.list_archive_author_plan_moves({
+                            'job_id': (query.get('job_id') or [None])[0],
+                            'channel_folder': (query.get('channel_folder') or [None])[0],
+                            'bucket': (query.get('bucket') or [''])[0],
+                            'offset': self._query_int(query, 'offset', 0),
+                            'limit': self._query_int(query, 'limit', 50),
+                        }))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 查询归档迁移明细失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_plan_moves_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path == '/api/system-logs':
                     query = parse_qs(parsed.query)
                     limit = self._query_int(query, 'limit', 50)
@@ -1817,6 +1839,16 @@ class WebUiServer:
 
     def execute_archive_author_reorganize(self, payload: dict) -> dict:
         op = self._operation('execute_archive_author_reorganize')
+        if op:
+            return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def list_archive_author_plan_moves(self, payload: dict) -> dict:
+        op = self._operation('list_archive_author_plan_moves')
         if op:
             return op(payload)
         raise WebUiApiError(

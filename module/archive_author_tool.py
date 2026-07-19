@@ -7,7 +7,17 @@ from typing import Callable, Optional
 import re
 import time
 
-from module.archive_reorganize import plan_author_reorganize
+from module.archive_reorganize import (
+    AUTO_ACTIONS,
+    EXECUTABLE_ACTIONS,
+    AuthorHint,
+    known_authors_from_directory_paths,
+    plan_author_reorganize,
+)
+from module.author_hashtag_match import (
+    extract_hashtags_from_text,
+    match_author_from_hashtags,
+)
 from module.pikpak_archive import (
     DisabledPikPakArchiveClient,
     join_remote_path,
@@ -105,17 +115,25 @@ class ArchiveAuthorReorganizeService:
             pass
 
     @staticmethod
-    def _message_text_preview(message, limit: int = 180) -> str:
+    def _message_full_text(message) -> str:
         if message is None:
             return ''
+        parts = []
         for attr in ('caption', 'text'):
             text = getattr(message, attr, None)
             if isinstance(text, str) and text.strip():
-                compact = re.sub(r'\s+', ' ', text).strip()
-                if len(compact) > limit:
-                    return compact[:limit] + '…'
-                return compact
-        return ''
+                parts.append(text.strip())
+        return '\n'.join(parts)
+
+    @classmethod
+    def _message_text_preview(cls, message, limit: int = 180) -> str:
+        text = cls._message_full_text(message)
+        if not text:
+            return ''
+        compact = re.sub(r'\s+', ' ', text).strip()
+        if len(compact) > limit:
+            return compact[:limit] + '…'
+        return compact
 
     def list_channels(self) -> list[str]:
         client = self.archive_client
@@ -210,7 +228,7 @@ class ArchiveAuthorReorganizeService:
         if self.telegram_client is None:
             if require_telegram:
                 raise RuntimeError('Telegram 客户端未就绪，无法按主贴 ID 解析作者。')
-            author_by_id = {mid: None for mid in unique_ids}
+            author_by_id = {mid: AuthorHint() for mid in unique_ids}
             resolved = 0
             miss_samples = []
             resolve_stats = {
@@ -221,6 +239,8 @@ class ArchiveAuthorReorganizeService:
                 'missed': 0,
                 'media_group_hits': 0,
                 'neighbor_hits': 0,
+                'hashtag_exact_hits': 0,
+                'hashtag_substring_hits': 0,
             }
         else:
             self._report(
@@ -234,11 +254,16 @@ class ArchiveAuthorReorganizeService:
                 channel,
                 unique_ids,
                 on_progress=on_progress,
+                known_authors=known_authors_from_directory_paths(channel, paths),
             )
-            author_by_id = resolve_payload.get('authors') or {}
+            author_by_id = resolve_payload.get('resolutions') or {}
             resolve_stats = resolve_payload.get('stats') or {}
             miss_samples = resolve_payload.get('miss_samples') or []
-            resolved = sum(1 for mid in unique_ids if author_by_id.get(mid))
+            resolved = sum(
+                1 for mid in unique_ids
+                if getattr(author_by_id.get(mid), 'name', None)
+                or (isinstance(author_by_id.get(mid), str) and author_by_id.get(mid))
+            )
         self._report(
             on_progress,
             phase='planning',
@@ -250,7 +275,9 @@ class ArchiveAuthorReorganizeService:
                 f'空消息 {resolve_stats.get("empty") or 0}，'
                 f'未命中 {resolve_stats.get("missed") or 0}，'
                 f'相册补齐 {resolve_stats.get("media_group_hits") or 0}，'
-                f'邻条补齐 {resolve_stats.get("neighbor_hits") or 0}），'
+                f'邻条补齐 {resolve_stats.get("neighbor_hits") or 0}，'
+                f'标签精确 {resolve_stats.get("hashtag_exact_hits") or 0}，'
+                f'标签待确认 {resolve_stats.get("hashtag_substring_hits") or 0}），'
                 f'正在生成移动计划…'
             ),
         )
@@ -269,17 +296,27 @@ class ArchiveAuthorReorganizeService:
         self._report(
             on_progress,
             phase='done',
-            current=payload.get('move_count') or 0,
-            total=max(int(payload.get('move_count') or 0) + int(payload.get('skip_count') or 0), 1),
+            current=payload.get('executable_count') or payload.get('move_count') or 0,
+            total=max(
+                int(payload.get('executable_count') or 0)
+                + int(payload.get('review_count') or 0)
+                + int(payload.get('skip_count') or 0),
+                1,
+            ),
             message=(
                 f'{done_label}：解析到作者 {resolved}/{len(unique_ids)}'
                 f'（抓取 {resolve_stats.get("fetched") or 0}，'
                 f'空 {resolve_stats.get("empty") or 0}，'
                 f'未命中 {resolve_stats.get("missed") or 0}，'
                 f'相册 {resolve_stats.get("media_group_hits") or 0}，'
-                f'邻条 {resolve_stats.get("neighbor_hits") or 0}），'
+                f'邻条 {resolve_stats.get("neighbor_hits") or 0}，'
+                f'标签精确 {resolve_stats.get("hashtag_exact_hits") or 0}，'
+                f'标签待确认 {resolve_stats.get("hashtag_substring_hits") or 0}），'
                 f'{payload.get("author_count") or 0} 个作者目录，'
-                f'待移动 {payload.get("move_count") or 0}，跳过 {payload.get("skip_count") or 0}'
+                f'待移动 {payload.get("move_count") or 0}，'
+                f'待确认 {payload.get("confirm_count") or 0}，'
+                f'未识别 {payload.get("review_count") or 0}，'
+                f'跳过 {payload.get("skip_count") or 0}'
             ),
         )
         return payload
@@ -367,11 +404,22 @@ class ArchiveAuthorReorganizeService:
             plan = self.scan(channel_folder, on_progress=on_progress)
         return self.execute_plan(plan, on_progress=on_progress)
 
-    def execute_plan(self, plan: dict, on_progress: ProgressCallback = None) -> dict:
+    def execute_plan(
+            self,
+            plan: dict,
+            on_progress: ProgressCallback = None,
+            *,
+            execute_mode: str = 'all',
+    ) -> dict:
         client = self._require_client()
         channel = plan.get('channel_folder') or ''
         root = plan.get('channel_remote_root') or self._channel_remote_root(client, channel)
-        move_items = [item for item in (plan.get('moves') or []) if item.get('action') == 'move']
+        mode = str(execute_mode or 'all').strip().lower() or 'all'
+        allowed = AUTO_ACTIONS if mode in ('auto', 'high', 'move') else EXECUTABLE_ACTIONS
+        move_items = [
+            item for item in (plan.get('moves') or [])
+            if item.get('action') in allowed
+        ]
         moved = []
         errors = []
         total = len(move_items)
@@ -420,12 +468,16 @@ class ArchiveAuthorReorganizeService:
             'channel_folder': channel,
             'author_count': plan.get('author_count'),
             'authors': plan.get('authors') or [],
-            'planned_moves': plan.get('move_count') or total,
+            'planned_moves': len(move_items),
+            'execute_mode': mode,
             'moved_count': len(moved),
             'error_count': len(errors),
             'moved': moved,
             'errors': errors,
-            'skips': [item for item in (plan.get('moves') or []) if item.get('action') != 'move'],
+            'skips': [
+                item for item in (plan.get('moves') or [])
+                if item.get('action') not in allowed
+            ],
             'channel_remote_root': root,
         }
         self._report(
@@ -455,9 +507,22 @@ class ArchiveAuthorReorganizeService:
             channel_folder: str,
             message_ids: list[int],
             on_progress: ProgressCallback = None,
+            *,
+            known_authors: Optional[set[str]] = None,
     ) -> dict:
+        empty_stats = {
+            'fetched': 0,
+            'empty': 0,
+            'matched': 0,
+            'errors': 0,
+            'missed': 0,
+            'media_group_hits': 0,
+            'neighbor_hits': 0,
+            'hashtag_exact_hits': 0,
+            'hashtag_substring_hits': 0,
+        }
         if not message_ids:
-            return {'authors': {}, 'stats': {}, 'miss_samples': []}
+            return {'authors': {}, 'resolutions': {}, 'stats': empty_stats, 'miss_samples': []}
         if self.telegram_client is None:
             self._log(
                 stage='author_resolve',
@@ -466,14 +531,11 @@ class ArchiveAuthorReorganizeService:
             )
             return {
                 'authors': {mid: None for mid in message_ids},
+                'resolutions': {mid: AuthorHint() for mid in message_ids},
                 'stats': {
-                    'fetched': 0,
-                    'empty': 0,
-                    'matched': 0,
+                    **empty_stats,
                     'errors': len(message_ids),
                     'missed': len(message_ids),
-                    'media_group_hits': 0,
-                    'neighbor_hits': 0,
                 },
                 'miss_samples': [],
             }
@@ -487,18 +549,11 @@ class ArchiveAuthorReorganizeService:
         except Exception:  # pragma: no cover - stub environments
             flood_types = ()
 
-        authors = {mid: None for mid in message_ids}
+        resolutions: dict[int, AuthorHint] = {mid: AuthorHint() for mid in message_ids}
+        pending_tags: dict[int, list[str]] = {}
         client = self.telegram_client
         total = len(message_ids)
-        stats = {
-            'fetched': 0,
-            'empty': 0,
-            'matched': 0,
-            'errors': 0,
-            'missed': 0,
-            'media_group_hits': 0,
-            'neighbor_hits': 0,
-        }
+        stats = dict(empty_stats)
         miss_samples: list[dict] = []
         chat_id = channel_folder
         self._log(
@@ -597,12 +652,12 @@ class ArchiveAuthorReorganizeService:
                     },
                 )
 
-        async def _resolve_one(mid: int, *, progress_current: int) -> Optional[str]:
+        async def _resolve_one(mid: int, *, progress_current: int) -> AuthorHint:
             try:
                 raw = await _fetch_messages([mid], progress_current=progress_current)
             except Exception as error:
                 _record_error(mid, error)
-                return None
+                return AuthorHint()
             messages = _as_list(raw)
             message = messages[0] if messages else None
             if message is None or getattr(message, 'empty', False):
@@ -616,7 +671,7 @@ class ArchiveAuthorReorganizeService:
                 except Exception as error:
                     _record_error(mid, error)
                     _record_miss(mid, reason='empty_primary', via='empty')
-                    return None
+                    return AuthorHint()
                 for item in _as_list(raw_neighbors):
                     if item is None or getattr(item, 'empty', False):
                         continue
@@ -629,23 +684,35 @@ class ArchiveAuthorReorganizeService:
                         stats['neighbor_hits'] += 1
                         stats['matched'] += 1
                         stats['fetched'] += 1
-                        return author
+                        return AuthorHint(
+                            name=author,
+                            confidence='medium',
+                            method='neighbor',
+                        )
                 _record_miss(mid, reason='empty_primary_and_neighbors', via='empty')
-                return None
+                return AuthorHint()
 
             stats['fetched'] += 1
+            full_text = self._message_full_text(message)
+            preview = self._message_text_preview(message)
+            tags = extract_hashtags_from_text(full_text)
             author = await post_author_from_telegram_message(
                 message,
                 client=client,
                 chat_id=chat_id,
             )
             if author:
-                if not post_author_from_message(message):
+                method = 'signature' if post_author_from_message(message) else 'media_group'
+                if method == 'media_group':
                     stats['media_group_hits'] += 1
                 stats['matched'] += 1
-                return author
+                return AuthorHint(
+                    name=author,
+                    confidence='high',
+                    method=method,
+                    preview=preview,
+                )
 
-            preview = self._message_text_preview(message)
             neighbor_ids = [mid + offset for offset in range(1, 4)]
             try:
                 raw_neighbors = await _fetch_messages(
@@ -654,13 +721,14 @@ class ArchiveAuthorReorganizeService:
                 )
             except Exception as error:
                 _record_error(mid, error)
+                pending_tags[mid] = tags
                 _record_miss(
                     mid,
                     reason='no_author_marker',
                     preview=preview,
                     via='primary',
                 )
-                return None
+                return AuthorHint(preview=preview)
             for item in _as_list(raw_neighbors):
                 if item is None or getattr(item, 'empty', False):
                     continue
@@ -672,17 +740,23 @@ class ArchiveAuthorReorganizeService:
                 if author:
                     stats['neighbor_hits'] += 1
                     stats['matched'] += 1
-                    return author
+                    return AuthorHint(
+                        name=author,
+                        confidence='medium',
+                        method='neighbor',
+                        preview=preview,
+                    )
             neighbor_preview = self._message_text_preview(
                 next((m for m in _as_list(raw_neighbors) if m is not None), None)
             )
+            pending_tags[mid] = tags
             _record_miss(
                 mid,
                 reason='no_author_marker',
                 preview=preview or neighbor_preview,
                 via='primary+neighbors',
             )
-            return None
+            return AuthorHint(preview=preview or neighbor_preview)
 
         for offset in range(0, len(message_ids), TELEGRAM_FETCH_BATCH):
             batch = message_ids[offset:offset + TELEGRAM_FETCH_BATCH]
@@ -699,19 +773,21 @@ class ArchiveAuthorReorganizeService:
                 ),
             )
             if self.run_coro is None:
+                authors = {key: hint.name for key, hint in resolutions.items()}
                 return {
                     'authors': authors,
+                    'resolutions': resolutions,
                     'stats': stats,
                     'miss_samples': miss_samples,
                 }
             try:
-                authors[int(mid)] = self.run_coro(
+                resolutions[int(mid)] = self.run_coro(
                     _resolve_one(mid, progress_current=offset),
                     timeout=None,
                 )
             except Exception as error:
                 _record_error(mid, error)
-                authors[int(mid)] = None
+                resolutions[int(mid)] = AuthorHint()
             done = min(offset + len(batch), total)
             self._report(
                 on_progress,
@@ -727,6 +803,43 @@ class ArchiveAuthorReorganizeService:
             if done < total:
                 self._pace(TELEGRAM_BATCH_PAUSE_SECONDS)
 
+        known = set(known_authors or set())
+        for hint in resolutions.values():
+            if hint.name:
+                known.add(hint.name)
+        if pending_tags and known:
+            self._report(
+                on_progress,
+                phase='resolving',
+                current=total,
+                total=total,
+                message=f'用已知作者回连标签（候选 {len(pending_tags)}）…',
+            )
+            for mid, tags in pending_tags.items():
+                if resolutions.get(mid) and resolutions[mid].name:
+                    continue
+                matched = match_author_from_hashtags(
+                    tags,
+                    known,
+                    extra_deny=[channel_folder],
+                )
+                if not matched.author:
+                    continue
+                resolutions[mid] = AuthorHint(
+                    name=matched.author,
+                    confidence=matched.confidence,
+                    method=matched.method,
+                    matched_tag=matched.matched_tag,
+                    preview=resolutions[mid].preview if mid in resolutions else '',
+                )
+                stats['matched'] += 1
+                stats['missed'] = max(0, stats['missed'] - 1)
+                if matched.method == 'hashtag_exact':
+                    stats['hashtag_exact_hits'] += 1
+                else:
+                    stats['hashtag_substring_hits'] += 1
+
+        authors = {mid: hint.name for mid, hint in resolutions.items()}
         self._log(
             stage='author_resolve',
             message=(
@@ -735,13 +848,16 @@ class ArchiveAuthorReorganizeService:
                 f'fetched={stats["fetched"]} empty={stats["empty"]} '
                 f'missed={stats["missed"]} errors={stats["errors"]} '
                 f'media_group={stats["media_group_hits"]} '
-                f'neighbor={stats["neighbor_hits"]}'
+                f'neighbor={stats["neighbor_hits"]} '
+                f'hashtag_exact={stats["hashtag_exact_hits"]} '
+                f'hashtag_substring={stats["hashtag_substring_hits"]}'
             ),
             level='info' if stats['matched'] else 'warning',
             details=dict(stats),
         )
         return {
             'authors': authors,
+            'resolutions': resolutions,
             'stats': stats,
             'miss_samples': miss_samples,
         }

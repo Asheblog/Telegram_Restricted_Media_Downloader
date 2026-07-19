@@ -1260,13 +1260,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel-header">
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
-        <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+        <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -1284,12 +1284,20 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <div id="archive-organize-progress-count" class="text-xs text-muted mt-2">0 / 0</div>
       </div>
       <div id="archive-organize-result" class="hidden">
-        <div id="archive-organize-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div id="archive-organize-summary" class="flex gap-3 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div class="flex items-center justify-between gap-3 mb-2 flex-wrap">
+          <div id="archive-organize-bucket-label" class="text-sm text-muted"></div>
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn btn-secondary btn-sm" id="archive-organize-prev-btn" disabled data-i18n="archiveOrganize.prev">上一页</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="archive-organize-next-btn" disabled data-i18n="archiveOrganize.next">下一页</button>
+          </div>
+        </div>
         <div class="overflow-x-auto rounded-lg border border-line">
-          <table class="data-table min-w-[640px]">
+          <table class="data-table min-w-[760px]">
             <thead><tr>
               <th data-i18n="archiveOrganize.messageId">主贴 ID</th>
               <th data-i18n="archiveOrganize.author">作者</th>
+              <th data-i18n="archiveOrganize.method">识别</th>
               <th data-i18n="archiveOrganize.from">原路径</th>
               <th data-i18n="archiveOrganize.to">目标路径</th>
               <th data-i18n="archiveOrganize.action">动作</th>
@@ -2076,11 +2084,13 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.run': '按作者整理',
+    'archiveOrganize.runAll': '全部迁移',
+    'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '慢速整理中（后台）…',
@@ -2088,18 +2098,36 @@ const i18n = {
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
     'archiveOrganize.author': '作者',
+    'archiveOrganize.method': '识别',
     'archiveOrganize.from': '原路径',
     'archiveOrganize.to': '目标路径',
     'archiveOrganize.action': '动作',
     'archiveOrganize.authors': '作者数',
-    'archiveOrganize.moves': '待移动',
+    'archiveOrganize.moves': '高置信待搬',
+    'archiveOrganize.confirm': '待确认',
+    'archiveOrganize.review': '未识别',
+    'archiveOrganize.executable': '本轮可搬',
     'archiveOrganize.skips': '跳过',
     'archiveOrganize.moved': '已移动',
     'archiveOrganize.errors': '失败',
     'archiveOrganize.emptyChannels': '未找到归档频道目录',
     'archiveOrganize.pickChannel': '请选择频道',
     'archiveOrganize.progress': '进度',
-    'archiveOrganize.truncatedMoves': '共 {total} 条，仅显示前 {shown} 条',
+    'archiveOrganize.truncatedMoves': '共 {total} 条，明细请点汇总数字分页查看',
+    'archiveOrganize.prev': '上一页',
+    'archiveOrganize.next': '下一页',
+    'archiveOrganize.pageInfo': '{bucket}：第 {from}-{to} / 共 {total} 条',
+    'archiveOrganize.bucket.executable': '本轮可搬',
+    'archiveOrganize.bucket.move': '高置信',
+    'archiveOrganize.bucket.needs_confirm': '待确认',
+    'archiveOrganize.bucket.needs_review': '未识别',
+    'archiveOrganize.bucket.skip_already': '已就位',
+    'archiveOrganize.methodSignature': '署名',
+    'archiveOrganize.methodMediaGroup': '相册',
+    'archiveOrganize.methodNeighbor': '邻条',
+    'archiveOrganize.methodHashtagExact': '标签精确',
+    'archiveOrganize.methodHashtagFuzzy': '标签近似',
+    'archiveOrganize.methodNone': '未识别',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -2528,11 +2556,13 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs; authors come from Telegram posts, not drive folder names. List drive folders once, then re-resolve authors from Telegram, then reorganize. Jobs run slowly in the background; refresh reconnects.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from explicit signatures first, then hashtags matched to known authors. List drive folders, re-resolve, review the migration overview, then Migrate All (high-confidence + pending confirm). Unrecognized posts stay put. Background jobs are slow; refresh reconnects.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.run': 'Reorganize by author',
+    'archiveOrganize.runAll': 'Migrate all',
+    'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Slow reorganize in background…',
@@ -2540,18 +2570,36 @@ const i18n = {
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
     'archiveOrganize.author': 'Author',
+    'archiveOrganize.method': 'Detection',
     'archiveOrganize.from': 'From',
     'archiveOrganize.to': 'To',
     'archiveOrganize.action': 'Action',
     'archiveOrganize.authors': 'Authors',
-    'archiveOrganize.moves': 'To move',
+    'archiveOrganize.moves': 'High-confidence',
+    'archiveOrganize.confirm': 'Pending confirm',
+    'archiveOrganize.review': 'Unrecognized',
+    'archiveOrganize.executable': 'Executable',
     'archiveOrganize.skips': 'Skipped',
     'archiveOrganize.moved': 'Moved',
     'archiveOrganize.errors': 'Failed',
     'archiveOrganize.emptyChannels': 'No archive channel folders found',
     'archiveOrganize.pickChannel': 'Select a channel',
     'archiveOrganize.progress': 'Progress',
-    'archiveOrganize.truncatedMoves': 'Showing {shown} of {total} rows',
+    'archiveOrganize.truncatedMoves': '{total} rows total; open a summary bucket for paged details',
+    'archiveOrganize.prev': 'Prev',
+    'archiveOrganize.next': 'Next',
+    'archiveOrganize.pageInfo': '{bucket}: {from}-{to} of {total}',
+    'archiveOrganize.bucket.executable': 'Executable',
+    'archiveOrganize.bucket.move': 'High-confidence',
+    'archiveOrganize.bucket.needs_confirm': 'Pending confirm',
+    'archiveOrganize.bucket.needs_review': 'Unrecognized',
+    'archiveOrganize.bucket.skip_already': 'Already nested',
+    'archiveOrganize.methodSignature': 'Signature',
+    'archiveOrganize.methodMediaGroup': 'Album',
+    'archiveOrganize.methodNeighbor': 'Neighbor',
+    'archiveOrganize.methodHashtagExact': 'Hashtag exact',
+    'archiveOrganize.methodHashtagFuzzy': 'Hashtag fuzzy',
+    'archiveOrganize.methodNone': 'None',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -6304,8 +6352,20 @@ document.addEventListener('change', function(e) {
 
 /* ====== Archive Organize (by Post Author) ====== */
 var archiveOrganizePlan = null;
+var archiveOrganizeJobId = null;
 var archiveOrganizePollTimer = null;
+var archiveOrganizeBucket = 'executable';
+var archiveOrganizeOffset = 0;
+var ARCHIVE_ORGANIZE_PAGE_SIZE = 50;
 var ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
+
+function archiveOrganizeExecutableCount(data) {
+  if (!data) return 0;
+  if (data.executable_count != null) return Number(data.executable_count) || 0;
+  var summary = data.summary || {};
+  if (summary.executable != null) return Number(summary.executable) || 0;
+  return (Number(data.move_count) || 0) + (Number(data.confirm_count) || 0);
+}
 
 function saveArchiveOrganizeJob(job) {
   try {
@@ -6356,8 +6416,8 @@ function setArchiveOrganizeBusy(busy, labelKey) {
       runBtn.disabled = true;
       runBtn.textContent = t('archiveOrganize.running');
     } else if (!busy) {
-      runBtn.textContent = t('archiveOrganize.run');
-      runBtn.disabled = !(archiveOrganizePlan && archiveOrganizePlan.move_count > 0);
+      runBtn.textContent = t('archiveOrganize.runAll');
+      runBtn.disabled = !(archiveOrganizeExecutableCount(archiveOrganizePlan) > 0);
     } else {
       runBtn.disabled = true;
     }
@@ -6414,124 +6474,122 @@ async function pollArchiveOrganizeJob(jobId) {
   }
 }
 
-async function resumeArchiveOrganizeJobIfAny() {
-  const select = $('#archive-organize-channel');
-  const saved = loadSavedArchiveOrganizeJob();
-  let job = null;
-  try {
-    if (saved && saved.id) {
-      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
-    }
-  } catch (e) {
-    job = null;
+function archiveOrganizeMethodLabel(item) {
+  var method = (item && item.resolution_method) || '';
+  var map = {
+    signature: 'archiveOrganize.methodSignature',
+    media_group: 'archiveOrganize.methodMediaGroup',
+    neighbor: 'archiveOrganize.methodNeighbor',
+    hashtag_exact: 'archiveOrganize.methodHashtagExact',
+    hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    none: 'archiveOrganize.methodNone'
+  };
+  var key = map[method] || 'archiveOrganize.methodNone';
+  var label = t(key);
+  if (item && item.matched_tag) {
+    label += ' · #' + item.matched_tag;
   }
-  if (!job || !job.id) {
-    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
-    const url = '/api/archive/author-job?active=1' +
-      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
-    try {
-      job = await fetchJson(url);
-    } catch (e) {
-      job = null;
-    }
+  if (item && item.confidence && item.confidence !== 'none') {
+    label += ' (' + item.confidence + ')';
   }
-  if (!job || !job.id) return;
-  if (select && job.channel_folder) {
-    select.value = job.channel_folder;
-  }
-  if (job.status === 'running') {
-    const busyKey = job.kind === 'reorganize'
-      ? 'run'
-      : (job.kind === 'resolve' ? 'resolve' : 'scan');
-    setArchiveOrganizeBusy(true, busyKey);
-    showArchiveOrganizeProgress(job);
-    try {
-      const finished = await pollArchiveOrganizeJob(job.id);
-      if (finished.status === 'failure') {
-        throw new Error(finished.error || finished.message || 'job failed');
-      }
-      if (finished.result) {
-        renderArchiveOrganizePlan(finished.result);
-      }
-    } catch (e) {
-      const msg = translateApiError(e, 'form.requestFailed');
-      showArchiveOrganizeProgress({ percent: 0, current: 0, total: 0, phase: 'error', message: msg });
-    } finally {
-      setArchiveOrganizeBusy(false);
-      clearSavedArchiveOrganizeJob();
-    }
-    return;
-  }
-  if (job.status === 'success' && job.result) {
-    showArchiveOrganizeProgress(job);
-    renderArchiveOrganizePlan(job.result);
-    clearSavedArchiveOrganizeJob();
-  } else if (job.status === 'failure') {
-    showArchiveOrganizeProgress(job);
-    clearSavedArchiveOrganizeJob();
-  }
+  return label;
 }
 
-async function loadArchiveOrganizeChannels() {
-  const select = $('#archive-organize-channel');
-  if (!select) return;
-  const previous = select.value;
-  try {
-    const data = await fetchJson('/api/archive/author-channels');
-    const channels = (data && data.channels) || [];
-    if (!channels.length) {
-      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
-      return;
-    }
-    select.innerHTML = channels.map(function(name) {
-      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
-    }).join('');
-    if (previous && channels.indexOf(previous) >= 0) {
-      select.value = previous;
-    }
-  } catch (e) {
-    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+function archiveOrganizeSummaryValue(data, key) {
+  var summary = (data && data.summary) || {};
+  if (summary[key] != null) return Number(summary[key]) || 0;
+  if (key === 'move') return Number(data && data.move_count) || 0;
+  if (key === 'needs_confirm') return Number(data && data.confirm_count) || 0;
+  if (key === 'needs_review') return Number(data && data.review_count) || 0;
+  if (key === 'executable') return archiveOrganizeExecutableCount(data);
+  if (key === 'authors') return Number(data && data.author_count) || 0;
+  if (key === 'skip_already' || key === 'skip_nested' || key === 'skip_invalid') {
+    return Number(summary[key]) || 0;
   }
+  return 0;
 }
 
-async function loadArchiveOrganize() {
-  await loadArchiveOrganizeChannels();
-  await resumeArchiveOrganizeJobIfAny();
-}
-
-function renderArchiveOrganizePlan(data) {
-  archiveOrganizePlan = data;
-  const result = $('#archive-organize-result');
+function renderArchiveOrganizeSummary(data) {
   const summary = $('#archive-organize-summary');
+  if (!summary) return;
+  var cards = [
+    { bucket: 'executable', label: t('archiveOrganize.executable'), value: archiveOrganizeSummaryValue(data, 'executable') },
+    { bucket: 'move', label: t('archiveOrganize.moves'), value: archiveOrganizeSummaryValue(data, 'move') },
+    { bucket: 'needs_confirm', label: t('archiveOrganize.confirm'), value: archiveOrganizeSummaryValue(data, 'needs_confirm') },
+    { bucket: 'needs_review', label: t('archiveOrganize.review'), value: archiveOrganizeSummaryValue(data, 'needs_review') },
+    { bucket: 'skip_already', label: t('archiveOrganize.skips'), value:
+      archiveOrganizeSummaryValue(data, 'skip_already')
+      + archiveOrganizeSummaryValue(data, 'skip_nested')
+      + archiveOrganizeSummaryValue(data, 'skip_invalid')
+    },
+    { bucket: '', label: t('archiveOrganize.authors'), value: archiveOrganizeSummaryValue(data, 'authors') }
+  ];
+  summary.innerHTML = cards.map(function(card) {
+    var active = (card.bucket || '') === (archiveOrganizeBucket || '');
+    var clickable = !!card.bucket;
+    return '<button type="button" class="text-left rounded-lg border border-line px-3 py-2 min-w-[96px] ' +
+      (active ? 'bg-surface border-accent' : 'bg-surface') + '" ' +
+      (clickable ? 'data-archive-bucket="' + esc(card.bucket) + '"' : 'disabled') + '>' +
+      '<div class="text-xs text-muted">' + esc(card.label) + '</div>' +
+      '<div class="text-lg font-semibold">' + card.value + '</div>' +
+      '</button>';
+  }).join('');
+}
+
+async function loadArchiveOrganizeMovesPage() {
   const tbody = $('#archive-organize-tbody');
-  const runBtn = $('#archive-organize-run-btn');
-  if (!result || !summary || !tbody) return;
-  result.classList.remove('hidden');
-  const moves = data.moves || [];
-  const movesTotal = data.moves_total || moves.length;
-  summary.innerHTML = [
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
-  ].join('');
-  if (data.moves_truncated) {
-    summary.innerHTML += '<div class="w-full text-xs text-muted mt-1">' +
-      t('archiveOrganize.truncatedMoves')
-        .replace('{total}', String(movesTotal))
-        .replace('{shown}', String(moves.length)) +
-      '</div>';
+  const label = $('#archive-organize-bucket-label');
+  const prevBtn = $('#archive-organize-prev-btn');
+  const nextBtn = $('#archive-organize-next-btn');
+  if (!tbody || !archiveOrganizePlan) return;
+  var channel = ($('#archive-organize-channel') || {}).value || archiveOrganizePlan.channel_folder || '';
+  var params = new URLSearchParams();
+  if (archiveOrganizeJobId) params.set('job_id', archiveOrganizeJobId);
+  if (channel) params.set('channel_folder', channel);
+  if (archiveOrganizeBucket) params.set('bucket', archiveOrganizeBucket);
+  params.set('offset', String(archiveOrganizeOffset));
+  params.set('limit', String(ARCHIVE_ORGANIZE_PAGE_SIZE));
+  try {
+    var page = await fetchJson('/api/archive/author-plan-moves?' + params.toString());
+    var items = page.items || [];
+    var total = Number(page.total || 0);
+    if (label) {
+      label.textContent = t('archiveOrganize.pageInfo')
+        .replace('{bucket}', t('archiveOrganize.bucket.' + (archiveOrganizeBucket || 'all')) || archiveOrganizeBucket || '-')
+        .replace('{from}', String(total ? archiveOrganizeOffset + 1 : 0))
+        .replace('{to}', String(Math.min(archiveOrganizeOffset + items.length, total)))
+        .replace('{total}', String(total));
+    }
+    tbody.innerHTML = items.map(function(item) {
+      return '<tr>' +
+        '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
+        '<td>' + esc(item.author || '-') + '</td>' +
+        '<td class="text-xs">' + esc(archiveOrganizeMethodLabel(item)) + '</td>' +
+        '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
+        '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
+        '<td>' + esc(item.action || '') + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" class="text-center text-muted">-</td></tr>';
+    if (prevBtn) prevBtn.disabled = archiveOrganizeOffset <= 0;
+    if (nextBtn) nextBtn.disabled = archiveOrganizeOffset + ARCHIVE_ORGANIZE_PAGE_SIZE >= total;
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">' +
+      esc(translateApiError(e, 'form.requestFailed')) + '</td></tr>';
   }
-  tbody.innerHTML = moves.map(function(item) {
-    return '<tr>' +
-      '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
-      '<td>' + esc(item.author || '-') + '</td>' +
-      '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
-      '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
-      '<td>' + esc(item.action || '') + '</td>' +
-      '</tr>';
-  }).join('') || '<tr><td colspan="5" class="text-center text-muted">-</td></tr>';
-  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+function renderArchiveOrganizePlan(data, jobId) {
+  archiveOrganizePlan = data;
+  if (jobId) archiveOrganizeJobId = jobId;
+  archiveOrganizeBucket = 'executable';
+  archiveOrganizeOffset = 0;
+  const result = $('#archive-organize-result');
+  const runBtn = $('#archive-organize-run-btn');
+  if (!result) return;
+  result.classList.remove('hidden');
+  renderArchiveOrganizeSummary(data);
+  if (runBtn) runBtn.disabled = !(archiveOrganizeExecutableCount(data) > 0);
+  loadArchiveOrganizeMovesPage();
 }
 
 async function scanArchiveOrganize() {
@@ -6556,7 +6614,7 @@ async function scanArchiveOrganize() {
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'scan failed');
     }
-    renderArchiveOrganizePlan(job.result || {});
+    renderArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
@@ -6594,7 +6652,7 @@ async function resolveArchiveOrganize() {
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'resolve failed');
     }
-    renderArchiveOrganizePlan(job.result || {});
+    renderArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
@@ -6616,7 +6674,8 @@ async function runArchiveOrganize() {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
-  if (!archiveOrganizePlan || !(archiveOrganizePlan.move_count > 0)) {
+  var executable = archiveOrganizeExecutableCount(archiveOrganizePlan);
+  if (!archiveOrganizePlan || !(executable > 0)) {
     showArchiveOrganizeProgress({
       percent: 0,
       current: 0,
@@ -6626,7 +6685,9 @@ async function runArchiveOrganize() {
     });
     return;
   }
-  if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
+  if (!confirm(t('archiveOrganize.runAllConfirm')
+    .replace('{channel}', channel)
+    .replace('{count}', String(executable)))) {
     return;
   }
   stopArchiveOrganizePoll();
@@ -6634,12 +6695,15 @@ async function runArchiveOrganize() {
   showArchiveOrganizeProgress({
     percent: 0,
     current: 0,
-    total: archiveOrganizePlan.move_count || 0,
+    total: executable,
     phase: 'moving',
     message: t('archiveOrganize.running')
   });
   try {
-    const started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const started = await postJson('/api/archive/author-reorganize', {
+      channel_folder: channel,
+      mode: 'all'
+    });
     saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
@@ -6649,7 +6713,7 @@ async function runArchiveOrganize() {
     showArchiveOrganizeProgress({
       percent: 100,
       current: data.moved_count || 0,
-      total: data.planned_moves || archiveOrganizePlan.move_count || 0,
+      total: data.planned_moves || executable,
       phase: 'done',
       message: (job.message || '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
@@ -6657,6 +6721,7 @@ async function runArchiveOrganize() {
     });
     // Do not auto-rescan after reorganize (rate-limit safe). Clear plan until next scan.
     archiveOrganizePlan = null;
+    archiveOrganizeJobId = null;
     const runBtn = $('#archive-organize-run-btn');
     if (runBtn) runBtn.disabled = true;
     clearSavedArchiveOrganizeJob();
@@ -6677,6 +6742,108 @@ async function runArchiveOrganize() {
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
 $('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+$('#archive-organize-summary')?.addEventListener('click', function(e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
+  if (!btn || !archiveOrganizePlan) return;
+  archiveOrganizeBucket = btn.getAttribute('data-archive-bucket') || 'executable';
+  archiveOrganizeOffset = 0;
+  renderArchiveOrganizeSummary(archiveOrganizePlan);
+  loadArchiveOrganizeMovesPage();
+});
+$('#archive-organize-prev-btn')?.addEventListener('click', function() {
+  archiveOrganizeOffset = Math.max(0, archiveOrganizeOffset - ARCHIVE_ORGANIZE_PAGE_SIZE);
+  loadArchiveOrganizeMovesPage();
+});
+$('#archive-organize-next-btn')?.addEventListener('click', function() {
+  archiveOrganizeOffset += ARCHIVE_ORGANIZE_PAGE_SIZE;
+  loadArchiveOrganizeMovesPage();
+});
+
+
+async function resumeArchiveOrganizeJobIfAny() {
+  const select = $('#archive-organize-channel');
+  const saved = loadSavedArchiveOrganizeJob();
+  let job = null;
+  try {
+    if (saved && saved.id) {
+      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
+    }
+  } catch (e) {
+    job = null;
+  }
+  if (!job || !job.id) {
+    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
+    const url = '/api/archive/author-job?active=1' +
+      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
+    try {
+      job = await fetchJson(url);
+    } catch (e) {
+      job = null;
+    }
+  }
+  if (!job || !job.id) return;
+  if (select && job.channel_folder) {
+    select.value = job.channel_folder;
+  }
+  if (job.status === 'running') {
+    const busyKey = job.kind === 'reorganize'
+      ? 'run'
+      : (job.kind === 'resolve' ? 'resolve' : 'scan');
+    setArchiveOrganizeBusy(true, busyKey);
+    showArchiveOrganizeProgress(job);
+    try {
+      const finished = await pollArchiveOrganizeJob(job.id);
+      if (finished.status === 'failure') {
+        throw new Error(finished.error || finished.message || 'job failed');
+      }
+      if (finished.result) {
+        renderArchiveOrganizePlan(finished.result, finished.id);
+      }
+    } catch (e) {
+      const msg = translateApiError(e, 'form.requestFailed');
+      showArchiveOrganizeProgress({ percent: 0, current: 0, total: 0, phase: 'error', message: msg });
+    } finally {
+      setArchiveOrganizeBusy(false);
+      clearSavedArchiveOrganizeJob();
+    }
+    return;
+  }
+  if (job.status === 'success' && job.result) {
+    showArchiveOrganizeProgress(job);
+    renderArchiveOrganizePlan(job.result, job.id);
+    clearSavedArchiveOrganizeJob();
+  } else if (job.status === 'failure') {
+    showArchiveOrganizeProgress(job);
+    clearSavedArchiveOrganizeJob();
+  }
+}
+
+async function loadArchiveOrganizeChannels() {
+  const select = $('#archive-organize-channel');
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const data = await fetchJson('/api/archive/author-channels');
+    const channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+    if (previous && channels.indexOf(previous) >= 0) {
+      select.value = previous;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+  }
+}
+
+async function loadArchiveOrganize() {
+  await loadArchiveOrganizeChannels();
+  await resumeArchiveOrganizeJobIfAny();
+}
 
 /* ====== Init ====== */
 (function init() {
@@ -7399,13 +7566,13 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
         <button id="mob-archive-organize-resolve-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolve">重新解析作者</button>
-        <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
+        <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
       </div>
       <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
         <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;">
@@ -8036,11 +8203,13 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者。先扫描网盘目录，再重新解析，抽看迁移一览后点「全部迁移」（含高置信与待确认）。未识别不搬。后台慢速串行，可刷新恢复。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.run': '按作者整理',
+    'archiveOrganize.runAll': '全部迁移',
+    'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '慢速整理中（后台）…',
@@ -8048,18 +8217,36 @@ const i18n = {
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
     'archiveOrganize.author': '作者',
+    'archiveOrganize.method': '识别',
     'archiveOrganize.from': '原路径',
     'archiveOrganize.to': '目标路径',
     'archiveOrganize.action': '动作',
     'archiveOrganize.authors': '作者数',
-    'archiveOrganize.moves': '待移动',
+    'archiveOrganize.moves': '高置信待搬',
+    'archiveOrganize.confirm': '待确认',
+    'archiveOrganize.review': '未识别',
+    'archiveOrganize.executable': '本轮可搬',
     'archiveOrganize.skips': '跳过',
     'archiveOrganize.moved': '已移动',
     'archiveOrganize.errors': '失败',
     'archiveOrganize.emptyChannels': '未找到归档频道目录',
     'archiveOrganize.pickChannel': '请选择频道',
     'archiveOrganize.progress': '进度',
-    'archiveOrganize.truncatedMoves': '共 {total} 条，仅显示前 {shown} 条',
+    'archiveOrganize.truncatedMoves': '共 {total} 条，明细请点汇总数字分页查看',
+    'archiveOrganize.prev': '上一页',
+    'archiveOrganize.next': '下一页',
+    'archiveOrganize.pageInfo': '{bucket}：第 {from}-{to} / 共 {total} 条',
+    'archiveOrganize.bucket.executable': '本轮可搬',
+    'archiveOrganize.bucket.move': '高置信',
+    'archiveOrganize.bucket.needs_confirm': '待确认',
+    'archiveOrganize.bucket.needs_review': '未识别',
+    'archiveOrganize.bucket.skip_already': '已就位',
+    'archiveOrganize.methodSignature': '署名',
+    'archiveOrganize.methodMediaGroup': '相册',
+    'archiveOrganize.methodNeighbor': '邻条',
+    'archiveOrganize.methodHashtagExact': '标签精确',
+    'archiveOrganize.methodHashtagFuzzy': '标签近似',
+    'archiveOrganize.methodNone': '未识别',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
     'media.retentionDays': '保留天数',
@@ -8488,11 +8675,13 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs; authors come from Telegram posts, not drive folder names. List drive folders once, then re-resolve authors from Telegram, then reorganize. Jobs run slowly in the background; refresh reconnects.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from explicit signatures first, then hashtags matched to known authors. List drive folders, re-resolve, review the migration overview, then Migrate All (high-confidence + pending confirm). Unrecognized posts stay put. Background jobs are slow; refresh reconnects.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.run': 'Reorganize by author',
+    'archiveOrganize.runAll': 'Migrate all',
+    'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Slow reorganize in background…',
@@ -8500,18 +8689,36 @@ const i18n = {
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
     'archiveOrganize.author': 'Author',
+    'archiveOrganize.method': 'Detection',
     'archiveOrganize.from': 'From',
     'archiveOrganize.to': 'To',
     'archiveOrganize.action': 'Action',
     'archiveOrganize.authors': 'Authors',
-    'archiveOrganize.moves': 'To move',
+    'archiveOrganize.moves': 'High-confidence',
+    'archiveOrganize.confirm': 'Pending confirm',
+    'archiveOrganize.review': 'Unrecognized',
+    'archiveOrganize.executable': 'Executable',
     'archiveOrganize.skips': 'Skipped',
     'archiveOrganize.moved': 'Moved',
     'archiveOrganize.errors': 'Failed',
     'archiveOrganize.emptyChannels': 'No archive channel folders found',
     'archiveOrganize.pickChannel': 'Select a channel',
     'archiveOrganize.progress': 'Progress',
-    'archiveOrganize.truncatedMoves': 'Showing {shown} of {total} rows',
+    'archiveOrganize.truncatedMoves': '{total} rows total; open a summary bucket for paged details',
+    'archiveOrganize.prev': 'Prev',
+    'archiveOrganize.next': 'Next',
+    'archiveOrganize.pageInfo': '{bucket}: {from}-{to} of {total}',
+    'archiveOrganize.bucket.executable': 'Executable',
+    'archiveOrganize.bucket.move': 'High-confidence',
+    'archiveOrganize.bucket.needs_confirm': 'Pending confirm',
+    'archiveOrganize.bucket.needs_review': 'Unrecognized',
+    'archiveOrganize.bucket.skip_already': 'Already nested',
+    'archiveOrganize.methodSignature': 'Signature',
+    'archiveOrganize.methodMediaGroup': 'Album',
+    'archiveOrganize.methodNeighbor': 'Neighbor',
+    'archiveOrganize.methodHashtagExact': 'Hashtag exact',
+    'archiveOrganize.methodHashtagFuzzy': 'Hashtag fuzzy',
+    'archiveOrganize.methodNone': 'None',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
     'media.retentionDays': 'Retention days',
@@ -11863,6 +12070,17 @@ async function loadMediaMobile() {
 }
 
 var mobArchiveOrganizePlan = null;
+var mobArchiveOrganizeJobId = null;
+var mobArchiveOrganizeBucket = 'executable';
+var MOB_ARCHIVE_PAGE_SIZE = 30;
+
+function mobArchiveExecutableCount(data) {
+  if (!data) return 0;
+  if (data.executable_count != null) return Number(data.executable_count) || 0;
+  var summary = data.summary || {};
+  if (summary.executable != null) return Number(summary.executable) || 0;
+  return (Number(data.move_count) || 0) + (Number(data.confirm_count) || 0);
+}
 var MOB_ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
 
 function saveMobArchiveOrganizeJob(job) {
@@ -11976,9 +12194,10 @@ async function loadArchiveOrganizeMobile() {
         return;
       }
       if (finished.kind === 'scan' || finished.kind === 'resolve') {
-        if (finished.result) renderMobArchiveOrganizePlan(finished.result);
+        if (finished.result) renderMobArchiveOrganizePlan(finished.result, finished.id);
       } else if (finished.kind === 'reorganize') {
         mobArchiveOrganizePlan = null;
+        mobArchiveOrganizeJobId = null;
         var runBtn = document.getElementById('mob-archive-organize-run-btn');
         if (runBtn) runBtn.disabled = true;
       }
@@ -11994,7 +12213,7 @@ async function loadArchiveOrganizeMobile() {
   }
   if (job.status === 'success' && job.result && (job.kind === 'scan' || job.kind === 'resolve')) {
     showMobArchiveOrganizeProgress(job);
-    renderMobArchiveOrganizePlan(job.result);
+    renderMobArchiveOrganizePlan(job.result, job.id);
     clearSavedMobArchiveOrganizeJob();
   } else if (job.status === 'failure') {
     showMobArchiveOrganizeProgress(job);
@@ -12002,32 +12221,74 @@ async function loadArchiveOrganizeMobile() {
   }
 }
 
-function renderMobArchiveOrganizePlan(data) {
-  mobArchiveOrganizePlan = data;
+function mobArchiveMethodLabel(item) {
+  var method = (item && item.resolution_method) || '';
+  var map = {
+    signature: 'archiveOrganize.methodSignature',
+    media_group: 'archiveOrganize.methodMediaGroup',
+    neighbor: 'archiveOrganize.methodNeighbor',
+    hashtag_exact: 'archiveOrganize.methodHashtagExact',
+    hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    none: 'archiveOrganize.methodNone'
+  };
+  var label = t(map[method] || 'archiveOrganize.methodNone');
+  if (item && item.matched_tag) label += ' · #' + item.matched_tag;
+  return label;
+}
+
+async function loadMobArchiveOrganizeMoves() {
   var result = document.getElementById('mob-archive-organize-result');
   var runBtn = document.getElementById('mob-archive-organize-run-btn');
-  if (!result) return;
-  var moves = data.moves || [];
-  var html = '<div class="text-sm" style="display:flex;gap:12px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
-    '<div><strong>' + t('archiveOrganize.authors') + '</strong><br>' + (data.author_count || 0) + '</div>' +
-    '<div><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (data.move_count || 0) + '</div>' +
-    '<div><strong>' + t('archiveOrganize.skips') + '</strong><br>' + (data.skip_count || 0) + '</div>' +
+  if (!result || !mobArchiveOrganizePlan) return;
+  var summary = mobArchiveOrganizePlan.summary || {};
+  var html = '<div class="text-sm" style="display:flex;gap:8px;flex-wrap:wrap;padding:12px;background:var(--color-surface-muted);border-radius:8px;margin-bottom:12px;">' +
+    '<button type="button" class="mob-btn mob-btn-sm" data-mob-archive-bucket="executable"><strong>' + t('archiveOrganize.executable') + '</strong><br>' + mobArchiveExecutableCount(mobArchiveOrganizePlan) + '</button>' +
+    '<button type="button" class="mob-btn mob-btn-sm" data-mob-archive-bucket="move"><strong>' + t('archiveOrganize.moves') + '</strong><br>' + (summary.move || mobArchiveOrganizePlan.move_count || 0) + '</button>' +
+    '<button type="button" class="mob-btn mob-btn-sm" data-mob-archive-bucket="needs_confirm"><strong>' + t('archiveOrganize.confirm') + '</strong><br>' + (summary.needs_confirm || mobArchiveOrganizePlan.confirm_count || 0) + '</button>' +
+    '<button type="button" class="mob-btn mob-btn-sm" data-mob-archive-bucket="needs_review"><strong>' + t('archiveOrganize.review') + '</strong><br>' + (summary.needs_review || mobArchiveOrganizePlan.review_count || 0) + '</button>' +
     '</div>';
-  if (data.moves_truncated) {
+  var channel = (document.getElementById('mob-archive-organize-channel') || {}).value || mobArchiveOrganizePlan.channel_folder || '';
+  var params = new URLSearchParams();
+  if (mobArchiveOrganizeJobId) params.set('job_id', mobArchiveOrganizeJobId);
+  if (channel) params.set('channel_folder', channel);
+  params.set('bucket', mobArchiveOrganizeBucket || 'executable');
+  params.set('offset', '0');
+  params.set('limit', String(MOB_ARCHIVE_PAGE_SIZE));
+  try {
+    var page = await fetchJson('/api/archive/author-plan-moves?' + params.toString());
+    var items = page.items || [];
     html += '<div class="text-xs text-muted" style="margin-bottom:8px;">' +
-      t('archiveOrganize.truncatedMoves')
-        .replace('{total}', String(data.moves_total || moves.length))
-        .replace('{shown}', String(moves.length)) +
+      t('archiveOrganize.pageInfo')
+        .replace('{bucket}', t('archiveOrganize.bucket.' + (mobArchiveOrganizeBucket || 'executable')))
+        .replace('{from}', items.length ? '1' : '0')
+        .replace('{to}', String(items.length))
+        .replace('{total}', String(page.total || 0)) +
       '</div>';
+    items.forEach(function(item) {
+      html += '<div class="text-xs" style="padding:10px 0;border-bottom:1px solid var(--color-line);">' +
+        '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
+        '<div class="text-muted">' + esc(mobArchiveMethodLabel(item)) + '</div>' +
+        '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
+        '</div>';
+    });
+  } catch (e) {
+    html += '<div class="text-xs text-muted">' + esc(translateApiError(e, 'form.requestFailed')) + '</div>';
   }
-  moves.slice(0, 40).forEach(function(item) {
-    html += '<div class="text-xs" style="padding:8px 0;border-bottom:1px solid var(--color-line);">' +
-      '<div><strong>' + esc(item.author || '-') + '</strong> · ' + esc(item.action || '') + '</div>' +
-      '<div class="text-muted">' + esc(item.from_relative || '') + ' → ' + esc(item.to_relative || '') + '</div>' +
-      '</div>';
-  });
   result.innerHTML = html;
-  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+  if (runBtn) runBtn.disabled = !(mobArchiveExecutableCount(mobArchiveOrganizePlan) > 0);
+  result.querySelectorAll('[data-mob-archive-bucket]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      mobArchiveOrganizeBucket = btn.getAttribute('data-mob-archive-bucket') || 'executable';
+      loadMobArchiveOrganizeMoves();
+    });
+  });
+}
+
+function renderMobArchiveOrganizePlan(data, jobId) {
+  mobArchiveOrganizePlan = data;
+  if (jobId) mobArchiveOrganizeJobId = jobId;
+  mobArchiveOrganizeBucket = 'executable';
+  loadMobArchiveOrganizeMoves();
 }
 
 async function scanArchiveOrganizeMobile() {
@@ -12045,7 +12306,7 @@ async function scanArchiveOrganizeMobile() {
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
-    renderMobArchiveOrganizePlan(job.result || {});
+    renderMobArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedMobArchiveOrganizeJob();
   } catch (e) {
     var msg = translateApiError(e, 'form.requestFailed');
@@ -12071,7 +12332,7 @@ async function resolveArchiveOrganizeMobile() {
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'resolve failed');
-    renderMobArchiveOrganizePlan(job.result || {});
+    renderMobArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedMobArchiveOrganizeJob();
   } catch (e) {
     var msg = translateApiError(e, 'form.requestFailed');
@@ -12089,7 +12350,8 @@ async function runArchiveOrganizeMobile() {
     showToast(t('archiveOrganize.pickChannel'));
     return;
   }
-  if (!mobArchiveOrganizePlan || !(mobArchiveOrganizePlan.move_count > 0)) {
+  var executable = mobArchiveExecutableCount(mobArchiveOrganizePlan);
+  if (!mobArchiveOrganizePlan || !(executable > 0)) {
     showMobArchiveOrganizeProgress({
       percent: 0, current: 0, total: 0, phase: 'error',
       message: t('archiveOrganize.needScan')
@@ -12097,16 +12359,21 @@ async function runArchiveOrganizeMobile() {
     showToast(t('archiveOrganize.needScan'));
     return;
   }
-  if (!confirm(t('archiveOrganize.run') + ' — ' + channel)) return;
+  if (!confirm(t('archiveOrganize.runAllConfirm')
+    .replace('{channel}', channel)
+    .replace('{count}', String(executable)))) return;
   showMobArchiveOrganizeProgress({
     percent: 0,
     current: 0,
-    total: mobArchiveOrganizePlan.move_count || 0,
+    total: executable,
     phase: 'moving',
     message: t('archiveOrganize.running')
   });
   try {
-    var started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    var started = await postJson('/api/archive/author-reorganize', {
+      channel_folder: channel,
+      mode: 'all'
+    });
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
@@ -12114,7 +12381,7 @@ async function runArchiveOrganizeMobile() {
     showMobArchiveOrganizeProgress({
       percent: 100,
       current: data.moved_count || 0,
-      total: data.planned_moves || mobArchiveOrganizePlan.move_count || 0,
+      total: data.planned_moves || executable,
       phase: 'done',
       message: (job.message || '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
@@ -12125,6 +12392,7 @@ async function runArchiveOrganizeMobile() {
       ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     );
     mobArchiveOrganizePlan = null;
+    mobArchiveOrganizeJobId = null;
     var runBtn = document.getElementById('mob-archive-organize-run-btn');
     if (runBtn) runBtn.disabled = true;
     clearSavedMobArchiveOrganizeJob();

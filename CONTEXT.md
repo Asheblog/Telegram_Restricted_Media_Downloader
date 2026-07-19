@@ -138,14 +138,17 @@ _Avoid_: Target folder, chat title cache, full archive path
 **Source Post Archive Path** — 相对归档路径默认扁平 `{Source Channel Folder}/{message_id} - {正文摘要}`（无摘要则仅 message_id）。任务/监听规则勾选 **按作者归档**（`archive_by_author`，默认关）时扩展为 `{Source Channel Folder}/{Post Author}/{message_id} - {正文摘要}`；抽不到作者时 Post Author 为 `_未知作者`。正文摘要优先取 caption/text 中得分最高的一行（跳过纯标签、纯日期、`帖子内容`、作者署名行等套话；偏好 `【标题】` / `27. ...` 等实标题），否则取媒体原始 `file_name` 去扩展名。Post Author 从正文署名行解析：完整标记 `…作者：#名字`，或短形式 `作者：#名字` / `作者：@名字`（去掉 `#`/`@`）。同一媒体组（相册）的图片/视频必须共用最小 `message_id` + 组内最佳标题 +（若开启）组内解析到的作者，禁止每个成员各自建目录；Web 区间转存命中相册时一次拉齐组成员、共享 `source_folder`，并跳过组内其余 id，评论只挂在共享主贴 id 上。每个成员的 `range_message_id` 仍用自身 message id，避免区间进度在相册空洞处卡住。目录段与可控文件名统一为 `{message_id} - {正文}`。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。历史扁平 `{channel}/{post}` 可由归档整理工具抬升到作者层（整理工具本身始终按作者启发式，与实时链路开关解耦）。
 _Avoid_: Discussion group folder, bot chat folder, flat channel dump, per-album-member folders
 
-**Post Author** — 主贴正文署名解析出的作者文件夹名（完整标记 `…作者：#xxx` 或短形式 `作者：#xxx` / `作者：@xxx`）；仅当 `archive_by_author` 开启时写入路径；无法解析时使用 `_未知作者`。位于 Source Channel Folder 与主贴目录之间。
+**Post Author** — 主贴正文署名解析出的作者文件夹名（完整标记 `…作者：#xxx` 或短形式 `作者：#xxx` / `作者：@xxx`）；仅当 `archive_by_author` 开启时写入路径；无法解析时使用 `_未知作者`。位于 Source Channel Folder 与主贴目录之间。历史归档整理还可在无署名时，用正文 hashtag 回连频道内已确认作者集合（精确命中可自动搬；近似命中进待确认）。
 _Avoid_: Telegram from_user, channel signature, uploader account
 
 **Archive By Author** — 转存任务 / 监听规则上的可选开关（默认关）。关：扁平 Source Post Archive Path；开：嵌套 Post Author 层。字段名 `archive_by_author`；监听转发规则串可带 `--archive-by-author`。
 _Avoid_: global channel preference, automatic opt-in
 
-**Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中的主贴目录，回查 Telegram 主贴解析 Post Author，再用 rclone 整夹移动到 `{channel}/{author}/{post}`；幂等跳过已正确嵌套的目录。与实时链路的 `archive_by_author` 解耦，仅用于显式历史整理。
+**Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中的主贴目录，回查 Telegram 主贴解析 Post Author（署名 → 标签回连已知作者 → 未识别），生成迁移一览（汇总可点开分页明细）；「全部迁移」一键执行高置信 + 待确认，未识别默认不搬。与实时链路的 `archive_by_author` 解耦，仅用于显式历史整理。
 _Avoid_: media cleanup, full-disk rename, manual rclone script
+
+**Migration Overview** — Author Archive Reorganize 的计划汇总视图：按 `move` / `needs_confirm` / `needs_review` / skip 分桶计数，明细经分页 API 拉取全量，浏览器不再截断预览。
+_Avoid_: truncated 200-row table, per-row manual approve
 
 **Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。
 _Avoid_: Listen job, bot listener

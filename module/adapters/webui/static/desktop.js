@@ -2739,8 +2739,20 @@ document.addEventListener('change', function(e) {
 
 /* ====== Archive Organize (by Post Author) ====== */
 var archiveOrganizePlan = null;
+var archiveOrganizeJobId = null;
 var archiveOrganizePollTimer = null;
+var archiveOrganizeBucket = 'executable';
+var archiveOrganizeOffset = 0;
+var ARCHIVE_ORGANIZE_PAGE_SIZE = 50;
 var ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
+
+function archiveOrganizeExecutableCount(data) {
+  if (!data) return 0;
+  if (data.executable_count != null) return Number(data.executable_count) || 0;
+  var summary = data.summary || {};
+  if (summary.executable != null) return Number(summary.executable) || 0;
+  return (Number(data.move_count) || 0) + (Number(data.confirm_count) || 0);
+}
 
 function saveArchiveOrganizeJob(job) {
   try {
@@ -2791,8 +2803,8 @@ function setArchiveOrganizeBusy(busy, labelKey) {
       runBtn.disabled = true;
       runBtn.textContent = t('archiveOrganize.running');
     } else if (!busy) {
-      runBtn.textContent = t('archiveOrganize.run');
-      runBtn.disabled = !(archiveOrganizePlan && archiveOrganizePlan.move_count > 0);
+      runBtn.textContent = t('archiveOrganize.runAll');
+      runBtn.disabled = !(archiveOrganizeExecutableCount(archiveOrganizePlan) > 0);
     } else {
       runBtn.disabled = true;
     }
@@ -2849,124 +2861,122 @@ async function pollArchiveOrganizeJob(jobId) {
   }
 }
 
-async function resumeArchiveOrganizeJobIfAny() {
-  const select = $('#archive-organize-channel');
-  const saved = loadSavedArchiveOrganizeJob();
-  let job = null;
-  try {
-    if (saved && saved.id) {
-      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
-    }
-  } catch (e) {
-    job = null;
+function archiveOrganizeMethodLabel(item) {
+  var method = (item && item.resolution_method) || '';
+  var map = {
+    signature: 'archiveOrganize.methodSignature',
+    media_group: 'archiveOrganize.methodMediaGroup',
+    neighbor: 'archiveOrganize.methodNeighbor',
+    hashtag_exact: 'archiveOrganize.methodHashtagExact',
+    hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    none: 'archiveOrganize.methodNone'
+  };
+  var key = map[method] || 'archiveOrganize.methodNone';
+  var label = t(key);
+  if (item && item.matched_tag) {
+    label += ' · #' + item.matched_tag;
   }
-  if (!job || !job.id) {
-    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
-    const url = '/api/archive/author-job?active=1' +
-      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
-    try {
-      job = await fetchJson(url);
-    } catch (e) {
-      job = null;
-    }
+  if (item && item.confidence && item.confidence !== 'none') {
+    label += ' (' + item.confidence + ')';
   }
-  if (!job || !job.id) return;
-  if (select && job.channel_folder) {
-    select.value = job.channel_folder;
-  }
-  if (job.status === 'running') {
-    const busyKey = job.kind === 'reorganize'
-      ? 'run'
-      : (job.kind === 'resolve' ? 'resolve' : 'scan');
-    setArchiveOrganizeBusy(true, busyKey);
-    showArchiveOrganizeProgress(job);
-    try {
-      const finished = await pollArchiveOrganizeJob(job.id);
-      if (finished.status === 'failure') {
-        throw new Error(finished.error || finished.message || 'job failed');
-      }
-      if (finished.result) {
-        renderArchiveOrganizePlan(finished.result);
-      }
-    } catch (e) {
-      const msg = translateApiError(e, 'form.requestFailed');
-      showArchiveOrganizeProgress({ percent: 0, current: 0, total: 0, phase: 'error', message: msg });
-    } finally {
-      setArchiveOrganizeBusy(false);
-      clearSavedArchiveOrganizeJob();
-    }
-    return;
-  }
-  if (job.status === 'success' && job.result) {
-    showArchiveOrganizeProgress(job);
-    renderArchiveOrganizePlan(job.result);
-    clearSavedArchiveOrganizeJob();
-  } else if (job.status === 'failure') {
-    showArchiveOrganizeProgress(job);
-    clearSavedArchiveOrganizeJob();
-  }
+  return label;
 }
 
-async function loadArchiveOrganizeChannels() {
-  const select = $('#archive-organize-channel');
-  if (!select) return;
-  const previous = select.value;
-  try {
-    const data = await fetchJson('/api/archive/author-channels');
-    const channels = (data && data.channels) || [];
-    if (!channels.length) {
-      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
-      return;
-    }
-    select.innerHTML = channels.map(function(name) {
-      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
-    }).join('');
-    if (previous && channels.indexOf(previous) >= 0) {
-      select.value = previous;
-    }
-  } catch (e) {
-    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+function archiveOrganizeSummaryValue(data, key) {
+  var summary = (data && data.summary) || {};
+  if (summary[key] != null) return Number(summary[key]) || 0;
+  if (key === 'move') return Number(data && data.move_count) || 0;
+  if (key === 'needs_confirm') return Number(data && data.confirm_count) || 0;
+  if (key === 'needs_review') return Number(data && data.review_count) || 0;
+  if (key === 'executable') return archiveOrganizeExecutableCount(data);
+  if (key === 'authors') return Number(data && data.author_count) || 0;
+  if (key === 'skip_already' || key === 'skip_nested' || key === 'skip_invalid') {
+    return Number(summary[key]) || 0;
   }
+  return 0;
 }
 
-async function loadArchiveOrganize() {
-  await loadArchiveOrganizeChannels();
-  await resumeArchiveOrganizeJobIfAny();
-}
-
-function renderArchiveOrganizePlan(data) {
-  archiveOrganizePlan = data;
-  const result = $('#archive-organize-result');
+function renderArchiveOrganizeSummary(data) {
   const summary = $('#archive-organize-summary');
+  if (!summary) return;
+  var cards = [
+    { bucket: 'executable', label: t('archiveOrganize.executable'), value: archiveOrganizeSummaryValue(data, 'executable') },
+    { bucket: 'move', label: t('archiveOrganize.moves'), value: archiveOrganizeSummaryValue(data, 'move') },
+    { bucket: 'needs_confirm', label: t('archiveOrganize.confirm'), value: archiveOrganizeSummaryValue(data, 'needs_confirm') },
+    { bucket: 'needs_review', label: t('archiveOrganize.review'), value: archiveOrganizeSummaryValue(data, 'needs_review') },
+    { bucket: 'skip_already', label: t('archiveOrganize.skips'), value:
+      archiveOrganizeSummaryValue(data, 'skip_already')
+      + archiveOrganizeSummaryValue(data, 'skip_nested')
+      + archiveOrganizeSummaryValue(data, 'skip_invalid')
+    },
+    { bucket: '', label: t('archiveOrganize.authors'), value: archiveOrganizeSummaryValue(data, 'authors') }
+  ];
+  summary.innerHTML = cards.map(function(card) {
+    var active = (card.bucket || '') === (archiveOrganizeBucket || '');
+    var clickable = !!card.bucket;
+    return '<button type="button" class="text-left rounded-lg border border-line px-3 py-2 min-w-[96px] ' +
+      (active ? 'bg-surface border-accent' : 'bg-surface') + '" ' +
+      (clickable ? 'data-archive-bucket="' + esc(card.bucket) + '"' : 'disabled') + '>' +
+      '<div class="text-xs text-muted">' + esc(card.label) + '</div>' +
+      '<div class="text-lg font-semibold">' + card.value + '</div>' +
+      '</button>';
+  }).join('');
+}
+
+async function loadArchiveOrganizeMovesPage() {
   const tbody = $('#archive-organize-tbody');
-  const runBtn = $('#archive-organize-run-btn');
-  if (!result || !summary || !tbody) return;
-  result.classList.remove('hidden');
-  const moves = data.moves || [];
-  const movesTotal = data.moves_total || moves.length;
-  summary.innerHTML = [
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.authors') + '</div><div class="text-lg font-semibold">' + (data.author_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.moves') + '</div><div class="text-lg font-semibold">' + (data.move_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.skips') + '</div><div class="text-lg font-semibold">' + (data.skip_count || 0) + '</div></div>',
-    '<div><div class="text-xs text-muted">' + t('archiveOrganize.author') + '</div><div class="text-sm">' + esc(((data.authors || []).slice(0, 8).join('、')) || '-') + '</div></div>'
-  ].join('');
-  if (data.moves_truncated) {
-    summary.innerHTML += '<div class="w-full text-xs text-muted mt-1">' +
-      t('archiveOrganize.truncatedMoves')
-        .replace('{total}', String(movesTotal))
-        .replace('{shown}', String(moves.length)) +
-      '</div>';
+  const label = $('#archive-organize-bucket-label');
+  const prevBtn = $('#archive-organize-prev-btn');
+  const nextBtn = $('#archive-organize-next-btn');
+  if (!tbody || !archiveOrganizePlan) return;
+  var channel = ($('#archive-organize-channel') || {}).value || archiveOrganizePlan.channel_folder || '';
+  var params = new URLSearchParams();
+  if (archiveOrganizeJobId) params.set('job_id', archiveOrganizeJobId);
+  if (channel) params.set('channel_folder', channel);
+  if (archiveOrganizeBucket) params.set('bucket', archiveOrganizeBucket);
+  params.set('offset', String(archiveOrganizeOffset));
+  params.set('limit', String(ARCHIVE_ORGANIZE_PAGE_SIZE));
+  try {
+    var page = await fetchJson('/api/archive/author-plan-moves?' + params.toString());
+    var items = page.items || [];
+    var total = Number(page.total || 0);
+    if (label) {
+      label.textContent = t('archiveOrganize.pageInfo')
+        .replace('{bucket}', t('archiveOrganize.bucket.' + (archiveOrganizeBucket || 'all')) || archiveOrganizeBucket || '-')
+        .replace('{from}', String(total ? archiveOrganizeOffset + 1 : 0))
+        .replace('{to}', String(Math.min(archiveOrganizeOffset + items.length, total)))
+        .replace('{total}', String(total));
+    }
+    tbody.innerHTML = items.map(function(item) {
+      return '<tr>' +
+        '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
+        '<td>' + esc(item.author || '-') + '</td>' +
+        '<td class="text-xs">' + esc(archiveOrganizeMethodLabel(item)) + '</td>' +
+        '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
+        '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
+        '<td>' + esc(item.action || '') + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" class="text-center text-muted">-</td></tr>';
+    if (prevBtn) prevBtn.disabled = archiveOrganizeOffset <= 0;
+    if (nextBtn) nextBtn.disabled = archiveOrganizeOffset + ARCHIVE_ORGANIZE_PAGE_SIZE >= total;
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">' +
+      esc(translateApiError(e, 'form.requestFailed')) + '</td></tr>';
   }
-  tbody.innerHTML = moves.map(function(item) {
-    return '<tr>' +
-      '<td>' + esc(item.message_id == null ? '-' : String(item.message_id)) + '</td>' +
-      '<td>' + esc(item.author || '-') + '</td>' +
-      '<td class="text-xs">' + esc(item.from_relative || '') + '</td>' +
-      '<td class="text-xs">' + esc(item.to_relative || '') + '</td>' +
-      '<td>' + esc(item.action || '') + '</td>' +
-      '</tr>';
-  }).join('') || '<tr><td colspan="5" class="text-center text-muted">-</td></tr>';
-  if (runBtn) runBtn.disabled = !(data.move_count > 0);
+}
+
+function renderArchiveOrganizePlan(data, jobId) {
+  archiveOrganizePlan = data;
+  if (jobId) archiveOrganizeJobId = jobId;
+  archiveOrganizeBucket = 'executable';
+  archiveOrganizeOffset = 0;
+  const result = $('#archive-organize-result');
+  const runBtn = $('#archive-organize-run-btn');
+  if (!result) return;
+  result.classList.remove('hidden');
+  renderArchiveOrganizeSummary(data);
+  if (runBtn) runBtn.disabled = !(archiveOrganizeExecutableCount(data) > 0);
+  loadArchiveOrganizeMovesPage();
 }
 
 async function scanArchiveOrganize() {
@@ -2991,7 +3001,7 @@ async function scanArchiveOrganize() {
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'scan failed');
     }
-    renderArchiveOrganizePlan(job.result || {});
+    renderArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
@@ -3029,7 +3039,7 @@ async function resolveArchiveOrganize() {
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'resolve failed');
     }
-    renderArchiveOrganizePlan(job.result || {});
+    renderArchiveOrganizePlan(job.result || {}, job.id);
     clearSavedArchiveOrganizeJob();
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
@@ -3051,7 +3061,8 @@ async function runArchiveOrganize() {
     alert(t('archiveOrganize.pickChannel'));
     return;
   }
-  if (!archiveOrganizePlan || !(archiveOrganizePlan.move_count > 0)) {
+  var executable = archiveOrganizeExecutableCount(archiveOrganizePlan);
+  if (!archiveOrganizePlan || !(executable > 0)) {
     showArchiveOrganizeProgress({
       percent: 0,
       current: 0,
@@ -3061,7 +3072,9 @@ async function runArchiveOrganize() {
     });
     return;
   }
-  if (!confirm(t('archiveOrganize.run') + ' — ' + channel + ' (' + archiveOrganizePlan.move_count + ')')) {
+  if (!confirm(t('archiveOrganize.runAllConfirm')
+    .replace('{channel}', channel)
+    .replace('{count}', String(executable)))) {
     return;
   }
   stopArchiveOrganizePoll();
@@ -3069,12 +3082,15 @@ async function runArchiveOrganize() {
   showArchiveOrganizeProgress({
     percent: 0,
     current: 0,
-    total: archiveOrganizePlan.move_count || 0,
+    total: executable,
     phase: 'moving',
     message: t('archiveOrganize.running')
   });
   try {
-    const started = await postJson('/api/archive/author-reorganize', { channel_folder: channel });
+    const started = await postJson('/api/archive/author-reorganize', {
+      channel_folder: channel,
+      mode: 'all'
+    });
     saveArchiveOrganizeJob(started);
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
@@ -3084,7 +3100,7 @@ async function runArchiveOrganize() {
     showArchiveOrganizeProgress({
       percent: 100,
       current: data.moved_count || 0,
-      total: data.planned_moves || archiveOrganizePlan.move_count || 0,
+      total: data.planned_moves || executable,
       phase: 'done',
       message: (job.message || '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
@@ -3092,6 +3108,7 @@ async function runArchiveOrganize() {
     });
     // Do not auto-rescan after reorganize (rate-limit safe). Clear plan until next scan.
     archiveOrganizePlan = null;
+    archiveOrganizeJobId = null;
     const runBtn = $('#archive-organize-run-btn');
     if (runBtn) runBtn.disabled = true;
     clearSavedArchiveOrganizeJob();
@@ -3112,6 +3129,108 @@ async function runArchiveOrganize() {
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
 $('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+$('#archive-organize-summary')?.addEventListener('click', function(e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
+  if (!btn || !archiveOrganizePlan) return;
+  archiveOrganizeBucket = btn.getAttribute('data-archive-bucket') || 'executable';
+  archiveOrganizeOffset = 0;
+  renderArchiveOrganizeSummary(archiveOrganizePlan);
+  loadArchiveOrganizeMovesPage();
+});
+$('#archive-organize-prev-btn')?.addEventListener('click', function() {
+  archiveOrganizeOffset = Math.max(0, archiveOrganizeOffset - ARCHIVE_ORGANIZE_PAGE_SIZE);
+  loadArchiveOrganizeMovesPage();
+});
+$('#archive-organize-next-btn')?.addEventListener('click', function() {
+  archiveOrganizeOffset += ARCHIVE_ORGANIZE_PAGE_SIZE;
+  loadArchiveOrganizeMovesPage();
+});
+
+
+async function resumeArchiveOrganizeJobIfAny() {
+  const select = $('#archive-organize-channel');
+  const saved = loadSavedArchiveOrganizeJob();
+  let job = null;
+  try {
+    if (saved && saved.id) {
+      job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(saved.id));
+    }
+  } catch (e) {
+    job = null;
+  }
+  if (!job || !job.id) {
+    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
+    const url = '/api/archive/author-job?active=1' +
+      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
+    try {
+      job = await fetchJson(url);
+    } catch (e) {
+      job = null;
+    }
+  }
+  if (!job || !job.id) return;
+  if (select && job.channel_folder) {
+    select.value = job.channel_folder;
+  }
+  if (job.status === 'running') {
+    const busyKey = job.kind === 'reorganize'
+      ? 'run'
+      : (job.kind === 'resolve' ? 'resolve' : 'scan');
+    setArchiveOrganizeBusy(true, busyKey);
+    showArchiveOrganizeProgress(job);
+    try {
+      const finished = await pollArchiveOrganizeJob(job.id);
+      if (finished.status === 'failure') {
+        throw new Error(finished.error || finished.message || 'job failed');
+      }
+      if (finished.result) {
+        renderArchiveOrganizePlan(finished.result, finished.id);
+      }
+    } catch (e) {
+      const msg = translateApiError(e, 'form.requestFailed');
+      showArchiveOrganizeProgress({ percent: 0, current: 0, total: 0, phase: 'error', message: msg });
+    } finally {
+      setArchiveOrganizeBusy(false);
+      clearSavedArchiveOrganizeJob();
+    }
+    return;
+  }
+  if (job.status === 'success' && job.result) {
+    showArchiveOrganizeProgress(job);
+    renderArchiveOrganizePlan(job.result, job.id);
+    clearSavedArchiveOrganizeJob();
+  } else if (job.status === 'failure') {
+    showArchiveOrganizeProgress(job);
+    clearSavedArchiveOrganizeJob();
+  }
+}
+
+async function loadArchiveOrganizeChannels() {
+  const select = $('#archive-organize-channel');
+  if (!select) return;
+  const previous = select.value;
+  try {
+    const data = await fetchJson('/api/archive/author-channels');
+    const channels = (data && data.channels) || [];
+    if (!channels.length) {
+      select.innerHTML = '<option value="">' + esc(t('archiveOrganize.emptyChannels')) + '</option>';
+      return;
+    }
+    select.innerHTML = channels.map(function(name) {
+      return '<option value="' + esc(name) + '">' + esc(name) + '</option>';
+    }).join('');
+    if (previous && channels.indexOf(previous) >= 0) {
+      select.value = previous;
+    }
+  } catch (e) {
+    select.innerHTML = '<option value="">' + esc(translateApiError(e, 'form.requestFailed')) + '</option>';
+  }
+}
+
+async function loadArchiveOrganize() {
+  await loadArchiveOrganizeChannels();
+  await resumeArchiveOrganizeJobIfAny();
+}
 
 /* ====== Init ====== */
 (function init() {
