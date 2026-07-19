@@ -1008,29 +1008,46 @@ class WebOperationsMixin:
             try:
                 if kind == 'scan':
                     result = service.scan(channel_folder, on_progress=on_progress)
+                elif kind == 'resolve':
+                    prior = jobs.latest_successful_scan_result(channel_folder)
+                    paths = jobs.latest_directory_paths(channel_folder)
+                    result = service.resolve_from_listing(
+                        channel_folder,
+                        directory_paths=paths or None,
+                        prior_plan=prior,
+                        on_progress=on_progress,
+                        done_label='解析完成',
+                        require_telegram=True,
+                    )
                 else:
-                    # Reuse last successful scan plan — never rescan before move.
+                    # Reuse last successful scan/resolve plan — never rescan before move.
                     plan = jobs.latest_successful_scan_result(channel_folder)
                     if not plan or not (plan.get('move_count') or 0):
                         raise RuntimeError(
-                            '请先完成「扫描作者分布」。整理会复用扫描计划并串行慢速移动，'
-                            '不会再次全量扫描，以避免触发 PikPak/Telegram 限流。'
+                            '请先完成「扫描作者分布」或「重新解析作者」。'
+                            '整理会复用计划并串行慢速移动，不会再次全量扫描网盘。'
                         )
                     result = service.execute_plan(plan, on_progress=on_progress)
+                if kind in ('scan', 'resolve'):
+                    done_message = (
+                        f'{"扫描" if kind == "scan" else "解析"}完成：'
+                        f'解析到作者 {result.get("resolved_author_count") or 0}/'
+                        f'{result.get("message_id_count") or 0}，'
+                        f'{result.get("author_count") or 0} 个作者目录，'
+                        f'待移动 {result.get("move_count") or 0}，'
+                        f'跳过 {result.get("skip_count") or 0}'
+                    )
+                else:
+                    done_message = (
+                        f'整理完成：已移动 {result.get("moved_count") or 0}，'
+                        f'失败 {result.get("error_count") or 0}'
+                    )
                 jobs.update(
                     job_id,
                     status='success',
                     phase='done',
                     result=result,
-                    message=(
-                        f'扫描完成：{result.get("author_count") or 0} 位作者，'
-                        f'待移动 {result.get("move_count") or 0}，跳过 {result.get("skip_count") or 0}'
-                        if kind == 'scan'
-                        else (
-                            f'整理完成：已移动 {result.get("moved_count") or 0}，'
-                            f'失败 {result.get("error_count") or 0}'
-                        )
-                    ),
+                    message=done_message,
                     percent=100,
                 )
             except Exception as error:
@@ -1066,6 +1083,10 @@ class WebOperationsMixin:
     def scan_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
         return self._start_archive_author_job(kind='scan', channel_folder=channel_folder)
+
+    def resolve_archive_author_reorganize(self, payload: dict) -> dict:
+        channel_folder = str((payload or {}).get('channel_folder') or '').strip()
+        return self._start_archive_author_job(kind='resolve', channel_folder=channel_folder)
 
     def execute_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
@@ -1714,7 +1735,8 @@ _WEB_UI_DELEGATE_METHODS = (
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
     'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
     'list_archive_author_channels', 'scan_archive_author_reorganize',
-    'execute_archive_author_reorganize', 'get_archive_author_job',
+    'resolve_archive_author_reorganize', 'execute_archive_author_reorganize',
+    'get_archive_author_job',
     'get_active_archive_author_job',
 )
 

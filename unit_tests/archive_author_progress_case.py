@@ -76,20 +76,72 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertIn(f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown', from_paths)
         self.assertIn('我的羞涩女儿/92840 - nested', from_paths)
 
-    def test_execute_plan_reuses_scan_without_relisting(self):
+    def test_resolve_reuses_directory_paths_without_rclone_listing(self):
+        from types import SimpleNamespace
+        import asyncio
+
         client = FakeArchiveClient()
+
+        class FakeTelegram:
+            def __init__(self):
+                self.calls = []
+
+            async def get_messages(self, chat_id=None, message_ids=None, *args, **kwargs):
+                ids = message_ids
+                if ids is None and args:
+                    ids = args[0]
+                if not isinstance(ids, list):
+                    ids = [ids]
+                self.calls.extend(int(x) for x in ids)
+                mid = int(ids[0])
+                marker = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005\uff1a#我的羞涩女儿'
+                return [SimpleNamespace(id=mid, caption=marker, text=None)]
+
+        telegram = FakeTelegram()
+
+        def run_coro(coro, timeout=None):
+            return asyncio.run(coro)
+
         service = ArchiveAuthorReorganizeService(
             archive_client=client,
-            telegram_client=None,
+            telegram_client=telegram,
+            run_coro=run_coro,
         )
         service._pace = lambda _seconds: None
-        plan = service.scan('chengdudiyi8')
-        list_calls_after_scan = len(client.list_calls)
-        result = service.execute_plan(plan)
-        self.assertEqual(list_calls_after_scan, len(client.list_calls))
-        self.assertGreater(result['moved_count'], 0)
-        self.assertEqual(0, result['error_count'])
-        self.assertTrue(client.moved)
+        listed = service.scan('chengdudiyi8')
+        self.assertTrue(listed.get('directory_paths'))
+        list_calls = len(client.list_calls)
+        replanned = service.resolve_from_listing(
+            'chengdudiyi8',
+            directory_paths=listed['directory_paths'],
+        )
+        self.assertEqual(list_calls, len(client.list_calls))
+        self.assertTrue(telegram.calls)
+        move_authors = {
+            item['author']
+            for item in replanned['moves']
+            if item['action'] == 'move'
+        }
+        self.assertIn('我的羞涩女儿', move_authors)
+
+    def test_directory_paths_reconstructed_from_prior_moves(self):
+        from module.archive_author_tool import directory_paths_from_plan
+
+        paths = directory_paths_from_plan({
+            'channel_folder': 'chengdudiyi8',
+            'moves': [
+                {'from_relative': '92862 - a'},
+                {'from_relative': f'{UNKNOWN_AUTHOR_FOLDER}/99999 - b'},
+            ],
+        })
+        self.assertEqual(
+            [
+                'chengdudiyi8/92862 - a',
+                f'chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}/99999 - b',
+            ],
+            paths,
+        )
+
 
     def test_latest_successful_scan_result_returns_full_plan(self):
         store = ArchiveAuthorJobStore()

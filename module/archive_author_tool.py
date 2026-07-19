@@ -34,6 +34,32 @@ def clean_leaf_name(path: Optional[str]) -> str:
     return text.rsplit('/', 1)[-1]
 
 
+def directory_paths_from_plan(plan: Optional[dict]) -> list[str]:
+    """Rebuild ``channel/from_relative`` listing from a prior scan/resolve plan."""
+    if not isinstance(plan, dict):
+        return []
+    channel = str(plan.get('channel_folder') or '').strip().strip('/')
+    if not channel:
+        return []
+    cached = plan.get('directory_paths')
+    if isinstance(cached, list) and cached:
+        return [str(item).replace('\\', '/').strip('/') for item in cached if str(item).strip()]
+    paths: list[str] = []
+    seen: set[str] = set()
+    for item in plan.get('moves') or []:
+        if not isinstance(item, dict):
+            continue
+        relative = str(item.get('from_relative') or '').replace('\\', '/').strip('/')
+        if not relative:
+            continue
+        full = f'{channel}/{relative}'
+        if full in seen:
+            continue
+        seen.add(full)
+        paths.append(full)
+    return paths
+
+
 class ArchiveAuthorReorganizeService:
     def __init__(
             self,
@@ -83,7 +109,7 @@ class ArchiveAuthorReorganizeService:
         self._report(
             on_progress,
             phase='listing',
-            message='慢速串行扫描中（避免触发 PikPak/Telegram 限流）…',
+            message='慢速串行列出网盘目录（仅列目录，作者稍后从 Telegram 主贴解析）…',
         )
         directory_paths = self._list_channel_directories(
             client=client,
@@ -91,47 +117,97 @@ class ArchiveAuthorReorganizeService:
             root=root,
             on_progress=on_progress,
         )
+        return self.resolve_from_listing(
+            channel,
+            directory_paths=directory_paths,
+            channel_remote_root=root,
+            on_progress=on_progress,
+            done_label='扫描完成',
+            require_telegram=False,
+        )
+
+    def resolve_from_listing(
+            self,
+            channel_folder: str,
+            *,
+            directory_paths: Optional[list[str]] = None,
+            prior_plan: Optional[dict] = None,
+            channel_remote_root: Optional[str] = None,
+            on_progress: ProgressCallback = None,
+            done_label: str = '解析完成',
+            require_telegram: bool = True,
+    ) -> dict:
+        """Resolve authors from Telegram using folder message ids — no rclone listing."""
+        channel = normalize_source_folder_path(channel_folder)
+        if not channel or '/' in channel:
+            raise ValueError('请输入单个频道文件夹名（Source Channel Folder）。')
+        paths = list(directory_paths or [])
+        if not paths:
+            paths = directory_paths_from_plan(prior_plan)
+        if not paths:
+            raise RuntimeError(
+                '没有可复用的目录清单。请先执行一次「扫描作者分布」列出网盘目录；'
+                '之后可用「重新解析作者」只回查 Telegram，不必再扫网盘。'
+            )
+        client = self._require_client()
+        root = channel_remote_root or (
+            (prior_plan or {}).get('channel_remote_root')
+            if isinstance(prior_plan, dict)
+            else None
+        ) or self._channel_remote_root(client, channel)
+
         message_ids = []
-        for path in directory_paths:
+        for path in paths:
             parts = [part for part in path.replace('\\', '/').split('/') if part]
             if len(parts) >= 2 and is_post_folder_segment(parts[-1]):
                 mid = message_id_from_post_folder_segment(parts[-1])
                 if mid is not None:
                     message_ids.append(mid)
         unique_ids = sorted(set(message_ids))
-        self._report(
-            on_progress,
-            phase='resolving',
-            current=0,
-            total=len(unique_ids),
-            message=f'逐条拉取 Telegram 主贴作者 0/{len(unique_ids)}…',
-        )
-        author_by_id = self._resolve_authors(
-            channel,
-            unique_ids,
-            on_progress=on_progress,
-        )
+        if self.telegram_client is None:
+            if require_telegram:
+                raise RuntimeError('Telegram 客户端未就绪，无法按主贴 ID 解析作者。')
+            author_by_id = {mid: None for mid in unique_ids}
+            resolved = 0
+        else:
+            self._report(
+                on_progress,
+                phase='resolving',
+                current=0,
+                total=len(unique_ids),
+                message=f'按主贴 ID 回查 Telegram 作者 0/{len(unique_ids)}（不扫网盘）…',
+            )
+            author_by_id = self._resolve_authors(
+                channel,
+                unique_ids,
+                on_progress=on_progress,
+            )
+            resolved = sum(1 for mid in unique_ids if author_by_id.get(mid))
         self._report(
             on_progress,
             phase='planning',
             current=len(unique_ids),
             total=max(len(unique_ids), 1),
-            message='正在生成移动计划…',
+            message=f'已解析作者 {resolved}/{len(unique_ids)}，正在生成移动计划…',
         )
         plan = plan_author_reorganize(
             channel_folder=channel,
-            directory_paths=directory_paths,
+            directory_paths=paths,
             author_by_message_id=author_by_id,
         )
         payload = plan.to_dict()
         payload['channel_remote_root'] = root
+        payload['directory_paths'] = paths
+        payload['resolved_author_count'] = resolved
+        payload['message_id_count'] = len(unique_ids)
         self._report(
             on_progress,
             phase='done',
             current=payload.get('move_count') or 0,
             total=max(int(payload.get('move_count') or 0) + int(payload.get('skip_count') or 0), 1),
             message=(
-                f'扫描完成：{payload.get("author_count") or 0} 位作者，'
+                f'{done_label}：解析到作者 {resolved}/{len(unique_ids)}，'
+                f'{payload.get("author_count") or 0} 个作者目录，'
                 f'待移动 {payload.get("move_count") or 0}，跳过 {payload.get("skip_count") or 0}'
             ),
         )
@@ -330,6 +406,12 @@ class ArchiveAuthorReorganizeService:
         async def _fetch_batch(batch: list[int], *, progress_current: int):
             while True:
                 try:
+                    return await client.get_messages(
+                        chat_id=channel_folder,
+                        message_ids=batch,
+                    )
+                except TypeError:
+                    # Older stubs / alternate signatures.
                     return await client.get_messages(channel_folder, batch)
                 except Exception as error:
                     if not flood_types or not isinstance(error, flood_types):
@@ -359,7 +441,7 @@ class ArchiveAuthorReorganizeService:
                 phase='resolving',
                 current=offset,
                 total=total,
-                message=f'逐条拉取 Telegram 主贴作者 {offset}/{total}…',
+                message=f'按主贴 ID 回查 Telegram 作者 {offset}/{total}…',
             )
             try:
                 if self.run_coro is None:
@@ -397,7 +479,7 @@ class ArchiveAuthorReorganizeService:
                 phase='resolving',
                 current=done,
                 total=total,
-                message=f'逐条拉取 Telegram 主贴作者 {done}/{total}…',
+                message=f'按主贴 ID 回查 Telegram 作者 {done}/{total}…',
             )
             if done < total:
                 self._pace(TELEGRAM_BATCH_PAUSE_SECONDS)

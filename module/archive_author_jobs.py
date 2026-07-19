@@ -142,15 +142,16 @@ class ArchiveAuthorJobStore:
         return None
 
     def latest_successful_scan_result(self, channel_folder: str) -> Optional[dict]:
-        """Full scan plan for reorganize (not the truncated public view)."""
+        """Full plan for reorganize (scan or resolve; not the truncated public view)."""
         channel_folder = str(channel_folder or '').strip()
         if not channel_folder:
             return None
+        allowed = ('scan', 'resolve')
         with self._lock:
             candidates = [
                 dict(job)
                 for job in self._jobs.values()
-                if job.get('kind') == 'scan'
+                if job.get('kind') in allowed
                 and job.get('status') == 'success'
                 and job.get('channel_folder') == channel_folder
                 and isinstance(job.get('result'), dict)
@@ -169,7 +170,7 @@ class ArchiveAuthorJobStore:
             except Exception:
                 rows = []
             for row in rows:
-                if row.get('kind') != 'scan':
+                if row.get('kind') not in allowed:
                     continue
                 result = row.get('result')
                 if isinstance(result, dict):
@@ -177,6 +178,12 @@ class ArchiveAuthorJobStore:
                         self._jobs[row['id']] = dict(row)
                     return dict(result)
         return None
+
+    def latest_directory_paths(self, channel_folder: str) -> list[str]:
+        from module.archive_author_tool import directory_paths_from_plan
+
+        plan = self.latest_successful_scan_result(channel_folder)
+        return directory_paths_from_plan(plan)
 
     def progress_callback(self, job_id: str) -> Callable[..., None]:
         def _on_progress(
@@ -229,10 +236,14 @@ def public_job_view(job: Optional[dict]) -> Optional[dict]:
         return None
     result = job.get('result')
     # Cap move rows returned to the browser for huge channels.
-    if isinstance(result, dict) and isinstance(result.get('moves'), list):
-        moves = result['moves']
-        if len(moves) > 200:
-            result = dict(result)
+    if isinstance(result, dict):
+        result = dict(result)
+        paths = result.get('directory_paths')
+        if isinstance(paths, list):
+            result['directory_path_count'] = len(paths)
+            result.pop('directory_paths', None)
+        moves = result.get('moves')
+        if isinstance(moves, list) and len(moves) > 200:
             result['moves'] = moves[:200]
             result['moves_truncated'] = True
             result['moves_total'] = len(moves)

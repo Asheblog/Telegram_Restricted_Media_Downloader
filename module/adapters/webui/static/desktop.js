@@ -2766,12 +2766,19 @@ function clearSavedArchiveOrganizeJob() {
 
 function setArchiveOrganizeBusy(busy, labelKey) {
   const scanBtn = $('#archive-organize-scan-btn');
+  const resolveBtn = $('#archive-organize-resolve-btn');
   const runBtn = $('#archive-organize-run-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
     scanBtn.textContent = busy && labelKey === 'scan'
       ? t('archiveOrganize.scanning')
       : t('archiveOrganize.scan');
+  }
+  if (resolveBtn) {
+    resolveBtn.disabled = !!busy;
+    resolveBtn.textContent = busy && labelKey === 'resolve'
+      ? t('archiveOrganize.resolving')
+      : t('archiveOrganize.resolve');
   }
   if (runBtn) {
     if (busy && labelKey === 'run') {
@@ -2862,7 +2869,9 @@ async function resumeArchiveOrganizeJobIfAny() {
     select.value = job.channel_folder;
   }
   if (job.status === 'running') {
-    const busyKey = job.kind === 'reorganize' ? 'run' : 'scan';
+    const busyKey = job.kind === 'reorganize'
+      ? 'run'
+      : (job.kind === 'resolve' ? 'resolve' : 'scan');
     setArchiveOrganizeBusy(true, busyKey);
     showArchiveOrganizeProgress(job);
     try {
@@ -2992,6 +3001,44 @@ async function scanArchiveOrganize() {
   }
 }
 
+async function resolveArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'resolve');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'resolving',
+    message: t('archiveOrganize.resolving')
+  });
+  try {
+    const started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    saveArchiveOrganizeJob(started);
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'resolve failed');
+    }
+    renderArchiveOrganizePlan(job.result || {});
+    clearSavedArchiveOrganizeJob();
+  } catch (e) {
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+  } finally {
+    setArchiveOrganizeBusy(false);
+  }
+}
+
 async function runArchiveOrganize() {
   const channel = ($('#archive-organize-channel') || {}).value || '';
   if (!channel) {
@@ -3057,6 +3104,7 @@ async function runArchiveOrganize() {
 }
 
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
+$('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
 
 /* ====== Init ====== */

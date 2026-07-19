@@ -2448,8 +2448,8 @@ async function loadArchiveOrganizeMobile() {
         clearSavedMobArchiveOrganizeJob();
         return;
       }
-      if (finished.kind === 'scan' && finished.result) {
-        renderMobArchiveOrganizePlan(finished.result);
+      if (finished.kind === 'scan' || finished.kind === 'resolve') {
+        if (finished.result) renderMobArchiveOrganizePlan(finished.result);
       } else if (finished.kind === 'reorganize') {
         mobArchiveOrganizePlan = null;
         var runBtn = document.getElementById('mob-archive-organize-run-btn');
@@ -2465,7 +2465,7 @@ async function loadArchiveOrganizeMobile() {
     }
     return;
   }
-  if (job.status === 'success' && job.result && job.kind === 'scan') {
+  if (job.status === 'success' && job.result && (job.kind === 'scan' || job.kind === 'resolve')) {
     showMobArchiveOrganizeProgress(job);
     renderMobArchiveOrganizePlan(job.result);
     clearSavedMobArchiveOrganizeJob();
@@ -2518,6 +2518,32 @@ async function scanArchiveOrganizeMobile() {
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
+    renderMobArchiveOrganizePlan(job.result || {});
+    clearSavedMobArchiveOrganizeJob();
+  } catch (e) {
+    var msg = translateApiError(e, 'form.requestFailed');
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error', message: msg
+    });
+    showToast(msg);
+  }
+}
+
+async function resolveArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  showMobArchiveOrganizeProgress({
+    percent: 0, current: 0, total: 0, phase: 'resolving', message: t('archiveOrganize.resolving')
+  });
+  try {
+    var started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    saveMobArchiveOrganizeJob(started);
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'resolve failed');
     renderMobArchiveOrganizePlan(job.result || {});
     clearSavedMobArchiveOrganizeJob();
   } catch (e) {
@@ -2917,6 +2943,8 @@ async function runArchiveOrganizeMobile() {
 
   var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
   if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
+  var archiveResolveBtn = document.getElementById('mob-archive-organize-resolve-btn');
+  if (archiveResolveBtn) archiveResolveBtn.addEventListener('click', resolveArchiveOrganizeMobile);
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 

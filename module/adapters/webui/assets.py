@@ -1241,11 +1241,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
         <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.run">按作者整理</button>
-        <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+        <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
+        <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2051,13 +2052,15 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。',
     'archiveOrganize.channel': '频道文件夹',
-    'archiveOrganize.scan': '扫描作者分布',
+    'archiveOrganize.scan': '扫描网盘目录',
+    'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.run': '按作者整理',
-    'archiveOrganize.scanning': '慢速扫描中（后台）…',
+    'archiveOrganize.scanning': '正在列出网盘目录…',
+    'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '慢速整理中（后台）…',
-    'archiveOrganize.needScan': '请先扫描作者分布，再执行整理。',
+    'archiveOrganize.needScan': '请先扫描网盘目录或重新解析作者。',
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
     'archiveOrganize.author': '作者',
@@ -2497,13 +2500,15 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Auto-extract authors from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs; authors come from Telegram posts, not drive folder names. List drive folders once, then re-resolve authors from Telegram, then reorganize. Jobs run slowly in the background; refresh reconnects.',
     'archiveOrganize.channel': 'Channel folder',
-    'archiveOrganize.scan': 'Scan authors',
+    'archiveOrganize.scan': 'List drive folders',
+    'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.run': 'Reorganize by author',
-    'archiveOrganize.scanning': 'Slow scan in background…',
+    'archiveOrganize.scanning': 'Listing drive folders…',
+    'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Slow reorganize in background…',
-    'archiveOrganize.needScan': 'Scan authors first, then reorganize.',
+    'archiveOrganize.needScan': 'List drive folders or re-resolve authors first.',
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
     'archiveOrganize.author': 'Author',
@@ -6298,12 +6303,19 @@ function clearSavedArchiveOrganizeJob() {
 
 function setArchiveOrganizeBusy(busy, labelKey) {
   const scanBtn = $('#archive-organize-scan-btn');
+  const resolveBtn = $('#archive-organize-resolve-btn');
   const runBtn = $('#archive-organize-run-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
     scanBtn.textContent = busy && labelKey === 'scan'
       ? t('archiveOrganize.scanning')
       : t('archiveOrganize.scan');
+  }
+  if (resolveBtn) {
+    resolveBtn.disabled = !!busy;
+    resolveBtn.textContent = busy && labelKey === 'resolve'
+      ? t('archiveOrganize.resolving')
+      : t('archiveOrganize.resolve');
   }
   if (runBtn) {
     if (busy && labelKey === 'run') {
@@ -6394,7 +6406,9 @@ async function resumeArchiveOrganizeJobIfAny() {
     select.value = job.channel_folder;
   }
   if (job.status === 'running') {
-    const busyKey = job.kind === 'reorganize' ? 'run' : 'scan';
+    const busyKey = job.kind === 'reorganize'
+      ? 'run'
+      : (job.kind === 'resolve' ? 'resolve' : 'scan');
     setArchiveOrganizeBusy(true, busyKey);
     showArchiveOrganizeProgress(job);
     try {
@@ -6524,6 +6538,44 @@ async function scanArchiveOrganize() {
   }
 }
 
+async function resolveArchiveOrganize() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'resolve');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: 0,
+    phase: 'resolving',
+    message: t('archiveOrganize.resolving')
+  });
+  try {
+    const started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    saveArchiveOrganizeJob(started);
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'resolve failed');
+    }
+    renderArchiveOrganizePlan(job.result || {});
+    clearSavedArchiveOrganizeJob();
+  } catch (e) {
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+  } finally {
+    setArchiveOrganizeBusy(false);
+  }
+}
+
 async function runArchiveOrganize() {
   const channel = ($('#archive-organize-channel') || {}).value || '';
   if (!channel) {
@@ -6589,6 +6641,7 @@ async function runArchiveOrganize() {
 }
 
 $('#archive-organize-scan-btn')?.addEventListener('click', scanArchiveOrganize);
+$('#archive-organize-resolve-btn')?.addEventListener('click', resolveArchiveOrganize);
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
 
 /* ====== Init ====== */
@@ -7300,11 +7353,12 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描作者分布</button>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <button id="mob-archive-organize-scan-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
+        <button id="mob-archive-organize-resolve-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.run">按作者整理</button>
       </div>
       <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
@@ -7932,13 +7986,15 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '作者自动提取：从 Telegram 主贴正文识别作者，用 rclone 将主贴目录移到作者子目录。后台串行慢速执行，可刷新页面后自动恢复进度；整理会复用扫描计划，不再重复全量扫描。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者从 Telegram 主贴正文解析，不是从网盘目录名读取。先「扫描网盘目录」列出清单（只需一次），再用「重新解析作者」回查 Telegram 并重建计划，最后「按作者整理」。后台慢速串行，可刷新恢复。',
     'archiveOrganize.channel': '频道文件夹',
-    'archiveOrganize.scan': '扫描作者分布',
+    'archiveOrganize.scan': '扫描网盘目录',
+    'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.run': '按作者整理',
-    'archiveOrganize.scanning': '慢速扫描中（后台）…',
+    'archiveOrganize.scanning': '正在列出网盘目录…',
+    'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '慢速整理中（后台）…',
-    'archiveOrganize.needScan': '请先扫描作者分布，再执行整理。',
+    'archiveOrganize.needScan': '请先扫描网盘目录或重新解析作者。',
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
     'archiveOrganize.author': '作者',
@@ -8378,13 +8434,15 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Auto-extract authors from Telegram posts and rclone-move post folders under author directories. Jobs run slowly in the background; refresh reconnects progress. Reorganize reuses the scan plan (no full rescan).',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs; authors come from Telegram posts, not drive folder names. List drive folders once, then re-resolve authors from Telegram, then reorganize. Jobs run slowly in the background; refresh reconnects.',
     'archiveOrganize.channel': 'Channel folder',
-    'archiveOrganize.scan': 'Scan authors',
+    'archiveOrganize.scan': 'List drive folders',
+    'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.run': 'Reorganize by author',
-    'archiveOrganize.scanning': 'Slow scan in background…',
+    'archiveOrganize.scanning': 'Listing drive folders…',
+    'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Slow reorganize in background…',
-    'archiveOrganize.needScan': 'Scan authors first, then reorganize.',
+    'archiveOrganize.needScan': 'List drive folders or re-resolve authors first.',
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
     'archiveOrganize.author': 'Author',
@@ -11861,8 +11919,8 @@ async function loadArchiveOrganizeMobile() {
         clearSavedMobArchiveOrganizeJob();
         return;
       }
-      if (finished.kind === 'scan' && finished.result) {
-        renderMobArchiveOrganizePlan(finished.result);
+      if (finished.kind === 'scan' || finished.kind === 'resolve') {
+        if (finished.result) renderMobArchiveOrganizePlan(finished.result);
       } else if (finished.kind === 'reorganize') {
         mobArchiveOrganizePlan = null;
         var runBtn = document.getElementById('mob-archive-organize-run-btn');
@@ -11878,7 +11936,7 @@ async function loadArchiveOrganizeMobile() {
     }
     return;
   }
-  if (job.status === 'success' && job.result && job.kind === 'scan') {
+  if (job.status === 'success' && job.result && (job.kind === 'scan' || job.kind === 'resolve')) {
     showMobArchiveOrganizeProgress(job);
     renderMobArchiveOrganizePlan(job.result);
     clearSavedMobArchiveOrganizeJob();
@@ -11931,6 +11989,32 @@ async function scanArchiveOrganizeMobile() {
     saveMobArchiveOrganizeJob(started);
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'scan failed');
+    renderMobArchiveOrganizePlan(job.result || {});
+    clearSavedMobArchiveOrganizeJob();
+  } catch (e) {
+    var msg = translateApiError(e, 'form.requestFailed');
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error', message: msg
+    });
+    showToast(msg);
+  }
+}
+
+async function resolveArchiveOrganizeMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  showMobArchiveOrganizeProgress({
+    percent: 0, current: 0, total: 0, phase: 'resolving', message: t('archiveOrganize.resolving')
+  });
+  try {
+    var started = await postJson('/api/archive/author-resolve', { channel_folder: channel });
+    saveMobArchiveOrganizeJob(started);
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'resolve failed');
     renderMobArchiveOrganizePlan(job.result || {});
     clearSavedMobArchiveOrganizeJob();
   } catch (e) {
@@ -12330,6 +12414,8 @@ async function runArchiveOrganizeMobile() {
 
   var archiveScanBtn = document.getElementById('mob-archive-organize-scan-btn');
   if (archiveScanBtn) archiveScanBtn.addEventListener('click', scanArchiveOrganizeMobile);
+  var archiveResolveBtn = document.getElementById('mob-archive-organize-resolve-btn');
+  if (archiveResolveBtn) archiveResolveBtn.addEventListener('click', resolveArchiveOrganizeMobile);
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
 

@@ -1119,6 +1119,22 @@ class WebUiServer:
                             HTTPStatus.BAD_REQUEST
                         )
                     return
+                if parsed.path == '/api/archive/author-resolve':
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.resolve_archive_author_reorganize(payload))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 作者归档重新解析失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_resolve_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path == '/api/archive/author-reorganize':
                     try:
                         payload = self._read_json()
@@ -1775,6 +1791,16 @@ class WebUiServer:
 
     def scan_archive_author_reorganize(self, payload: dict) -> dict:
         op = self._operation('scan_archive_author_reorganize')
+        if op:
+            return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def resolve_archive_author_reorganize(self, payload: dict) -> dict:
+        op = self._operation('resolve_archive_author_reorganize')
         if op:
             return op(payload)
         raise WebUiApiError(
