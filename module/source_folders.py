@@ -39,9 +39,11 @@ NUMBERED_TITLE_LINE = re.compile(r'^\d+[\.、．]\s*\S')
 BOILERPLATE_TITLE_LINES = frozenset({
     '帖子内容', '转发内容', '消息内容', '正文', '内容', 'title', 'caption',
 })
-# Nested under Source Channel Folder when body has no Author-style author line.
+# Nested under Source Channel Folder when body has no recognisable author line.
 UNKNOWN_AUTHOR_FOLDER = '_未知作者'
-POST_AUTHOR_LINE = re.compile(r'示例社区作者\s*[：:]\s*#?([^\s#]+)')
+# Marker kept as escapes so the public tree has no sensitive site name plaintext.
+_POST_AUTHOR_MARKER = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005'
+POST_AUTHOR_LINE = re.compile(_POST_AUTHOR_MARKER + r'\s*[：:]\s*#?([^\s#]+)')
 POST_FOLDER_SEGMENT_RE = re.compile(r'^\d+(?:\s+-\s+.+)?$')
 
 
@@ -148,7 +150,7 @@ def _is_boilerplate_title_line(line: str) -> bool:
 
 
 def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
-    """Parse Author-style author from caption/text: ``示例社区作者：#名字``."""
+    """Parse post-author marker line from caption/text (``…作者：#名字``)."""
     if not isinstance(text, str) or not text.strip():
         return None
     match = POST_AUTHOR_LINE.search(text)

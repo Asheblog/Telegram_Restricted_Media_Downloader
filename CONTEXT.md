@@ -135,10 +135,10 @@ _Avoid_: Preset, mode
 **Source Channel Folder** — 来源频道对应的顶层文件夹名（归档路径第一段）；频道统计与来源身份按此聚合。
 _Avoid_: Target folder, chat title cache, full archive path
 
-**Source Post Archive Path** — 相对归档路径 `{Source Channel Folder}/{Post Author}/{message_id} - {正文摘要}`（无摘要则仅 message_id；抽不到作者时 Post Author 为 `_未知作者`）。正文摘要优先取 caption/text 中得分最高的一行（跳过纯标签、纯日期、`帖子内容`、示例作者署名行等套话；偏好 `【标题】` / `27. ...` 等实标题），否则取媒体原始 `file_name` 去扩展名。Post Author 从正文 `示例社区作者：#名字` 解析（去掉 `#`）。同一媒体组（相册）的图片/视频必须共用最小 `message_id` + 组内最佳标题 + 组内解析到的作者，禁止每个成员各自建目录；Web 区间转存命中相册时一次拉齐组成员、共享 `source_folder`，并跳过组内其余 id，评论只挂在共享主贴 id 上。每个成员的 `range_message_id` 仍用自身 message id，避免区间进度在相册空洞处卡住。目录段与可控文件名统一为 `{message_id} - {正文}`。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。历史扁平 `{channel}/{post}` 可由归档整理工具抬升到作者层。
+**Source Post Archive Path** — 相对归档路径 `{Source Channel Folder}/{Post Author}/{message_id} - {正文摘要}`（无摘要则仅 message_id；抽不到作者时 Post Author 为 `_未知作者`）。正文摘要优先取 caption/text 中得分最高的一行（跳过纯标签、纯日期、`帖子内容`、作者署名行等套话；偏好 `【标题】` / `27. ...` 等实标题），否则取媒体原始 `file_name` 去扩展名。Post Author 从正文固定格式署名行 `…作者：#名字` 解析（去掉 `#`）。同一媒体组（相册）的图片/视频必须共用最小 `message_id` + 组内最佳标题 + 组内解析到的作者，禁止每个成员各自建目录；Web 区间转存命中相册时一次拉齐组成员、共享 `source_folder`，并跳过组内其余 id，评论只挂在共享主贴 id 上。每个成员的 `range_message_id` 仍用自身 message id，避免区间进度在相册空洞处卡住。目录段与可控文件名统一为 `{message_id} - {正文}`。同一频道主贴及其 Discussion Reply、深链取回内容共用此路径。历史扁平 `{channel}/{post}` 可由归档整理工具抬升到作者层。
 _Avoid_: Discussion group folder, bot chat folder, flat channel dump, per-album-member folders
 
-**Post Author** — 主贴正文署名解析出的作者文件夹名（示例社区风格 `示例社区作者：#xxx`）；无法解析时使用 `_未知作者`。位于 Source Channel Folder 与主贴目录之间。
+**Post Author** — 主贴正文署名解析出的作者文件夹名（固定格式 `…作者：#xxx`）；无法解析时使用 `_未知作者`。位于 Source Channel Folder 与主贴目录之间。
 _Avoid_: Telegram from_user, channel signature, uploader account
 
 **Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中的主贴目录，回查 Telegram 主贴解析 Post Author，再用 rclone 整夹移动到 `{channel}/{author}/{post}`；幂等跳过已正确嵌套的目录。

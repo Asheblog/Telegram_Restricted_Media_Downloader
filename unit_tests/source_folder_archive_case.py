@@ -13,7 +13,7 @@ sys.argv = [sys.argv[0]]
 
 
 class SourceFolderArchiveCase(unittest.TestCase):
-    def test_extract_author_post_author_from_caption(self):
+    def test_extract_post_author_from_caption(self):
         from module.source_folders import (
             UNKNOWN_AUTHOR_FOLDER,
             archive_source_folder,
@@ -21,10 +21,11 @@ class SourceFolderArchiveCase(unittest.TestCase):
             post_author_from_message,
         )
 
+        author_line = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005\uff1a#我的羞涩女儿\n'
         caption = (
             '湿逼是真的奇妙，几天不操，一操进去就感\n'
-            '示例社区作者：#我的羞涩女儿\n'
-            '#示例社区 #乱伦\n'
+            + author_line
+            + '#示例社区 #标签\n'
         )
         self.assertEqual('我的羞涩女儿', extract_post_author_from_text(caption))
         message = SimpleNamespace(
@@ -44,7 +45,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
         self.assertNotEqual(UNKNOWN_AUTHOR_FOLDER, '我的羞涩女儿')
 
-    def test_archive_uses_unknown_author_when_body_has_no_author_author(self):
+    def test_archive_uses_unknown_author_when_body_has_no_author_marker(self):
         from module.source_folders import UNKNOWN_AUTHOR_FOLDER, archive_source_folder
 
         message = SimpleNamespace(
