@@ -55,11 +55,30 @@ class AuthorHashtagMatchCase(unittest.TestCase):
         self.assertIsNone(match.author)
         self.assertEqual('none', match.method)
 
+    def test_denied_site_name_never_matches_as_known_author(self):
+        match = match_author_from_hashtags(
+            ['海角社区', '翘臀巨乳小妈'],
+            known_authors=['海角社区', '翘臀巨乳小妈'],
+        )
+        self.assertEqual('翘臀巨乳小妈', match.author)
+        self.assertEqual('hashtag_exact', match.method)
+
+        only_site = match_author_from_hashtags(
+            ['海角社区'],
+            known_authors=['海角社区'],
+        )
+        self.assertIsNone(only_site.author)
+
     def test_normalize_strips_punctuation(self):
         self.assertEqual(
             normalize_author_label('#喷水的姐姐，'),
             normalize_author_label('喷水的姐姐'),
         )
+
+
+if __name__ == '__main__':
+    unittest.main()
+
 
 
 if __name__ == '__main__':

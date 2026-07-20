@@ -45,14 +45,98 @@ UNKNOWN_AUTHOR_FOLDER = '_未知作者'
 _POST_AUTHOR_MARKER = '\u6d77\u89d2\u793e\u533a\u4f5c\u8005'
 _AUTHOR_COLON = r'[：:﹕∶꞉]'
 _AUTHOR_TAG = r'[#＃@＠]'
-# Full marker (…作者：#名字) or short form commonly used in channel posts (作者：#名字).
+# Prefix of an author signature line; following tokens may be one or more #tags.
+POST_AUTHOR_PREFIX = re.compile(
+    r'(?:'
+    + _POST_AUTHOR_MARKER + r'\s*' + _AUTHOR_COLON
+    + r'|作者\s*' + _AUTHOR_COLON
+    + r')\s*'
+)
+# Kept for callers/tests that still reference the old single-capture pattern.
 POST_AUTHOR_LINE = re.compile(
     r'(?:'
     + _POST_AUTHOR_MARKER + r'\s*' + _AUTHOR_COLON + r'\s*' + _AUTHOR_TAG + r'?'
     + r'|作者\s*' + _AUTHOR_COLON + r'\s*' + _AUTHOR_TAG
     + r')([^\s#＃@＠]+)'
 )
+_AUTHOR_TAG_TOKEN = re.compile(r'[#＃@＠]([^\s#＃@＠]+)')
+_AUTHOR_BARE_TOKEN = re.compile(r'^([^\s#＃@＠]+)')
 POST_FOLDER_SEGMENT_RE = re.compile(r'^\d+(?:\s+-\s+.+)?$')
+
+# Site / topic labels that must never become Post Author folder names.
+TOPIC_AUTHOR_DENYLIST = frozenset({
+    '人妻', '熟女', '少妇', '乱伦', '母子', '原创', '合集', '视频', '图片',
+    '国产', '无码', '有码', '自拍', '户外', '剧情', '长篇', '短篇', '调教',
+    '海角社区', '海角', '社区', '俱乐部', '资源', '分享', '推荐', '更新', '标题',
+})
+_DENIED_AUTHOR_PREFIXES = ('海角_', '海角社区_')
+
+
+def normalize_author_label(value: Optional[str]) -> str:
+    """NFKC-normalize an author/tag label for comparison."""
+    if not isinstance(value, str):
+        return ''
+    import unicodedata
+    text = unicodedata.normalize('NFKC', value).strip()
+    text = text.lstrip('#＃@＠')
+    text = re.sub(r'^[\s\-—_.,，。、;；:：!！?？\'\"“”‘’（）()【】\[\]<>《》]+', '', text)
+    text = re.sub(r'[\s\-—_.,，。、;；:：!！?？\'\"“”‘’（）()【】\[\]<>《》]+$', '', text)
+    text = re.sub(r'\s+', '', text)
+    return text.casefold()
+
+
+def is_denied_post_author(value: Optional[str]) -> bool:
+    """True when a label is a site/topic token, never a Post Author folder."""
+    key = normalize_author_label(value)
+    if not key:
+        return True
+    if key in TOPIC_AUTHOR_DENYLIST:
+        return True
+    for prefix in _DENIED_AUTHOR_PREFIXES:
+        if key.startswith(normalize_author_label(prefix)):
+            return True
+    # Bare site-id style leftovers: 海角_123456
+    if key.startswith('海角') and any(ch.isdigit() for ch in key):
+        return True
+    return False
+
+
+def extract_post_author_candidates_from_text(text: Optional[str]) -> list[str]:
+    """All author-line tags/names in order (may include denied site labels)."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in POST_AUTHOR_PREFIX.finditer(text):
+        rest = text[match.end():]
+        line_rest = rest.split('\n', 1)[0]
+        tags = [m.group(1).strip() for m in _AUTHOR_TAG_TOKEN.finditer(line_rest)]
+        if tags:
+            candidates = tags
+        else:
+            bare = _AUTHOR_BARE_TOKEN.match(line_rest.lstrip())
+            candidates = [bare.group(1).strip()] if bare else []
+        for raw in candidates:
+            name = raw.strip().lstrip('#＃@＠')
+            if not name:
+                continue
+            key = normalize_author_label(name)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(name)
+    return out
+
+
+def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
+    """Parse post-author line; skip site/topic tags like ``#海角社区``.
+
+    ``作者：#海角社区 #翘臀巨乳小妈`` → ``翘臀巨乳小妈``.
+    """
+    for candidate in extract_post_author_candidates_from_text(text):
+        if not is_denied_post_author(candidate):
+            return candidate
+    return None
 
 
 def source_folder_from_link(link: Optional[str]) -> Optional[str]:
@@ -157,17 +241,6 @@ def _is_boilerplate_title_line(line: str) -> bool:
     return line.casefold() in BOILERPLATE_TITLE_LINES
 
 
-def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
-    """Parse post-author line from caption/text (full marker or ``作者：#名字``)."""
-    if not isinstance(text, str) or not text.strip():
-        return None
-    match = POST_AUTHOR_LINE.search(text)
-    if not match:
-        return None
-    author = match.group(1).strip().lstrip('#＃@＠')
-    return author or None
-
-
 def post_author_from_message(message) -> Optional[str]:
     if message is None:
         return None
@@ -226,7 +299,11 @@ def post_author_from_messages(messages) -> Optional[str]:
 
 
 def author_folder_segment(author: Optional[str]) -> str:
+    if author and is_denied_post_author(author):
+        return UNKNOWN_AUTHOR_FOLDER
     cleaned = sanitize_source_folder(author, limit=POST_FOLDER_SEGMENT_BYTE_LIMIT) if author else None
+    if cleaned and is_denied_post_author(cleaned):
+        return UNKNOWN_AUTHOR_FOLDER
     return cleaned or UNKNOWN_AUTHOR_FOLDER
 
 

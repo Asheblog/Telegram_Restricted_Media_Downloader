@@ -6,6 +6,7 @@ from typing import Iterable, Optional, Union
 from module.source_folders import (
     UNKNOWN_AUTHOR_FOLDER,
     author_folder_segment,
+    is_denied_post_author,
     is_post_folder_segment,
     message_id_from_post_folder_segment,
     split_archive_source_folder,
@@ -150,7 +151,7 @@ def preserved_author_hints_from_plan(plan: Optional[dict]) -> dict[int, AuthorHi
         author = str(item.get('author') or '').strip()
         if action == 'needs_review':
             continue
-        if not author or author == UNKNOWN_AUTHOR_FOLDER:
+        if not author or author == UNKNOWN_AUTHOR_FOLDER or is_denied_post_author(author):
             continue
         if action not in ('move', 'needs_confirm', 'skip_already', 'skip_nested'):
             continue
@@ -225,11 +226,11 @@ def known_authors_from_directory_paths(
         parts = [part for part in relative.split('/') if part]
         if len(parts) >= 2 and is_post_folder_segment(parts[-1]):
             author = parts[0]
-            if author and author != UNKNOWN_AUTHOR_FOLDER:
+            if author and author != UNKNOWN_AUTHOR_FOLDER and not is_denied_post_author(author):
                 known.add(author)
         elif len(parts) == 1 and not is_post_folder_segment(parts[0]):
             author = parts[0]
-            if author and author != UNKNOWN_AUTHOR_FOLDER:
+            if author and author != UNKNOWN_AUTHOR_FOLDER and not is_denied_post_author(author):
                 known.add(author)
     return known
 

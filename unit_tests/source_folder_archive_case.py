@@ -42,6 +42,18 @@ class SourceFolderArchiveCase(unittest.TestCase):
             extract_post_author_from_text('#少妇 #人妻 国产战袍少妇酒店开房被猛干的淫叫不停')
         )
 
+    def test_author_line_skips_site_hashtag_and_takes_real_author(self):
+        from module.source_folders import extract_post_author_from_text
+
+        self.assertEqual(
+            '翘臀巨乳小妈',
+            extract_post_author_from_text(
+                '标题: 给大家带来羞羞巨乳小妈的情趣诱惑\n作者: #海角社区 #翘臀巨乳小妈'
+            ),
+        )
+        self.assertIsNone(extract_post_author_from_text('标题\n作者：#海角社区\n'))
+        self.assertIsNone(extract_post_author_from_text('作者：#海角_169310264301'))
+
     def test_extract_post_author_from_caption(self):
         from module.source_folders import (
             UNKNOWN_AUTHOR_FOLDER,

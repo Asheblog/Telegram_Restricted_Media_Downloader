@@ -3,36 +3,33 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from module.source_folders import UNKNOWN_AUTHOR_FOLDER
+from module.source_folders import (
+    TOPIC_AUTHOR_DENYLIST,
+    UNKNOWN_AUTHOR_FOLDER,
+    is_denied_post_author,
+    normalize_author_label,
+)
 
-# Topic / category tags that must never be treated as author names.
-TOPIC_HASHTAG_DENYLIST = frozenset({
-    '人妻', '熟女', '少妇', '乱伦', '母子', '原创', '合集', '视频', '图片',
-    '国产', '无码', '有码', '自拍', '户外', '剧情', '长篇', '短篇', '调教',
-    '海角社区', '海角', '社区', '俱乐部', '资源', '分享', '推荐', '更新',
-})
+# Back-compat aliases used by older imports/tests.
+TOPIC_HASHTAG_DENYLIST = TOPIC_AUTHOR_DENYLIST
+__all__ = [
+    'TOPIC_HASHTAG_DENYLIST',
+    'TOPIC_AUTHOR_DENYLIST',
+    'HashtagAuthorMatch',
+    'core_author_label',
+    'extract_hashtags_from_text',
+    'match_author_from_hashtags',
+    'normalize_author_label',
+]
 
 _HASHTAG_RE = re.compile(r'[#＃]([^\s#＃@＠]+)')
 _TRAILING_PUNCT = re.compile(r'[\s\-—_.,，。、;；:：!！?？\'\"“”‘’（）()【】\[\]<>《》]+$')
 _LEADING_PUNCT = re.compile(r'^[\s\-—_.,，。、;；:：!！?？\'\"“”‘’（）()【】\[\]<>《》]+')
 # Optional honorific / filler characters often inserted into author-like tags.
 _AUTHOR_NOISE_CHARS = frozenset('亲会的大小我你他她了呢啊呀')
-
-
-def normalize_author_label(value: Optional[str]) -> str:
-    """NFKC-normalize an author/tag label for comparison."""
-    if not isinstance(value, str):
-        return ''
-    text = unicodedata.normalize('NFKC', value).strip()
-    text = text.lstrip('#＃@＠')
-    text = _LEADING_PUNCT.sub('', text)
-    text = _TRAILING_PUNCT.sub('', text)
-    text = re.sub(r'\s+', '', text)
-    return text.casefold()
 
 
 def core_author_label(value: Optional[str]) -> str:
@@ -81,11 +78,12 @@ def match_author_from_hashtags(
     Exact normalized match → medium / hashtag_exact (auto-move eligible).
     Unique substring containment either way → low / hashtag_substring (confirm).
     Topic denylist / ambiguous / unknown tags → none.
+    Never matches site labels such as ``海角社区``.
     """
     known_map: dict[str, str] = {}
     for name in known_authors:
         text = str(name or '').strip()
-        if not text or text == UNKNOWN_AUTHOR_FOLDER:
+        if not text or text == UNKNOWN_AUTHOR_FOLDER or is_denied_post_author(text):
             continue
         key = normalize_author_label(text)
         if not key:
@@ -95,7 +93,7 @@ def match_author_from_hashtags(
     if not known_map:
         return HashtagAuthorMatch(author=None, confidence='none', method='none')
 
-    deny = set(TOPIC_HASHTAG_DENYLIST)
+    deny = set(TOPIC_AUTHOR_DENYLIST)
     if extra_deny:
         for item in extra_deny:
             key = normalize_author_label(item)
@@ -105,7 +103,7 @@ def match_author_from_hashtags(
     candidates: list[str] = []
     for tag in tags:
         key = normalize_author_label(tag)
-        if not key or key in deny:
+        if not key or key in deny or is_denied_post_author(tag):
             continue
         candidates.append(str(tag).strip())
 
