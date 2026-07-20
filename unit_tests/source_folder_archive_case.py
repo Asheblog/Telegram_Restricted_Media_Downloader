@@ -52,7 +52,17 @@ class SourceFolderArchiveCase(unittest.TestCase):
             ),
         )
         self.assertIsNone(extract_post_author_from_text('标题\n作者：#海角社区\n'))
-        self.assertIsNone(extract_post_author_from_text('作者：#海角_169310264301'))
+        # Uploader UID is a stable identity; only bare site names stay denied.
+        self.assertEqual(
+            '海角_169310264301',
+            extract_post_author_from_text('作者：#海角_169310264301'),
+        )
+        self.assertEqual(
+            '海角_171861476401',
+            extract_post_author_from_text(
+                '标题\n#兄妹 #少女 #海角社区 #白虎\n作者：#海角社区 #海角_171861476401\n'
+            ),
+        )
 
     def test_extract_post_author_from_caption(self):
         from module.source_folders import (

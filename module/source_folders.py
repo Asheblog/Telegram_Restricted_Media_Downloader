@@ -69,7 +69,9 @@ TOPIC_AUTHOR_DENYLIST = frozenset({
     '国产', '无码', '有码', '自拍', '户外', '剧情', '长篇', '短篇', '调教',
     '海角社区', '海角', '社区', '俱乐部', '资源', '分享', '推荐', '更新', '标题',
 })
-_DENIED_AUTHOR_PREFIXES = ('海角_', '海角社区_')
+# Brand / site labels only — uploader UIDs like ``海角_171861476401`` are allowed.
+_DENIED_AUTHOR_PREFIXES = ('海角社区_',)
+_HAIJIAO_UPLOADER_ID_RE = re.compile(r'^海角_\d+$')
 
 
 def normalize_author_label(value: Optional[str]) -> str:
@@ -86,18 +88,21 @@ def normalize_author_label(value: Optional[str]) -> str:
 
 
 def is_denied_post_author(value: Optional[str]) -> bool:
-    """True when a label is a site/topic token, never a Post Author folder."""
+    """True when a label is a site/topic token, never a Post Author folder.
+
+    ``海角社区`` / topic tags stay denied. Uploader IDs ``海角_<digits>`` are
+    accepted as Post Author folder names.
+    """
     key = normalize_author_label(value)
     if not key:
         return True
+    if _HAIJIAO_UPLOADER_ID_RE.fullmatch(key):
+        return False
     if key in TOPIC_AUTHOR_DENYLIST:
         return True
     for prefix in _DENIED_AUTHOR_PREFIXES:
         if key.startswith(normalize_author_label(prefix)):
             return True
-    # Bare site-id style leftovers: 海角_123456
-    if key.startswith('海角') and any(ch.isdigit() for ch in key):
-        return True
     return False
 
 
