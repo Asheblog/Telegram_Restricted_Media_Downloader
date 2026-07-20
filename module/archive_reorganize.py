@@ -192,7 +192,10 @@ def coerce_author_hint(value: Union[None, str, dict, AuthorHint]) -> AuthorHint:
 def _action_for_resolved_author(hint: AuthorHint) -> str:
     if not hint.name:
         return 'needs_review'
-    if hint.method == 'hashtag_substring' or hint.confidence == 'low':
+    if (
+        hint.method in ('hashtag_substring', 'hashtag_candidate')
+        or hint.confidence == 'low'
+    ):
         return 'needs_confirm'
     return 'move'
 

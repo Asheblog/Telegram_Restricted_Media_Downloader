@@ -1267,7 +1267,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2085,12 +2085,12 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.resolveUnresolved': '仅解析未识别',
-    'archiveOrganize.resolvingUnresolved': '正在只回查未识别…',
+    'archiveOrganize.resolvingUnresolved': '正在回查未识别与站点名误标…',
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
@@ -2130,6 +2130,7 @@ const i18n = {
     'archiveOrganize.methodNeighbor': '邻条',
     'archiveOrganize.methodHashtagExact': '标签精确',
     'archiveOrganize.methodHashtagFuzzy': '标签近似',
+    'archiveOrganize.methodHashtagCandidate': '标签候选',
     'archiveOrganize.methodNone': '未识别',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
@@ -2559,12 +2560,12 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags (including album sibling captions) matched to known authors. After the first full resolve, use Resolve unrecognized only to refill misses. Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.resolveUnresolved': 'Resolve unrecognized only',
-    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized only…',
+    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized and denylist mislabels…',
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
@@ -2604,6 +2605,7 @@ const i18n = {
     'archiveOrganize.methodNeighbor': 'Neighbor',
     'archiveOrganize.methodHashtagExact': 'Hashtag exact',
     'archiveOrganize.methodHashtagFuzzy': 'Hashtag fuzzy',
+    'archiveOrganize.methodHashtagCandidate': 'Hashtag candidate',
     'archiveOrganize.methodNone': 'None',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
@@ -6494,6 +6496,7 @@ function archiveOrganizeMethodLabel(item) {
     neighbor: 'archiveOrganize.methodNeighbor',
     hashtag_exact: 'archiveOrganize.methodHashtagExact',
     hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    hashtag_candidate: 'archiveOrganize.methodHashtagCandidate',
     none: 'archiveOrganize.methodNone'
   };
   var key = map[method] || 'archiveOrganize.methodNone';
@@ -7590,7 +7593,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -8228,12 +8231,12 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者（含相册兄弟 caption）。先扫描网盘目录；日常用「仅解析未识别」补漏，不必全量重解析。抽看一览后点「全部迁移」（高置信+待确认）。未识别不搬。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
     'archiveOrganize.resolveUnresolved': '仅解析未识别',
-    'archiveOrganize.resolvingUnresolved': '正在只回查未识别…',
+    'archiveOrganize.resolvingUnresolved': '正在回查未识别与站点名误标…',
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
@@ -8273,6 +8276,7 @@ const i18n = {
     'archiveOrganize.methodNeighbor': '邻条',
     'archiveOrganize.methodHashtagExact': '标签精确',
     'archiveOrganize.methodHashtagFuzzy': '标签近似',
+    'archiveOrganize.methodHashtagCandidate': '标签候选',
     'archiveOrganize.methodNone': '未识别',
     'media.totalFiles': '可清理文件',
     'media.totalSize': '总大小',
@@ -8702,12 +8706,12 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags (including album sibling captions) matched to known authors. After the first full resolve, use Resolve unrecognized only to refill misses. Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
     'archiveOrganize.resolveUnresolved': 'Resolve unrecognized only',
-    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized only…',
+    'archiveOrganize.resolvingUnresolved': 'Re-resolving unrecognized and denylist mislabels…',
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
@@ -8747,6 +8751,7 @@ const i18n = {
     'archiveOrganize.methodNeighbor': 'Neighbor',
     'archiveOrganize.methodHashtagExact': 'Hashtag exact',
     'archiveOrganize.methodHashtagFuzzy': 'Hashtag fuzzy',
+    'archiveOrganize.methodHashtagCandidate': 'Hashtag candidate',
     'archiveOrganize.methodNone': 'None',
     'media.totalFiles': 'Cleanable files',
     'media.totalSize': 'Total size',
@@ -12258,6 +12263,7 @@ function mobArchiveMethodLabel(item) {
     neighbor: 'archiveOrganize.methodNeighbor',
     hashtag_exact: 'archiveOrganize.methodHashtagExact',
     hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    hashtag_candidate: 'archiveOrganize.methodHashtagCandidate',
     none: 'archiveOrganize.methodNone'
   };
   var label = t(map[method] || 'archiveOrganize.methodNone');

@@ -47,9 +47,18 @@ class AuthorHashtagMatchCase(unittest.TestCase):
         self.assertEqual('low', match.confidence)
         self.assertEqual('hashtag_substring', match.method)
 
-    def test_unknown_hashtag_stays_unmatched(self):
+    def test_unique_non_denied_tag_becomes_confirm_candidate(self):
         match = match_author_from_hashtags(
-            ['完全陌生作者名'],
+            ['海角社区', '想双飞老婆姐姐'],
+            known_authors=['喷水的姐姐'],
+        )
+        self.assertEqual('想双飞老婆姐姐', match.author)
+        self.assertEqual('low', match.confidence)
+        self.assertEqual('hashtag_candidate', match.method)
+
+    def test_ambiguous_non_denied_tags_stay_unmatched(self):
+        match = match_author_from_hashtags(
+            ['想双飞老婆姐姐', '另一个作者名'],
             known_authors=['喷水的姐姐'],
         )
         self.assertIsNone(match.author)
@@ -74,11 +83,6 @@ class AuthorHashtagMatchCase(unittest.TestCase):
             normalize_author_label('#喷水的姐姐，'),
             normalize_author_label('喷水的姐姐'),
         )
-
-
-if __name__ == '__main__':
-    unittest.main()
-
 
 
 if __name__ == '__main__':

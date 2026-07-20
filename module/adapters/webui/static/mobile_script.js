@@ -2497,6 +2497,7 @@ function mobArchiveMethodLabel(item) {
     neighbor: 'archiveOrganize.methodNeighbor',
     hashtag_exact: 'archiveOrganize.methodHashtagExact',
     hashtag_substring: 'archiveOrganize.methodHashtagFuzzy',
+    hashtag_candidate: 'archiveOrganize.methodHashtagCandidate',
     none: 'archiveOrganize.methodNone'
   };
   var label = t(map[method] || 'archiveOrganize.methodNone');

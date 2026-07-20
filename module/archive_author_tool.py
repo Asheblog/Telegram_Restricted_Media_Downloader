@@ -349,6 +349,7 @@ class ArchiveAuthorReorganizeService:
                 'neighbor_hits': 0,
                 'hashtag_exact_hits': 0,
                 'hashtag_substring_hits': 0,
+                'hashtag_candidate_hits': 0,
                 'preserved': len(preserved),
                 'refetch': len(fetch_ids),
                 'resolve_scope': scope,
@@ -643,6 +644,7 @@ class ArchiveAuthorReorganizeService:
             'neighbor_hits': 0,
             'hashtag_exact_hits': 0,
             'hashtag_substring_hits': 0,
+            'hashtag_candidate_hits': 0,
         }
         if not message_ids:
             return {'authors': {}, 'resolutions': {}, 'stats': empty_stats, 'miss_samples': []}
@@ -964,6 +966,9 @@ class ArchiveAuthorReorganizeService:
                 stats['missed'] = max(0, stats['missed'] - 1)
                 if matched.method == 'hashtag_exact':
                     stats['hashtag_exact_hits'] += 1
+                elif matched.method == 'hashtag_candidate':
+                    stats['hashtag_candidate_hits'] += 1
+                    stats['hashtag_substring_hits'] += 1
                 else:
                     stats['hashtag_substring_hits'] += 1
 

@@ -63,6 +63,23 @@ class AuthorReorganizePlanCase(unittest.TestCase):
         self.assertEqual('needs_confirm', plan.moves[0].action)
         self.assertEqual('会喷水的亲姐姐', plan.moves[0].matched_tag)
 
+    def test_plan_hashtag_candidate_is_needs_confirm(self):
+        plan = plan_author_reorganize(
+            channel_folder='chengdudiyi8',
+            directory_paths=['chengdudiyi8/200 - title'],
+            author_by_message_id={
+                200: AuthorHint(
+                    name='想双飞老婆姐姐',
+                    confidence='low',
+                    method='hashtag_candidate',
+                    matched_tag='想双飞老婆姐姐',
+                ),
+            },
+        )
+        self.assertEqual(1, plan.confirm_count)
+        self.assertEqual('needs_confirm', plan.moves[0].action)
+        self.assertEqual('想双飞老婆姐姐', plan.moves[0].author)
+
     def test_filter_plan_moves_pages_executable_bucket(self):
         plan = plan_author_reorganize(
             channel_folder='ch',
