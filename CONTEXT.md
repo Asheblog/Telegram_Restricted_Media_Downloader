@@ -120,7 +120,7 @@ _Avoid_: Chapter cursor, runtime offset
 **PikPak Target** — 与 PikPak 官方 bot 的 Telegram 会话，作为接收转存媒体的目标。
 _Avoid_: PikPak API, cloud drive target
 
-**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，归档必须完成才算 Transfer Item 成功。
+**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，下载回退与直接转发均在入库确认后**延迟归档**（`archive_status=pending`）；Transfer Item 可先标 SUCCESS，归档失败记 archive 状态并可重试，不回滚转存成功。监听转发路径的归档在后台线程执行，不阻塞转发循环。
 _Avoid_: Local download folder, bot chat folder
 
 **PikPak Ingest Folder** — PikPak bot 入库后的默认目录（"My Telegram"），PikPak Archive 执行前文件暂存于此。
@@ -168,8 +168,8 @@ _Avoid_: In-memory link completion, upload task counters, media-type-only chart,
 **Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
 _Avoid_: Upload concurrency, temp cache size
 
-**Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item（单个媒体文件/视频）继续跑完，不新开下一条 Item（同一主贴/相册里的下一个视频也不开）；在途下载上传排空后进入 Transfer Task Pause。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。
-_Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album
+**Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item（单个媒体文件/视频）继续跑完转发/入库确认，不新开下一条 Item（同一主贴/相册里的下一个视频也不开）；在途下载上传排空后进入 Transfer Task Pause。**不等待 PikPak Archive**（归档已改为延迟/后台）。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。
+_Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album, wait for archive
 
 **Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复时绑定已有 Item（item_id），跳过已 success/skipped 的来源消息；压制同消息上的僵尸 active 行，避免再开一轮 fallback 下载。
 _Avoid_: Cancel task, delete task, kill transfer

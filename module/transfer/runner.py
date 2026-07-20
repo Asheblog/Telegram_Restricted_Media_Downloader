@@ -963,6 +963,26 @@ class WebTransferRunner:
                             forwarded_message=forwarded_message
                         )
                         if not confirmed:
+                            # While pausing, do not block on sync archive recovery — defer like
+                            # successful ingest so Transfer Task Pausing can settle promptly.
+                            current_task = host.transfer_store.get_task(task_id) or task
+                            if current_task.get('status') == TransferStatus.PAUSING:
+                                host.complete_forwarded_pikpak_item(
+                                    task=current_task,
+                                    item_id=item_id,
+                                    task_id=task_id,
+                                    message=send_message,
+                                    source_link=source_link,
+                                    source_folder=channel_source_folder,
+                                    transferred_at=datetime.datetime.now(datetime.UTC).timestamp()
+                                )
+                                host.transfer_store.add_event(
+                                    task_id,
+                                    f'PikPak ingest recovery deferred for pause: {source_link}',
+                                    item_id=item_id,
+                                    level='warning',
+                                )
+                                break
                             archive_result = host.archive_pikpak_item(
                                 target_profile=task.get('target_profile'),
                                 item_id=item_id,

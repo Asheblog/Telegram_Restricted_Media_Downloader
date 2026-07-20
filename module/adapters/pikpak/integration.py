@@ -27,6 +27,7 @@ class PikpakIntegrationManager:
             cleanup_item_file: Callable[[int], bool] = None,
             app_getter: Callable = None,
             system_log=None,
+            schedule_deferred_archive: Callable = None,
     ):
         self._transfer_store_getter = transfer_store_getter
         self._pikpak_archive_client_getter = pikpak_archive_client_getter
@@ -36,6 +37,7 @@ class PikpakIntegrationManager:
         self._cleanup_item_file = cleanup_item_file
         self._app_getter = app_getter
         self._system_log = system_log
+        self._schedule_deferred_archive = schedule_deferred_archive
         self._pikpak_archive_client = None
 
     @property
@@ -363,6 +365,18 @@ class PikpakIntegrationManager:
         self._refresh_counts(task_id)
         return item_id
 
+    def _pikpak_archive_enabled(self) -> bool:
+        client = self.get_pikpak_archive_client()
+        if getattr(client, 'enabled', None) is not None:
+            return bool(client.enabled)
+        gc = self._gc_getter() if callable(self._gc_getter) else None
+        config = getattr(gc, 'config', None) or {}
+        archive = (
+            ((config.get('target_profiles') or {}).get('pikpak') or {}).get('archive')
+            or {}
+        )
+        return bool(archive.get('enable') and archive.get('remote'))
+
     def complete_forwarded_pikpak_item(
             self,
             task: dict,
@@ -373,26 +387,68 @@ class PikpakIntegrationManager:
             transferred_at: float,
             source_folder: Optional[str] = None,
     ) -> bool:
-        archive_result = self.archive_pikpak_item(
-            target_profile=task.get('target_profile'),
-            item_id=item_id,
-            task_id=task_id,
-            message=message,
-            source_link=source_link,
-            source_folder=source_folder,
-            transferred_at=transferred_at
-        )
-        if (
-                archive_result is not None
-                and getattr(archive_result, 'status', None) != 'disabled'
-                and not bool(getattr(archive_result, 'ok', False))
-        ):
-            archive_status = getattr(archive_result, 'status', 'error')
-            archive_message = getattr(archive_result, 'message', '')
-            error_message = f'PikPak archive {archive_status}: {archive_message or source_link}'
-            self.fail_transfer_item(task_id, item_id, error_message)
-            return False
+        """Mark direct forward success; schedule PikPak archive without blocking the runner.
+
+        Bot ingest confirmation already happened. Archive is deferred (same as upload path)
+        so Transfer Task Pausing can settle immediately instead of waiting on rclone poll.
+        """
         store = self.transfer_store
+        item = store.get_item(int(item_id)) if store else None
+        folder = source_folder or (item or {}).get('source_folder')
+        post_message_id = (item or {}).get('range_message_id')
+        media_meta = self.get_message_media_target_limit_meta(
+            message,
+            post_message_id=post_message_id,
+        ) if message is not None else None
+        title_file_name = self.get_message_media_archive_filename(
+            message,
+            post_message_id=post_message_id,
+        ) if message is not None else None
+        file_name = (
+            title_file_name
+            or (media_meta or {}).get('file_name')
+            or (item or {}).get('file_name')
+        )
+        file_size = (
+            (media_meta or {}).get('file_size')
+            if media_meta and media_meta.get('file_size') is not None
+            else (item or {}).get('file_size')
+        )
+        match_original_name = not bool(title_file_name and file_name == title_file_name)
+        archive_enabled = (
+            task.get('target_profile') == 'pikpak'
+            and self._pikpak_archive_enabled()
+        )
+        if archive_enabled:
+            store.update_item(
+                item_id,
+                phase='forwarded',
+                status=TransferStatus.SUCCESS,
+                archive_status='pending',
+                error_message=''
+            )
+            store.add_event(
+                task_id,
+                f'Direct forward succeeded, PikPak archive scheduled: {source_link}',
+                item_id=item_id
+            )
+            self._refresh_counts(task_id)
+            schedule = self._schedule_deferred_archive
+            if callable(schedule):
+                schedule(
+                    task_id=task_id,
+                    item_id=item_id,
+                    target_profile='pikpak',
+                    source_link=source_link,
+                    source_folder=folder,
+                    file_name=file_name,
+                    file_size=file_size,
+                    transferred_at=transferred_at,
+                    match_original_name=match_original_name,
+                    # Bot already confirmed ingest — no extra delay before first attempt.
+                    delay_seconds=0,
+                )
+            return True
         store.update_item(
             item_id,
             phase='forwarded',

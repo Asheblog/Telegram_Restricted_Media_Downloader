@@ -138,47 +138,59 @@ class LiveTransferService:
                 or getattr(group_message, 'link', None)
                 or getattr(message, 'link', None)
             )
-            archive_result = self.archive_pikpak_item(
-                target_profile='pikpak',
-                item_id=None,
-                task_id=None,
-                message=group_message,
-                source_link=group_source_link,
-                source_folder=archive_folder,
-                transferred_at=transferred_at
-            )
-            if (
-                    archive_result is not None
-                    and getattr(archive_result, 'status', None) != 'disabled'
-                    and not bool(getattr(archive_result, 'ok', False))
+
+            def _archive_one(
+                    group_message=group_message,
+                    group_source_link=group_source_link,
+                    archive_folder=archive_folder,
+                    transferred_at=transferred_at,
+                    origin_chat_id=origin_chat_id,
+                    message_id=message_id,
             ):
-                archive_status = getattr(archive_result, 'status', 'error')
-                archive_message = getattr(archive_result, 'message', '')
-                log.warning(
-                    f'PikPak archive {archive_status}: '
-                    f'{archive_message or group_source_link or getattr(group_message, "id", None) or message_id}'
+                archive_result = self.archive_pikpak_item(
+                    target_profile='pikpak',
+                    item_id=None,
+                    task_id=None,
+                    message=group_message,
+                    source_link=group_source_link,
+                    source_folder=archive_folder,
+                    transferred_at=transferred_at
                 )
-            if archive_result is not None:
-                archive_status = getattr(archive_result, 'status', 'unknown')
-                archive_ok = bool(getattr(archive_result, 'ok', False))
-                self._log_system_chain(
-                    category='archive',
-                    stage='archive_success' if archive_ok else f'archive_{archive_status}',
-                    message=(
-                        f'rclone 归档成功: {getattr(archive_result, "archive_path", "") or group_source_link}'
-                        if archive_ok else
-                        f'rclone 归档失败({archive_status}): {getattr(archive_result, "message", "")}'
-                    ),
-                    level='info' if archive_ok else 'warning',
-                    source_chat_id=origin_chat_id,
-                    source_message_id=getattr(group_message, 'id', message_id),
-                    target_link=group_source_link,
-                    details={
-                        'archive_path': getattr(archive_result, 'archive_path', None),
-                        'source_folder': archive_folder,
-                        'file_name': getattr(archive_result, 'file_name', None),
-                    }
-                )
+                if (
+                        archive_result is not None
+                        and getattr(archive_result, 'status', None) != 'disabled'
+                        and not bool(getattr(archive_result, 'ok', False))
+                ):
+                    archive_status = getattr(archive_result, 'status', 'error')
+                    archive_message = getattr(archive_result, 'message', '')
+                    log.warning(
+                        f'PikPak archive {archive_status}: '
+                        f'{archive_message or group_source_link or getattr(group_message, "id", None) or message_id}'
+                    )
+                if archive_result is not None:
+                    archive_status = getattr(archive_result, 'status', 'unknown')
+                    archive_ok = bool(getattr(archive_result, 'ok', False))
+                    self._log_system_chain(
+                        category='archive',
+                        stage='archive_success' if archive_ok else f'archive_{archive_status}',
+                        message=(
+                            f'rclone 归档成功: {getattr(archive_result, "archive_path", "") or group_source_link}'
+                            if archive_ok else
+                            f'rclone 归档失败({archive_status}): {getattr(archive_result, "message", "")}'
+                        ),
+                        level='info' if archive_ok else 'warning',
+                        source_chat_id=origin_chat_id,
+                        source_message_id=getattr(group_message, 'id', message_id),
+                        target_link=group_source_link,
+                        details={
+                            'archive_path': getattr(archive_result, 'archive_path', None),
+                            'source_folder': archive_folder,
+                            'file_name': getattr(archive_result, 'file_name', None),
+                        }
+                    )
+
+            # Fire-and-forget: listen/forward must not wait on rclone poll.
+            asyncio.create_task(asyncio.to_thread(_archive_one))
 
     async def forward(
             self,

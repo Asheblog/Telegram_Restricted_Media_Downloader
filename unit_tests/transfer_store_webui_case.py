@@ -2249,10 +2249,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, task['assignment_completed'])
             self.assertEqual(TransferStatus.RUNNING, task['status'])
 
-    def test_direct_pikpak_forward_archive_failure_records_failure(self):
+    def test_direct_pikpak_forward_archive_schedules_instead_of_blocking(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/ctuxas',
@@ -2263,7 +2263,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             )
             store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
             task = store.get_task(task_id)
-            archive_calls = []
+            scheduled = []
 
             downloader.transfer_store = store
             downloader.app = SimpleNamespace(client=object())
@@ -2285,9 +2285,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return SimpleNamespace(id=100)
 
             class FakeArchiveClient:
+                enabled = True
+
                 def archive_file(self, **kwargs):
-                    archive_calls.append(kwargs)
-                    return SimpleNamespace(ok=False, status='not_found', message='not indexed yet')
+                    raise AssertionError('direct forward must not archive synchronously')
 
             downloader.forward = fake_forward
             downloader.pikpak_manager = PikpakIntegrationManager(
@@ -2296,6 +2297,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
                 gc_getter=lambda: downloader.__dict__.get('gc'),
                 refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+                schedule_deferred_archive=lambda **kwargs: scheduled.append(kwargs) or True,
             )
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
 
@@ -2312,22 +2314,23 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 source_link='https://t.me/ctuxas/1'
             ))
 
-            self.assertEqual('ctuxas', archive_calls[0]['source_folder'])
-            self.assertEqual('video.mp4', archive_calls[0]['file_name'])
-            self.assertTrue(archive_calls[0]['match_original_name'])
+            self.assertEqual(1, len(scheduled))
+            self.assertTrue(str(scheduled[0]['source_folder']).startswith('ctuxas'))
+            self.assertEqual('video.mp4', scheduled[0]['file_name'])
+            self.assertTrue(scheduled[0]['match_original_name'])
+            self.assertEqual(0, scheduled[0]['delay_seconds'])
             item = store.list_items(task_id)[0]
-            self.assertEqual(TransferStatus.FAILURE, item['status'])
-            self.assertEqual('failure', item['phase'])
-            self.assertEqual('not_found', item['archive_status'])
-            self.assertIn('PikPak archive not_found', item['error_message'])
-            self.assertEqual(0, store.get_task(task_id)['completed_items'])
+            self.assertEqual(TransferStatus.SUCCESS, item['status'])
+            self.assertEqual('forwarded', item['phase'])
+            self.assertEqual('pending', item['archive_status'])
+            self.assertEqual(1, store.get_task(task_id)['completed_items'])
             events = store.list_events(task_id)
-            self.assertTrue(any(event['level'] == 'warning' and 'PikPak archive' in event['message'] for event in events))
+            self.assertTrue(any('archive scheduled' in event['message'] for event in events))
 
     def test_direct_pikpak_forward_archives_with_message_title_filename(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/chengdudiyi8/73962',
@@ -2336,22 +2339,26 @@ class TransferStoreWebUiCase(unittest.TestCase):
             )
             store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
             task = store.get_task(task_id)
-            archive_calls = []
+            scheduled = []
 
             downloader.transfer_store = store
             downloader.app = SimpleNamespace(client=object())
+            downloader.gc = SimpleNamespace(
+                config={
+                    'target_profiles': {
+                        'pikpak': {'archive': {'enable': True, 'remote': 'pikpak'}}
+                    }
+                }
+            )
 
             async def fake_forward(**kwargs):
                 return SimpleNamespace(id=100)
 
             class FakeArchiveClient:
+                enabled = True
+
                 def archive_file(self, **kwargs):
-                    archive_calls.append(kwargs)
-                    return SimpleNamespace(
-                        ok=True,
-                        status='success',
-                        archive_path='Telegram/chengdudiyi8/73962 - 作者_ #示例社区 #示例标签.mp4'
-                    )
+                    raise AssertionError('direct forward must not archive synchronously')
 
             downloader.forward = fake_forward
             downloader.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
@@ -2361,6 +2368,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
                 gc_getter=lambda: downloader.__dict__.get('gc'),
                 refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+                schedule_deferred_archive=lambda **kwargs: scheduled.append(kwargs) or True,
             )
 
             asyncio.run(downloader.transfer_message_to_web_target(
@@ -2382,20 +2390,14 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 source_link='https://t.me/chengdudiyi8/73962'
             ))
 
-            self.assertEqual(1, len(archive_calls))
-            self.assertEqual(
-                'chengdudiyi8/73962 - 【合集】 示例标题',
-                archive_calls[0]['source_folder']
-            )
-            self.assertEqual(
-                '73962 - 作者_ #示例社区 #示例标签.mp4',
-                archive_calls[0]['file_name']
-            )
-            self.assertFalse(archive_calls[0]['match_original_name'])
+            self.assertEqual(1, len(scheduled))
+            self.assertIn('chengdudiyi8/73962', scheduled[0]['source_folder'])
+            self.assertTrue(str(scheduled[0]['file_name']).endswith('.mp4'))
+            self.assertFalse(scheduled[0]['match_original_name'])
             item = store.list_items(task_id)[0]
-            self.assertEqual('73962 - 作者_ #示例社区 #示例标签.mp4', item['file_name'])
             self.assertEqual(TransferStatus.SUCCESS, item['status'])
-
+            self.assertEqual('pending', item['archive_status'])
+            self.assertTrue(str(item['file_name'] or '').endswith('.mp4'))
     def test_direct_pikpak_forward_without_ingest_confirmation_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -2525,7 +2527,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_timeout_recovers_when_archive_finds_ingested_file(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/chengdudiyi8',
@@ -2574,7 +2576,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             self.assertFalse(used_fallback)
             self.assertEqual(1, len(archive_calls))
-            self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
+            self.assertTrue(str(archive_calls[0]['source_folder']).startswith('chengdudiyi8'))
             self.assertEqual('video.mp4', archive_calls[0]['file_name'])
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
@@ -2652,7 +2654,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_with_ingest_confirmation_records_success(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2664,6 +2666,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store.refresh_task_counts(task_id, expected_total=1, assignment_completed=False)
             task = store.get_task(task_id)
             archive_calls = []
+            scheduled = []
 
             downloader.transfer_store = store
             downloader.app = SimpleNamespace(client=object())
@@ -2685,6 +2688,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return SimpleNamespace(id=100)
 
             class FakeArchiveClient:
+                enabled = True
+
                 def archive_file(self, **kwargs):
                     archive_calls.append(kwargs)
                     return SimpleNamespace(ok=True, status='success', archive_path='Telegram/source/video.mp4')
@@ -2697,6 +2702,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
                 gc_getter=lambda: downloader.__dict__.get('gc'),
                 refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
+                schedule_deferred_archive=lambda **kwargs: scheduled.append(kwargs) or True,
             )
 
             asyncio.run(downloader.transfer_message_to_web_target(
@@ -2715,9 +2721,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
             self.assertEqual(TransferStatus.SUCCESS, items[0]['status'])
+            self.assertEqual('pending', items[0]['archive_status'])
             self.assertEqual(1, store.get_task(task_id)['completed_items'])
-            self.assertEqual(1, len(archive_calls))
-
+            self.assertEqual(1, len(scheduled))
+            self.assertEqual([], archive_calls)
     def test_direct_non_pikpak_forward_does_not_wait_for_ingest_confirmation(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)

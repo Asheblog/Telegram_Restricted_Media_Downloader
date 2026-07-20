@@ -145,6 +145,10 @@ class TrmdCompositionRoot:
             ),
             app_getter=lambda: self.app,
             system_log=self.system_log,
+            schedule_deferred_archive=lambda **kwargs: (
+                getattr(self, 'progress_tracker', None)
+                and self.progress_tracker._schedule_deferred_upload_archive(**kwargs)
+            ),
         )
         self.progress_tracker = TransferProgressTracker(
             transfer_store_getter=lambda: self.__dict__.get('transfer_store'),
@@ -314,6 +318,10 @@ class TrmdCompositionRoot:
             ),
             app_getter=lambda: self.__dict__.get('app'),
             system_log=self.__dict__.get('system_log'),
+            schedule_deferred_archive=lambda **kwargs: (
+                self.__dict__.get('progress_tracker')
+                and self.__dict__.get('progress_tracker')._schedule_deferred_upload_archive(**kwargs)
+            ),
         )
 
     def _ensure_progress_tracker(self):
