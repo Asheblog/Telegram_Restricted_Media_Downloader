@@ -32,16 +32,29 @@ from module.source_folders import (
 )
 
 
-# Conservative pacing — background jobs may take hours; prefer not to trip limits.
+# Conservative pacing — serial moves; short pauses to avoid PikPak rate limits.
 TELEGRAM_FETCH_BATCH = 1
 TELEGRAM_BATCH_PAUSE_SECONDS = 2.0
-RCLONE_LIST_PAUSE_SECONDS = 2.5
-RCLONE_MOVE_PAUSE_SECONDS = 3.5
+RCLONE_LIST_PAUSE_SECONDS = 0.8
+RCLONE_MOVE_PAUSE_SECONDS = 1.0
 ProgressCallback = Optional[Callable[..., None]]
 LogCallback = Optional[Callable[..., None]]
+StopCallback = Optional[Callable[[], bool]]
+CheckpointCallback = Optional[Callable[..., None]]
 MISS_LOG_LIMIT = 40
 ERROR_LOG_LIMIT = 40
 MISS_SAMPLE_LIMIT = 20
+
+
+def move_item_key(item: dict) -> str:
+    """Stable checkpoint key for one planned directory move."""
+    relative = str(item.get('from_relative') or '').replace('\\', '/').strip('/')
+    if relative:
+        return relative
+    mid = item.get('message_id')
+    if mid is not None:
+        return f'mid:{mid}'
+    return str(item.get('to_relative') or '').replace('\\', '/').strip('/')
 
 
 def clean_leaf_name(path: Optional[str]) -> str:
@@ -534,6 +547,9 @@ class ArchiveAuthorReorganizeService:
             on_progress: ProgressCallback = None,
             *,
             execute_mode: str = 'all',
+            completed_keys: Optional[set] = None,
+            should_stop: StopCallback = None,
+            on_checkpoint: CheckpointCallback = None,
     ) -> dict:
         client = self._require_client()
         channel = plan.get('channel_folder') or ''
@@ -544,50 +560,164 @@ class ArchiveAuthorReorganizeService:
             item for item in (plan.get('moves') or [])
             if item.get('action') in allowed
         ]
+        done_keys = {
+            str(key).replace('\\', '/').strip('/')
+            for key in (completed_keys or set())
+            if str(key).strip()
+        }
         moved = []
         errors = []
+        skipped_already = []
         total = len(move_items)
         ensured_parents: set[str] = set()
+        listing_cache: dict[str, set[str]] = {}
+        stopped = False
+        processed = 0
         self._report(
             on_progress,
             phase='moving',
-            current=0,
+            current=len(done_keys),
             total=total,
-            message=f'慢速串行移动目录 0/{total}（间隔 {RCLONE_MOVE_PAUSE_SECONDS:.0f}s）…',
+            message=(
+                f'串行移动目录 {len(done_keys)}/{total}'
+                f'（间隔 {RCLONE_MOVE_PAUSE_SECONDS:.1f}s）…'
+            ),
         )
-        for index, item in enumerate(move_items, start=1):
+
+        def emit_checkpoint(*, stopped_now: bool = False) -> None:
+            if on_checkpoint is None:
+                return
+            try:
+                on_checkpoint(
+                    completed_keys=sorted(done_keys),
+                    moved_count=len(moved),
+                    error_count=len(errors),
+                    skipped_already_count=len(skipped_already),
+                    current=processed,
+                    total=total,
+                    stopped=stopped_now,
+                    execute_mode=mode,
+                    channel_folder=channel,
+                    errors=list(errors),
+                )
+            except Exception:
+                pass
+
+        for item in move_items:
+            if should_stop is not None and should_stop():
+                stopped = True
+                break
+            key = move_item_key(item)
             from_rel = item['from_relative']
             to_rel = item['to_relative']
             source = join_remote_path(root, from_rel)
             target = join_remote_path(root, to_rel)
-            parent = '/'.join(str(to_rel).replace('\\', '/').split('/')[:-1])
-            if parent and parent not in ensured_parents:
+            processed += 1
+
+            if key and key in done_keys:
+                skipped_already.append(item)
+                self._report(
+                    on_progress,
+                    phase='moving',
+                    current=processed,
+                    total=total,
+                    message=f'正在移动目录 {processed}/{total}（跳过已完成）…',
+                )
+                continue
+
+            if self._directory_exists(client, source, listing_cache):
+                parent = '/'.join(str(to_rel).replace('\\', '/').split('/')[:-1])
+                if parent and parent not in ensured_parents:
+                    try:
+                        client.ensure_directory(join_remote_path(root, parent))
+                        ensured_parents.add(parent)
+                        listing_cache.pop(join_remote_path(root, parent), None)
+                        self._pace(RCLONE_LIST_PAUSE_SECONDS)
+                    except Exception:
+                        pass
                 try:
-                    client.ensure_directory(join_remote_path(root, parent))
-                    ensured_parents.add(parent)
-                    self._pace(RCLONE_LIST_PAUSE_SECONDS)
-                except Exception:
-                    pass
-            try:
-                client.move_directory(source, target)
-                moved.append(item)
-                if self.transfer_store is not None:
-                    self._rewrite_store_paths(channel, from_rel, to_rel)
-            except Exception as error:
+                    client.move_directory(source, target)
+                    moved.append(item)
+                    if key:
+                        done_keys.add(key)
+                    self._invalidate_listing_cache(listing_cache, source)
+                    self._invalidate_listing_cache(listing_cache, target)
+                    if self.transfer_store is not None:
+                        self._rewrite_store_paths(channel, from_rel, to_rel)
+                except Exception as error:
+                    # Idempotent: source vanished while target already present.
+                    self._invalidate_listing_cache(listing_cache, source)
+                    self._invalidate_listing_cache(listing_cache, target)
+                    if (
+                        not self._directory_exists(client, source, listing_cache)
+                        and self._directory_exists(client, target, listing_cache)
+                    ):
+                        skipped_already.append(item)
+                        if key:
+                            done_keys.add(key)
+                    else:
+                        errors.append({
+                            'from_relative': from_rel,
+                            'to_relative': to_rel,
+                            'error': str(error),
+                        })
+            elif self._directory_exists(client, target, listing_cache):
+                skipped_already.append(item)
+                if key:
+                    done_keys.add(key)
+            else:
                 errors.append({
                     'from_relative': from_rel,
                     'to_relative': to_rel,
-                    'error': str(error),
+                    'error': '源目录与目标目录均不存在',
                 })
+
             self._report(
                 on_progress,
                 phase='moving',
-                current=index,
+                current=processed,
                 total=total,
-                message=f'正在移动目录 {index}/{total}（串行慢速）…',
+                message=f'正在移动目录 {processed}/{total}（串行）…',
             )
-            if index < total:
+            emit_checkpoint()
+            if processed < total and not (should_stop is not None and should_stop()):
                 self._pace(RCLONE_MOVE_PAUSE_SECONDS)
+
+        if stopped:
+            emit_checkpoint(stopped_now=True)
+            result = {
+                'channel_folder': channel,
+                'author_count': plan.get('author_count'),
+                'authors': plan.get('authors') or [],
+                'planned_moves': len(move_items),
+                'execute_mode': mode,
+                'moved_count': len(moved),
+                'error_count': len(errors),
+                'skipped_already_count': len(skipped_already),
+                'moved': moved,
+                'errors': errors,
+                'skipped_already': skipped_already,
+                'completed_from_relatives': sorted(done_keys),
+                'stopped': True,
+                'skips': [
+                    item for item in (plan.get('moves') or [])
+                    if item.get('action') not in allowed
+                ],
+                'channel_remote_root': root,
+            }
+            self._report(
+                on_progress,
+                phase='stopped',
+                current=processed,
+                total=max(total, 1),
+                message=(
+                    f'已停止：完成 {processed}/{total}，'
+                    f'新移动 {len(moved)}，已就位跳过 {len(skipped_already)}，'
+                    f'失败 {len(errors)}'
+                ),
+            )
+            return result
+
         result = {
             'channel_folder': channel,
             'author_count': plan.get('author_count'),
@@ -596,8 +726,12 @@ class ArchiveAuthorReorganizeService:
             'execute_mode': mode,
             'moved_count': len(moved),
             'error_count': len(errors),
+            'skipped_already_count': len(skipped_already),
             'moved': moved,
             'errors': errors,
+            'skipped_already': skipped_already,
+            'completed_from_relatives': sorted(done_keys),
+            'stopped': False,
             'skips': [
                 item for item in (plan.get('moves') or [])
                 if item.get('action') not in allowed
@@ -609,9 +743,72 @@ class ArchiveAuthorReorganizeService:
             phase='done',
             current=total,
             total=max(total, 1),
-            message=f'整理完成：已移动 {len(moved)}，失败 {len(errors)}',
+            message=(
+                f'整理完成：新移动 {len(moved)}，'
+                f'已就位跳过 {len(skipped_already)}，失败 {len(errors)}'
+            ),
         )
+        emit_checkpoint()
         return result
+
+    @staticmethod
+    def _invalidate_listing_cache(cache: dict[str, set[str]], remote_path: str) -> None:
+        path = str(remote_path or '').replace('\\', '/').strip('/')
+        if not path:
+            return
+        parent = path.rsplit('/', 1)[0] if '/' in path else ''
+        cache.pop(parent, None)
+        cache.pop(path, None)
+
+    @classmethod
+    def _directory_exists(
+            cls,
+            client,
+            remote_path: str,
+            cache: Optional[dict[str, set[str]]] = None,
+    ) -> bool:
+        path = str(remote_path or '').replace('\\', '/').strip('/')
+        if not path:
+            return False
+        exists_fn = getattr(client, 'directory_exists', None)
+        if callable(exists_fn) and cache is None:
+            try:
+                return bool(exists_fn(path))
+            except Exception:
+                return False
+        parent, _, leaf = path.rpartition('/')
+        if not leaf:
+            return False
+        names: Optional[set[str]] = None
+        if cache is not None and parent in cache:
+            names = cache[parent]
+        else:
+            list_fn = getattr(client, 'list_directories', None)
+            if not callable(list_fn):
+                if callable(exists_fn):
+                    try:
+                        return bool(exists_fn(path))
+                    except Exception:
+                        return False
+                return False
+            try:
+                listed = list_fn(parent, recursive=False) if parent else list_fn('', recursive=False)
+            except TypeError:
+                try:
+                    listed = list_fn(parent) if parent else list_fn('')
+                except Exception:
+                    listed = []
+            except Exception:
+                listed = []
+            names = set()
+            for item in listed or []:
+                text = str(item or '').replace('\\', '/').strip('/')
+                if not text:
+                    continue
+                names.add(text.rsplit('/', 1)[-1])
+            if cache is not None:
+                cache[parent] = names
+        return leaf in (names or set())
 
     def _require_client(self):
         client = self.archive_client

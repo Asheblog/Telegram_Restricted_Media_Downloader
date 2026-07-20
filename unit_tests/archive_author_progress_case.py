@@ -472,6 +472,7 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
             jobs.update(created['id'], phase='resolving', current=10, total=100, message='go')
             # Force immediate persist path via update already; ensure DB row exists.
             jobs._persist(jobs.get(created['id']), force=True)
+            jobs.mark_runner_live(created['id'])
             found = jobs.find_running(channel_folder='chengdudiyi8')
             self.assertIsNotNone(found)
             self.assertEqual(created['id'], found['id'])
@@ -485,6 +486,194 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_reorganize_job_survives_restart_for_resume(self):
+        import tempfile
+        from module.transfer_store import TransferStore
 
-if __name__ == '__main__':
-    unittest.main()
+        directory = tempfile.mkdtemp()
+        try:
+            transfer_store = TransferStore(directory=directory)
+            jobs = ArchiveAuthorJobStore(transfer_store=transfer_store)
+            created = jobs.create(kind='reorganize', channel_folder='chengdudiyi8')
+            jobs.update(
+                created['id'],
+                phase='moving',
+                current=126,
+                total=3241,
+                message='moving',
+                result={
+                    'checkpoint': True,
+                    'completed_from_relatives': ['1 - a', '2 - b'],
+                    'execute_mode': 'all',
+                },
+            )
+            jobs._persist(jobs.get(created['id']), force=True)
+            reloaded = ArchiveAuthorJobStore(transfer_store=transfer_store)
+            row = reloaded.get(created['id'])
+            self.assertEqual('running', row['status'])
+            resumable = reloaded.find_resumable_reorganize(channel_folder='chengdudiyi8')
+            self.assertIsNotNone(resumable)
+            self.assertEqual(created['id'], resumable['id'])
+            from module.archive_author_jobs import completed_keys_from_job
+            self.assertEqual({'1 - a', '2 - b'}, completed_keys_from_job(resumable))
+        finally:
+            try:
+                import shutil
+                shutil.rmtree(directory, ignore_errors=True)
+            except Exception:
+                pass
+
+    def test_execute_plan_skips_already_moved_and_honors_stop(self):
+        class StatefulClient(FakeArchiveClient):
+            def __init__(self):
+                super().__init__()
+                self.dirs = {
+                    'Telegram/chengdudiyi8': {'100 - a', '101 - b', '102 - c'},
+                    'Telegram/chengdudiyi8/作者甲': set(),
+                }
+
+            def list_directories(self, remote_path, *, recursive=False, timeout=None):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                return sorted(self.dirs.get(path, set()))
+
+            def ensure_directory(self, remote_path):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                self.dirs.setdefault(path, set())
+                return path
+
+            def move_directory(self, source, target):
+                source = str(source or '').replace('\\', '/').strip('/')
+                target = str(target or '').replace('\\', '/').strip('/')
+                parent_s, _, leaf_s = source.rpartition('/')
+                parent_t, _, leaf_t = target.rpartition('/')
+                if leaf_s not in self.dirs.get(parent_s, set()):
+                    raise RuntimeError('source missing')
+                self.dirs[parent_s].discard(leaf_s)
+                self.dirs.setdefault(parent_t, set()).add(leaf_t)
+                self.moved.append((source, target))
+
+        client = StatefulClient()
+        # Pretend first item already moved.
+        client.dirs['Telegram/chengdudiyi8'].discard('100 - a')
+        client.dirs['Telegram/chengdudiyi8/作者甲'].add('100 - a')
+        service = ArchiveAuthorReorganizeService(archive_client=client)
+        service._pace = lambda _seconds: None
+        checkpoints = []
+
+        def should_stop():
+            return len(client.moved) >= 1
+
+        def on_checkpoint(**kwargs):
+            checkpoints.append(kwargs)
+
+        plan = {
+            'channel_folder': 'chengdudiyi8',
+            'channel_remote_root': 'Telegram/chengdudiyi8',
+            'moves': [
+                {
+                    'message_id': 100,
+                    'from_relative': '100 - a',
+                    'to_relative': '作者甲/100 - a',
+                    'author': '作者甲',
+                    'action': 'move',
+                },
+                {
+                    'message_id': 101,
+                    'from_relative': '101 - b',
+                    'to_relative': '作者甲/101 - b',
+                    'author': '作者甲',
+                    'action': 'move',
+                },
+                {
+                    'message_id': 102,
+                    'from_relative': '102 - c',
+                    'to_relative': '作者甲/102 - c',
+                    'author': '作者甲',
+                    'action': 'move',
+                },
+            ],
+        }
+        result = service.execute_plan(
+            plan,
+            execute_mode='all',
+            should_stop=should_stop,
+            on_checkpoint=on_checkpoint,
+        )
+        self.assertTrue(result.get('stopped'))
+        self.assertEqual(1, result.get('skipped_already_count'))
+        self.assertEqual(1, result.get('moved_count'))
+        self.assertIn('100 - a', result.get('completed_from_relatives') or [])
+        self.assertIn('101 - b', result.get('completed_from_relatives') or [])
+        self.assertNotIn('102 - c', result.get('completed_from_relatives') or [])
+        self.assertTrue(checkpoints)
+
+    def test_execute_plan_resumes_from_completed_keys(self):
+        class StatefulClient(FakeArchiveClient):
+            def __init__(self):
+                super().__init__()
+                self.dirs = {
+                    'Telegram/chengdudiyi8': {'200 - x', '201 - y'},
+                    'Telegram/chengdudiyi8/作者乙': set(),
+                }
+
+            def list_directories(self, remote_path, *, recursive=False, timeout=None):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                return sorted(self.dirs.get(path, set()))
+
+            def ensure_directory(self, remote_path):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                self.dirs.setdefault(path, set())
+                return path
+
+            def move_directory(self, source, target):
+                source = str(source or '').replace('\\', '/').strip('/')
+                target = str(target or '').replace('\\', '/').strip('/')
+                parent_s, _, leaf_s = source.rpartition('/')
+                parent_t, _, leaf_t = target.rpartition('/')
+                self.dirs[parent_s].discard(leaf_s)
+                self.dirs.setdefault(parent_t, set()).add(leaf_t)
+                self.moved.append((source, target))
+
+        client = StatefulClient()
+        service = ArchiveAuthorReorganizeService(archive_client=client)
+        service._pace = lambda _seconds: None
+        plan = {
+            'channel_folder': 'chengdudiyi8',
+            'channel_remote_root': 'Telegram/chengdudiyi8',
+            'moves': [
+                {
+                    'message_id': 200,
+                    'from_relative': '200 - x',
+                    'to_relative': '作者乙/200 - x',
+                    'author': '作者乙',
+                    'action': 'move',
+                },
+                {
+                    'message_id': 201,
+                    'from_relative': '201 - y',
+                    'to_relative': '作者乙/201 - y',
+                    'author': '作者乙',
+                    'action': 'move',
+                },
+            ],
+        }
+        result = service.execute_plan(
+            plan,
+            completed_keys={'200 - x'},
+        )
+        self.assertFalse(result.get('stopped'))
+        self.assertEqual(1, result.get('moved_count'))
+        self.assertEqual(1, result.get('skipped_already_count'))
+        self.assertEqual(
+            [('Telegram/chengdudiyi8/201 - y', 'Telegram/chengdudiyi8/作者乙/201 - y')],
+            client.moved,
+        )
+
+    def test_pace_defaults_are_faster_but_serial(self):
+        from module.archive_author_tool import (
+            RCLONE_LIST_PAUSE_SECONDS,
+            RCLONE_MOVE_PAUSE_SECONDS,
+        )
+        self.assertLessEqual(RCLONE_MOVE_PAUSE_SECONDS, 1.0)
+        self.assertGreaterEqual(RCLONE_MOVE_PAUSE_SECONDS, 0.5)
+        self.assertLessEqual(RCLONE_LIST_PAUSE_SECONDS, 1.0)

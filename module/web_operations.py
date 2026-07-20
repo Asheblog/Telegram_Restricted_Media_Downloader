@@ -1025,32 +1025,31 @@ class WebOperationsMixin:
             self._archive_author_jobs = store
         return store
 
-    def _start_archive_author_job(
+    def _spawn_archive_author_runner(
             self,
             *,
+            job_id: str,
             kind: str,
             channel_folder: str,
             execute_mode: str = 'all',
             resolve_scope: str = 'all',
-    ) -> dict:
+            completed_keys: Optional[set] = None,
+    ) -> None:
         import threading
 
-        from module.archive_author_jobs import public_job_view
+        from module.archive_author_jobs import completed_keys_from_job
 
-        channel_folder = str(channel_folder or '').strip()
-        if not channel_folder:
-            raise ValueError('channel_folder is required')
         jobs = self._archive_author_job_store()
-        existing = jobs.find_running(channel_folder=channel_folder)
-        if existing:
-            # Refresh reconnects to the same background job instead of starting another.
-            return public_job_view(existing)
-        job = jobs.create(kind=kind, channel_folder=channel_folder)
-        job_id = job['id']
         on_progress = jobs.progress_callback(job_id)
+        on_checkpoint = jobs.checkpoint_callback(job_id)
         service = self._archive_author_service()
         mode = str(execute_mode or 'all').strip().lower() or 'all'
         scope = str(resolve_scope or 'all').strip().lower() or 'all'
+        seed_keys = set(completed_keys or set())
+        jobs.mark_runner_live(job_id)
+        # Clear any previous stop request when (re)starting the runner.
+        flag = jobs.attach_cancel_flag(job_id)
+        flag.clear()
 
         def runner():
             try:
@@ -1087,12 +1086,17 @@ class WebOperationsMixin:
                     if not plan or executable <= 0:
                         raise RuntimeError(
                             '请先完成「扫描作者分布」或「重新解析作者」。'
-                            '整理会复用计划并串行慢速移动，不会再次全量扫描网盘。'
+                            '整理会复用计划并串行移动，不会再次全量扫描网盘。'
                         )
+                    if not seed_keys:
+                        seed_keys.update(completed_keys_from_job(jobs.get(job_id)))
                     result = service.execute_plan(
                         plan,
                         on_progress=on_progress,
                         execute_mode=mode,
+                        completed_keys=seed_keys,
+                        should_stop=lambda: jobs.should_stop(job_id),
+                        on_checkpoint=on_checkpoint,
                     )
                 if kind in ('scan', 'resolve'):
                     stats = result.get('resolve_stats') or {}
@@ -1118,19 +1122,42 @@ class WebOperationsMixin:
                         f'未识别 {result.get("review_count") or 0}，'
                         f'跳过 {result.get("skip_count") or 0}'
                     )
-                else:
-                    done_message = (
-                        f'整理完成：已移动 {result.get("moved_count") or 0}，'
-                        f'失败 {result.get("error_count") or 0}'
+                    jobs.update(
+                        job_id,
+                        status='success',
+                        phase='done',
+                        result=result,
+                        message=done_message,
+                        percent=100,
                     )
-                jobs.update(
-                    job_id,
-                    status='success',
-                    phase='done',
-                    result=result,
-                    message=done_message,
-                    percent=100,
-                )
+                else:
+                    if result.get('stopped'):
+                        done_message = (
+                            f'已停止：新移动 {result.get("moved_count") or 0}，'
+                            f'已就位跳过 {result.get("skipped_already_count") or 0}，'
+                            f'失败 {result.get("error_count") or 0}；重启或再次迁移可续跑'
+                        )
+                        jobs.update(
+                            job_id,
+                            status='stopped',
+                            phase='stopped',
+                            result=result,
+                            message=done_message,
+                        )
+                    else:
+                        done_message = (
+                            f'整理完成：新移动 {result.get("moved_count") or 0}，'
+                            f'已就位跳过 {result.get("skipped_already_count") or 0}，'
+                            f'失败 {result.get("error_count") or 0}'
+                        )
+                        jobs.update(
+                            job_id,
+                            status='success',
+                            phase='done',
+                            result=result,
+                            message=done_message,
+                            percent=100,
+                        )
                 if kind in ('scan', 'resolve'):
                     system_log = getattr(self, 'system_log', None)
                     if system_log is not None and hasattr(system_log, 'log'):
@@ -1156,12 +1183,19 @@ class WebOperationsMixin:
                                 category='archive',
                                 stage='author_reorganize',
                                 message=done_message,
-                                level='info' if not (result.get('error_count') or 0) else 'warning',
+                                level=(
+                                    'info'
+                                    if not (result.get('error_count') or 0)
+                                    and not result.get('stopped')
+                                    else 'warning'
+                                ),
                                 details={
                                     'channel_folder': channel_folder,
                                     'moved_count': result.get('moved_count'),
                                     'error_count': result.get('error_count'),
+                                    'skipped_already_count': result.get('skipped_already_count'),
                                     'execute_mode': result.get('execute_mode'),
+                                    'stopped': bool(result.get('stopped')),
                                 },
                             )
                         except Exception:
@@ -1193,9 +1227,143 @@ class WebOperationsMixin:
                         )
                     except Exception:
                         pass
+            finally:
+                jobs.mark_runner_done(job_id)
 
         threading.Thread(target=runner, name=f'archive-author-{kind}', daemon=True).start()
+
+    def _start_archive_author_job(
+            self,
+            *,
+            kind: str,
+            channel_folder: str,
+            execute_mode: str = 'all',
+            resolve_scope: str = 'all',
+    ) -> dict:
+        from module.archive_author_jobs import (
+            completed_keys_from_job,
+            public_job_view,
+        )
+
+        channel_folder = str(channel_folder or '').strip()
+        if not channel_folder:
+            raise ValueError('channel_folder is required')
+        jobs = self._archive_author_job_store()
+        existing = jobs.find_running(channel_folder=channel_folder)
+        if existing:
+            # Refresh reconnects to the same background job instead of starting another.
+            return public_job_view(existing)
+
+        mode = str(execute_mode or 'all').strip().lower() or 'all'
+        if kind == 'reorganize':
+            resumable = jobs.find_resumable_reorganize(channel_folder=channel_folder)
+            if resumable:
+                return self._resume_archive_author_reorganize_job(
+                    resumable,
+                    execute_mode=mode,
+                )
+
+        job = jobs.create(kind=kind, channel_folder=channel_folder)
+        job_id = job['id']
+        self._spawn_archive_author_runner(
+            job_id=job_id,
+            kind=kind,
+            channel_folder=channel_folder,
+            execute_mode=mode,
+            resolve_scope=resolve_scope,
+            completed_keys=completed_keys_from_job(job),
+        )
         return public_job_view(jobs.get(job_id))
+
+    def _resume_archive_author_reorganize_job(
+            self,
+            job: dict,
+            *,
+            execute_mode: str = 'all',
+    ) -> dict:
+        from module.archive_author_jobs import (
+            completed_keys_from_job,
+            public_job_view,
+        )
+
+        jobs = self._archive_author_job_store()
+        job_id = str(job.get('id') or '')
+        channel_folder = str(job.get('channel_folder') or '').strip()
+        if not job_id or not channel_folder:
+            raise ValueError('resumable reorganize job is invalid')
+        if jobs.is_runner_live(job_id):
+            return public_job_view(jobs.get(job_id))
+        result = job.get('result') if isinstance(job.get('result'), dict) else {}
+        mode = str(
+            execute_mode
+            or result.get('execute_mode')
+            or 'all'
+        ).strip().lower() or 'all'
+        jobs.update(
+            job_id,
+            status='running',
+            phase='moving',
+            error=None,
+            message='续跑整理中…',
+        )
+        self._spawn_archive_author_runner(
+            job_id=job_id,
+            kind='reorganize',
+            channel_folder=channel_folder,
+            execute_mode=mode,
+            completed_keys=completed_keys_from_job(job),
+        )
+        return public_job_view(jobs.get(job_id))
+
+    def resume_interrupted_archive_author_jobs(self) -> int:
+        """Auto-resume orphaned reorganize jobs after process restart."""
+        jobs = self._archive_author_job_store()
+        resumed = 0
+        for job in jobs.list_orphaned_reorganize():
+            try:
+                self._resume_archive_author_reorganize_job(
+                    job,
+                    execute_mode=str(
+                        ((job.get('result') or {}) if isinstance(job.get('result'), dict) else {})
+                        .get('execute_mode')
+                        or 'all'
+                    ),
+                )
+                resumed += 1
+            except Exception as error:
+                diagnostic = getattr(self, 'diagnostic', None)
+                if diagnostic is not None:
+                    try:
+                        diagnostic.warning(
+                            f'[ArchiveAuthor] resume interrupted job failed: {error}'
+                        )
+                    except Exception:
+                        pass
+        if resumed:
+            diagnostic = getattr(self, 'diagnostic', None)
+            if diagnostic is not None:
+                try:
+                    diagnostic.info(
+                        f'Resumed {resumed} interrupted archive author reorganize job(s).'
+                    )
+                except Exception:
+                    pass
+        return resumed
+
+    def stop_archive_author_job(self, job_id: str) -> dict:
+        from module.archive_author_jobs import public_job_view
+
+        jobs = self._archive_author_job_store()
+        job = jobs.get(str(job_id or '').strip())
+        if not job:
+            raise ValueError('job not found')
+        if str(job.get('kind') or '') != 'reorganize':
+            raise ValueError('只有整理任务可以停止')
+        if str(job.get('status') or '') != 'running':
+            return public_job_view(job)
+        if not jobs.request_stop(job['id']):
+            raise RuntimeError('无法停止该任务')
+        return public_job_view(jobs.get(job['id']))
 
     def scan_archive_author_reorganize(self, payload: dict) -> dict:
         channel_folder = str((payload or {}).get('channel_folder') or '').strip()
@@ -1280,7 +1448,11 @@ class WebOperationsMixin:
 
         jobs = self._archive_author_job_store()
         channel = str(channel_folder or '').strip() or None
-        job = jobs.find_running(channel_folder=channel) or jobs.latest(channel_folder=channel)
+        job = (
+            jobs.find_running(channel_folder=channel)
+            or jobs.find_resumable_reorganize(channel_folder=channel)
+            or jobs.latest(channel_folder=channel)
+        )
         view = public_job_view(job)
         return view or {'id': None, 'status': None}
 
@@ -1473,6 +1645,10 @@ class WebOperationsMixin:
             self._ensure_comment_delay_scheduler()
         except Exception as e:
             log.debug(f'Comment delay scheduler start skipped: {e}')
+        try:
+            self.resume_interrupted_archive_author_jobs()
+        except Exception as e:
+            log.debug(f'Archive author reorganize resume skipped: {e}')
 
     def _archive_settings(self) -> dict:
         profiles = (self.gc.config or {}).get('target_profiles') or {}
@@ -1914,6 +2090,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'list_archive_author_plan_moves',
     'get_archive_author_job',
     'get_active_archive_author_job',
+    'stop_archive_author_job',
 )
 
 

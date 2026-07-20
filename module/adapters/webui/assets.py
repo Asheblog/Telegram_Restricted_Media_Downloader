@@ -1261,6 +1261,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
         <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
+        <button class="btn btn-secondary btn-sm hidden" id="archive-organize-stop-btn" data-i18n="archiveOrganize.stop">停止</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-unresolved-btn" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
@@ -2096,7 +2097,10 @@ const i18n = {
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
-    'archiveOrganize.running': '慢速整理中（后台）…',
+    'archiveOrganize.running': '整理中（后台）…',
+    'archiveOrganize.stop': '停止',
+    'archiveOrganize.stopping': '正在停止…',
+    'archiveOrganize.stopped': '已停止，可续跑',
     'archiveOrganize.needScan': '请先扫描网盘目录或重新解析作者。',
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
@@ -2571,7 +2575,10 @@ const i18n = {
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
-    'archiveOrganize.running': 'Slow reorganize in background…',
+    'archiveOrganize.running': 'Reorganizing in background…',
+    'archiveOrganize.stop': 'Stop',
+    'archiveOrganize.stopping': 'Stopping…',
+    'archiveOrganize.stopped': 'Stopped; can resume',
     'archiveOrganize.needScan': 'List drive folders or re-resolve authors first.',
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
@@ -6407,6 +6414,7 @@ function setArchiveOrganizeBusy(busy, labelKey) {
   const resolveBtn = $('#archive-organize-resolve-btn');
   const resolveUnresolvedBtn = $('#archive-organize-resolve-unresolved-btn');
   const runBtn = $('#archive-organize-run-btn');
+  const stopBtn = $('#archive-organize-stop-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
     scanBtn.textContent = busy && labelKey === 'scan'
@@ -6435,6 +6443,12 @@ function setArchiveOrganizeBusy(busy, labelKey) {
     } else {
       runBtn.disabled = true;
     }
+  }
+  if (stopBtn) {
+    const showStop = !!(busy && labelKey === 'run');
+    stopBtn.classList.toggle('hidden', !showStop);
+    stopBtn.disabled = !showStop;
+    stopBtn.textContent = t('archiveOrganize.stop');
   }
 }
 
@@ -6480,11 +6494,33 @@ async function pollArchiveOrganizeJob(jobId) {
     const job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showArchiveOrganizeProgress(job);
     saveArchiveOrganizeJob(job);
-    if (job.status === 'success' || job.status === 'failure') {
+    if (job.status === 'success' || job.status === 'failure' || job.status === 'stopped') {
       return job;
     }
     // Slow poll — long-running jobs; avoid hammering the API.
     await sleepMs(2000);
+  }
+}
+
+async function stopArchiveOrganize() {
+  if (!archiveOrganizeJobId) {
+    const saved = loadSavedArchiveOrganizeJob();
+    if (saved && saved.id) archiveOrganizeJobId = saved.id;
+  }
+  if (!archiveOrganizeJobId) return;
+  const stopBtn = $('#archive-organize-stop-btn');
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.textContent = t('archiveOrganize.stopping');
+  }
+  try {
+    await postJson('/api/archive/author-job/stop', { id: archiveOrganizeJobId });
+  } catch (e) {
+    toast(translateApiError(e, 'form.requestFailed'), 'error');
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.textContent = t('archiveOrganize.stop');
+    }
   }
 }
 
@@ -6727,26 +6763,33 @@ async function runArchiveOrganize() {
       mode: 'all'
     });
     saveArchiveOrganizeJob(started);
+    archiveOrganizeJobId = started.id;
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'reorganize failed');
     }
     const data = job.result || {};
+    const stopped = job.status === 'stopped' || data.stopped;
     showArchiveOrganizeProgress({
-      percent: 100,
-      current: data.moved_count || 0,
-      total: data.planned_moves || executable,
-      phase: 'done',
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || executable,
+      phase: stopped ? 'stopped' : 'done',
       message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
         ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     });
     // Do not auto-rescan after reorganize (rate-limit safe). Clear plan until next scan.
-    archiveOrganizePlan = null;
-    archiveOrganizeJobId = null;
-    const runBtn = $('#archive-organize-run-btn');
-    if (runBtn) runBtn.disabled = true;
-    clearSavedArchiveOrganizeJob();
+    if (!stopped) {
+      archiveOrganizePlan = null;
+      archiveOrganizeJobId = null;
+      const runBtn = $('#archive-organize-run-btn');
+      if (runBtn) runBtn.disabled = true;
+      clearSavedArchiveOrganizeJob();
+    } else {
+      saveArchiveOrganizeJob(job);
+    }
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
     showArchiveOrganizeProgress({
@@ -6769,6 +6812,7 @@ $('#archive-organize-resolve-unresolved-btn')?.addEventListener('click', functio
   resolveArchiveOrganize('unresolved');
 });
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+$('#archive-organize-stop-btn')?.addEventListener('click', stopArchiveOrganize);
 $('#archive-organize-summary')?.addEventListener('click', function(e) {
   var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
   if (!btn || !archiveOrganizePlan) return;
@@ -7601,6 +7645,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
         <button id="mob-archive-organize-resolve-unresolved-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button id="mob-archive-organize-resolve-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
+        <button id="mob-archive-organize-stop-btn" class="mob-btn mob-btn-sm mob-btn-danger hidden" style="flex:1;" data-i18n="archiveOrganize.stop">停止</button>
       </div>
       <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
         <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;">
@@ -8242,7 +8287,10 @@ const i18n = {
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
-    'archiveOrganize.running': '慢速整理中（后台）…',
+    'archiveOrganize.running': '整理中（后台）…',
+    'archiveOrganize.stop': '停止',
+    'archiveOrganize.stopping': '正在停止…',
+    'archiveOrganize.stopped': '已停止，可续跑',
     'archiveOrganize.needScan': '请先扫描网盘目录或重新解析作者。',
     'archiveOrganize.resumeHint': '任务仍在后台运行，已重新连接进度。',
     'archiveOrganize.messageId': '主贴 ID',
@@ -8717,7 +8765,10 @@ const i18n = {
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
-    'archiveOrganize.running': 'Slow reorganize in background…',
+    'archiveOrganize.running': 'Reorganizing in background…',
+    'archiveOrganize.stop': 'Stop',
+    'archiveOrganize.stopping': 'Stopping…',
+    'archiveOrganize.stopped': 'Stopped; can resume',
     'archiveOrganize.needScan': 'List drive folders or re-resolve authors first.',
     'archiveOrganize.resumeHint': 'Background job still running; progress reconnected.',
     'archiveOrganize.messageId': 'Post ID',
@@ -12172,8 +12223,45 @@ async function pollMobArchiveOrganizeJob(jobId) {
     var job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showMobArchiveOrganizeProgress(job);
     saveMobArchiveOrganizeJob(job);
-    if (job.status === 'success' || job.status === 'failure') return job;
+    if (job.status === 'success' || job.status === 'failure' || job.status === 'stopped') return job;
     await sleepMs(2000);
+  }
+}
+
+function setMobArchiveOrganizeStopVisible(visible) {
+  var stopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (!stopBtn) return;
+  if (visible) {
+    stopBtn.classList.remove('hidden');
+    stopBtn.style.display = '';
+    stopBtn.disabled = false;
+    stopBtn.textContent = t('archiveOrganize.stop');
+  } else {
+    stopBtn.classList.add('hidden');
+    stopBtn.disabled = true;
+  }
+}
+
+async function stopArchiveOrganizeMobile() {
+  var jobId = mobArchiveOrganizeJobId;
+  if (!jobId) {
+    var saved = loadSavedMobArchiveOrganizeJob();
+    if (saved && saved.id) jobId = saved.id;
+  }
+  if (!jobId) return;
+  var stopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.textContent = t('archiveOrganize.stopping');
+  }
+  try {
+    await postJson('/api/archive/author-job/stop', { id: jobId });
+  } catch (e) {
+    showToast(translateApiError(e, 'form.requestFailed'));
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.textContent = t('archiveOrganize.stop');
+    }
   }
 }
 
@@ -12414,39 +12502,53 @@ async function runArchiveOrganizeMobile() {
     phase: 'moving',
     message: t('archiveOrganize.running')
   });
+  setMobArchiveOrganizeStopVisible(true);
   try {
     var started = await postJson('/api/archive/author-reorganize', {
       channel_folder: channel,
       mode: 'all'
     });
     saveMobArchiveOrganizeJob(started);
+    mobArchiveOrganizeJobId = started.id;
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
     var data = job.result || {};
+    var stopped = job.status === 'stopped' || data.stopped;
     showMobArchiveOrganizeProgress({
-      percent: 100,
-      current: data.moved_count || 0,
-      total: data.planned_moves || executable,
-      phase: 'done',
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || executable,
+      phase: stopped ? 'stopped' : 'done',
       message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
         ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     });
     showToast(
-      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
-      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+      stopped
+        ? t('archiveOrganize.stopped')
+        : (
+          t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+          ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+        )
     );
-    mobArchiveOrganizePlan = null;
-    mobArchiveOrganizeJobId = null;
-    var runBtn = document.getElementById('mob-archive-organize-run-btn');
-    if (runBtn) runBtn.disabled = true;
-    clearSavedMobArchiveOrganizeJob();
+    if (!stopped) {
+      mobArchiveOrganizePlan = null;
+      mobArchiveOrganizeJobId = null;
+      var runBtn = document.getElementById('mob-archive-organize-run-btn');
+      if (runBtn) runBtn.disabled = true;
+      clearSavedMobArchiveOrganizeJob();
+    } else {
+      saveMobArchiveOrganizeJob(job);
+    }
   } catch (e) {
     var msg = translateApiError(e, 'form.requestFailed');
     showMobArchiveOrganizeProgress({
       percent: 0, current: 0, total: 0, phase: 'error', message: msg
     });
     showToast(msg);
+  } finally {
+    setMobArchiveOrganizeStopVisible(false);
   }
 }
 
@@ -12799,6 +12901,8 @@ async function runArchiveOrganizeMobile() {
   }
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
+  var archiveStopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (archiveStopBtn) archiveStopBtn.addEventListener('click', stopArchiveOrganizeMobile);
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);

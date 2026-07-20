@@ -50,6 +50,9 @@ class DisabledPikPakArchiveClient:
     def move_directory(self, *args, **kwargs) -> None:
         raise RuntimeError('PikPak archive is disabled or remote is missing.')
 
+    def directory_exists(self, *args, **kwargs) -> bool:
+        return False
+
     def list_archive_channel_folders(self) -> list:
         return []
 
@@ -344,6 +347,24 @@ class RclonePikPakArchiveClient:
         if parent:
             self.ensure_directory(parent)
         self.moveto(source, target)
+
+    def directory_exists(self, remote_path: str) -> bool:
+        """Return True when ``remote_path`` exists as a directory on the remote."""
+        path = clean_remote_path(remote_path)
+        if not path:
+            return False
+        parent, leaf = posixpath.split(path)
+        if not leaf:
+            return False
+        try:
+            names = self.list_directories(parent, recursive=False, timeout=120.0)
+        except Exception:
+            return False
+        for item in names or []:
+            name = clean_remote_path(item).rsplit('/', 1)[-1]
+            if name == leaf:
+                return True
+        return False
 
     def list_archive_channel_folders(self) -> list[str]:
         """List top-level Source Channel Folder names under the archive root."""

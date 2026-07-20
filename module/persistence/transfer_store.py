@@ -2344,23 +2344,48 @@ class TransferStore:
             *,
             older_than_seconds: float = 0,
             message: str = '任务已中断（进程重启），请重新扫描。',
+            kinds: Optional[tuple] = None,
     ) -> int:
-        """Mark leftover running jobs as failure (e.g. after process restart)."""
+        """Mark leftover running jobs as failure (e.g. after process restart).
+
+        ``kinds`` limits which job kinds are marked stale. Reorganize jobs are
+        typically excluded so they can resume from checkpoint after restart.
+        """
         cutoff = time.time() - max(float(older_than_seconds or 0), 0)
+        kind_list = None
+        if kinds:
+            kind_list = tuple(str(item) for item in kinds if str(item).strip())
         with self.connect() as conn:
-            cursor = conn.execute(
-                '''
-                UPDATE archive_author_jobs
-                SET status = 'failure',
-                    phase = 'error',
-                    error = ?,
-                    message = ?,
-                    updated_at = ?
-                WHERE status = 'running'
-                  AND updated_at <= ?
-                ''',
-                (message, message, time.time(), cutoff),
-            )
+            if kind_list:
+                placeholders = ','.join('?' for _ in kind_list)
+                cursor = conn.execute(
+                    f'''
+                    UPDATE archive_author_jobs
+                    SET status = 'failure',
+                        phase = 'error',
+                        error = ?,
+                        message = ?,
+                        updated_at = ?
+                    WHERE status = 'running'
+                      AND updated_at <= ?
+                      AND kind IN ({placeholders})
+                    ''',
+                    (message, message, time.time(), cutoff, *kind_list),
+                )
+            else:
+                cursor = conn.execute(
+                    '''
+                    UPDATE archive_author_jobs
+                    SET status = 'failure',
+                        phase = 'error',
+                        error = ?,
+                        message = ?,
+                        updated_at = ?
+                    WHERE status = 'running'
+                      AND updated_at <= ?
+                    ''',
+                    (message, message, time.time(), cutoff),
+                )
             return int(cursor.rowcount or 0)
 
     @staticmethod

@@ -2406,8 +2406,45 @@ async function pollMobArchiveOrganizeJob(jobId) {
     var job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showMobArchiveOrganizeProgress(job);
     saveMobArchiveOrganizeJob(job);
-    if (job.status === 'success' || job.status === 'failure') return job;
+    if (job.status === 'success' || job.status === 'failure' || job.status === 'stopped') return job;
     await sleepMs(2000);
+  }
+}
+
+function setMobArchiveOrganizeStopVisible(visible) {
+  var stopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (!stopBtn) return;
+  if (visible) {
+    stopBtn.classList.remove('hidden');
+    stopBtn.style.display = '';
+    stopBtn.disabled = false;
+    stopBtn.textContent = t('archiveOrganize.stop');
+  } else {
+    stopBtn.classList.add('hidden');
+    stopBtn.disabled = true;
+  }
+}
+
+async function stopArchiveOrganizeMobile() {
+  var jobId = mobArchiveOrganizeJobId;
+  if (!jobId) {
+    var saved = loadSavedMobArchiveOrganizeJob();
+    if (saved && saved.id) jobId = saved.id;
+  }
+  if (!jobId) return;
+  var stopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.textContent = t('archiveOrganize.stopping');
+  }
+  try {
+    await postJson('/api/archive/author-job/stop', { id: jobId });
+  } catch (e) {
+    showToast(translateApiError(e, 'form.requestFailed'));
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.textContent = t('archiveOrganize.stop');
+    }
   }
 }
 
@@ -2648,39 +2685,53 @@ async function runArchiveOrganizeMobile() {
     phase: 'moving',
     message: t('archiveOrganize.running')
   });
+  setMobArchiveOrganizeStopVisible(true);
   try {
     var started = await postJson('/api/archive/author-reorganize', {
       channel_folder: channel,
       mode: 'all'
     });
     saveMobArchiveOrganizeJob(started);
+    mobArchiveOrganizeJobId = started.id;
     var job = await pollMobArchiveOrganizeJob(started.id);
     if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
     var data = job.result || {};
+    var stopped = job.status === 'stopped' || data.stopped;
     showMobArchiveOrganizeProgress({
-      percent: 100,
-      current: data.moved_count || 0,
-      total: data.planned_moves || executable,
-      phase: 'done',
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || executable,
+      phase: stopped ? 'stopped' : 'done',
       message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
         ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     });
     showToast(
-      t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
-      ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+      stopped
+        ? t('archiveOrganize.stopped')
+        : (
+          t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+          ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+        )
     );
-    mobArchiveOrganizePlan = null;
-    mobArchiveOrganizeJobId = null;
-    var runBtn = document.getElementById('mob-archive-organize-run-btn');
-    if (runBtn) runBtn.disabled = true;
-    clearSavedMobArchiveOrganizeJob();
+    if (!stopped) {
+      mobArchiveOrganizePlan = null;
+      mobArchiveOrganizeJobId = null;
+      var runBtn = document.getElementById('mob-archive-organize-run-btn');
+      if (runBtn) runBtn.disabled = true;
+      clearSavedMobArchiveOrganizeJob();
+    } else {
+      saveMobArchiveOrganizeJob(job);
+    }
   } catch (e) {
     var msg = translateApiError(e, 'form.requestFailed');
     showMobArchiveOrganizeProgress({
       percent: 0, current: 0, total: 0, phase: 'error', message: msg
     });
     showToast(msg);
+  } finally {
+    setMobArchiveOrganizeStopVisible(false);
   }
 }
 
@@ -3033,6 +3084,8 @@ async function runArchiveOrganizeMobile() {
   }
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
+  var archiveStopBtn = document.getElementById('mob-archive-organize-stop-btn');
+  if (archiveStopBtn) archiveStopBtn.addEventListener('click', stopArchiveOrganizeMobile);
 
   mobEnsureOverrideMediaTypeGrids();
   bindAllMediaTypesPickers(document);

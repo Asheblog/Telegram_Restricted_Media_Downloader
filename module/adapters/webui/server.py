@@ -1173,6 +1173,27 @@ class WebUiServer:
                             HTTPStatus.BAD_REQUEST
                         )
                     return
+                if parsed.path == '/api/archive/author-job/stop':
+                    try:
+                        payload = self._read_json()
+                        job_id = str(
+                            (payload or {}).get('id')
+                            or (payload or {}).get('job_id')
+                            or ''
+                        ).strip()
+                        self._send_json(server.stop_archive_author_job(job_id))
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 停止归档整理失败。')
+                        self._send_json(
+                            {
+                                'error_code': 'archive_author_stop_failed',
+                                'error': str(e)
+                            },
+                            HTTPStatus.BAD_REQUEST
+                        )
+                    return
                 if parsed.path != '/api/tasks':
                     self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
                     return
@@ -1841,6 +1862,16 @@ class WebUiServer:
         op = self._operation('execute_archive_author_reorganize')
         if op:
             return op(payload)
+        raise WebUiApiError(
+            'archive_author_unavailable',
+            'Archive author tools are unavailable.',
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    def stop_archive_author_job(self, job_id: str) -> dict:
+        op = self._operation('stop_archive_author_job')
+        if op:
+            return op(job_id)
         raise WebUiApiError(
             'archive_author_unavailable',
             'Archive author tools are unavailable.',

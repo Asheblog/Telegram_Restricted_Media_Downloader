@@ -2787,6 +2787,7 @@ function setArchiveOrganizeBusy(busy, labelKey) {
   const resolveBtn = $('#archive-organize-resolve-btn');
   const resolveUnresolvedBtn = $('#archive-organize-resolve-unresolved-btn');
   const runBtn = $('#archive-organize-run-btn');
+  const stopBtn = $('#archive-organize-stop-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
     scanBtn.textContent = busy && labelKey === 'scan'
@@ -2815,6 +2816,12 @@ function setArchiveOrganizeBusy(busy, labelKey) {
     } else {
       runBtn.disabled = true;
     }
+  }
+  if (stopBtn) {
+    const showStop = !!(busy && labelKey === 'run');
+    stopBtn.classList.toggle('hidden', !showStop);
+    stopBtn.disabled = !showStop;
+    stopBtn.textContent = t('archiveOrganize.stop');
   }
 }
 
@@ -2860,11 +2867,33 @@ async function pollArchiveOrganizeJob(jobId) {
     const job = await fetchJson('/api/archive/author-job?id=' + encodeURIComponent(jobId));
     showArchiveOrganizeProgress(job);
     saveArchiveOrganizeJob(job);
-    if (job.status === 'success' || job.status === 'failure') {
+    if (job.status === 'success' || job.status === 'failure' || job.status === 'stopped') {
       return job;
     }
     // Slow poll — long-running jobs; avoid hammering the API.
     await sleepMs(2000);
+  }
+}
+
+async function stopArchiveOrganize() {
+  if (!archiveOrganizeJobId) {
+    const saved = loadSavedArchiveOrganizeJob();
+    if (saved && saved.id) archiveOrganizeJobId = saved.id;
+  }
+  if (!archiveOrganizeJobId) return;
+  const stopBtn = $('#archive-organize-stop-btn');
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.textContent = t('archiveOrganize.stopping');
+  }
+  try {
+    await postJson('/api/archive/author-job/stop', { id: archiveOrganizeJobId });
+  } catch (e) {
+    toast(translateApiError(e, 'form.requestFailed'), 'error');
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.textContent = t('archiveOrganize.stop');
+    }
   }
 }
 
@@ -3107,26 +3136,33 @@ async function runArchiveOrganize() {
       mode: 'all'
     });
     saveArchiveOrganizeJob(started);
+    archiveOrganizeJobId = started.id;
     const job = await pollArchiveOrganizeJob(started.id);
     if (job.status === 'failure') {
       throw new Error(job.error || job.message || 'reorganize failed');
     }
     const data = job.result || {};
+    const stopped = job.status === 'stopped' || data.stopped;
     showArchiveOrganizeProgress({
-      percent: 100,
-      current: data.moved_count || 0,
-      total: data.planned_moves || executable,
-      phase: 'done',
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || executable,
+      phase: stopped ? 'stopped' : 'done',
       message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
         ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
         ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
     });
     // Do not auto-rescan after reorganize (rate-limit safe). Clear plan until next scan.
-    archiveOrganizePlan = null;
-    archiveOrganizeJobId = null;
-    const runBtn = $('#archive-organize-run-btn');
-    if (runBtn) runBtn.disabled = true;
-    clearSavedArchiveOrganizeJob();
+    if (!stopped) {
+      archiveOrganizePlan = null;
+      archiveOrganizeJobId = null;
+      const runBtn = $('#archive-organize-run-btn');
+      if (runBtn) runBtn.disabled = true;
+      clearSavedArchiveOrganizeJob();
+    } else {
+      saveArchiveOrganizeJob(job);
+    }
   } catch (e) {
     const msg = translateApiError(e, 'form.requestFailed');
     showArchiveOrganizeProgress({
@@ -3149,6 +3185,7 @@ $('#archive-organize-resolve-unresolved-btn')?.addEventListener('click', functio
   resolveArchiveOrganize('unresolved');
 });
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+$('#archive-organize-stop-btn')?.addEventListener('click', stopArchiveOrganize);
 $('#archive-organize-summary')?.addEventListener('click', function(e) {
   var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
   if (!btn || !archiveOrganizePlan) return;
