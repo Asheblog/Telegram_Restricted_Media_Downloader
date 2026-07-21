@@ -725,6 +725,11 @@ def resolve_forward_archive_source_folder(
             return None
         if archive_by_author and author:
             return join_archive_source_folder(channel, author, post_segment)
+        if _existing_author and _existing_author != UNKNOWN_AUTHOR_FOLDER:
+            # Callers that lost the archive_by_author flag must not flatten an
+            # already author-nested Source Post Archive Path. `_未知作者` may
+            # still be flattened: default (flag off) paths are flat by design.
+            return join_archive_source_folder(channel, _existing_author, post_segment)
         return join_archive_source_folder(channel, post_segment)
 
     existing_id = None

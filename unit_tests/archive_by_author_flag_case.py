@@ -66,6 +66,53 @@ class ArchiveByAuthorFlagCase(unittest.TestCase):
             ),
         )
 
+    def test_archive_pikpak_item_honours_explicit_flag_without_task(self):
+        from module.pikpak_integration import PikpakIntegrationManager
+
+        archive_folders = []
+
+        class FakeArchive:
+            def archive_file(self, source_folder, **kwargs):
+                archive_folders.append(source_folder)
+                return SimpleNamespace(
+                    ok=True,
+                    status='moved',
+                    archive_path=f'Telegram/{source_folder}/video.mp4',
+                    message='',
+                )
+
+        manager = PikpakIntegrationManager(
+            transfer_store_getter=lambda: None,
+            pikpak_archive_client_getter=lambda: FakeArchive(),
+            diagnostic=SimpleNamespace(info=lambda m: None, warning=lambda m: None),
+            gc_getter=lambda: None,
+            refresh_counts=lambda tid: None,
+        )
+        message = SimpleNamespace(
+            id=100,
+            caption='标题一行\n作者：#示例作者\n正文',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+            document=None,
+            chat=SimpleNamespace(username='demochan'),
+            link='https://t.me/demochan/100',
+        )
+
+        # Listen-forward archive passes the watch flag explicitly (task_id=None).
+        result = manager.archive_pikpak_item(
+            target_profile='pikpak',
+            item_id=None,
+            task_id=None,
+            message=message,
+            source_link='https://t.me/demochan/100',
+            source_folder='demochan/100 - 标题一行',
+            transferred_at=1.0,
+            archive_by_author=True,
+        )
+        self.assertTrue(result.ok)
+        self.assertEqual(['demochan/示例作者/100 - 标题一行'], archive_folders)
+
     def test_task_and_watch_persist_archive_by_author(self):
         from module.persistence.transfer_store import TransferStore
 

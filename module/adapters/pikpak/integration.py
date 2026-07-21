@@ -61,7 +61,8 @@ class PikpakIntegrationManager:
             file_name: Optional[str] = None,
             file_size: Optional[int] = None,
             transferred_at: Optional[float] = None,
-            match_original_name: Optional[bool] = None
+            match_original_name: Optional[bool] = None,
+            archive_by_author: Optional[bool] = None,
     ):
         if target_profile != 'pikpak':
             return None
@@ -69,11 +70,12 @@ class PikpakIntegrationManager:
         store = self.transfer_store
         item = None
         post_message_id = None
-        archive_by_author = False
+        explicit_archive_by_author = archive_by_author
+        archive_by_author = bool(explicit_archive_by_author)
         task = None
         if store and task_id:
             task = store.get_task(int(task_id))
-            if task:
+            if task and explicit_archive_by_author is None:
                 archive_by_author = bool(task.get('archive_by_author'))
         if store and item_id:
             item = store.get_item(int(item_id))

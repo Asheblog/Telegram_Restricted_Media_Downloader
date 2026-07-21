@@ -375,6 +375,41 @@ class SourceFolderArchiveCase(unittest.TestCase):
             ),
         )
 
+    def test_resolve_forward_title_upgrade_keeps_existing_author_without_flag(self):
+        from module.source_folders import resolve_forward_archive_source_folder
+
+        long_title = '【4K原创】' + '超长标题内容测试' * 12
+        message = SimpleNamespace(
+            id=123,
+            caption=long_title + '\n作者：#某作者\n#标签1 #标签2',
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/123',
+        )
+        nested = resolve_forward_archive_source_folder(
+            source_folder=None,
+            messages=[message],
+            post_message_id=123,
+            fallback_link='https://t.me/chengdudiyi8/123',
+            archive_by_author=True,
+        )
+        self.assertTrue(nested.startswith('chengdudiyi8/某作者/123 - '))
+        # A later re-resolve that lost the archive_by_author flag (e.g. task-less
+        # listen forward archive) must not flatten the author segment away, even
+        # when the fresh full-length title outscores the stored truncated one.
+        re_resolved = resolve_forward_archive_source_folder(
+            source_folder=nested,
+            messages=[message],
+            post_message_id=123,
+            fallback_link='https://t.me/chengdudiyi8/123',
+            archive_by_author=False,
+        )
+        self.assertTrue(
+            re_resolved.startswith('chengdudiyi8/某作者/123 - '),
+            re_resolved,
+        )
+
     def test_archive_source_folder_falls_back_to_media_file_name_stem(self):
         from module.source_folders import archive_source_folder, post_title_from_message
 

@@ -146,6 +146,7 @@ class LiveTransferService:
                     transferred_at=transferred_at,
                     origin_chat_id=origin_chat_id,
                     message_id=message_id,
+                    archive_by_author=archive_by_author,
             ):
                 archive_result = self.archive_pikpak_item(
                     target_profile='pikpak',
@@ -154,7 +155,8 @@ class LiveTransferService:
                     message=group_message,
                     source_link=group_source_link,
                     source_folder=archive_folder,
-                    transferred_at=transferred_at
+                    transferred_at=transferred_at,
+                    archive_by_author=archive_by_author,
                 )
                 if (
                         archive_result is not None
