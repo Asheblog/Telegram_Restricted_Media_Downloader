@@ -3216,11 +3216,19 @@ async function resumeArchiveOrganizeJobIfAny() {
     job = null;
   }
   if (!job || !job.id) {
-    const channel = (select && select.value) || (saved && saved.channel_folder) || '';
-    const url = '/api/archive/author-job?active=1' +
-      (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
+    // Prefer any live running job before channel-scoped lookup so a mismatched
+    // select value cannot hide an in-flight desktop/mobile task.
     try {
-      job = await fetchJson(url);
+      const globalJob = await fetchJson('/api/archive/author-job?active=1');
+      if (globalJob && globalJob.id && globalJob.status === 'running') {
+        job = globalJob;
+      } else {
+        const channel = (select && select.value) || (saved && saved.channel_folder) || '';
+        const url = '/api/archive/author-job?active=1' +
+          (channel ? ('&channel_folder=' + encodeURIComponent(channel)) : '');
+        job = await fetchJson(url);
+        if ((!job || !job.id) && globalJob && globalJob.id) job = globalJob;
+      }
     } catch (e) {
       job = null;
     }

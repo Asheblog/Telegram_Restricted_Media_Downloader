@@ -1446,6 +1446,15 @@ class WebOperationsMixin:
             or jobs.find_resumable_reorganize(channel_folder=channel)
             or jobs.latest(channel_folder=channel)
         )
+        # Cross-device resume: if the selected channel has no match, still surface
+        # any live running / resumable job so mobile can attach to a desktop start.
+        if channel and (not job or not job.get('id') or str(job.get('status') or '') != 'running'):
+            global_running = (
+                jobs.find_running(channel_folder=None)
+                or jobs.find_resumable_reorganize(channel_folder=None)
+            )
+            if global_running and global_running.get('id'):
+                job = global_running
         view = public_job_view(job)
         return view or {'id': None, 'status': None}
 

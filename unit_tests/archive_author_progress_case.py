@@ -753,3 +753,42 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertLessEqual(RCLONE_MOVE_PAUSE_SECONDS, 1.0)
         self.assertGreaterEqual(RCLONE_MOVE_PAUSE_SECONDS, 0.5)
         self.assertLessEqual(RCLONE_LIST_PAUSE_SECONDS, 1.0)
+
+    def test_active_job_falls_back_to_global_running(self):
+        """Mobile may query with a mismatched channel; still return the live job."""
+        jobs = ArchiveAuthorJobStore()
+        created = jobs.create(kind='scan', channel_folder='chengdudiyi8')
+        jobs.mark_runner_live(created['id'])
+        jobs.update(
+            created['id'],
+            phase='resolving',
+            current=1269,
+            total=3524,
+            message='按主贴 ID 回查 Telegram 作者',
+        )
+
+        def active_view(channel_folder):
+            channel = str(channel_folder or '').strip() or None
+            job = (
+                jobs.find_running(channel_folder=channel)
+                or jobs.find_resumable_reorganize(channel_folder=channel)
+                or jobs.latest(channel_folder=channel)
+            )
+            if channel and (not job or not job.get('id') or str(job.get('status') or '') != 'running'):
+                global_running = (
+                    jobs.find_running(channel_folder=None)
+                    or jobs.find_resumable_reorganize(channel_folder=None)
+                )
+                if global_running and global_running.get('id'):
+                    job = global_running
+            return public_job_view(job) or {'id': None, 'status': None}
+
+        # Wrong channel should still surface the live running job.
+        view = active_view('other-channel')
+        self.assertEqual(created['id'], view.get('id'))
+        self.assertEqual('running', view.get('status'))
+        self.assertEqual('chengdudiyi8', view.get('channel_folder'))
+
+        # Unscoped active lookup also works.
+        view2 = active_view(None)
+        self.assertEqual(created['id'], view2.get('id'))
