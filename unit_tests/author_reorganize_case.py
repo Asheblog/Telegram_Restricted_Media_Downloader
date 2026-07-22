@@ -7,8 +7,11 @@ install_pyrogram_stub()
 
 from module.archive_reorganize import (
     AuthorHint,
+    REVIEW_ACTIONS,
+    actions_for_execute_mode,
     filter_plan_moves,
     plan_author_reorganize,
+    planned_count_for_execute_mode,
     rewrite_transfer_source_folder,
 )
 from module.source_folders import UNKNOWN_AUTHOR_FOLDER
@@ -97,6 +100,39 @@ class AuthorReorganizePlanCase(unittest.TestCase):
         page = filter_plan_moves(plan.to_dict()['moves'], bucket='executable', offset=0, limit=10)
         self.assertEqual(2, page['total'])
         self.assertEqual({'move', 'needs_confirm'}, {item['action'] for item in page['items']})
+
+    def test_review_execute_mode_only_selects_needs_review(self):
+        self.assertEqual(REVIEW_ACTIONS, actions_for_execute_mode('review'))
+        self.assertEqual(REVIEW_ACTIONS, actions_for_execute_mode('unknown'))
+        self.assertEqual(REVIEW_ACTIONS, actions_for_execute_mode('needs_review'))
+        plan = plan_author_reorganize(
+            channel_folder='ch',
+            directory_paths=[
+                'ch/1 - a',
+                'ch/2 - b',
+                'ch/3 - c',
+            ],
+            author_by_message_id={
+                1: AuthorHint(name='A', confidence='high', method='signature'),
+                2: AuthorHint(name='A', confidence='low', method='hashtag_substring'),
+                3: None,
+            },
+        )
+        payload = plan.to_dict()
+        self.assertEqual(1, planned_count_for_execute_mode(payload, 'review'))
+        self.assertEqual(2, planned_count_for_execute_mode(payload, 'all'))
+        self.assertEqual(1, planned_count_for_execute_mode(payload, 'auto'))
+        review_actions = {
+            item['action']
+            for item in payload['moves']
+            if item['action'] in actions_for_execute_mode('review')
+        }
+        self.assertEqual({'needs_review'}, review_actions)
+        review_row = next(
+            item for item in payload['moves'] if item['action'] == 'needs_review'
+        )
+        self.assertEqual(UNKNOWN_AUTHOR_FOLDER, review_row['author'])
+        self.assertEqual(f'{UNKNOWN_AUTHOR_FOLDER}/3 - c', review_row['to_relative'])
 
     def test_plan_skips_already_nested_matching_author(self):
         plan = plan_author_reorganize(

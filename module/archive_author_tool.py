@@ -8,9 +8,8 @@ import re
 import time
 
 from module.archive_reorganize import (
-    AUTO_ACTIONS,
-    EXECUTABLE_ACTIONS,
     AuthorHint,
+    actions_for_execute_mode,
     known_authors_from_directory_paths,
     plan_author_reorganize,
     preserved_author_hints_from_plan,
@@ -555,7 +554,7 @@ class ArchiveAuthorReorganizeService:
         channel = plan.get('channel_folder') or ''
         root = plan.get('channel_remote_root') or self._channel_remote_root(client, channel)
         mode = str(execute_mode or 'all').strip().lower() or 'all'
-        allowed = AUTO_ACTIONS if mode in ('auto', 'high', 'move') else EXECUTABLE_ACTIONS
+        allowed = actions_for_execute_mode(mode)
         move_items = [
             item for item in (plan.get('moves') or [])
             if item.get('action') in allowed

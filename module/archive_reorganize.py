@@ -14,6 +14,34 @@ from module.source_folders import (
 
 EXECUTABLE_ACTIONS = frozenset({'move', 'needs_confirm'})
 AUTO_ACTIONS = frozenset({'move'})
+REVIEW_ACTIONS = frozenset({'needs_review'})
+
+
+def actions_for_execute_mode(execute_mode: Optional[str] = None) -> frozenset[str]:
+    """Map reorganize execute_mode to the move-row actions it may perform."""
+    mode = str(execute_mode or 'all').strip().lower() or 'all'
+    if mode in ('auto', 'high', 'move'):
+        return AUTO_ACTIONS
+    if mode in ('review', 'unknown', 'needs_review'):
+        return REVIEW_ACTIONS
+    return EXECUTABLE_ACTIONS
+
+
+def planned_count_for_execute_mode(
+        plan: Optional[dict],
+        execute_mode: Optional[str] = None,
+) -> int:
+    """How many plan rows a given execute_mode would attempt to move."""
+    if not isinstance(plan, dict):
+        return 0
+    actions = actions_for_execute_mode(execute_mode)
+    if actions is AUTO_ACTIONS:
+        return int(plan.get('move_count') or 0)
+    if actions is REVIEW_ACTIONS:
+        return int(plan.get('review_count') or 0)
+    if plan.get('executable_count') is not None:
+        return int(plan.get('executable_count') or 0)
+    return int(plan.get('move_count') or 0) + int(plan.get('confirm_count') or 0)
 
 
 @dataclass(frozen=True)

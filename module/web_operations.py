@@ -1074,15 +1074,8 @@ class WebOperationsMixin:
                 else:
                     # Reuse last successful scan/resolve plan — never rescan before move.
                     plan = jobs.latest_successful_scan_result(channel_folder)
-                    executable = 0
-                    if plan:
-                        executable = int(
-                            plan.get('executable_count')
-                            or plan.get('move_count')
-                            or 0
-                        )
-                        if mode in ('auto', 'high', 'move'):
-                            executable = int(plan.get('move_count') or 0)
+                    from module.archive_reorganize import planned_count_for_execute_mode
+                    executable = planned_count_for_execute_mode(plan, mode)
                     if not plan or executable <= 0:
                         raise RuntimeError(
                             '请先完成「扫描作者分布」或「重新解析作者」。'

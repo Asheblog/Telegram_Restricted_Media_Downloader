@@ -1261,6 +1261,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
         <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
+        <button class="btn btn-secondary btn-sm" id="archive-organize-run-review-btn" disabled data-i18n="archiveOrganize.runReview">未识别→未知作者</button>
         <button class="btn btn-secondary btn-sm hidden" id="archive-organize-stop-btn" data-i18n="archiveOrganize.stop">停止</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-unresolved-btn" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
@@ -1268,7 +1269,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2086,7 +2087,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
@@ -2095,6 +2096,8 @@ const i18n = {
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
+    'archiveOrganize.runReview': '未识别→未知作者',
+    'archiveOrganize.runReviewConfirm': '将对 {channel} 把 {count} 条未识别迁入 _未知作者。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '整理中（后台）…',
@@ -2564,7 +2567,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. Already-nested folders need no rescan; list the drive again only for new flat posts.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
@@ -2573,6 +2576,8 @@ const i18n = {
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
+    'archiveOrganize.runReview': 'Unrecognized → Unknown',
+    'archiveOrganize.runReviewConfirm': 'Move {count} unrecognized rows for {channel} into _未知作者. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Reorganizing in background…',
@@ -6381,6 +6386,14 @@ function archiveOrganizeExecutableCount(data) {
   return (Number(data.move_count) || 0) + (Number(data.confirm_count) || 0);
 }
 
+function archiveOrganizeReviewCount(data) {
+  if (!data) return 0;
+  if (data.review_count != null) return Number(data.review_count) || 0;
+  var summary = data.summary || {};
+  if (summary.needs_review != null) return Number(summary.needs_review) || 0;
+  return 0;
+}
+
 function saveArchiveOrganizeJob(job) {
   try {
     if (!job || !job.id) {
@@ -6414,6 +6427,7 @@ function setArchiveOrganizeBusy(busy, labelKey) {
   const resolveBtn = $('#archive-organize-resolve-btn');
   const resolveUnresolvedBtn = $('#archive-organize-resolve-unresolved-btn');
   const runBtn = $('#archive-organize-run-btn');
+  const runReviewBtn = $('#archive-organize-run-review-btn');
   const stopBtn = $('#archive-organize-stop-btn');
   if (scanBtn) {
     scanBtn.disabled = !!busy;
@@ -6444,8 +6458,19 @@ function setArchiveOrganizeBusy(busy, labelKey) {
       runBtn.disabled = true;
     }
   }
+  if (runReviewBtn) {
+    if (busy && labelKey === 'runReview') {
+      runReviewBtn.disabled = true;
+      runReviewBtn.textContent = t('archiveOrganize.running');
+    } else if (!busy) {
+      runReviewBtn.textContent = t('archiveOrganize.runReview');
+      runReviewBtn.disabled = !(archiveOrganizeReviewCount(archiveOrganizePlan) > 0);
+    } else {
+      runReviewBtn.disabled = true;
+    }
+  }
   if (stopBtn) {
-    const showStop = !!(busy && labelKey === 'run');
+    const showStop = !!(busy && (labelKey === 'run' || labelKey === 'runReview'));
     stopBtn.classList.toggle('hidden', !showStop);
     stopBtn.disabled = !showStop;
     stopBtn.textContent = t('archiveOrganize.stop');
@@ -6636,10 +6661,12 @@ function renderArchiveOrganizePlan(data, jobId) {
   archiveOrganizeOffset = 0;
   const result = $('#archive-organize-result');
   const runBtn = $('#archive-organize-run-btn');
+  const runReviewBtn = $('#archive-organize-run-review-btn');
   if (!result) return;
   result.classList.remove('hidden');
   renderArchiveOrganizeSummary(data);
   if (runBtn) runBtn.disabled = !(archiveOrganizeExecutableCount(data) > 0);
+  if (runReviewBtn) runReviewBtn.disabled = !(archiveOrganizeReviewCount(data) > 0);
   loadArchiveOrganizeMovesPage();
 }
 
@@ -6785,7 +6812,88 @@ async function runArchiveOrganize() {
       archiveOrganizePlan = null;
       archiveOrganizeJobId = null;
       const runBtn = $('#archive-organize-run-btn');
+      const runReviewBtn = $('#archive-organize-run-review-btn');
       if (runBtn) runBtn.disabled = true;
+      if (runReviewBtn) runReviewBtn.disabled = true;
+      clearSavedArchiveOrganizeJob();
+    } else {
+      saveArchiveOrganizeJob(job);
+    }
+  } catch (e) {
+    const msg = translateApiError(e, 'form.requestFailed');
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: msg
+    });
+  } finally {
+    setArchiveOrganizeBusy(false);
+  }
+}
+
+async function runArchiveOrganizeReview() {
+  const channel = ($('#archive-organize-channel') || {}).value || '';
+  if (!channel) {
+    alert(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  var reviewCount = archiveOrganizeReviewCount(archiveOrganizePlan);
+  if (!archiveOrganizePlan || !(reviewCount > 0)) {
+    showArchiveOrganizeProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      phase: 'error',
+      message: t('archiveOrganize.needScan')
+    });
+    return;
+  }
+  if (!confirm(t('archiveOrganize.runReviewConfirm')
+    .replace('{channel}', channel)
+    .replace('{count}', String(reviewCount)))) {
+    return;
+  }
+  stopArchiveOrganizePoll();
+  setArchiveOrganizeBusy(true, 'runReview');
+  showArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: reviewCount,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
+  try {
+    const started = await postJson('/api/archive/author-reorganize', {
+      channel_folder: channel,
+      mode: 'review'
+    });
+    saveArchiveOrganizeJob(started);
+    archiveOrganizeJobId = started.id;
+    const job = await pollArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') {
+      throw new Error(job.error || job.message || 'reorganize failed');
+    }
+    const data = job.result || {};
+    const stopped = job.status === 'stopped' || data.stopped;
+    showArchiveOrganizeProgress({
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || reviewCount,
+      phase: stopped ? 'stopped' : 'done',
+      message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
+        ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+        ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    });
+    if (!stopped) {
+      archiveOrganizePlan = null;
+      archiveOrganizeJobId = null;
+      const runBtn = $('#archive-organize-run-btn');
+      const runReviewBtn = $('#archive-organize-run-review-btn');
+      if (runBtn) runBtn.disabled = true;
+      if (runReviewBtn) runReviewBtn.disabled = true;
       clearSavedArchiveOrganizeJob();
     } else {
       saveArchiveOrganizeJob(job);
@@ -6812,6 +6920,7 @@ $('#archive-organize-resolve-unresolved-btn')?.addEventListener('click', functio
   resolveArchiveOrganize('unresolved');
 });
 $('#archive-organize-run-btn')?.addEventListener('click', runArchiveOrganize);
+$('#archive-organize-run-review-btn')?.addEventListener('click', runArchiveOrganizeReview);
 $('#archive-organize-stop-btn')?.addEventListener('click', stopArchiveOrganize);
 $('#archive-organize-summary')?.addEventListener('click', function(e) {
   var btn = e.target && e.target.closest ? e.target.closest('[data-archive-bucket]') : null;
@@ -7637,7 +7746,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -7645,6 +7754,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
         <button id="mob-archive-organize-resolve-unresolved-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
         <button id="mob-archive-organize-resolve-btn" class="mob-btn mob-btn-sm" style="flex:1;" data-i18n="archiveOrganize.resolve">重新解析作者</button>
         <button id="mob-archive-organize-run-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
+        <button id="mob-archive-organize-run-review-btn" class="mob-btn mob-btn-sm" style="flex:1;" disabled data-i18n="archiveOrganize.runReview">未识别→未知作者</button>
         <button id="mob-archive-organize-stop-btn" class="mob-btn mob-btn-sm mob-btn-danger hidden" style="flex:1;" data-i18n="archiveOrganize.stop">停止</button>
       </div>
       <div id="mob-archive-organize-progress" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--color-surface-muted);border-radius:8px;">
@@ -8276,7 +8386,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
@@ -8285,6 +8395,8 @@ const i18n = {
     'archiveOrganize.run': '按作者整理',
     'archiveOrganize.runAll': '全部迁移',
     'archiveOrganize.runAllConfirm': '将对 {channel} 一键迁移 {count} 条（高置信 + 待确认）。未识别不搬。确定？',
+    'archiveOrganize.runReview': '未识别→未知作者',
+    'archiveOrganize.runReviewConfirm': '将对 {channel} 把 {count} 条未识别迁入 _未知作者。确定？',
     'archiveOrganize.scanning': '正在列出网盘目录…',
     'archiveOrganize.resolving': '正在按主贴 ID 回查作者…',
     'archiveOrganize.running': '整理中（后台）…',
@@ -8754,7 +8866,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm; unrecognized stay put.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. Already-nested folders need no rescan; list the drive again only for new flat posts.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
@@ -8763,6 +8875,8 @@ const i18n = {
     'archiveOrganize.run': 'Reorganize by author',
     'archiveOrganize.runAll': 'Migrate all',
     'archiveOrganize.runAllConfirm': 'Migrate {count} rows for {channel} (high-confidence + pending confirm). Unrecognized stay put. Continue?',
+    'archiveOrganize.runReview': 'Unrecognized → Unknown',
+    'archiveOrganize.runReviewConfirm': 'Move {count} unrecognized rows for {channel} into _未知作者. Continue?',
     'archiveOrganize.scanning': 'Listing drive folders…',
     'archiveOrganize.resolving': 'Resolving authors from Telegram posts…',
     'archiveOrganize.running': 'Reorganizing in background…',
@@ -12166,6 +12280,14 @@ function mobArchiveExecutableCount(data) {
   if (summary.executable != null) return Number(summary.executable) || 0;
   return (Number(data.move_count) || 0) + (Number(data.confirm_count) || 0);
 }
+
+function mobArchiveReviewCount(data) {
+  if (!data) return 0;
+  if (data.review_count != null) return Number(data.review_count) || 0;
+  var summary = data.summary || {};
+  if (summary.needs_review != null) return Number(summary.needs_review) || 0;
+  return 0;
+}
 var MOB_ARCHIVE_AUTHOR_JOB_KEY = 'trmd-archive-author-job';
 
 function saveMobArchiveOrganizeJob(job) {
@@ -12321,7 +12443,9 @@ async function loadArchiveOrganizeMobile() {
         mobArchiveOrganizePlan = null;
         mobArchiveOrganizeJobId = null;
         var runBtn = document.getElementById('mob-archive-organize-run-btn');
+        var runReviewBtn = document.getElementById('mob-archive-organize-run-review-btn');
         if (runBtn) runBtn.disabled = true;
+        if (runReviewBtn) runReviewBtn.disabled = true;
       }
       clearSavedMobArchiveOrganizeJob();
     } catch (e) {
@@ -12399,6 +12523,8 @@ async function loadMobArchiveOrganizeMoves() {
   }
   result.innerHTML = html;
   if (runBtn) runBtn.disabled = !(mobArchiveExecutableCount(mobArchiveOrganizePlan) > 0);
+  var runReviewBtn = document.getElementById('mob-archive-organize-run-review-btn');
+  if (runReviewBtn) runReviewBtn.disabled = !(mobArchiveReviewCount(mobArchiveOrganizePlan) > 0);
   result.querySelectorAll('[data-mob-archive-bucket]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       mobArchiveOrganizeBucket = btn.getAttribute('data-mob-archive-bucket') || 'executable';
@@ -12536,7 +12662,87 @@ async function runArchiveOrganizeMobile() {
       mobArchiveOrganizePlan = null;
       mobArchiveOrganizeJobId = null;
       var runBtn = document.getElementById('mob-archive-organize-run-btn');
+      var runReviewBtn = document.getElementById('mob-archive-organize-run-review-btn');
       if (runBtn) runBtn.disabled = true;
+      if (runReviewBtn) runReviewBtn.disabled = true;
+      clearSavedMobArchiveOrganizeJob();
+    } else {
+      saveMobArchiveOrganizeJob(job);
+    }
+  } catch (e) {
+    var msg = translateApiError(e, 'form.requestFailed');
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error', message: msg
+    });
+    showToast(msg);
+  } finally {
+    setMobArchiveOrganizeStopVisible(false);
+  }
+}
+
+async function runArchiveOrganizeReviewMobile() {
+  var select = document.getElementById('mob-archive-organize-channel');
+  var channel = select ? select.value : '';
+  if (!channel) {
+    showToast(t('archiveOrganize.pickChannel'));
+    return;
+  }
+  var reviewCount = mobArchiveReviewCount(mobArchiveOrganizePlan);
+  if (!mobArchiveOrganizePlan || !(reviewCount > 0)) {
+    showMobArchiveOrganizeProgress({
+      percent: 0, current: 0, total: 0, phase: 'error',
+      message: t('archiveOrganize.needScan')
+    });
+    showToast(t('archiveOrganize.needScan'));
+    return;
+  }
+  if (!confirm(t('archiveOrganize.runReviewConfirm')
+    .replace('{channel}', channel)
+    .replace('{count}', String(reviewCount)))) return;
+  showMobArchiveOrganizeProgress({
+    percent: 0,
+    current: 0,
+    total: reviewCount,
+    phase: 'moving',
+    message: t('archiveOrganize.running')
+  });
+  setMobArchiveOrganizeStopVisible(true);
+  try {
+    var started = await postJson('/api/archive/author-reorganize', {
+      channel_folder: channel,
+      mode: 'review'
+    });
+    saveMobArchiveOrganizeJob(started);
+    mobArchiveOrganizeJobId = started.id;
+    var job = await pollMobArchiveOrganizeJob(started.id);
+    if (job.status === 'failure') throw new Error(job.error || job.message || 'reorganize failed');
+    var data = job.result || {};
+    var stopped = job.status === 'stopped' || data.stopped;
+    showMobArchiveOrganizeProgress({
+      percent: stopped ? (job.percent || 0) : 100,
+      current: job.current || data.moved_count || 0,
+      total: job.total || data.planned_moves || reviewCount,
+      phase: stopped ? 'stopped' : 'done',
+      message: (job.message || '') +
+        (stopped ? (' · ' + t('archiveOrganize.stopped')) : '') +
+        ' · ' + t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+        ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+    });
+    showToast(
+      stopped
+        ? t('archiveOrganize.stopped')
+        : (
+          t('archiveOrganize.moved') + ': ' + (data.moved_count || 0) +
+          ' / ' + t('archiveOrganize.errors') + ': ' + (data.error_count || 0)
+        )
+    );
+    if (!stopped) {
+      mobArchiveOrganizePlan = null;
+      mobArchiveOrganizeJobId = null;
+      var runBtn = document.getElementById('mob-archive-organize-run-btn');
+      var runReviewBtn = document.getElementById('mob-archive-organize-run-review-btn');
+      if (runBtn) runBtn.disabled = true;
+      if (runReviewBtn) runReviewBtn.disabled = true;
       clearSavedMobArchiveOrganizeJob();
     } else {
       saveMobArchiveOrganizeJob(job);
@@ -12901,6 +13107,8 @@ async function runArchiveOrganizeMobile() {
   }
   var archiveRunBtn = document.getElementById('mob-archive-organize-run-btn');
   if (archiveRunBtn) archiveRunBtn.addEventListener('click', runArchiveOrganizeMobile);
+  var archiveRunReviewBtn = document.getElementById('mob-archive-organize-run-review-btn');
+  if (archiveRunReviewBtn) archiveRunReviewBtn.addEventListener('click', runArchiveOrganizeReviewMobile);
   var archiveStopBtn = document.getElementById('mob-archive-organize-stop-btn');
   if (archiveStopBtn) archiveStopBtn.addEventListener('click', stopArchiveOrganizeMobile);
 

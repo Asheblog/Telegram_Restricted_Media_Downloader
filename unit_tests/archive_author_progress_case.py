@@ -607,6 +607,82 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertNotIn('102 - c', result.get('completed_from_relatives') or [])
         self.assertTrue(checkpoints)
 
+    def test_execute_plan_review_mode_moves_only_unrecognized_to_unknown_author(self):
+        class StatefulClient(FakeArchiveClient):
+            def __init__(self):
+                super().__init__()
+                self.dirs = {
+                    'Telegram/chengdudiyi8': {
+                        '100 - known',
+                        '101 - confirm',
+                        '102 - none',
+                    },
+                    'Telegram/chengdudiyi8/作者甲': set(),
+                    f'Telegram/chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}': set(),
+                }
+
+            def list_directories(self, remote_path, *, recursive=False, timeout=None):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                return sorted(self.dirs.get(path, set()))
+
+            def ensure_directory(self, remote_path):
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                self.dirs.setdefault(path, set())
+                return path
+
+            def move_directory(self, source, target):
+                source = str(source or '').replace('\\', '/').strip('/')
+                target = str(target or '').replace('\\', '/').strip('/')
+                parent_s, _, leaf_s = source.rpartition('/')
+                parent_t, _, leaf_t = target.rpartition('/')
+                self.dirs[parent_s].discard(leaf_s)
+                self.dirs.setdefault(parent_t, set()).add(leaf_t)
+                self.moved.append((source, target))
+
+        client = StatefulClient()
+        service = ArchiveAuthorReorganizeService(archive_client=client)
+        service._pace = lambda _seconds: None
+        plan = {
+            'channel_folder': 'chengdudiyi8',
+            'channel_remote_root': 'Telegram/chengdudiyi8',
+            'moves': [
+                {
+                    'message_id': 100,
+                    'from_relative': '100 - known',
+                    'to_relative': '作者甲/100 - known',
+                    'author': '作者甲',
+                    'action': 'move',
+                },
+                {
+                    'message_id': 101,
+                    'from_relative': '101 - confirm',
+                    'to_relative': '作者甲/101 - confirm',
+                    'author': '作者甲',
+                    'action': 'needs_confirm',
+                },
+                {
+                    'message_id': 102,
+                    'from_relative': '102 - none',
+                    'to_relative': f'{UNKNOWN_AUTHOR_FOLDER}/102 - none',
+                    'author': UNKNOWN_AUTHOR_FOLDER,
+                    'action': 'needs_review',
+                },
+            ],
+        }
+        result = service.execute_plan(plan, execute_mode='review')
+        self.assertFalse(result.get('stopped'))
+        self.assertEqual(1, result.get('moved_count'))
+        self.assertEqual(
+            [(
+                'Telegram/chengdudiyi8/102 - none',
+                f'Telegram/chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}/102 - none',
+            )],
+            client.moved,
+        )
+        self.assertIn('102 - none', client.dirs[f'Telegram/chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}'])
+        self.assertIn('100 - known', client.dirs['Telegram/chengdudiyi8'])
+        self.assertIn('101 - confirm', client.dirs['Telegram/chengdudiyi8'])
+
     def test_execute_plan_resumes_from_completed_keys(self):
         class StatefulClient(FakeArchiveClient):
             def __init__(self):
