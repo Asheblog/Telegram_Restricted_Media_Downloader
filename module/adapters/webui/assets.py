@@ -1269,7 +1269,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；扫描只收频道顶层数字 ID 主贴夹，不进入已归档作者等非数字目录（其名称仍可作已知作者种子）。作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；有新扁平夹再扫。</p>
       <div class="form-row mb-4">
         <div class="form-group" style="min-width:240px;flex:1">
           <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
@@ -2087,7 +2087,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；扫描只收频道顶层数字 ID 主贴夹，不进入已归档作者等非数字目录（其名称仍可作已知作者种子）。作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；有新扁平夹再扫。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
@@ -2567,7 +2567,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. Already-nested folders need no rescan; list the drive again only for new flat posts.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Scan only top-level numeric-ID post folders; already-archived author dirs and other non-ID top-level names are not listed (names may still seed known authors). Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. List the drive again only for new flat posts.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',
@@ -7754,7 +7754,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       <div id="mob-media-result"></div>
     </div>
     <div class="mob-subpage" id="mob-subpage-archive-organize">
-      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。</p>
+      <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；扫描只收频道顶层数字 ID 主贴夹，不进入已归档作者等非数字目录（其名称仍可作已知作者种子）。作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；有新扁平夹再扫。</p>
       <label class="text-xs text-muted" data-i18n="archiveOrganize.channel">频道文件夹</label>
       <select id="mob-archive-organize-channel" class="mob-input" style="width:100%;margin:4px 0 8px;"></select>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -8394,7 +8394,7 @@ const i18n = {
     'media.scan': '扫描可清理文件',
     'media.scanning': '正在扫描…',
     'archiveOrganize.title': '归档整理',
-    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；已就位项不必再扫，有新扁平夹再扫。',
+    'archiveOrganize.hint': '文件夹名前缀是频道主贴 ID；扫描只收频道顶层数字 ID 主贴夹，不进入已归档作者等非数字目录（其名称仍可作已知作者种子）。作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。确无作者的未识别用「未识别→未知作者」迁入 _未知作者；有新扁平夹再扫。',
     'archiveOrganize.channel': '频道文件夹',
     'archiveOrganize.scan': '扫描网盘目录',
     'archiveOrganize.resolve': '重新解析作者',
@@ -8874,7 +8874,7 @@ const i18n = {
     'media.scan': 'Scan cleanable files',
     'media.scanning': 'Scanning…',
     'archiveOrganize.title': 'Archive Organize',
-    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. Already-nested folders need no rescan; list the drive again only for new flat posts.',
+    'archiveOrganize.hint': 'Folder name prefixes are channel post IDs. Scan only top-level numeric-ID post folders; already-archived author dirs and other non-ID top-level names are not listed (names may still seed known authors). Authors come from signatures first, then hashtags matched to known authors; a single leftover non-site tag becomes pending confirm (candidate). Resolve unrecognized also rechecks denylist mislabels (e.g. site names). Migrate All moves high-confidence + pending confirm. Use “Unrecognized → Unknown author” for true no-author rows into _未知作者. List the drive again only for new flat posts.',
     'archiveOrganize.channel': 'Channel folder',
     'archiveOrganize.scan': 'List drive folders',
     'archiveOrganize.resolve': 'Re-resolve authors',

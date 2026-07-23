@@ -24,6 +24,8 @@ from module.pikpak_archive import (
     normalize_source_folder_path,
 )
 from module.source_folders import (
+    UNKNOWN_AUTHOR_FOLDER,
+    is_denied_post_author,
     is_post_folder_segment,
     message_id_from_post_folder_segment,
     post_author_from_message,
@@ -269,9 +271,9 @@ class ArchiveAuthorReorganizeService:
         self._report(
             on_progress,
             phase='listing',
-            message='慢速串行列出网盘目录（仅列目录，作者稍后从 Telegram 主贴解析）…',
+            message='慢速列出频道顶层数字 ID 主贴目录（不进入已归档作者目录）…',
         )
-        directory_paths = self._list_channel_directories(
+        directory_paths, known_authors = self._list_channel_directories(
             client=client,
             channel=channel,
             root=root,
@@ -280,6 +282,7 @@ class ArchiveAuthorReorganizeService:
         return self.resolve_from_listing(
             channel,
             directory_paths=directory_paths,
+            known_authors=known_authors,
             channel_remote_root=root,
             on_progress=on_progress,
             done_label='扫描完成',
@@ -291,6 +294,7 @@ class ArchiveAuthorReorganizeService:
             channel_folder: str,
             *,
             directory_paths: Optional[list[str]] = None,
+            known_authors: Optional[list[str]] = None,
             prior_plan: Optional[dict] = None,
             channel_remote_root: Optional[str] = None,
             on_progress: ProgressCallback = None,
@@ -340,6 +344,17 @@ class ArchiveAuthorReorganizeService:
                 )
         fetch_ids = [mid for mid in unique_ids if mid not in preserved]
         known_seed = known_authors_from_directory_paths(channel, paths)
+        seed_names = list(known_authors or [])
+        if not seed_names and isinstance(prior_plan, dict):
+            seed_names = list(prior_plan.get('known_authors') or [])
+        for name in seed_names:
+            text = str(name or '').strip()
+            if (
+                text
+                and text != UNKNOWN_AUTHOR_FOLDER
+                and not is_denied_post_author(text)
+            ):
+                known_seed.add(text)
         for hint in preserved.values():
             if hint.name:
                 known_seed.add(hint.name)
@@ -424,6 +439,7 @@ class ArchiveAuthorReorganizeService:
         payload = plan.to_dict()
         payload['channel_remote_root'] = root
         payload['directory_paths'] = paths
+        payload['known_authors'] = sorted(known_seed)
         payload['resolved_author_count'] = resolved
         payload['message_id_count'] = len(unique_ids)
         payload['resolve_scope'] = scope
@@ -464,70 +480,48 @@ class ArchiveAuthorReorganizeService:
             channel: str,
             root: str,
             on_progress: ProgressCallback = None,
-    ) -> list[str]:
-        """List post folders with layered rclone lsjson (no full-tree --recursive)."""
+    ) -> tuple[list[str], list[str]]:
+        """List only top-level numeric-ID post folders under the channel.
+
+        Non-post top-level names (already-archived author dirs, uploader UIDs)
+        become known-author seeds for hashtag matching — without listing their
+        children. Site/topic denylist names and ``_未知作者`` are ignored.
+        """
         self._report(
             on_progress,
             phase='listing',
-            message='正在列出频道顶层目录…',
+            message='正在列出频道顶层目录（仅数字 ID 主贴）…',
         )
         top_level = client.list_directories(root, recursive=False)
         self._pace(RCLONE_LIST_PAUSE_SECONDS)
         post_paths: list[str] = []
-        author_dirs: list[str] = []
+        known_authors: list[str] = []
+        skipped_non_post = 0
         for raw in top_level:
             name = clean_leaf_name(raw)
             if not name:
                 continue
             if is_post_folder_segment(name):
                 post_paths.append(f'{channel}/{name}')
-            else:
-                author_dirs.append(name)
-
-        total_steps = max(len(author_dirs), 1)
-        self._report(
-            on_progress,
-            phase='listing',
-            current=0,
-            total=total_steps,
-            message=(
-                f'顶层主贴 {len(post_paths)} 个，作者目录 {len(author_dirs)} 个；'
-                f'开始逐个慢速列出作者子目录…'
-            ),
-        )
-        for index, author in enumerate(author_dirs, start=1):
-            self._report(
-                on_progress,
-                phase='listing',
-                current=index - 1,
-                total=total_steps,
-                message=f'正在列出作者目录 {index}/{len(author_dirs)}：{author}',
-            )
-            author_root = join_remote_path(root, author)
-            children = client.list_directories(author_root, recursive=False)
-            self._pace(RCLONE_LIST_PAUSE_SECONDS)
-            for child in children:
-                leaf = clean_leaf_name(child)
-                if leaf and is_post_folder_segment(leaf):
-                    post_paths.append(f'{channel}/{author}/{leaf}')
-            self._report(
-                on_progress,
-                phase='listing',
-                current=index,
-                total=total_steps,
-                message=(
-                    f'已处理作者目录 {index}/{len(author_dirs)}，'
-                    f'累计主贴目录 {len(post_paths)}'
-                ),
-            )
+                continue
+            skipped_non_post += 1
+            if (
+                name != UNKNOWN_AUTHOR_FOLDER
+                and not is_denied_post_author(name)
+            ):
+                known_authors.append(name)
         self._report(
             on_progress,
             phase='listing',
             current=len(post_paths),
             total=max(len(post_paths), 1),
-            message=f'已列出 {len(post_paths)} 个主贴目录',
+            message=(
+                f'已列出 {len(post_paths)} 个待整理主贴目录'
+                f'（跳过 {skipped_non_post} 个非数字 ID 顶层目录，'
+                f'已知作者种子 {len(known_authors)}）'
+            ),
         )
-        return post_paths
+        return post_paths, known_authors
 
     def execute(
             self,

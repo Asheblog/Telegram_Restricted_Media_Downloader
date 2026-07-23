@@ -144,7 +144,7 @@ _Avoid_: Telegram from_user, channel signature, uploader account
 **Archive By Author** — 转存任务 / 监听规则上的可选开关（默认关）。关：扁平 Source Post Archive Path；开：嵌套 Post Author 层。字段名 `archive_by_author`；监听转发规则串可带 `--archive-by-author`。
 _Avoid_: global channel preference, automatic opt-in
 
-**Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中的主贴目录，回查 Telegram 主贴解析 Post Author（署名 → 标签回连已知作者 / 唯一标签候选 → 未识别），生成迁移一览（汇总可点开分页明细）；「全部迁移」一键执行高置信 + 待确认，未识别默认不搬。「仅解析未识别」保留上次已识别结果，只回查未识别、`_未知作者` 与站点名误标主贴（含相册兄弟 hashtag），不必为此全量。整理串行移动并写 checkpoint；进程重启后自动续跑剩余项（幂等跳过已就位），可「停止」后再次迁移续跑。与实时链路的 `archive_by_author` 解耦，仅用于显式历史整理。
+**Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中**频道顶层、数字 ID 开头**的扁平主贴目录（`{message_id} - …`）；已归档作者目录 / `更新` / 站点杂项目录等非数字 ID 顶层项只取其名称作已知作者种子（若可作作者），**不进入列子目录**。回查 Telegram 主贴解析 Post Author（署名 → 标签回连已知作者 / 唯一标签候选 → 未识别），生成迁移一览（汇总可点开分页明细）；「全部迁移」一键执行高置信 + 待确认，未识别默认不搬。「仅解析未识别」保留上次已识别结果，只回查未识别、`_未知作者` 与站点名误标主贴（含相册兄弟 hashtag），不必为此全量。整理串行移动并写 checkpoint；进程重启后自动续跑剩余项（幂等跳过已就位），可「停止」后再次迁移续跑。与实时链路的 `archive_by_author` 解耦，仅用于显式历史整理。
 _Avoid_: media cleanup, full-disk rename, manual rclone script
 
 **Migration Overview** — Author Archive Reorganize 的计划汇总视图：按 `move` / `needs_confirm` / `needs_review` / skip 分桶计数，明细经分页 API 拉取全量，浏览器不再截断预览。

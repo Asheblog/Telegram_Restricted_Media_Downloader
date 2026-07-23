@@ -49,6 +49,46 @@ class FakeArchiveClient:
 
 
 class ArchiveAuthorProgressCase(unittest.TestCase):
+    def test_scan_only_lists_top_level_numeric_id_post_folders(self):
+        """Scan must not recurse into already-archived / non-post top-level dirs."""
+
+        class BusyChannelClient(FakeArchiveClient):
+            def list_directories(self, remote_path, *, recursive=False, timeout=None):
+                self.list_calls.append((remote_path, recursive))
+                path = str(remote_path or '').replace('\\', '/').strip('/')
+                if recursive:
+                    raise AssertionError('author scan must not use recursive lsjson')
+                if path.endswith('chengdudiyi8'):
+                    return [
+                        '93782 - flat-a',
+                        '93784 - flat-b',
+                        '更新',
+                        '海角_175673525401',
+                        UNKNOWN_AUTHOR_FOLDER,
+                        '我的羞涩女儿',
+                    ]
+                raise AssertionError(f'scan must not list under non-post folder: {path}')
+
+        client = BusyChannelClient()
+        service = ArchiveAuthorReorganizeService(
+            archive_client=client,
+            telegram_client=None,
+        )
+        service._pace = lambda _seconds: None
+        plan = service.scan('chengdudiyi8')
+        self.assertEqual(1, len(client.list_calls))
+        paths = plan.get('directory_paths') or []
+        self.assertEqual(
+            [
+                'chengdudiyi8/93782 - flat-a',
+                'chengdudiyi8/93784 - flat-b',
+            ],
+            paths,
+        )
+        from_paths = {item['from_relative'] for item in plan['moves']}
+        self.assertEqual({'93782 - flat-a', '93784 - flat-b'}, from_paths)
+        self.assertEqual({'我的羞涩女儿', '海角_175673525401'}, set(plan.get('known_authors') or []))
+
     def test_scan_reports_progress_phases(self):
         events = []
 
@@ -74,11 +114,13 @@ class ArchiveAuthorProgressCase(unittest.TestCase):
         self.assertIn('done', phases)
         self.assertTrue(any(item.get('message') for item in events))
         self.assertTrue(client.list_calls)
+        self.assertEqual(1, len(client.list_calls))
         self.assertTrue(all(not recursive for _path, recursive in client.list_calls))
         from_paths = {item['from_relative'] for item in plan['moves']}
         self.assertIn('92862 - title-a', from_paths)
-        self.assertIn(f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown', from_paths)
-        self.assertIn('我的羞涩女儿/92840 - nested', from_paths)
+        self.assertIn('92850 - title-b', from_paths)
+        self.assertNotIn(f'{UNKNOWN_AUTHOR_FOLDER}/99999 - unknown', from_paths)
+        self.assertNotIn('我的羞涩女儿/92840 - nested', from_paths)
 
     def test_resolve_reuses_directory_paths_without_rclone_listing(self):
         from types import SimpleNamespace
