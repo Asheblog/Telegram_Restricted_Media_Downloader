@@ -243,7 +243,7 @@ class DeepLinkResolverCase(unittest.TestCase):
 
             t0 = time.time()
             with patch('module.transfer.deep_link.asyncio.sleep', new=yield_sleep):
-                with self.assertRaises(DeepLinkResolveError):
+                with self.assertRaises(DeepLinkResolveError) as ctx:
                     await asyncio.wait_for(
                         resolver.resolve(
                             client, _source_message_with_deep_link(), whitelist=['a82bot'],
@@ -251,6 +251,126 @@ class DeepLinkResolverCase(unittest.TestCase):
                         timeout=2.0,
                     )
             self.assertLess(time.time() - t0, 1.5)
+            self.assertIn('限流', str(ctx.exception))
+
+        asyncio.run(run_case())
+
+    def test_resolve_continues_after_pagination_click_fail_until_media(self):
+        """Click fail with zero media must not abort; keep polling until media or deadline."""
+        async def run_case():
+            t0_abs = {'v': None}
+            clicks = {'n': 0}
+
+            async def get_chat_history(bot_username, limit=10):
+                now = time.time()
+                if t0_abs['v'] is None:
+                    t0_abs['v'] = now
+                elapsed = now - t0_abs['v']
+                menu = SimpleNamespace(
+                    id=2,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=t0_abs['v'],
+                    chat=SimpleNamespace(id='bot'),
+                    reply_markup=SimpleNamespace(inline_keyboard=[[
+                        SimpleNamespace(text='下一页', callback_data=b'n1', url=None),
+                    ]]),
+                )
+
+                async def boom(*_a, **_k):
+                    clicks['n'] += 1
+                    raise RuntimeError('QUERY_ID_INVALID')
+
+                menu.click = boom
+                msgs = [menu]
+                if elapsed >= 0.35:
+                    msgs.append(SimpleNamespace(
+                        id=99,
+                        video=object(),
+                        document=None,
+                        animation=None,
+                        photo=None,
+                        outgoing=False,
+                        date=now,
+                        chat=SimpleNamespace(id='bot'),
+                        reply_markup=None,
+                    ))
+                for msg in msgs:
+                    yield msg
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0,
+                poll_interval=0.08,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                page_click_interval_seconds=0.02,
+            )
+            t0 = time.time()
+            result = await resolver.resolve(
+                client, _source_message_with_deep_link(), whitelist=['a82bot'],
+            )
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+            self.assertGreaterEqual(clicks['n'], 1)
+            self.assertGreaterEqual(time.time() - t0, 0.3)
+
+        asyncio.run(run_case())
+
+    def test_resolve_waits_full_timeout_after_click_fail_with_no_media(self):
+        async def run_case():
+            started = time.time()
+
+            async def get_chat_history(bot_username, limit=10):
+                menu = SimpleNamespace(
+                    id=2,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started,
+                    chat=SimpleNamespace(id='bot'),
+                    reply_markup=SimpleNamespace(inline_keyboard=[[
+                        SimpleNamespace(text='1', callback_data=b'g1', url=None),
+                    ]]),
+                )
+
+                async def boom(*_a, **_k):
+                    raise RuntimeError('btn invalid')
+
+                menu.click = boom
+                yield menu
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.5,
+                poll_interval=0.08,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                page_click_interval_seconds=0.02,
+            )
+            t0 = time.time()
+            with self.assertRaises(DeepLinkResolveError) as ctx:
+                await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            elapsed = time.time() - t0
+            self.assertGreaterEqual(elapsed, 0.45)
+            self.assertIn('未在超时内返回媒体', str(ctx.exception))
 
         asyncio.run(run_case())
 

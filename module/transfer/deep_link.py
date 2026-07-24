@@ -299,7 +299,9 @@ class DeepLinkResolver:
                 if deadline is not None:
                     remaining = deadline - time.time()
                     if remaining <= 0 or amount > remaining:
-                        raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
+                        raise DeepLinkResolveError(
+                            f'资源 bot 限流，等待时间超过超时预算（需等待 {amount}s）'
+                        )
                 await asyncio.sleep(amount)
 
     @staticmethod
@@ -446,18 +448,23 @@ class DeepLinkResolver:
                 clicked,
                 deadline,
             )
-            if pages_clicked >= self.max_pages:
-                break
-            if pending is None:
+            if pages_clicked >= self.max_pages or pending is None:
+                # _collect_wave already waited to deadline when empty and no targets.
                 break
             try:
                 await self._click_callback(client, pending, deadline=deadline)
             except Exception as e:
+                # Mark failed callback so we do not tight-loop the same dead button.
+                # With zero media, continue so the next wave can wait for late media.
+                clicked.add(pending.callback_data)
                 log.warning(
-                    'deep_link pagination click failed (partial ok): %s',
+                    'deep_link pagination click failed%s: %s',
+                    ' (partial ok)' if collected else '; keep waiting for media',
                     e,
                 )
-                break
+                if collected:
+                    break
+                continue
             clicked.add(pending.callback_data)
             pages_clicked += 1
             if self.page_click_interval_seconds > 0:
