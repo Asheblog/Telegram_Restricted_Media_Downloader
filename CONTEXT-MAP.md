@@ -94,6 +94,7 @@
 | upload (download_upload, delete, pending_limit) | GlobalConfig | `gc.upload.*` |
 | target_profiles (pikpak archive 等) | GlobalConfig | `gc.target_profiles.pikpak.*` |
 | Media Type Allowlist（唯一真源） | GlobalConfig | `gc.message_filter.media_types` |
+| Keyword Blacklist（与归档标题面一致） | GlobalConfig | `gc.message_filter.keywords` |
 | forward_type（兼容双写） | GlobalConfig | `gc.forward_type.*` |
 | message_filter（日期/关键词 + media_types） | GlobalConfig | `gc.message_filter.*` |
 | Media Type Override（任务/监听） | TransferStore | `transfer_tasks.media_types` / `live_transfer_watches.media_types` |

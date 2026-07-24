@@ -123,6 +123,47 @@ class MessageFilterTestCase(unittest.TestCase):
         msg = make_message(caption="best music album")
         self.assertFalse(f.should_pass(msg))
 
+    def test_keywords_match_in_media_file_name(self):
+        """媒体文件名含关键词时应拦截（与归档标题面一致）。"""
+        from types import SimpleNamespace
+
+        f = MessageFilter({
+            'enabled': True,
+            'media_types': {t: True for t in MessageFilter.MEDIA_TYPES},
+            'keywords': {'enabled': True, 'words': ['免税烟', '同城约炮']},
+        })
+        msg = make_message(document=SimpleNamespace(file_name='免税烟、云霄烟.mp4'))
+        self.assertFalse(f.should_pass(msg))
+        self.assertEqual('命中过滤关键词: 免税烟', f.get_reject_reason(msg))
+
+    def test_keywords_match_in_inherited_album_title(self):
+        """相册继承标题含关键词时应拦截。"""
+        from types import SimpleNamespace
+
+        f = MessageFilter({
+            'enabled': True,
+            'media_types': {t: True for t in MessageFilter.MEDIA_TYPES},
+            'keywords': {'enabled': True, 'words': ['同城约炮']},
+        })
+        msg = make_message(video=SimpleNamespace(file_name='clip.mp4'))
+        msg._trmd_source_title = '‼️同城约炮新人必读'
+        self.assertFalse(f.should_pass(msg))
+        self.assertEqual('命中过滤关键词: 同城约炮', f.get_reject_reason(msg))
+
+    def test_keywords_match_in_web_page_title(self):
+        """web_page.title 含关键词时应拦截。"""
+        from types import SimpleNamespace
+
+        f = MessageFilter({
+            'enabled': True,
+            'media_types': {t: True for t in MessageFilter.MEDIA_TYPES},
+            'keywords': {'enabled': True, 'words': ['会员']},
+        })
+        msg = make_message(text='点击查看')
+        msg.web_page = SimpleNamespace(title='无码中文字幕会员群')
+        self.assertFalse(f.should_pass(msg))
+        self.assertEqual('命中过滤关键词: 会员', f.get_reject_reason(msg))
+
     def test_keywords_case_insensitive(self):
         """大小写不敏感的排除匹配。"""
         f = MessageFilter({'keywords': {'enabled': True, 'words': ['MUSIC']}})

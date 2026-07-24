@@ -9,6 +9,35 @@ from typing import Optional
 import pyrogram
 
 from module.core import media_types as media_types_mod
+from module.source_folders import MEDIA_FILE_NAME_ATTRS
+
+
+def message_keyword_scan_text(message: pyrogram.types.Message) -> str:
+    """Collect all text surfaces that can become archive titles / visible spam.
+
+    Matches the Keyword Blacklist corpus: text, caption, inherited album title,
+    web_page.title, and media file_name (full name, including extension).
+    """
+    parts: list[str] = []
+    for attr in ('text', 'caption'):
+        value = getattr(message, attr, None)
+        if isinstance(value, str) and value.strip():
+            parts.append(value)
+    inherited = getattr(message, '_trmd_source_title', None)
+    if isinstance(inherited, str) and inherited.strip():
+        parts.append(inherited)
+    web_page = getattr(message, 'web_page', None)
+    web_title = getattr(web_page, 'title', None) if web_page is not None else None
+    if isinstance(web_title, str) and web_title.strip():
+        parts.append(web_title)
+    for media_attr in MEDIA_FILE_NAME_ATTRS:
+        media = getattr(message, media_attr, None)
+        if media is None:
+            continue
+        file_name = getattr(media, 'file_name', None)
+        if isinstance(file_name, str) and file_name.strip():
+            parts.append(file_name)
+    return '\n'.join(parts)
 
 
 class MessageFilter:
@@ -113,10 +142,13 @@ class MessageFilter:
         words = self.keywords
         if not words:
             return None
-        text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ''
-        text_lower = text.lower()
+        text_lower = message_keyword_scan_text(message).lower()
+        if not text_lower:
+            return None
         for keyword in words:
-            if keyword.lower() in text_lower:
+            if not keyword:
+                continue
+            if str(keyword).lower() in text_lower:
                 return keyword
         return None
 
@@ -194,10 +226,14 @@ class MessageFilter:
             message: pyrogram.types.Message,
             keywords: Optional[list]
     ) -> bool:
+        """Bot/Web 会话白名单：仅匹配 text/caption（与全局 Keyword Blacklist 扫描面分离）。"""
         if not keywords:
             return True
-        text = getattr(message, 'text') or getattr(message, 'caption') or ''
-        return any(keyword.lower() in text.lower() for keyword in keywords)
+        text = getattr(message, 'text', None) or getattr(message, 'caption', None) or ''
+        if not text:
+            return False
+        text_lower = text.lower()
+        return any(str(keyword).lower() in text_lower for keyword in keywords if keyword)
 
 
 # 向后兼容别名：旧代码中用 Filter 的地方仍可工作
