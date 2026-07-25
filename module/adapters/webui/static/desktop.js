@@ -28,6 +28,7 @@ function switchView(view, options) {
   if (view === 'media') loadMedia();
   if (view === 'archive-organize') loadArchiveOrganize();
   if (view === 'system-logs') {
+    syncSystemLogsFiltersUI();
     loadSystemLogs();
     startSystemLogsAutoRefresh();
   } else {
@@ -750,6 +751,11 @@ $('#records-clear-btn')?.addEventListener('click', async function() {
 /* ====== System Logs ====== */
 const SYSTEM_LOGS_PAGE_SIZE = 50;
 const SYSTEM_LOGS_AUTO_REFRESH_KEY = 'trmd-system-logs-auto-refresh';
+const SYSTEM_LOGS_CATEGORY_KEY = 'trmd-system-logs-category';
+const SYSTEM_LOGS_LEVEL_KEY = 'trmd-system-logs-level';
+const SYSTEM_LOGS_TODAY_KEY = 'trmd-system-logs-today';
+const SYSTEM_LOGS_CATEGORY_VALUES = ['', 'watch', 'filter', 'forward', 'transfer', 'archive'];
+const SYSTEM_LOGS_LEVEL_VALUES = ['', 'info', 'warning', 'error'];
 const SYSTEM_LOGS_AUTO_REFRESH_MS = 5000;
 let systemLogsAutoRefreshTimer = null;
 
@@ -766,6 +772,46 @@ function isSystemLogsAutoRefreshEnabled() {
 
 function setSystemLogsAutoRefreshEnabled(enabled) {
   localStorage.setItem(SYSTEM_LOGS_AUTO_REFRESH_KEY, enabled ? '1' : '0');
+}
+
+function getSystemLogsCategory() {
+  const value = localStorage.getItem(SYSTEM_LOGS_CATEGORY_KEY);
+  if (value == null) return '';
+  return SYSTEM_LOGS_CATEGORY_VALUES.indexOf(value) >= 0 ? value : '';
+}
+
+function setSystemLogsCategory(value) {
+  const next = SYSTEM_LOGS_CATEGORY_VALUES.indexOf(value) >= 0 ? value : '';
+  localStorage.setItem(SYSTEM_LOGS_CATEGORY_KEY, next);
+}
+
+function getSystemLogsLevel() {
+  const value = localStorage.getItem(SYSTEM_LOGS_LEVEL_KEY);
+  if (value == null) return '';
+  return SYSTEM_LOGS_LEVEL_VALUES.indexOf(value) >= 0 ? value : '';
+}
+
+function setSystemLogsLevel(value) {
+  const next = SYSTEM_LOGS_LEVEL_VALUES.indexOf(value) >= 0 ? value : '';
+  localStorage.setItem(SYSTEM_LOGS_LEVEL_KEY, next);
+}
+
+function isSystemLogsTodayOnlyEnabled() {
+  return localStorage.getItem(SYSTEM_LOGS_TODAY_KEY) === '1';
+}
+
+function setSystemLogsTodayOnlyEnabled(enabled) {
+  localStorage.setItem(SYSTEM_LOGS_TODAY_KEY, enabled ? '1' : '0');
+}
+
+function syncSystemLogsFiltersUI() {
+  const category = $('#system-logs-category');
+  if (category) category.value = getSystemLogsCategory();
+  const level = $('#system-logs-level');
+  if (level) level.value = getSystemLogsLevel();
+  const today = $('#system-logs-today');
+  if (today) today.checked = isSystemLogsTodayOnlyEnabled();
+  syncSystemLogsAutoRefreshUI();
 }
 
 function stopSystemLogsAutoRefresh() {
@@ -1010,14 +1056,26 @@ async function downloadSystemLogsAll() {
   }
 }
 
-syncSystemLogsAutoRefreshUI();
+syncSystemLogsFiltersUI();
 
 $('#system-logs-refresh-btn')?.addEventListener('click', function() { loadSystemLogs(1); });
 $('#system-logs-copy-btn')?.addEventListener('click', copySystemLogsPage);
 $('#system-logs-download-btn')?.addEventListener('click', downloadSystemLogsAll);
-$('#system-logs-category')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
-$('#system-logs-level')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
-$('#system-logs-today')?.addEventListener('change', function() { state.systemLogsPage = 1; loadSystemLogs(1); });
+$('#system-logs-category')?.addEventListener('change', function() {
+  setSystemLogsCategory(this.value || '');
+  state.systemLogsPage = 1;
+  loadSystemLogs(1);
+});
+$('#system-logs-level')?.addEventListener('change', function() {
+  setSystemLogsLevel(this.value || '');
+  state.systemLogsPage = 1;
+  loadSystemLogs(1);
+});
+$('#system-logs-today')?.addEventListener('change', function() {
+  setSystemLogsTodayOnlyEnabled(this.checked);
+  state.systemLogsPage = 1;
+  loadSystemLogs(1);
+});
 $('#system-logs-auto-refresh')?.addEventListener('change', function() {
   setSystemLogsAutoRefreshEnabled(this.checked);
   if (this.checked) startSystemLogsAutoRefresh();

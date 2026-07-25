@@ -251,7 +251,10 @@ async function loadCurrentView() {
   if (subActive) {
     if (subActive.id === 'mob-subpage-statistics') { await loadMobileStatistics(); }
     else if (subActive.id === 'mob-subpage-records') { await loadMobileRecords(); }
-    else if (subActive.id === 'mob-subpage-system-logs') { await loadMobileSystemLogs(); }
+    else if (subActive.id === 'mob-subpage-system-logs') {
+      syncMobileSystemLogsFiltersUI();
+      await loadMobileSystemLogs();
+    }
   }
 }
 
@@ -373,7 +376,11 @@ function mobNavigateTo(subpage, options) {
   else if (subpage === 'media') { loadMediaMobile(); }
   else if (subpage === 'archive-organize') { loadArchiveOrganizeMobile(); }
   else if (subpage === 'settings') { loadMobileSettings(); }
-  else if (subpage === 'system-logs') { loadMobileSystemLogs(); startMobileSystemLogsAutoRefresh(); }
+  else if (subpage === 'system-logs') {
+    syncMobileSystemLogsFiltersUI();
+    loadMobileSystemLogs();
+    startMobileSystemLogsAutoRefresh();
+  }
 }
 
 function mobNavigateBack(options) {
@@ -1896,6 +1903,11 @@ document.getElementById('mob-records-clear-btn')?.addEventListener('click', asyn
 // ---------------------------------------------------------------------------
 var MOBILE_SYSTEM_LOGS_PAGE_SIZE = 50;
 var MOBILE_SYSTEM_LOGS_AUTO_REFRESH_KEY = 'trmd-system-logs-auto-refresh';
+var MOBILE_SYSTEM_LOGS_CATEGORY_KEY = 'trmd-system-logs-category';
+var MOBILE_SYSTEM_LOGS_LEVEL_KEY = 'trmd-system-logs-level';
+var MOBILE_SYSTEM_LOGS_TODAY_KEY = 'trmd-system-logs-today';
+var MOBILE_SYSTEM_LOGS_CATEGORY_VALUES = ['', 'watch', 'filter', 'forward', 'transfer', 'archive'];
+var MOBILE_SYSTEM_LOGS_LEVEL_VALUES = ['', 'info', 'warning', 'error'];
 var MOBILE_SYSTEM_LOGS_AUTO_REFRESH_MS = 5000;
 var mobileSystemLogsAutoRefreshTimer = null;
 
@@ -1923,6 +1935,46 @@ function isMobileSystemLogsAutoRefreshEnabled() {
 
 function setMobileSystemLogsAutoRefreshEnabled(enabled) {
   localStorage.setItem(MOBILE_SYSTEM_LOGS_AUTO_REFRESH_KEY, enabled ? '1' : '0');
+}
+
+function getMobileSystemLogsCategory() {
+  var value = localStorage.getItem(MOBILE_SYSTEM_LOGS_CATEGORY_KEY);
+  if (value == null) return '';
+  return MOBILE_SYSTEM_LOGS_CATEGORY_VALUES.indexOf(value) >= 0 ? value : '';
+}
+
+function setMobileSystemLogsCategory(value) {
+  var next = MOBILE_SYSTEM_LOGS_CATEGORY_VALUES.indexOf(value) >= 0 ? value : '';
+  localStorage.setItem(MOBILE_SYSTEM_LOGS_CATEGORY_KEY, next);
+}
+
+function getMobileSystemLogsLevel() {
+  var value = localStorage.getItem(MOBILE_SYSTEM_LOGS_LEVEL_KEY);
+  if (value == null) return '';
+  return MOBILE_SYSTEM_LOGS_LEVEL_VALUES.indexOf(value) >= 0 ? value : '';
+}
+
+function setMobileSystemLogsLevel(value) {
+  var next = MOBILE_SYSTEM_LOGS_LEVEL_VALUES.indexOf(value) >= 0 ? value : '';
+  localStorage.setItem(MOBILE_SYSTEM_LOGS_LEVEL_KEY, next);
+}
+
+function isMobileSystemLogsTodayOnlyEnabled() {
+  return localStorage.getItem(MOBILE_SYSTEM_LOGS_TODAY_KEY) === '1';
+}
+
+function setMobileSystemLogsTodayOnlyEnabled(enabled) {
+  localStorage.setItem(MOBILE_SYSTEM_LOGS_TODAY_KEY, enabled ? '1' : '0');
+}
+
+function syncMobileSystemLogsFiltersUI() {
+  var category = document.getElementById('mob-system-logs-category');
+  if (category) category.value = getMobileSystemLogsCategory();
+  var level = document.getElementById('mob-system-logs-level');
+  if (level) level.value = getMobileSystemLogsLevel();
+  var today = document.getElementById('mob-system-logs-today');
+  if (today) today.checked = isMobileSystemLogsTodayOnlyEnabled();
+  syncMobileSystemLogsAutoRefreshUI();
 }
 
 function stopMobileSystemLogsAutoRefresh() {
@@ -2218,6 +2270,7 @@ function bindMobileSystemLogsControls() {
   var category = document.getElementById('mob-system-logs-category');
   if (category) {
     category.addEventListener('change', function() {
+      setMobileSystemLogsCategory(this.value || '');
       state.systemLogsPage = 1;
       loadMobileSystemLogs(1);
     });
@@ -2225,6 +2278,7 @@ function bindMobileSystemLogsControls() {
   var level = document.getElementById('mob-system-logs-level');
   if (level) {
     level.addEventListener('change', function() {
+      setMobileSystemLogsLevel(this.value || '');
       state.systemLogsPage = 1;
       loadMobileSystemLogs(1);
     });
@@ -2232,6 +2286,7 @@ function bindMobileSystemLogsControls() {
   var today = document.getElementById('mob-system-logs-today');
   if (today) {
     today.addEventListener('change', function() {
+      setMobileSystemLogsTodayOnlyEnabled(this.checked);
       state.systemLogsPage = 1;
       loadMobileSystemLogs(1);
     });
@@ -2244,7 +2299,7 @@ function bindMobileSystemLogsControls() {
       else stopMobileSystemLogsAutoRefresh();
     });
   }
-  syncMobileSystemLogsAutoRefreshUI();
+  syncMobileSystemLogsFiltersUI();
 }
 
 // ---------------------------------------------------------------------------

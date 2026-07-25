@@ -451,6 +451,14 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("'error.deep_link_whitelist_required'", WEB_UI_MOBILE_HTML)
         self.assertIn('id="mob-form-notice" class="mob-form-notice hidden"', WEB_UI_MOBILE_HTML)
 
+    def test_desktop_system_logs_persist_filters_in_local_storage(self):
+        """系统日志筛选（分类/级别/仅今天）应写入 localStorage 并在进入页面时恢复。"""
+        self.assertIn("trmd-system-logs-category", WEB_UI_HTML)
+        self.assertIn("trmd-system-logs-level", WEB_UI_HTML)
+        self.assertIn("trmd-system-logs-today", WEB_UI_HTML)
+        self.assertIn('function syncSystemLogsFiltersUI', WEB_UI_HTML)
+        self.assertIn('setSystemLogsTodayOnlyEnabled(this.checked)', WEB_UI_HTML)
+
     def test_mobile_profile_hosts_system_logs_subpage(self):
         """系统日志并入「我的」子页：入口、路由、列表与导出能力齐全。"""
         self.assertIn('data-profile-nav="system-logs"', WEB_UI_MOBILE_HTML)
@@ -470,6 +478,10 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("mobNavigateTo('system-logs'", WEB_UI_MOBILE_HTML)
         self.assertIn('/api/system-logs', WEB_UI_MOBILE_HTML)
         self.assertIn('/api/system-logs/export', WEB_UI_MOBILE_HTML)
+        self.assertIn("trmd-system-logs-category", WEB_UI_MOBILE_HTML)
+        self.assertIn("trmd-system-logs-level", WEB_UI_MOBILE_HTML)
+        self.assertIn("trmd-system-logs-today", WEB_UI_MOBILE_HTML)
+        self.assertIn('function syncMobileSystemLogsFiltersUI', WEB_UI_MOBILE_HTML)
         # 不得再把 /system-logs 误踢回转存页
         self.assertNotIn("!view || view === 'system-logs'", WEB_UI_MOBILE_HTML)
 
