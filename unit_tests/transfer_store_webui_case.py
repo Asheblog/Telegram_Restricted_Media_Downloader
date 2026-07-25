@@ -4640,7 +4640,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(512, speeds['upload_speed_bps'])
 
     def test_range_transfer_progress_uses_message_id_counts_for_range_tasks(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source',
@@ -4765,6 +4765,91 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(2, progress['range_completed_ids'])
             self.assertEqual(73466, progress['current_range_message_id'])
             self.assertEqual(67, progress['range_progress_percent'])
+
+    def test_range_progress_counts_completed_ids_while_earlier_async_items_still_run(self):
+        """Deep-link / fallback downloads finish out of assignment order.
+
+        Web range assignment updates current_range_message_id as it walks the
+        interval, while earlier posts may still have RUNNING download items.
+        Percent must advance with every fully terminal range id — not only the
+        contiguous prefix from start_id — otherwise the bar freezes at 0% while
+        the displayed main-post ID keeps moving.
+        """
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source',
+                target_link='https://t.me/pikpak_bot',
+                start_id=10,
+                end_id=12,
+                resolve_deep_link=True,
+            )
+            # Message 10: deep-link multi-file still downloading (async).
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='bot-chat',
+                source_message_id=101,
+                range_message_id=10,
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                phase='downloading',
+                status=TransferStatus.RUNNING,
+            )
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='bot-chat',
+                source_message_id=102,
+                range_message_id=10,
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot',
+                media_type='video',
+                phase='downloading',
+                status=TransferStatus.RUNNING,
+            )
+            # Messages 11–12 already terminal while 10 is still in flight.
+            for message_id in (11, 12):
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source',
+                    source_message_id=message_id,
+                    range_message_id=message_id,
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS,
+                )
+            store.update_task_range_runtime(
+                task_id,
+                current_range_message_id=12,
+                current_range_video_captured=1,
+                current_range_video_index=1,
+            )
+
+            progress = store.range_transfer_progress(store.get_task(task_id))
+            task_model = WebUiViewModel(store).task_list()['tasks'][0]
+
+            self.assertEqual(2, progress['range_completed_ids'])
+            self.assertEqual(67, progress['range_progress_percent'])
+            # Assignment cursor may be ahead; UI still shows the advanced main ID.
+            self.assertEqual(12, progress['current_range_message_id'])
+            self.assertEqual(67, task_model['range_progress_percent'])
+            self.assertEqual(
+                '2/3',
+                f"{task_model['range_completed_ids']}/{task_model['range_total_ids']}",
+            )
+
+            # When the lagging post finishes, percent reaches 100.
+            for item in store.list_items(task_id):
+                if int(item.get('range_message_id') or 0) == 10:
+                    store.update_item(
+                        int(item['id']),
+                        status=TransferStatus.SUCCESS,
+                        phase='sent',
+                    )
+            done = store.range_transfer_progress(store.get_task(task_id))
+            self.assertEqual(3, done['range_completed_ids'])
+            self.assertEqual(100, done['range_progress_percent'])
 
     def test_is_range_message_complete_requires_all_comment_items_terminal(self):
         with tempfile.TemporaryDirectory() as directory:

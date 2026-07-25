@@ -1597,35 +1597,44 @@ class TransferStore:
 
         total_ids = end_id - start_id + 1
         completed_ids = 0
-        current_id: Optional[int] = None
-        video_total = 0
-        video_done = 0
-        video_index = 0
+        # First incomplete id in assignment order (for detail when runtime cursor is absent).
+        first_incomplete_id: Optional[int] = None
+        first_incomplete_video_total = 0
+        first_incomplete_video_done = 0
+        first_incomplete_video_index = 0
 
+        # Count every fully-terminal range id, not only the contiguous prefix from
+        # start_id. Deep-link / download-fallback assignment walks the interval and
+        # advances current_range_message_id while earlier posts may still have
+        # RUNNING items; freezing completed_ids at the first hole leaves the bar at
+        # 0% while the main-post ID keeps moving.
         for message_id in range(start_id, end_id + 1):
             status_counts = counts_by_range.get(message_id)
             if not status_counts:
-                if completed_ids == message_id - start_id:
-                    current_id = message_id
-                break
+                if first_incomplete_id is None:
+                    first_incomplete_id = message_id
+                continue
 
             total_videos = sum(status_counts.values())
             done_videos = sum(status_counts.get(status, 0) for status in terminal_statuses)
-            if done_videos >= total_videos:
+            if done_videos >= total_videos and total_videos > 0:
                 completed_ids += 1
                 continue
 
-            current_id = message_id
-            video_total = total_videos
-            video_done = done_videos
-            active_videos = (
-                status_counts.get(TransferStatus.RUNNING, 0)
-                + status_counts.get(TransferStatus.PENDING, 0)
-            )
-            video_index = done_videos + (1 if active_videos else 0)
-            break
-        else:
-            completed_ids = total_ids
+            if first_incomplete_id is None:
+                first_incomplete_id = message_id
+                first_incomplete_video_total = total_videos
+                first_incomplete_video_done = done_videos
+                active_videos = (
+                    status_counts.get(TransferStatus.RUNNING, 0)
+                    + status_counts.get(TransferStatus.PENDING, 0)
+                )
+                first_incomplete_video_index = done_videos + (1 if active_videos else 0)
+
+        current_id = first_incomplete_id
+        video_total = first_incomplete_video_total
+        video_done = first_incomplete_video_done
+        video_index = first_incomplete_video_index
 
         runtime_current_id = task.get('current_range_message_id')
         runtime_captured = int(task.get('current_range_video_captured') or 0)
@@ -1634,6 +1643,21 @@ class TransferStore:
             runtime_current_id = int(runtime_current_id)
             if current_id is None or runtime_current_id >= current_id:
                 current_id = runtime_current_id
+            # Prefer per-id item counts for the displayed runtime cursor when present.
+            runtime_counts = counts_by_range.get(runtime_current_id)
+            if runtime_counts:
+                runtime_total = sum(runtime_counts.values())
+                runtime_done = sum(
+                    runtime_counts.get(status, 0) for status in terminal_statuses
+                )
+                if runtime_done < runtime_total or runtime_total == 0:
+                    video_total = runtime_total
+                    video_done = runtime_done
+                    active_videos = (
+                        runtime_counts.get(TransferStatus.RUNNING, 0)
+                        + runtime_counts.get(TransferStatus.PENDING, 0)
+                    )
+                    video_index = runtime_done + (1 if active_videos else 0)
             if runtime_captured > video_total:
                 video_total = runtime_captured
             if runtime_index > video_index:
