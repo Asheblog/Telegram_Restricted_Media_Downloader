@@ -768,17 +768,28 @@ class DeepLinkListenForwardFolderCase(unittest.TestCase):
         )
         members.extend([trigger, captioned])
 
-        asyncio.run(downloader._run_pikpak_archive_after_forward(
-            message=trigger,
-            origin_chat_id=-1001,
-            message_id=93670,
-            media_group=[93670, 93671],
-            source_folder='chengdudiyi8/_未知作者/93670',
-            source_link='https://t.me/chengdudiyi8/93670',
-        ))
+        async def _run_and_drain():
+            await downloader._run_pikpak_archive_after_forward(
+                message=trigger,
+                origin_chat_id=-1001,
+                message_id=93670,
+                media_group=[93670, 93671],
+                source_folder='chengdudiyi8/_未知作者/93670',
+                source_link='https://t.me/chengdudiyi8/93670',
+            )
+            # Archive is fire-and-forget via create_task(to_thread); drain before assert.
+            pending = [
+                task for task in asyncio.all_tasks()
+                if task is not asyncio.current_task()
+            ]
+            if pending:
+                await asyncio.gather(*pending)
+
+        asyncio.run(_run_and_drain())
 
         self.assertEqual(2, len(archive_calls))
-        expected = 'chengdudiyi8/93670 - 继父出差了妈妈自己在家'
+        # ID-only may enrich once; existing `_未知作者` parent must stay (not flatten).
+        expected = 'chengdudiyi8/_未知作者/93670 - 继父出差了妈妈自己在家'
         self.assertEqual(expected, archive_calls[0]['source_folder'])
         self.assertEqual(expected, archive_calls[1]['source_folder'])
 

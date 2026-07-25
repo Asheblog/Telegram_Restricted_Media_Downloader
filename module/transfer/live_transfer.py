@@ -132,30 +132,6 @@ class LiveTransferService:
             fallback_link=shared_source_link,
             archive_by_author=archive_by_author,
         )
-        # #region agent log
-        try:
-            import json as _json, time as _time
-            from module.source_folders import split_archive_source_folder as _split
-            from module.debug_session_log import agent_debug_log
-            _in_ch, _in_au, _in_po = _split(source_folder)
-            _out_ch, _out_au, _out_po = _split(archive_folder)
-            agent_debug_log(
-                hypothesis_id='H3,H4',
-                location='live_transfer.py:_run_pikpak_archive_after_forward',
-                message='archive path after re-resolve',
-                data={
-                    'archive_by_author': archive_by_author,
-                    'source_folder_in': source_folder,
-                    'author_in': _in_au,
-                    'archive_folder_out': archive_folder,
-                    'author_out': _out_au,
-                    'flattened': bool(_in_au) and not _out_au,
-                    'message_id': message_id,
-                },
-            )
-        except Exception:
-            pass
-        # #endregion
         for group_message in messages:
             group_source_link = (
                 shared_source_link
@@ -811,28 +787,6 @@ class LiveTransferService:
             post_message_id=source_message_id,
             archive_by_author=archive_by_author,
         )
-        # #region agent log
-        try:
-            from module.source_folders import split_archive_source_folder as _split
-            from module.debug_session_log import agent_debug_log
-            _ch, _au, _po = _split(post_archive_folder)
-            agent_debug_log(
-                hypothesis_id='H1,H3,H4,H5',
-                location='live_transfer.py:forward_discussion_replies',
-                message='built discussion post_archive_folder',
-                data={
-                    'watch_id': watch_id,
-                    'archive_by_author_arg': archive_by_author,
-                    'parent_loaded': parent_message is not None,
-                    'post_archive_folder': post_archive_folder,
-                    'author_segment': _au,
-                    'post_segment': _po,
-                    'source_message_id': source_message_id,
-                },
-            )
-        except Exception:
-            pass
-        # #endregion
 
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
@@ -905,24 +859,6 @@ class LiveTransferService:
                     media_group_ids = (
                         sorted(member.id for member in forward_group) if forward_group else None
                     )
-                    # #region agent log
-                    try:
-                        from module.debug_session_log import agent_debug_log
-                        agent_debug_log(
-                            hypothesis_id='H3',
-                            location='live_transfer.py:discussion_forward_invoke',
-                            message='comment forward invoke omits archive_by_author',
-                            data={
-                                'watch_id': watch_id,
-                                'source_folder': post_archive_folder,
-                                'archive_by_author_in_scope': archive_by_author,
-                                'passing_archive_by_author': False,
-                                'comment_id': getattr(forward_message, 'id', None),
-                            },
-                        )
-                    except Exception:
-                        pass
-                    # #endregion
                     await self._invoke('forward', 
                         client=client,
                         message=forward_message,
@@ -937,6 +873,7 @@ class LiveTransferService:
                         source_folder=post_archive_folder,
                         archive_source_link=getattr(parent_message, 'link', None) if parent_message else None,
                         media_types_override=media_types_override,
+                        archive_by_author=archive_by_author,
                     )
                     count += 1
         except (ValueError, AttributeError, MsgIdInvalid):
@@ -1172,30 +1109,13 @@ class LiveTransferService:
                             archive_by_author=archive_by_author,
                         )
                     if include_comment:
-                        # #region agent log
-                        try:
-                            from module.debug_session_log import agent_debug_log
-                            agent_debug_log(
-                                hypothesis_id='H2',
-                                location='live_transfer.py:listen_forward_schedule_comments',
-                                message='scheduling discussion without archive_by_author kwarg',
-                                data={
-                                    'watch_id': watch_id,
-                                    'rule_archive_by_author': archive_by_author,
-                                    'source_message_id': message_id,
-                                    'passing_to_scheduler': False,
-                                },
-                            )
-                        except Exception:
-                            pass
-                        # #endregion
                         await self.schedule_or_forward_discussion_replies(
                             client=client,
                             source_chat_id=_listen_chat_id,
                             source_message_id=message_id,
                             target_chat_id=_target_chat_id,
                             target_link=target_link,
-                            watch_id=watch_id
+                            watch_id=watch_id,
                         )
                     return
             if not matched:

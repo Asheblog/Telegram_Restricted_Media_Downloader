@@ -346,7 +346,8 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder_for_messages([video, photo]),
         )
 
-    def test_resolve_forward_upgrades_title_but_keeps_existing_post_id(self):
+    def test_resolve_forward_freezes_existing_title_and_keeps_post_id(self):
+        """Once a post leaf has any description, later captions must not rename it."""
         from module.source_folders import resolve_forward_archive_source_folder
 
         video = SimpleNamespace(
@@ -366,7 +367,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
 
         self.assertEqual(
-            'chengdudiyi8/73464 - 更好的标题正文',
+            'chengdudiyi8/73464 - 5月13日',
             resolve_forward_archive_source_folder(
                 source_folder='chengdudiyi8/73464 - 5月13日',
                 messages=[video],
@@ -375,7 +376,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
             ),
         )
 
-    def test_resolve_forward_title_upgrade_keeps_existing_author_without_flag(self):
+    def test_resolve_forward_freezes_title_and_keeps_author_without_flag(self):
         from module.source_folders import resolve_forward_archive_source_folder
 
         long_title = '【4K原创】' + '超长标题内容测试' * 12
@@ -395,9 +396,8 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_by_author=True,
         )
         self.assertTrue(nested.startswith('chengdudiyi8/某作者/123 - '))
-        # A later re-resolve that lost the archive_by_author flag (e.g. task-less
-        # listen forward archive) must not flatten the author segment away, even
-        # when the fresh full-length title outscores the stored truncated one.
+        # Re-resolve must keep the exact leaf name and author, even if flag is lost
+        # and a longer raw caption would score higher.
         re_resolved = resolve_forward_archive_source_folder(
             source_folder=nested,
             messages=[message],
@@ -405,9 +405,84 @@ class SourceFolderArchiveCase(unittest.TestCase):
             fallback_link='https://t.me/chengdudiyi8/123',
             archive_by_author=False,
         )
-        self.assertTrue(
-            re_resolved.startswith('chengdudiyi8/某作者/123 - '),
-            re_resolved,
+        self.assertEqual(nested, re_resolved)
+
+    def test_resolve_forward_enriches_id_only_once_and_keeps_unknown_author(self):
+        from module.source_folders import UNKNOWN_AUTHOR_FOLDER, resolve_forward_archive_source_folder
+
+        captioned = SimpleNamespace(
+            id=93671,
+            caption='继父出差了妈妈自己在家',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='b.mp4'),
+            document=None,
+            photo=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/93671',
+        )
+        enriched = resolve_forward_archive_source_folder(
+            source_folder=f'chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}/93670',
+            messages=[captioned],
+            post_message_id=93670,
+            fallback_link='https://t.me/chengdudiyi8/93670',
+            archive_by_author=False,
+        )
+        self.assertEqual(
+            f'chengdudiyi8/{UNKNOWN_AUTHOR_FOLDER}/93670 - 继父出差了妈妈自己在家',
+            enriched,
+        )
+        # Second resolve must not rename the leaf even if a stronger title appears.
+        stronger = SimpleNamespace(
+            id=93672,
+            caption='【更强标题】继父出差了妈妈自己在家完整版',
+            text=None,
+            web_page=None,
+            video=SimpleNamespace(file_name='c.mp4'),
+            document=None,
+            photo=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/93672',
+        )
+        self.assertEqual(
+            enriched,
+            resolve_forward_archive_source_folder(
+                source_folder=enriched,
+                messages=[stronger],
+                post_message_id=93670,
+                fallback_link='https://t.me/chengdudiyi8/93670',
+                archive_by_author=False,
+            ),
+        )
+
+    def test_resolve_forward_lifts_author_but_freezes_titled_leaf(self):
+        from module.source_folders import UNKNOWN_AUTHOR_FOLDER, resolve_forward_archive_source_folder
+
+        message = SimpleNamespace(
+            id=100,
+            caption='固定叶子标题\n作者：#小明',
+            text=None,
+            web_page=None,
+            chat=SimpleNamespace(username='demochan'),
+            link='https://t.me/demochan/100',
+        )
+        self.assertEqual(
+            f'demochan/小明/100 - 固定叶子标题',
+            resolve_forward_archive_source_folder(
+                source_folder=f'demochan/{UNKNOWN_AUTHOR_FOLDER}/100 - 固定叶子标题',
+                messages=[message],
+                post_message_id=100,
+                fallback_link='https://t.me/demochan/100',
+                archive_by_author=True,
+            ),
         )
 
     def test_archive_source_folder_falls_back_to_media_file_name_stem(self):

@@ -81,21 +81,6 @@ class WebOperationsMixin:
                     if watch:
                         resolve_deep_link = bool(watch.get('resolve_deep_link'))
                         archive_by_author = bool(watch.get('archive_by_author'))
-                # #region agent log
-                from module.debug_session_log import agent_debug_log
-                agent_debug_log(
-                    hypothesis_id='H1,H5',
-                    location='web_operations.py:deferred_executor',
-                    message='deferred discussion about to forward',
-                    data={
-                        'watch_id': watch_id,
-                        'watch_archive_by_author': archive_by_author,
-                        'resolve_deep_link': resolve_deep_link,
-                        'will_pass_archive_by_author': False,
-                        'source_message_id': capture.get('source_message_id'),
-                    },
-                )
-                # #endregion
                 count = await self.forward_discussion_replies(
                     client=client,
                     source_chat_id=capture.get('source_chat_id'),
@@ -104,6 +89,7 @@ class WebOperationsMixin:
                     target_link=capture.get('target_link'),
                     watch_id=capture.get('watch_id'),
                     resolve_deep_link=resolve_deep_link,
+                    archive_by_author=archive_by_author,
                 )
                 watch_id = capture.get('watch_id')
                 if watch_id:

@@ -688,7 +688,18 @@ def resolve_forward_archive_source_folder(
         fallback_link: Optional[str] = None,
         archive_by_author: bool = False,
 ) -> str:
-    """Prefer an explicit Source Post Archive Path; enrich ID-only paths with album caption."""
+    """Prefer an explicit Source Post Archive Path; stabilize the post leaf name.
+
+    Policy (findability across temp → archive moves):
+    - Once a post segment already has a description (``{id} - {title}``), never
+      replace that title with a “better” caption later in the same transfer.
+    - ID-only post segments (``{id}``) may be enriched **once** with a title.
+    - Author parent may still lift (flat → author, or ``_未知作者`` → real author)
+      when ``archive_by_author`` is on; the post leaf string stays frozen after
+      the first titled form (or after one ID→titled enrich).
+    - An already-nested author segment (including ``_未知作者``) is not flattened
+      away just because a later re-resolve lost the flag.
+    """
     message_list = list(messages or [])
     title = pick_best_message_title(message_list)
     group_post_id = (
@@ -723,13 +734,19 @@ def resolve_forward_archive_source_folder(
     def _join_channel_post(post_segment: Optional[str]) -> Optional[str]:
         if not channel or not post_segment:
             return None
+        # Prefer a newly resolved real author when opted in.
+        if (
+                archive_by_author
+                and author
+                and author != UNKNOWN_AUTHOR_FOLDER
+        ):
+            return join_archive_source_folder(channel, author, post_segment)
+        # Keep any already-nested author (including `_未知作者`) so re-resolve
+        # cannot rename the path users already saw under temp/author trees.
+        if _existing_author:
+            return join_archive_source_folder(channel, _existing_author, post_segment)
         if archive_by_author and author:
             return join_archive_source_folder(channel, author, post_segment)
-        if _existing_author and _existing_author != UNKNOWN_AUTHOR_FOLDER:
-            # Callers that lost the archive_by_author flag must not flatten an
-            # already author-nested Source Post Archive Path. `_未知作者` may
-            # still be flattened: default (flag off) paths are flat by design.
-            return join_archive_source_folder(channel, _existing_author, post_segment)
         return join_archive_source_folder(channel, post_segment)
 
     existing_id = None
@@ -743,22 +760,24 @@ def resolve_forward_archive_source_folder(
             existing_id = existing_post.strip() or None
     # Never let a later album member rewrite the canonical post id already stored on the path.
     stable_id = existing_id if existing_id is not None else group_post_id
-    if title and channel and stable_id is not None:
-        if not existing_title or score_title_line(title) > score_title_line(existing_title):
-            post_segment = post_folder_segment(stable_id, title)
-            joined = _join_channel_post(post_segment)
-            if joined:
-                return joined
-    if title and not archive_folder_has_post_title(source_folder):
-        if channel:
-            post_segment = post_folder_segment(stable_id, title)
-            joined = _join_channel_post(post_segment)
-            if joined:
-                return joined
-            if archive_by_author and author:
-                return join_archive_source_folder(channel, author)
-            return channel
-        return built
+
+    # Freeze: titled leaf is immutable for the rest of this transfer chain.
+    if existing_title and existing_post and channel:
+        joined = _join_channel_post(existing_post)
+        if joined:
+            return joined
+        return source_folder
+
+    # ID-only: allow a single enrich with the best available title.
+    if title and channel and stable_id is not None and not existing_title:
+        post_segment = post_folder_segment(stable_id, title)
+        joined = _join_channel_post(post_segment)
+        if joined:
+            return joined
+        if archive_by_author and author:
+            return join_archive_source_folder(channel, author)
+        return channel
+
     if archive_by_author and channel and existing_post and _existing_author is None:
         # Lift legacy flat {channel}/{post} into {channel}/{author}/{post} only when opted in.
         return join_archive_source_folder(channel, author, existing_post)
