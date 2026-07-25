@@ -662,7 +662,7 @@ class WebTransferRunner:
             return members, getattr(message, 'id', None), None
         inherit = getattr(host, 'inherit_media_group_title', None)
         if callable(inherit):
-            inherit(group_messages)
+            inherit(group_messages, propagate_to=message)
         members = list(group_messages)
         shared_post_id = media_group_post_message_id(members)
         shared_folder = archive_source_folder_for_messages(
@@ -710,7 +710,7 @@ class WebTransferRunner:
             if group_messages:
                 inherit = getattr(host, 'inherit_media_group_title', None)
                 if callable(inherit):
-                    inherit(group_messages)
+                    inherit(group_messages, propagate_to=channel_message)
                 # Never let a caller's member message_id split the album folder.
                 shared_post_id = media_group_post_message_id(group_messages)
                 channel_source_folder = archive_source_folder_for_messages(
@@ -732,6 +732,41 @@ class WebTransferRunner:
                     post_message_id=range_message_id if archive_post_message is not None else None,
                     archive_by_author=bool(task.get('archive_by_author')),
                 )
+        runtime_filter_fn = getattr(host, 'runtime_message_filter', None)
+        if callable(runtime_filter_fn):
+            source_filter = runtime_filter_fn(task.get('media_types'))
+        else:
+            from module.core.media_types import build_runtime_message_filter
+            mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
+            source_filter = build_runtime_message_filter(mf, task.get('media_types'))
+        # Keyword Blacklist on Source Post before deep-link resolve.
+        if not source_filter.should_pass(message):
+            reject_reason = source_filter.get_reject_reason(message) or '媒体类型未允许'
+            skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
+            if callable(skip_fn):
+                skip_fn(
+                    task=task,
+                    message=message,
+                    source_link=source_link,
+                    origin_chat_id=origin_chat_id,
+                    reject_reason=reject_reason,
+                    range_message_id=range_message_id,
+                )
+            else:
+                host.skip_transfer_item_for_target_limit(
+                    task=task,
+                    message=message,
+                    source_link=source_link,
+                    origin_chat_id=origin_chat_id,
+                    limit_error={
+                        'message': reject_reason,
+                        'media_type': 'filtered',
+                        'file_name': None,
+                        'file_size': None,
+                    },
+                    range_message_id=range_message_id,
+                )
+            return False
         resolved_list = None
         if bool(task.get('resolve_deep_link')):
             resolver = host.get_deep_link_resolver()

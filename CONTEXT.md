@@ -189,8 +189,8 @@ _Avoid_: Bot scrape, start param hack, auto click teaser
 **Media Type Allowlist** — 全局唯一的允许处理媒体类型集合（`message_filter.media_types`）。所有下载/转发链路（Web 转存、实时监听、Bot 频道下载、深链取回）共用；消息过滤总开关不管媒体类型，只控制日期与关键词。
 _Avoid_: download_type, forward_type, per-pipeline type checkbox
 
-**Keyword Blacklist** — `message_filter.keywords` 黑名单扫描面与 Source Post 标题语料对齐：`text` / `caption` / 相册继承 `_trmd_source_title` / `web_page.title` / 媒体 `file_name`。命中任一表面即跳过转发/转存。
-_Avoid_: caption-only keyword scan, whitelist-as-blacklist
+**Keyword Blacklist** — `message_filter.keywords` 黑名单扫描面与 Source Post 标题语料对齐：`text` / `caption` / 相册继承 `_trmd_source_title` / `web_page.title` / 媒体 `file_name`。命中任一表面即跳过转发/转存。相册场景须把标题 `propagate_to` 写回监听更新里的触发消息（`get_media_group()` 常返回新对象）；开启 Deep Link Resolve 时先对来源帖做黑名单，再 resolve。
+_Avoid_: caption-only keyword scan, whitelist-as-blacklist, filter-only-resolved-bot-media
 
 **Media Type Override** — 转存任务、实时监听或 Bot 下载会话上可选的媒体类型整表替换；未设置则继承 Media Type Allowlist，设置后不再并入全局。
 _Avoid_: type delta, additive filter, per-pipeline settings

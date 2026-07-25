@@ -878,7 +878,7 @@ class WebRangeAlbumArchiveCase(unittest.TestCase):
                     get_deep_link_page_click_interval_seconds=lambda: 0,
                 ),
                 transfer_store=store,
-                inherit_media_group_title=lambda group: None,
+                inherit_media_group_title=lambda group, propagate_to=None: None,
                 # Non-PikPak path still writes source_folder on the item; enough to assert album id.
                 is_pikpak_target=lambda *_a, **_k: False,
                 get_task_target_size_limit_error=lambda *_a, **_k: None,
@@ -968,7 +968,7 @@ class WebRangeAlbumArchiveCase(unittest.TestCase):
             get_media_group=get_media_group,
         )
         members.extend([photo, video])
-        host = SimpleNamespace(inherit_media_group_title=lambda group: None)
+        host = SimpleNamespace(inherit_media_group_title=lambda group, propagate_to=None: None)
         runner = WebTransferRunner(host)
         got_members, shared_id, shared_folder = asyncio.run(
             runner._resolve_web_range_album(

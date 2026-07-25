@@ -1229,7 +1229,17 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         return extract_message_body_title(message)
 
     @staticmethod
-    def inherit_media_group_title(messages: Union[list, None]) -> None:
+    def inherit_media_group_title(
+            messages: Union[list, None],
+            *,
+            propagate_to=None,
+    ) -> None:
+        """Copy the best album title onto every group member.
+
+        ``get_media_group()`` often returns fresh Message objects that are not
+        the update handler's ``message``. Pass that trigger via ``propagate_to``
+        so Keyword Blacklist / archive naming see the same Source Post title.
+        """
         if not isinstance(messages, list):
             return
         from module.source_folders import pick_best_message_title
@@ -1237,7 +1247,21 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         title = pick_best_message_title(messages)
         if not title:
             return
-        for message in messages:
+        targets = list(messages)
+        if propagate_to is None:
+            extras = []
+        elif isinstance(propagate_to, (list, tuple)):
+            extras = list(propagate_to)
+        else:
+            extras = [propagate_to]
+        for extra in extras:
+            if extra is None:
+                continue
+            # Identity check: Message/SimpleNamespace equality is by value, not id().
+            if any(extra is existing for existing in targets):
+                continue
+            targets.append(extra)
+        for message in targets:
             try:
                 setattr(message, '_trmd_source_title', title)
             except Exception:

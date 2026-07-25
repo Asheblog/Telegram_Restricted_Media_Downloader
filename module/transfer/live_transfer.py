@@ -115,7 +115,7 @@ class LiveTransferService:
             try:
                 group_messages = await message.get_media_group()
                 if group_messages:
-                    self.inherit_media_group_title(group_messages)
+                    self.inherit_media_group_title(group_messages, propagate_to=message)
                     messages = list(group_messages)
             except Exception as e:
                 log.debug(f'Unable to resolve media group for PikPak archive: {e}')
@@ -221,7 +221,7 @@ class LiveTransferService:
                 try:
                     group_messages = await message.get_media_group()
                     if group_messages:
-                        self.inherit_media_group_title(group_messages)
+                        self.inherit_media_group_title(group_messages, propagate_to=message)
                 except Exception as e:
                     log.debug(f'Unable to inherit media group title before archive path: {e}')
             if source_folder:
@@ -234,7 +234,7 @@ class LiveTransferService:
                     except Exception:
                         group_messages = None
                 if group_messages:
-                    self.inherit_media_group_title(group_messages)
+                    self.inherit_media_group_title(group_messages, propagate_to=message)
                     channel_source_folder = archive_source_folder_for_messages(
                         group_messages,
                         fallback_chat_id=origin_chat_id,
@@ -950,7 +950,7 @@ class LiveTransferService:
                         except Exception:
                             group_messages = None
                     if group_messages:
-                        self.inherit_media_group_title(group_messages)
+                        self.inherit_media_group_title(group_messages, propagate_to=message)
                         channel_source_folder = archive_source_folder_for_messages(
                             group_messages,
                             fallback_chat_id=_listen_chat_id,
@@ -966,6 +966,30 @@ class LiveTransferService:
                         )
                     media_types_override = self._watch_media_types_override(watch_id)
                     runtime_filter = self.runtime_message_filter(media_types_override)
+                    # Keyword Blacklist on the Source Post (incl. album title) before
+                    # deep-link resolve — resolved bot media often has a clean caption.
+                    if not runtime_filter.should_pass(message):
+                        reject_reason = (
+                            runtime_filter.get_reject_reason(message) or '消息过滤器拒绝'
+                        )
+                        self._log_system_chain(
+                            category='filter',
+                            stage='filter_reject',
+                            message=f'消息被过滤器拦截: {reject_reason}',
+                            level='info',
+                            trace_id=trace_id,
+                            watch_id=watch_id,
+                            source_chat_id=origin_chat_id,
+                            source_message_id=message_id,
+                            target_link=target_link,
+                            details={'reject_reason': reject_reason, 'phase': 'source_post'},
+                        )
+                        self._record_watch_event(
+                            watch_id, origin_chat_id, message_id,
+                            _target_chat_id, target_link,
+                            'skipped', f'跳过转发({reject_reason})。'
+                        )
+                        return
                     messages_to_forward = [message]
                     if resolve_deep_link:
                         from module.transfer.deep_link import (
@@ -1008,6 +1032,22 @@ class LiveTransferService:
                         if not runtime_filter.should_pass(forward_unit):
                             reject_reason = (
                                 runtime_filter.get_reject_reason(forward_unit) or '媒体类型未允许'
+                            )
+                            self._log_system_chain(
+                                category='filter',
+                                stage='filter_reject',
+                                message=f'消息被过滤器拦截: {reject_reason}',
+                                level='info',
+                                trace_id=trace_id,
+                                watch_id=watch_id,
+                                source_chat_id=origin_chat_id,
+                                source_message_id=message_id,
+                                target_link=target_link,
+                                details={
+                                    'reject_reason': reject_reason,
+                                    'phase': 'forward_unit',
+                                    'forward_message_id': getattr(forward_unit, 'id', None),
+                                },
                             )
                             self._record_watch_event(
                                 watch_id, origin_chat_id, message_id,
