@@ -826,7 +826,8 @@ class DeepLinkResolverCase(unittest.TestCase):
 
             def should_continue():
                 calls['n'] += 1
-                return calls['n'] <= 1
+                # Allow first wave polls + outer checks; stop before pagination click.
+                return calls['n'] < 3
 
             with patch.object(resolver, 'start_bot', new=AsyncMock()):
                 result = await resolver.resolve(

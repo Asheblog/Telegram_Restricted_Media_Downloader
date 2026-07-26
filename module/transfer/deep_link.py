@@ -400,6 +400,7 @@ class DeepLinkResolver:
             *,
             seen_fingerprints: Optional[Set[str]] = None,
             allow_empty_for_pagination: bool = True,
+            should_continue=None,
     ) -> Optional[PaginationClickTarget]:
         """Collect media until settle; return a pending click target if any."""
         first_media_at: Optional[float] = None
@@ -408,6 +409,8 @@ class DeepLinkResolver:
         fingerprints = seen_fingerprints if seen_fingerprints is not None else set()
 
         while time.time() < deadline:
+            if callable(should_continue) and not should_continue():
+                break
             remaining = deadline - time.time()
             if remaining <= 0:
                 break
@@ -431,6 +434,10 @@ class DeepLinkResolver:
                     break
                 if last_new_at is not None and (now - last_new_at) >= self.settle_seconds:
                     break
+            elif pending_target is None and collected:
+                # Prior waves already have media; this wave accepted nothing and
+                # there is no pagination target — do not spin until deadline.
+                break
             elif allow_empty_for_pagination and pending_target is not None:
                 # Zero-media start: leave early to click pagination.
                 break
@@ -487,6 +494,7 @@ class DeepLinkResolver:
                 clicked,
                 deadline,
                 seen_fingerprints=seen_fingerprints,
+                should_continue=should_continue,
             )
             if pages_clicked > 0 and len(collected) == count_before:
                 # Prior click produced no newly accepted media (incl. fingerprint dupes).

@@ -781,11 +781,15 @@ class WebTransferRunner:
                 page_interval_getter() if callable(page_interval_getter) else None
             )
             task_id_for_resolve = int(task.get('id'))
+            should_continue_fn = getattr(host, 'should_start_next_web_transfer_item', None)
 
             def _deep_link_should_continue() -> bool:
+                if callable(should_continue_fn):
+                    return bool(should_continue_fn(task_id_for_resolve))
                 current = host.transfer_store.get_task(task_id_for_resolve) or {}
-                status = current.get('status')
-                return status not in (TransferStatus.PAUSING, TransferStatus.PAUSED)
+                return current.get('status') not in (
+                    TransferStatus.PAUSING, TransferStatus.PAUSED,
+                )
 
             try:
                 resolved_list = normalize_resolved_messages(

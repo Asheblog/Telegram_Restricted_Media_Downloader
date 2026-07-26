@@ -555,7 +555,6 @@ class DeepLinkMultiMediaWireCase(unittest.TestCase):
                 'https://t.me/target',
                 resolve_deep_link=True,
             )
-            store.update_task(task_id, status=TransferStatus.PAUSING)
             task = store.get_task(task_id)
             resolved = [
                 SimpleNamespace(
@@ -576,35 +575,41 @@ class DeepLinkMultiMediaWireCase(unittest.TestCase):
             ]
             resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
             host = _make_host(store, resolver=resolver)
+            settle_calls = {'n': 0}
 
-            async def settle(task_id, *, before=None):
-                current = store.get_task(int(task_id))
-                if current and current.get('status') == TransferStatus.PAUSING:
-                    store.update_task(int(task_id), status=TransferStatus.PAUSED)
+            async def settle(tid, *, before=None):
+                settle_calls['n'] += 1
+                # After first media forwarded, pause before the second.
+                if settle_calls['n'] >= 2:
+                    store.update_task(int(tid), status=TransferStatus.PAUSING)
+                    store.update_task(int(tid), status=TransferStatus.PAUSED)
                     return True
                 return False
 
             host.settle_web_task_pause_request = settle
             runner = WebTransferRunner(host)
-            channel_msg = SimpleNamespace(
-                id=1,
+            # Comment-sourced deep link (discussion reply message id).
+            comment_msg = SimpleNamespace(
+                id=142912,
                 empty=False,
-                link='https://t.me/source/1',
-                chat=SimpleNamespace(id='source-chat', username='source'),
+                link='https://t.me/c/2775073467/142912',
+                chat=SimpleNamespace(id='discussion-chat', username=None),
                 video=None,
-                text='teaser',
+                text='deep link comment',
             )
 
             asyncio.run(runner.transfer_message_to_web_target(
                 task=task,
-                message=channel_msg,
-                origin_chat_id='source-chat',
+                message=comment_msg,
+                origin_chat_id='discussion-chat',
                 target_chat_id='target-chat',
-                source_link='https://t.me/source/1',
+                source_link='https://t.me/c/2775073467/142912',
             ))
 
-            self.assertEqual(0, len(host.forward_calls))
-            self.assertFalse(store.is_source_message_terminal(task_id, 1, 'source-chat'))
+            self.assertEqual(1, len(host.forward_calls))
+            self.assertFalse(
+                store.is_source_message_terminal(task_id, 142912, 'discussion-chat')
+            )
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
 
 
