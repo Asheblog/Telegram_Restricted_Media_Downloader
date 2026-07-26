@@ -294,6 +294,31 @@ class SourceFolderArchiveCase(unittest.TestCase):
         )
         self.assertEqual('#南南想吃糖', extract_message_body_title(message))
 
+    def test_archive_keeps_leading_body_title_over_trailing_hashtags(self):
+        from module.source_folders import archive_source_folder, extract_message_body_title
+
+        caption = '继父出差了妈妈自己在家\n作者：#示例作者\n#示例社区 #标签\n'
+        message = SimpleNamespace(
+            id=2263,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+            chat=SimpleNamespace(username='chengdudiyi8'),
+            link='https://t.me/chengdudiyi8/2263',
+        )
+        self.assertEqual('继父出差了妈妈自己在家', extract_message_body_title(message))
+        self.assertEqual(
+            'chengdudiyi8/示例作者/2263 - 继父出差了妈妈自己在家',
+            archive_source_folder(message, archive_by_author=True),
+        )
+
     def test_archive_author_signature_unaffected_when_hashtag_is_leaf_title(self):
         from module.source_folders import archive_source_folder, extract_message_body_title
 

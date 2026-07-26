@@ -46,7 +46,8 @@ TITLE_CTA_LINE = re.compile(
     r'推荐指数|资源链接|网盘链接|获取资源'
     r')'
 )
-# Usable hashtag-only leaf titles beat ordinary body lines, but lose to 【】 / numbered titles.
+# Rank among hashtag candidates only. Bucket order in pick_best_title_line decides
+# hard title / leading hashtag / body; this value stays below typical 【】 scores (~50+len).
 HASHTAG_TITLE_SCORE = 55.0
 # Nested under Source Channel Folder when body has no recognisable author line.
 UNKNOWN_AUTHOR_FOLDER = '_未知作者'
@@ -243,7 +244,7 @@ def _is_date_only_line(line: str) -> bool:
 
 def _is_boilerplate_title_line(line: str) -> bool:
     compact = re.sub(r'[\s:：]+$', '', line.strip())
-    return compact.casefold() in BOILERPLATE_TITLE_LINES or compact.casefold() == '推荐指数'
+    return compact.casefold() in BOILERPLATE_TITLE_LINES
 
 
 def _is_cta_title_line(line: str) -> bool:
