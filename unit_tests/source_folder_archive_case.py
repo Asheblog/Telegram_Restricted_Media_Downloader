@@ -221,6 +221,104 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder(message, archive_by_author=True),
         )
 
+    def test_archive_prefers_hashtag_over_comment_cta_boilerplate(self):
+        from module.source_folders import UNKNOWN_AUTHOR_FOLDER, archive_source_folder, extract_message_body_title
+
+        caption = (
+            '#情侣日记\n'
+            '推荐指数：\n'
+            '💕✂️\n'
+            '进入评论区置顶查看资源\n'
+            '🧬💦\n'
+        )
+        message = SimpleNamespace(
+            id=2262,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=SimpleNamespace(file_id='p1'),
+            chat=SimpleNamespace(username='gokaidanbao'),
+            link='https://t.me/gokaidanbao/2262',
+        )
+
+        self.assertEqual('#情侣日记', extract_message_body_title(message))
+        self.assertEqual(
+            'gokaidanbao/2262 - #情侣日记',
+            archive_source_folder(message),
+        )
+        self.assertEqual(
+            f'gokaidanbao/{UNKNOWN_AUTHOR_FOLDER}/2262 - #情侣日记',
+            archive_source_folder(message, archive_by_author=True),
+        )
+
+    def test_archive_hashtag_title_skips_topic_denylist_tags(self):
+        from module.source_folders import extract_message_body_title
+
+        message = SimpleNamespace(
+            id=100,
+            caption='#海角社区 #乱伦\n进入评论区置顶查看资源\n',
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+        )
+        # Denied tags must not become the leaf title; CTA also loses → no body title.
+        self.assertIsNone(extract_message_body_title(message))
+
+    def test_archive_hashtag_title_takes_first_usable_tag_on_line(self):
+        from module.source_folders import extract_message_body_title
+
+        message = SimpleNamespace(
+            id=101,
+            caption='#海角社区 #南南想吃糖\n进入评论区置顶查看资源\n',
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+        )
+        self.assertEqual('#南南想吃糖', extract_message_body_title(message))
+
+    def test_archive_author_signature_unaffected_when_hashtag_is_leaf_title(self):
+        from module.source_folders import archive_source_folder, extract_message_body_title
+
+        caption = '作者：#真作者\n#主题标签\n进入评论区置顶查看资源\n'
+        message = SimpleNamespace(
+            id=102,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+            chat=SimpleNamespace(username='demochan'),
+            link='https://t.me/demochan/102',
+        )
+        self.assertEqual('#主题标签', extract_message_body_title(message))
+        self.assertEqual(
+            'demochan/真作者/102 - #主题标签',
+            archive_source_folder(message, archive_by_author=True),
+        )
+
     def test_archive_skips_date_only_and_post_content_label(self):
         from module.source_folders import extract_message_body_title
 

@@ -50,7 +50,7 @@ class ArchiveByAuthorFlagCase(unittest.TestCase):
             archive_source_folder(message, archive_by_author=True),
         )
         self.assertEqual(
-            f'demochan/{UNKNOWN_AUTHOR_FOLDER}/101 - #tag #only',
+            f'demochan/{UNKNOWN_AUTHOR_FOLDER}/101 - #tag',
             archive_source_folder(
                 SimpleNamespace(
                     id=101,

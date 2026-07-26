@@ -39,6 +39,15 @@ NUMBERED_TITLE_LINE = re.compile(r'^\d+[\.、．]\s*\S')
 BOILERPLATE_TITLE_LINES = frozenset({
     '帖子内容', '转发内容', '消息内容', '正文', '内容', 'title', 'caption',
 })
+# Comment-CTA / resource-prompt lines that must lose to real titles and hashtags.
+TITLE_CTA_LINE = re.compile(
+    r'('
+    r'进入评论区|评论区置顶|置顶查看|查看资源|点击链接|点击下方|'
+    r'推荐指数|资源链接|网盘链接|获取资源'
+    r')'
+)
+# Usable hashtag-only leaf titles beat ordinary body lines, but lose to 【】 / numbered titles.
+HASHTAG_TITLE_SCORE = 55.0
 # Nested under Source Channel Folder when body has no recognisable author line.
 UNKNOWN_AUTHOR_FOLDER = '_未知作者'
 # Marker kept as escapes so the public tree has no sensitive site name plaintext.
@@ -221,16 +230,6 @@ def sanitize_source_folder(value, limit: int = 80) -> Optional[str]:
     return raw.decode('utf-8', errors='ignore').strip('. ') or None
 
 
-def _first_non_empty_line(text: Optional[str]) -> Optional[str]:
-    if not isinstance(text, str):
-        return None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return None
-
-
 def _is_hashtag_only_line(line: str) -> bool:
     remainder = HASHTAG_TOKEN.sub('', line)
     remainder = re.sub(r'[\s|｜,/，、\-—_]+', '', remainder)
@@ -243,7 +242,45 @@ def _is_date_only_line(line: str) -> bool:
 
 
 def _is_boilerplate_title_line(line: str) -> bool:
-    return line.casefold() in BOILERPLATE_TITLE_LINES
+    compact = re.sub(r'[\s:：]+$', '', line.strip())
+    return compact.casefold() in BOILERPLATE_TITLE_LINES or compact.casefold() == '推荐指数'
+
+
+def _is_cta_title_line(line: str) -> bool:
+    return bool(TITLE_CTA_LINE.search(line))
+
+
+def _is_emoji_or_symbol_only_line(line: str) -> bool:
+    """True when the line has no letters/digits outside hashtag tokens."""
+    plain = HASHTAG_TOKEN.sub('', line)
+    return not re.search(r'[\u4e00-\u9fffA-Za-z0-9]', plain)
+
+
+def first_usable_hashtag_title(line: Optional[str]) -> Optional[str]:
+    """First non-denied ``#tag`` on a hashtag-only line; otherwise None."""
+    if not isinstance(line, str) or not line.strip():
+        return None
+    text = re.sub(r'\s+', ' ', line).strip()
+    if not _is_hashtag_only_line(text):
+        return None
+    for match in HASHTAG_TOKEN.finditer(text):
+        token = match.group(0)
+        name = token.lstrip('#＃')
+        if name and not is_denied_post_author(name):
+            return f'#{name}'
+    return None
+
+
+def normalize_title_candidate(line: Optional[str]) -> Optional[str]:
+    """Normalize a raw caption line before scoring / selection."""
+    if not isinstance(line, str):
+        return None
+    text = re.sub(r'\s+', ' ', line).strip()
+    if not text:
+        return None
+    if _is_hashtag_only_line(text):
+        return first_usable_hashtag_title(text)
+    return text
 
 
 def post_author_from_message(message) -> Optional[str]:
@@ -371,8 +408,22 @@ def resolve_post_author_folder(
     return UNKNOWN_AUTHOR_FOLDER
 
 
+def _is_normalized_hashtag_title(text: str) -> bool:
+    return bool(_is_hashtag_only_line(text) or re.fullmatch(r'[#＃]\S+', text))
+
+
+def _is_hard_title_line(text: str) -> bool:
+    return ('【' in text or '】' in text) or bool(NUMBERED_TITLE_LINE.match(text))
+
+
 def score_title_line(line: Optional[str]) -> float:
-    """Higher is better. Non-positive means the line should not win on its own."""
+    """Higher is better. Non-positive means the line should not win on its own.
+
+    Selection order is owned by ``pick_best_title_line`` (hard title → leading
+    hashtag → body → trailing hashtag). This score only ranks within a bucket.
+    Comment CTAs, dates, author signatures, denied topic tags, and emoji-only
+    lines score 0.
+    """
     if not isinstance(line, str):
         return 0.0
     text = re.sub(r'\s+', ' ', line).strip()
@@ -380,11 +431,20 @@ def score_title_line(line: Optional[str]) -> float:
         return 0.0
     if _is_boilerplate_title_line(text):
         return 0.0
-    if POST_AUTHOR_LINE.match(text):
+    if _is_cta_title_line(text):
+        return 0.0
+    if POST_AUTHOR_LINE.match(text) or POST_AUTHOR_PREFIX.match(text):
         return 0.0
     if _is_date_only_line(text):
         return 0.0
+    if _is_emoji_or_symbol_only_line(text) and not _is_hashtag_only_line(text):
+        return 0.0
     if _is_hashtag_only_line(text):
+        # Covers both raw multi-tag lines and normalized ``#tag`` candidates.
+        if first_usable_hashtag_title(text):
+            return HASHTAG_TITLE_SCORE
+        if re.fullmatch(r'[#＃]\S+', text) and not is_denied_post_author(text.lstrip('#＃')):
+            return HASHTAG_TITLE_SCORE
         return 0.0
     score = float(min(len(text), 80))
     if '【' in text or '】' in text:
@@ -405,19 +465,52 @@ def score_title_line(line: Optional[str]) -> float:
 
 
 def pick_best_title_line(text: Optional[str]) -> Optional[str]:
+    """Pick leaf title from caption/text.
+
+    Order: ``【】`` / numbered hard titles → leading usable ``#tag`` (first
+    scored content line) → ordinary body lines → trailing hashtags. Author
+    signature lines, CTAs, dates, emoji-only, and denied topic tags are skipped
+    and never become the leaf title.
+    """
     if not isinstance(text, str):
         return None
-    candidates = []
+    hard_titles: list[tuple[float, str]] = []
+    body_titles: list[tuple[float, str]] = []
+    hashtag_titles: list[tuple[float, str]] = []
+    leading_hashtag: Optional[str] = None
+    saw_usable = False
+
     for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped:
+        raw = re.sub(r'\s+', ' ', line).strip()
+        if not raw:
             continue
-        score = score_title_line(stripped)
-        if score > 0:
-            candidates.append((score, stripped))
-    if candidates:
-        return max(candidates, key=lambda item: item[0])[1]
-    return _first_non_empty_line(text)
+        normalized = normalize_title_candidate(raw)
+        if not normalized:
+            continue
+        score = score_title_line(normalized)
+        if score <= 0:
+            continue
+        if not saw_usable:
+            saw_usable = True
+            if _is_normalized_hashtag_title(normalized):
+                leading_hashtag = normalized
+        item = (score, normalized)
+        if _is_hard_title_line(normalized):
+            hard_titles.append(item)
+        elif _is_normalized_hashtag_title(normalized):
+            hashtag_titles.append(item)
+        else:
+            body_titles.append(item)
+
+    if hard_titles:
+        return max(hard_titles, key=lambda item: item[0])[1]
+    if leading_hashtag:
+        return leading_hashtag
+    if body_titles:
+        return max(body_titles, key=lambda item: item[0])[1]
+    if hashtag_titles:
+        return max(hashtag_titles, key=lambda item: item[0])[1]
+    return None
 
 
 def pick_best_message_title(messages) -> Optional[str]:
@@ -479,15 +572,18 @@ def title_from_media_file_name(message) -> Optional[str]:
 def extract_message_body_title(message, *, allow_inherited: bool = True) -> Optional[str]:
     """Raw body title: inherited/caption/text/web_page, else media file_name stem.
 
-    Caption/text lines are scored so hashtag-only / date-only / boilerplate lines lose to
-    real titles such as ``【...】`` or ``27. ...``.
+    Caption/text selection: hard ``【...】`` / ``27. ...`` titles win; else a
+    leading usable ``#tag`` (first scored content line) wins over later body
+    lines; trailing tags never override a real body title. Comment CTAs, dates,
+    author signatures, denied topic tags, and emoji-only lines lose. Hashtag
+    winners shrink to the first usable ``#tag``.
     """
     if message is None:
         return None
     if allow_inherited:
         inherited_title = getattr(message, '_trmd_source_title', None)
         if isinstance(inherited_title, str) and inherited_title.strip():
-            inherited = inherited_title.strip()
+            inherited = normalize_title_candidate(inherited_title) or inherited_title.strip()
             # Weak inherited titles (tags/dates) must not block a better caption on this message.
             if score_title_line(inherited) > 0:
                 caption_title = pick_best_title_line(getattr(message, 'caption', None))
@@ -505,14 +601,16 @@ def extract_message_body_title(message, *, allow_inherited: bool = True) -> Opti
     candidates = []
     for attr in ('caption', 'text'):
         title = pick_best_title_line(getattr(message, attr, None))
-        if title:
+        if title and score_title_line(title) > 0:
             candidates.append(title)
     web_page = getattr(message, 'web_page', None)
     title = getattr(web_page, 'title', None)
     if isinstance(title, str) and title.strip():
-        candidates.append(title.strip())
+        normalized = normalize_title_candidate(title) or title.strip()
+        if score_title_line(normalized) > 0:
+            candidates.append(normalized)
     file_title = title_from_media_file_name(message)
-    if file_title:
+    if file_title and score_title_line(file_title) > 0:
         candidates.append(file_title)
     if not candidates:
         return None
