@@ -242,6 +242,8 @@ class DeepLinkResolver:
 
     @staticmethod
     def message_has_resolvable_media(message) -> bool:
+        if message is None or bool(getattr(message, 'empty', False)):
+            return False
         return any(getattr(message, attr, None) for attr in _RESOLVABLE_MEDIA_ATTRS)
 
     @staticmethod

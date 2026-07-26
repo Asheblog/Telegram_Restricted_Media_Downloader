@@ -45,6 +45,19 @@ def _make_history_client(messages_by_poll):
 
 
 class DeepLinkResolverCase(unittest.TestCase):
+    def test_message_has_resolvable_media_skips_empty(self):
+        self.assertFalse(DeepLinkResolver.message_has_resolvable_media(None))
+        self.assertFalse(
+            DeepLinkResolver.message_has_resolvable_media(
+                SimpleNamespace(empty=True, photo=object(), video=None, document=None, animation=None)
+            )
+        )
+        self.assertTrue(
+            DeepLinkResolver.message_has_resolvable_media(
+                SimpleNamespace(empty=False, photo=object(), video=None, document=None, animation=None)
+            )
+        )
+
     def test_resolve_success_returns_video_message_with_meta(self):
         async def run_case():
             started = time.time()

@@ -227,6 +227,64 @@ class LiveTransferWireCase(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             asyncio.run(Bot.handle_forwarded_media(bot, object(), object()))
 
+    def test_forward_prefers_held_message_copy_over_client_copy_message(self):
+        """Deep-link bot media: Message.copy keeps file_id; client.copy_message re-fetches empty."""
+        TelegramRestrictedMediaDownloader = _import_downloader()
+        downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        copy_message_calls = []
+        held_copy_calls = []
+
+        class FakeClient:
+            name = 'test-client'
+
+            async def copy_message(self, **kwargs):
+                copy_message_calls.append(kwargs)
+                return None
+
+            async def forward_messages(self, **_kwargs):
+                raise AssertionError('should not reach forward_messages')
+
+        async def held_copy(**kwargs):
+            held_copy_calls.append(kwargs)
+            return SimpleNamespace(id=555)
+
+        client = FakeClient()
+        downloader.app = SimpleNamespace(client=client)
+        downloader.transfer_store = None
+        message = SimpleNamespace(
+            id=142125,
+            empty=False,
+            link='https://t.me/c/2775073467/142125',
+            video=SimpleNamespace(file_id='file', file_size=10, file_name='a.mp4'),
+            text=None,
+            photo=None,
+            document=None,
+            audio=None,
+            voice=None,
+            animation=None,
+            video_note=None,
+            sticker=None,
+            copy=held_copy,
+            chat=SimpleNamespace(id=7542243325, username='bot'),
+        )
+
+        result = asyncio.run(downloader.forward(
+            client=client,
+            message=message,
+            message_id=142125,
+            origin_chat_id=7542243325,
+            target_chat_id='target-chat',
+            target_link='https://t.me/target',
+            done_notice=False,
+            ignore_type_filter=True,
+            archive_after_success=False,
+        ))
+
+        self.assertEqual(555, result.id)
+        self.assertEqual(1, len(held_copy_calls))
+        self.assertEqual('target-chat', held_copy_calls[0]['chat_id'])
+        self.assertEqual(0, len(copy_message_calls))
+
 
 if __name__ == '__main__':
     unittest.main()

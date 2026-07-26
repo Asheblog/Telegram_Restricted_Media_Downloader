@@ -309,6 +309,126 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertIs(resolved, kwargs['message'])
             self.assertEqual('https://t.me/source/1', kwargs['source_link'])
 
+    def test_pikpak_deep_link_empty_forward_falls_back_to_download(self):
+        """Regression: copy_message re-fetch yields MessageEmpty → forward returns None."""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/gokaidanbao',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolved = SimpleNamespace(
+                id=153990,
+                empty=False,
+                video=SimpleNamespace(file_size=10, file_name='clip.mp4'),
+                chat=SimpleNamespace(id=7542243325, username='wenjianchucunbot'),
+                link='https://t.me/c/2775073467/142125',
+                _deep_link_meta={'bot': 'wenjianchucunbot', 'start_param': 'pack'},
+            )
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+
+            async def empty_forward(**_kwargs):
+                return None
+
+            host = _make_host(store, resolver=resolver, forward=empty_forward)
+            host.is_pikpak_target = lambda target_link, target_profile=None: True
+            host.wait_for_pikpak_ingest_confirmation = AsyncMock(return_value=True)
+            runner = WebTransferRunner(host)
+            runner.create_web_transfer_fallback_download = AsyncMock()
+            channel_msg = SimpleNamespace(
+                id=2040,
+                empty=False,
+                link='https://t.me/gokaidanbao/2040',
+                chat=SimpleNamespace(id='gokaidanbao', username='gokaidanbao'),
+                video=None,
+                text='求片',
+            )
+
+            result = asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='gokaidanbao',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/gokaidanbao/2040',
+            ))
+
+            self.assertTrue(result)
+            runner.create_web_transfer_fallback_download.assert_awaited_once()
+            kwargs = runner.create_web_transfer_fallback_download.await_args.kwargs
+            self.assertIs(resolved, kwargs['message'])
+            self.assertEqual('https://t.me/gokaidanbao/2040', kwargs['source_link'])
+            self.assertIsNotNone(kwargs.get('item_id'))
+            host.wait_for_pikpak_ingest_confirmation.assert_not_awaited()
+            events = store.list_events(task_id)
+            self.assertTrue(
+                any(
+                    'Direct forward empty/invalid; fallback download' in (e.get('message') or '')
+                    for e in events
+                ),
+                events,
+            )
+            item = store.get_item(int(kwargs['item_id']))
+            self.assertEqual(TransferStatus.RUNNING, item['status'])
+            self.assertNotIn(
+                'Direct forward did not produce a target message',
+                item.get('error_message') or '',
+            )
+            _close_store(store)
+
+    def test_pikpak_deep_link_empty_forward_fails_when_download_upload_disabled(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                target_profile='pikpak',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolved = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='video.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+                _deep_link_meta={'bot': 'a82bot', 'start_param': 'v_abc'},
+            )
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+
+            async def empty_forward(**_kwargs):
+                return None
+
+            host = _make_host(store, resolver=resolver, forward=empty_forward)
+            host.gc.download_upload = False
+            host.is_pikpak_target = lambda target_link, target_profile=None: True
+            runner = WebTransferRunner(host)
+            runner.create_web_transfer_fallback_download = AsyncMock()
+            channel_msg = SimpleNamespace(
+                id=1,
+                empty=False,
+                link='https://t.me/source/1',
+                chat=SimpleNamespace(id='source-chat', username='source'),
+                video=None,
+                text='teaser',
+            )
+
+            result = asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='source-chat',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/source/1',
+            ))
+
+            self.assertFalse(result)
+            runner.create_web_transfer_fallback_download.assert_not_called()
+            item = store.list_items(task_id)[0]
+            self.assertEqual(TransferStatus.FAILURE, item['status'])
+            self.assertIn('Direct forward did not produce a target message', item['error_message'])
+            _close_store(store)
+
     def test_resolve_pikpak_archive_keeps_channel_source_folder_not_bot(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)

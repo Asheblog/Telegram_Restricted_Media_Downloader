@@ -987,6 +987,25 @@ class WebTransferRunner:
                         )
                     if host.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
                         if not host.forwarded_message_has_identity(forwarded_message):
+                            # Deep-link bot packs often expire into MessageEmpty on re-fetch.
+                            # Fall back to download/upload from the held message when possible.
+                            if resolved_meta is not None and host.gc.download_upload:
+                                host.transfer_store.add_event(
+                                    task_id,
+                                    f'Direct forward empty/invalid; fallback download for {source_link}',
+                                    level='warning',
+                                    item_id=item_id,
+                                )
+                                await self.create_web_transfer_fallback_download(
+                                    task=task,
+                                    source_link=source_link,
+                                    message=send_message,
+                                    range_message_id=range_message_id,
+                                    source_folder=channel_source_folder,
+                                    item_id=item_id,
+                                )
+                                used_fallback = True
+                                break
                             host.fail_transfer_item(
                                 task_id,
                                 item_id,

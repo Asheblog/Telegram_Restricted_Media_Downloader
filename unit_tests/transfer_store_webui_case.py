@@ -3592,7 +3592,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
             message_id=1,
             origin_chat_id='source-chat',
             target_chat_id='target-chat',
-            target_link='https://t.me/pikpak_bot',
+            # Non-PikPak: text/no-media would be skipped before copy/forward fallback.
+            target_link='https://t.me/target',
             done_notice=False,
             ignore_type_filter=True
         ))

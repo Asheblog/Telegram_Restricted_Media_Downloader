@@ -249,7 +249,6 @@ class LiveTransferService:
                         archive_by_author=archive_by_author,
                     )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
-            runtime_filter = self.message_filter
             if not ignore_type_filter:
                 te = getattr(self, 'transfer_engine', None)
                 if te is not None and hasattr(te, 'runtime_message_filter'):
@@ -260,37 +259,47 @@ class LiveTransferService:
                         getattr(getattr(self, 'gc', None), 'message_filter', None),
                         media_types_override,
                     )
-            if not ignore_type_filter and not runtime_filter.should_pass(message):
-                reject_reason = runtime_filter.get_reject_reason(message) or '消息过滤器拒绝'
-                self._log_system_chain(
-                    category='filter',
-                    stage='filter_reject',
-                    message=f'消息被过滤器拦截: {reject_reason}',
-                    level='info',
-                    trace_id=trace_id,
-                    watch_id=watch_id,
-                    source_chat_id=origin_chat_id,
-                    source_message_id=message_id,
-                    target_link=target_link,
-                    details={'reject_reason': reject_reason}
-                )
-                console.log(
-                    f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{message_id}"'
-                    f' -> '
-                    f'{_t(KeyWord.CHANNEL)}:"{target_chat_id}",'
-                    f'{_t(KeyWord.STATUS)}:{_t(KeyWord.FORWARD_SKIP)}。'
-                )
-                if watch_id:
-                    self._record_watch_event(watch_id, origin_chat_id, message_id, target_chat_id, target_link, 'skipped', f'跳过转发(已被消息过滤器过滤: {reject_reason})。')
-                if done_notice:
-                    await asyncio.create_task(
-                        self.done_notice(
-                            f'"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:{message_id}'
-                            f' ➡️ '
-                            f'"{target_chat_id}",{_t(KeyWord.FORWARD_SKIP)}(已被消息过滤器过滤)。'
-                        )
+                else:
+                    runtime_filter = self.message_filter
+                if not runtime_filter.should_pass(message):
+                    reject_reason = runtime_filter.get_reject_reason(message) or '消息过滤器拒绝'
+                    self._log_system_chain(
+                        category='filter',
+                        stage='filter_reject',
+                        message=f'消息被过滤器拦截: {reject_reason}',
+                        level='info',
+                        trace_id=trace_id,
+                        watch_id=watch_id,
+                        source_chat_id=origin_chat_id,
+                        source_message_id=message_id,
+                        target_link=target_link,
+                        details={'reject_reason': reject_reason}
                     )
-                return None
+                    console.log(
+                        f'{_t(KeyWord.CHANNEL)}:"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:"{message_id}"'
+                        f' -> '
+                        f'{_t(KeyWord.CHANNEL)}:"{target_chat_id}",'
+                        f'{_t(KeyWord.STATUS)}:{_t(KeyWord.FORWARD_SKIP)}。'
+                    )
+                    if watch_id:
+                        self._record_watch_event(
+                            watch_id,
+                            origin_chat_id,
+                            message_id,
+                            target_chat_id,
+                            target_link,
+                            'skipped',
+                            f'跳过转发(已被消息过滤器过滤: {reject_reason})。',
+                        )
+                    if done_notice:
+                        await asyncio.create_task(
+                            self.done_notice(
+                                f'"{origin_chat_id}",{_t(KeyWord.MESSAGE_ID)}:{message_id}'
+                                f' ➡️ '
+                                f'"{target_chat_id}",{_t(KeyWord.FORWARD_SKIP)}(已被消息过滤器过滤)。'
+                            )
+                        )
+                    return None
             if (
                     self.is_pikpak_target(target_link)
                     and not media_group
@@ -348,18 +357,44 @@ class LiveTransferService:
                     except Exception as e:
                         log.error(f'无法转发"{message.text}"消息,{_t(KeyWord.REASON)}:"{e}"')
             else:
-                while True:
-                    try:
-                        forwarded_message = await self.app.client.copy_message(
-                            chat_id=target_chat_id,
-                            from_chat_id=origin_chat_id,
-                            message_id=message_id,
-                            disable_notification=True,
-                            protect_content=False
+                # Prefer in-memory Message.copy for deep-link bot media: client.copy_message
+                # re-fetches by id and often gets MessageEmpty after the bot expires the pack.
+                can_copy_held = (
+                    message is not None
+                    and not bool(getattr(message, 'empty', False))
+                    and any(
+                        getattr(message, attr, None)
+                        for attr in (
+                            'video', 'photo', 'document', 'audio', 'voice',
+                            'animation', 'video_note', 'sticker',
                         )
-                        break
-                    except (FloodWait, FloodPremiumWait) as e:
-                        await self.wait_for_telegram_flood(e, action='copy message')
+                    )
+                    and callable(getattr(message, 'copy', None))
+                )
+                if can_copy_held:
+                    while True:
+                        try:
+                            forwarded_message = await message.copy(
+                                chat_id=target_chat_id,
+                                disable_notification=True,
+                                protect_content=False,
+                            )
+                            break
+                        except (FloodWait, FloodPremiumWait) as e:
+                            await self.wait_for_telegram_flood(e, action='copy held message')
+                if not self.forwarded_message_has_identity(forwarded_message):
+                    while True:
+                        try:
+                            forwarded_message = await self.app.client.copy_message(
+                                chat_id=target_chat_id,
+                                from_chat_id=origin_chat_id,
+                                message_id=message_id,
+                                disable_notification=True,
+                                protect_content=False
+                            )
+                            break
+                        except (FloodWait, FloodPremiumWait) as e:
+                            await self.wait_for_telegram_flood(e, action='copy message')
                 if not self.forwarded_message_has_identity(forwarded_message):
                     try:
                         forwarded_message = await self.forward_messages_with_flood_retry(
