@@ -497,6 +497,20 @@ class WebUiServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _send_bytes_download(self, data: bytes, filename: str, content_type: str):
+                payload = data or b''
+                self.send_response(HTTPStatus.OK)
+                self._write_pending_cookie()
+                self.send_header('content-type', content_type)
+                self.send_header(
+                    'content-disposition',
+                    f'attachment; filename="{filename}"'
+                )
+                self.send_header('cache-control', 'no-store')
+                self.send_header('content-length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
             def _send_error(self, error_code, fallback, status):
                 self._send_json(
                     {
@@ -975,6 +989,47 @@ class WebUiServer:
                             },
                             HTTPStatus.BAD_REQUEST
                         )
+                    return
+                if parsed.path == '/api/diagnostics/export':
+                    try:
+                        payload = self._read_json()
+                        result = server.export_diagnostic_bundle(payload)
+                        path = str((result or {}).get('path') or '')
+                        filename = str((result or {}).get('filename') or 'trmd-diagnostic.zip')
+                        if not path:
+                            raise WebUiApiError(
+                                'diagnostic_export_failed',
+                                '诊断包路径为空。',
+                                HTTPStatus.BAD_REQUEST,
+                            )
+                        with open(path, 'rb') as handle:
+                            data = handle.read()
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                        self._send_bytes_download(
+                            data,
+                            filename,
+                            'application/zip',
+                        )
+                    except WebUiApiError as e:
+                        self._send_error(e.error_code, e.message, e.status)
+                    except ValueError as e:
+                        code = str(e)
+                        if code == 'acknowledge_secrets_required':
+                            self._send_error(
+                                code,
+                                '请先确认诊断包含登录态与密钥，仅私密传输。',
+                                HTTPStatus.BAD_REQUEST,
+                            )
+                        elif code == 'transfer_store_unavailable':
+                            self._send_error(code, '转存数据库不可用。', HTTPStatus.BAD_REQUEST)
+                        else:
+                            self._send_error('diagnostic_export_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 导出诊断包失败。')
+                        self._send_error('diagnostic_export_failed', str(e), HTTPStatus.BAD_REQUEST)
                     return
                 if parsed.path == '/api/watches/forward/import':
                     try:
@@ -1988,6 +2043,16 @@ class WebUiServer:
                 tz_offset_minutes=tz_offset_minutes
             )
         return ''
+
+    def export_diagnostic_bundle(self, payload: dict | None = None) -> dict:
+        export_fn = self._operation('export_diagnostic_bundle')
+        if not export_fn:
+            raise WebUiApiError(
+                'diagnostic_export_unavailable',
+                '诊断包导出不可用。',
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        return export_fn(payload or {})
 
     def get_sanitized_settings(self) -> dict:
         return sanitize_settings(self.get_settings())

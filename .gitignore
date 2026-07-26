@@ -37,3 +37,4 @@ AGENTS.md
 .cursor/.worktrees/
 .worktrees/
 .cursor/
+.test_tools/

@@ -205,6 +205,14 @@ Windows PowerShell 下备份可以直接复制部署目录，例如 `D:\trmd`。
 
 保留 `config`、`sessions`、`temp`、`form`、`rclone` 这些目录，就能保留配置、登录状态、任务历史、统计表和 PikPak rclone 登录信息。
 
+## 诊断包导出
+
+WebUI「系统设置 → 诊断包导出」可一键下载 ZIP，便于本机复现直转等问题。
+
+- 内容：`config.yaml`、`.CONFIG.yaml`、Telegram `*.session`、转存库、系统日志，以及对失败直转项最多 5 条的 `copy`/`forward` 实测结果（`probes/forward_probe.json`）
+- **含登录态与密钥**：仅私密传输，勿公开分享或提交仓库
+- 导出前需勾选确认；可选填写 `task_id`（默认自动挑含 `Direct forward did not produce a target message` 的失败项）
+
 ## 常见问题
 
 **WebUI 打不开**

@@ -1547,6 +1547,23 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </section>
 
     <section class="settings-section">
+      <h4 class="settings-section-title" data-i18n="settings.diagnosticExport">诊断包导出</h4>
+      <p class="text-xs text-muted mb-2" data-i18n="settings.diagnosticExportHint">导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。</p>
+      <div class="flex flex-wrap items-center gap-3 mb-2">
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input type="checkbox" id="diagnostic-export-ack" class="w-4 h-4">
+          <span data-i18n="settings.diagnosticExportAck">我已知晓包含密钥与 session</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-muted">
+          <span data-i18n="settings.diagnosticExportTaskId">任务 ID（可选）</span>
+          <input class="form-input !w-28 h-8 text-xs py-0" id="diagnostic-export-task-id" inputmode="numeric" placeholder="auto">
+        </label>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" id="diagnostic-export-btn" data-i18n="settings.diagnosticExportAction" disabled>导出诊断包 ZIP</button>
+      <div id="diagnostic-export-notice" class="text-xs hidden mt-2"></div>
+    </section>
+
+    <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.exports">导出表格</h4>
       <div class="settings-type-grid">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
@@ -2031,6 +2048,15 @@ const i18n = {
     'settings.forwardWatchExportFailed': '导出失败。',
     'settings.forwardWatchImportFailed': '导入失败。',
     'settings.forwardWatchImportResult': '导入完成：新增 {created} 条，跳过 {skipped} 条，失败 {failed} 条。',
+    'settings.diagnosticExport': '诊断包导出',
+    'settings.diagnosticExportHint': '导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。',
+    'settings.diagnosticExportAck': '我已知晓包含密钥与 session',
+    'settings.diagnosticExportTaskId': '任务 ID（可选）',
+    'settings.diagnosticExportAction': '导出诊断包 ZIP',
+    'settings.diagnosticExportConfirm': '将向 PikPak 再实测最多 5 条失败消息的 copy/forward，并打包含登录态的 ZIP。仅私密传输，确定继续？',
+    'settings.diagnosticExportFailed': '诊断包导出失败。',
+    'settings.diagnosticExportDone': '诊断包已开始下载。',
+    'settings.diagnosticExportNeedAck': '请先勾选「我已知晓包含密钥与 session」。',
     'settings.exportLink': '链接统计表',
     'settings.exportCount': '计数统计表',
     'settings.exportUpload': '上传统计表',
@@ -2511,6 +2537,15 @@ const i18n = {
     'settings.forwardWatchExportFailed': 'Export failed.',
     'settings.forwardWatchImportFailed': 'Import failed.',
     'settings.forwardWatchImportResult': 'Import done: {created} added, {skipped} skipped, {failed} failed.',
+    'settings.diagnosticExport': 'Diagnostic export',
+    'settings.diagnosticExportHint': 'Exports config, session, transfer DB, system logs, and live copy/forward probes for failed items. Contains login state — private transfer only.',
+    'settings.diagnosticExportAck': 'I understand this includes secrets and session files',
+    'settings.diagnosticExportTaskId': 'Task ID (optional)',
+    'settings.diagnosticExportAction': 'Export diagnostic ZIP',
+    'settings.diagnosticExportConfirm': 'Will probe up to 5 failed items with copy/forward to PikPak and download a ZIP that includes login state. Private only — continue?',
+    'settings.diagnosticExportFailed': 'Diagnostic export failed.',
+    'settings.diagnosticExportDone': 'Diagnostic ZIP download started.',
+    'settings.diagnosticExportNeedAck': 'Check the secrets acknowledgement first.',
     'settings.exportLink': 'Link table',
     'settings.exportCount': 'Count table',
     'settings.exportUpload': 'Upload table',
@@ -3170,6 +3205,49 @@ async function downloadForwardWatchBackup() {
   const match = disposition.match(/filename=\"([^\"]+)\"/);
   const filename = match ? match[1] : ('forward-watches-' + Date.now() + '.json');
   const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function syncDiagnosticExportAck(ackEl, btnEl) {
+  if (!btnEl) return;
+  btnEl.disabled = !(ackEl && ackEl.checked);
+}
+
+async function downloadDiagnosticBundle(options) {
+  options = options || {};
+  const taskRaw = String(options.taskId || '').trim();
+  const payload = {
+    acknowledge_secrets: true,
+    run_probe: true,
+    probe_limit: 5,
+  };
+  if (taskRaw) payload.task_id = Number(taskRaw);
+  const resp = await fetch('/api/diagnostics/export', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (resp.status === 401) {
+    redirectToLoginPage();
+    throw { error_code: 'auth_required' };
+  }
+  if (!resp.ok) {
+    let data = null;
+    try { data = await resp.json(); } catch (_) {}
+    throw data || { error_code: 'diagnostic_export_failed' };
+  }
+  const blob = await resp.blob();
+  const disposition = resp.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename=\"([^\"]+)\"/);
+  const filename = match ? match[1] : ('trmd-diagnostic-' + Date.now() + '.zip');
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -6107,6 +6185,45 @@ $('#forward-watch-export-btn')?.addEventListener('click', async function() {
   }
 });
 
+(function bindDiagnosticExportUi() {
+  const ack = $('#diagnostic-export-ack');
+  const btn = $('#diagnostic-export-btn');
+  const notice = $('#diagnostic-export-notice');
+  const taskInput = $('#diagnostic-export-task-id');
+  syncDiagnosticExportAck(ack, btn);
+  ack?.addEventListener('change', function() { syncDiagnosticExportAck(ack, btn); });
+  btn?.addEventListener('click', async function() {
+    if (!ack || !ack.checked) {
+      alert(t('settings.diagnosticExportNeedAck'));
+      return;
+    }
+    if (!confirm(t('settings.diagnosticExportConfirm'))) return;
+    btn.disabled = true;
+    if (notice) {
+      notice.className = 'text-xs text-muted mt-2';
+      notice.textContent = '...';
+      notice.style.display = '';
+    }
+    try {
+      await downloadDiagnosticBundle({ taskId: taskInput ? taskInput.value : '' });
+      if (notice) {
+        notice.className = 'text-xs text-success mt-2';
+        notice.textContent = t('settings.diagnosticExportDone');
+      }
+    } catch (e) {
+      if (e && e.error_code === 'auth_required') redirectToLoginPage();
+      else if (notice) {
+        notice.className = 'text-xs text-danger mt-2';
+        notice.textContent = translateApiError(e, 'settings.diagnosticExportFailed');
+      } else {
+        alert(t('settings.diagnosticExportFailed'));
+      }
+    } finally {
+      syncDiagnosticExportAck(ack, btn);
+    }
+  });
+})();
+
 $('#forward-watch-import-input')?.addEventListener('change', async function() {
   const file = this.files && this.files[0];
   this.value = '';
@@ -7785,6 +7902,22 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
           <p id="mob-forward-watch-import-notice" class="mob-form-notice hidden" style="margin-top:8px;"></p>
         </div>
       </div>
+      <div class="mob-collapse" id="collapse-settings-diagnostic-export">
+        <div class="mob-collapse__head" data-i18n="settings.diagnosticExport">诊断包导出 <span class="mob-collapse__arrow">&#9660;</span></div>
+        <div class="mob-collapse__body">
+          <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="settings.diagnosticExportHint">导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。</p>
+          <label class="flex items-center gap-2 text-sm" style="margin-bottom:8px;">
+            <input type="checkbox" id="mob-diagnostic-export-ack">
+            <span data-i18n="settings.diagnosticExportAck">我已知晓包含密钥与 session</span>
+          </label>
+          <label class="text-xs text-muted" style="display:block;margin-bottom:8px;">
+            <span data-i18n="settings.diagnosticExportTaskId">任务 ID（可选）</span>
+            <input class="form-input" id="mob-diagnostic-export-task-id" inputmode="numeric" placeholder="auto" style="margin-top:4px;">
+          </label>
+          <button type="button" class="mob-btn" id="mob-diagnostic-export-btn" data-i18n="settings.diagnosticExportAction" disabled>导出诊断包 ZIP</button>
+          <p id="mob-diagnostic-export-notice" class="mob-form-notice hidden" style="margin-top:8px;"></p>
+        </div>
+      </div>
       <div class="mob-collapse" id="collapse-settings-exports">
         <div class="mob-collapse__head" data-i18n="settings.exports">导出表格 <span class="mob-collapse__arrow">&#9660;</span></div>
         <div class="mob-collapse__body" id="mob-settings-exports-fields"></div>
@@ -8314,6 +8447,15 @@ const i18n = {
     'settings.forwardWatchExportFailed': '导出失败。',
     'settings.forwardWatchImportFailed': '导入失败。',
     'settings.forwardWatchImportResult': '导入完成：新增 {created} 条，跳过 {skipped} 条，失败 {failed} 条。',
+    'settings.diagnosticExport': '诊断包导出',
+    'settings.diagnosticExportHint': '导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。',
+    'settings.diagnosticExportAck': '我已知晓包含密钥与 session',
+    'settings.diagnosticExportTaskId': '任务 ID（可选）',
+    'settings.diagnosticExportAction': '导出诊断包 ZIP',
+    'settings.diagnosticExportConfirm': '将向 PikPak 再实测最多 5 条失败消息的 copy/forward，并打包含登录态的 ZIP。仅私密传输，确定继续？',
+    'settings.diagnosticExportFailed': '诊断包导出失败。',
+    'settings.diagnosticExportDone': '诊断包已开始下载。',
+    'settings.diagnosticExportNeedAck': '请先勾选「我已知晓包含密钥与 session」。',
     'settings.exportLink': '链接统计表',
     'settings.exportCount': '计数统计表',
     'settings.exportUpload': '上传统计表',
@@ -8794,6 +8936,15 @@ const i18n = {
     'settings.forwardWatchExportFailed': 'Export failed.',
     'settings.forwardWatchImportFailed': 'Import failed.',
     'settings.forwardWatchImportResult': 'Import done: {created} added, {skipped} skipped, {failed} failed.',
+    'settings.diagnosticExport': 'Diagnostic export',
+    'settings.diagnosticExportHint': 'Exports config, session, transfer DB, system logs, and live copy/forward probes for failed items. Contains login state — private transfer only.',
+    'settings.diagnosticExportAck': 'I understand this includes secrets and session files',
+    'settings.diagnosticExportTaskId': 'Task ID (optional)',
+    'settings.diagnosticExportAction': 'Export diagnostic ZIP',
+    'settings.diagnosticExportConfirm': 'Will probe up to 5 failed items with copy/forward to PikPak and download a ZIP that includes login state. Private only — continue?',
+    'settings.diagnosticExportFailed': 'Diagnostic export failed.',
+    'settings.diagnosticExportDone': 'Diagnostic ZIP download started.',
+    'settings.diagnosticExportNeedAck': 'Check the secrets acknowledgement first.',
     'settings.exportLink': 'Link table',
     'settings.exportCount': 'Count table',
     'settings.exportUpload': 'Upload table',
@@ -9453,6 +9604,49 @@ async function downloadForwardWatchBackup() {
   const match = disposition.match(/filename=\"([^\"]+)\"/);
   const filename = match ? match[1] : ('forward-watches-' + Date.now() + '.json');
   const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function syncDiagnosticExportAck(ackEl, btnEl) {
+  if (!btnEl) return;
+  btnEl.disabled = !(ackEl && ackEl.checked);
+}
+
+async function downloadDiagnosticBundle(options) {
+  options = options || {};
+  const taskRaw = String(options.taskId || '').trim();
+  const payload = {
+    acknowledge_secrets: true,
+    run_probe: true,
+    probe_limit: 5,
+  };
+  if (taskRaw) payload.task_id = Number(taskRaw);
+  const resp = await fetch('/api/diagnostics/export', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (resp.status === 401) {
+    redirectToLoginPage();
+    throw { error_code: 'auth_required' };
+  }
+  if (!resp.ok) {
+    let data = null;
+    try { data = await resp.json(); } catch (_) {}
+    throw data || { error_code: 'diagnostic_export_failed' };
+  }
+  const blob = await resp.blob();
+  const disposition = resp.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename=\"([^\"]+)\"/);
+  const filename = match ? match[1] : ('trmd-diagnostic-' + Date.now() + '.zip');
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -13152,6 +13346,49 @@ async function runArchiveOrganizeMobile() {
         else alert(t('settings.forwardWatchExportFailed'));
       } finally {
         mobForwardExportBtn.disabled = false;
+      }
+    });
+  }
+
+  var mobDiagAck = document.getElementById('mob-diagnostic-export-ack');
+  var mobDiagBtn = document.getElementById('mob-diagnostic-export-btn');
+  var mobDiagNotice = document.getElementById('mob-diagnostic-export-notice');
+  var mobDiagTask = document.getElementById('mob-diagnostic-export-task-id');
+  syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
+  if (mobDiagAck) {
+    mobDiagAck.addEventListener('change', function() {
+      syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
+    });
+  }
+  if (mobDiagBtn) {
+    mobDiagBtn.addEventListener('click', async function() {
+      if (!mobDiagAck || !mobDiagAck.checked) {
+        alert(t('settings.diagnosticExportNeedAck'));
+        return;
+      }
+      if (!confirm(t('settings.diagnosticExportConfirm'))) return;
+      mobDiagBtn.disabled = true;
+      if (mobDiagNotice) {
+        mobDiagNotice.className = 'mob-form-notice';
+        mobDiagNotice.textContent = '...';
+        mobDiagNotice.classList.remove('hidden');
+      }
+      try {
+        await downloadDiagnosticBundle({ taskId: mobDiagTask ? mobDiagTask.value : '' });
+        if (mobDiagNotice) {
+          mobDiagNotice.className = 'mob-form-notice text-success';
+          mobDiagNotice.textContent = t('settings.diagnosticExportDone');
+        }
+      } catch (e) {
+        if (e && e.error_code === 'auth_required') redirectToLoginPage();
+        else if (mobDiagNotice) {
+          mobDiagNotice.className = 'mob-form-notice text-danger';
+          mobDiagNotice.textContent = translateApiError(e, 'settings.diagnosticExportFailed');
+        } else {
+          alert(t('settings.diagnosticExportFailed'));
+        }
+      } finally {
+        syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
       }
     });
   }
