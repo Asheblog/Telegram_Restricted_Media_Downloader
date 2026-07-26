@@ -547,6 +547,66 @@ class DeepLinkMultiMediaWireCase(unittest.TestCase):
             self.assertTrue(any(item['source_message_id'] == 1 for item in items))
             self.assertTrue(store.is_source_message_terminal(task_id, 1, 'source-chat'))
 
+    def test_pause_mid_deep_link_batch_does_not_mark_source_complete(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/target',
+                resolve_deep_link=True,
+            )
+            store.update_task(task_id, status=TransferStatus.PAUSING)
+            task = store.get_task(task_id)
+            resolved = [
+                SimpleNamespace(
+                    id=101,
+                    video=SimpleNamespace(file_size=10, file_name='a.mp4'),
+                    chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                    link=None,
+                    _deep_link_meta={'bot': 'a82bot', 'start_param': 'pack'},
+                ),
+                SimpleNamespace(
+                    id=102,
+                    document=SimpleNamespace(file_size=11, file_name='b.bin'),
+                    video=None,
+                    chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                    link=None,
+                    _deep_link_meta={'bot': 'a82bot', 'start_param': 'pack'},
+                ),
+            ]
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+            host = _make_host(store, resolver=resolver)
+
+            async def settle(task_id, *, before=None):
+                current = store.get_task(int(task_id))
+                if current and current.get('status') == TransferStatus.PAUSING:
+                    store.update_task(int(task_id), status=TransferStatus.PAUSED)
+                    return True
+                return False
+
+            host.settle_web_task_pause_request = settle
+            runner = WebTransferRunner(host)
+            channel_msg = SimpleNamespace(
+                id=1,
+                empty=False,
+                link='https://t.me/source/1',
+                chat=SimpleNamespace(id='source-chat', username='source'),
+                video=None,
+                text='teaser',
+            )
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                source_link='https://t.me/source/1',
+            ))
+
+            self.assertEqual(0, len(host.forward_calls))
+            self.assertFalse(store.is_source_message_terminal(task_id, 1, 'source-chat'))
+            self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
+
 
 class DeepLinkArchiveFolderCase(unittest.TestCase):
     def test_archive_prefers_item_source_folder_over_bot_message_username(self):

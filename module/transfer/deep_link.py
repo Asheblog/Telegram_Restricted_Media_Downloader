@@ -262,6 +262,24 @@ class DeepLinkResolver:
             return chat_id, int(msg_id)
         return chat_id, id(message)
 
+    @staticmethod
+    def _media_fingerprint(message) -> Optional[str]:
+        """Stable content key for bot media; prefers file_unique_id over file_id."""
+        for attr in _RESOLVABLE_MEDIA_ATTRS:
+            media = getattr(message, attr, None)
+            if media is None:
+                continue
+            # pyrogram photo may be a list of sizes; use the last (largest) entry.
+            if attr == 'photo' and isinstance(media, (list, tuple)) and media:
+                media = media[-1]
+            unique = getattr(media, 'file_unique_id', None)
+            if unique:
+                return f'uid:{unique}'
+            file_id = getattr(media, 'file_id', None)
+            if file_id:
+                return f'fid:{file_id}'
+        return None
+
     async def _wait_min_interval(self) -> None:
         if self.min_interval_seconds <= 0 or self._last_start_bot_at <= 0:
             return
@@ -310,8 +328,15 @@ class DeepLinkResolver:
     async def _collect_chat_history(client, bot_username: str, limit: int = 30) -> list:
         return [message async for message in client.get_chat_history(bot_username, limit=limit)]
 
-    def _collect_new_media(self, history: list, started_at: float, collected: dict) -> bool:
+    def _collect_new_media(
+            self,
+            history: list,
+            started_at: float,
+            collected: dict,
+            seen_fingerprints: Optional[Set[str]] = None,
+    ) -> bool:
         """Merge newly seen media into collected. Returns True if any new media added."""
+        fingerprints = seen_fingerprints if seen_fingerprints is not None else set()
         added = False
         for message in history:
             ts = self._message_timestamp(message)
@@ -324,7 +349,12 @@ class DeepLinkResolver:
             key = self._message_key(message)
             if key in collected:
                 continue
+            fingerprint = self._media_fingerprint(message)
+            if fingerprint is not None and fingerprint in fingerprints:
+                continue
             collected[key] = message
+            if fingerprint is not None:
+                fingerprints.add(fingerprint)
             added = True
         return added
 
@@ -368,12 +398,14 @@ class DeepLinkResolver:
             clicked_callback_data: Set[bytes],
             deadline: float,
             *,
+            seen_fingerprints: Optional[Set[str]] = None,
             allow_empty_for_pagination: bool = True,
     ) -> Optional[PaginationClickTarget]:
         """Collect media until settle; return a pending click target if any."""
         first_media_at: Optional[float] = None
         last_new_at: Optional[float] = None
         pending_target: Optional[PaginationClickTarget] = None
+        fingerprints = seen_fingerprints if seen_fingerprints is not None else set()
 
         while time.time() < deadline:
             remaining = deadline - time.time()
@@ -387,7 +419,7 @@ class DeepLinkResolver:
             except asyncio.TimeoutError:
                 break
             now = time.time()
-            if self._collect_new_media(history, started_at, collected):
+            if self._collect_new_media(history, started_at, collected, fingerprints):
                 if first_media_at is None:
                     first_media_at = now
                 last_new_at = now
@@ -433,15 +465,20 @@ class DeepLinkResolver:
             bot_username: str,
             started_at: float,
             deadline: Optional[float] = None,
+            should_continue=None,
     ) -> List[object]:
         """Wait for bot media (with optional pagination), return collected messages."""
         if deadline is None:
             deadline = started_at + self.timeout_seconds
         collected: dict = {}
+        seen_fingerprints: Set[str] = set()
         clicked: Set[bytes] = set()
         pages_clicked = 0
 
         while time.time() < deadline:
+            if callable(should_continue) and not should_continue():
+                break
+            count_before = len(collected)
             pending = await self._collect_wave(
                 client,
                 bot_username,
@@ -449,9 +486,15 @@ class DeepLinkResolver:
                 collected,
                 clicked,
                 deadline,
+                seen_fingerprints=seen_fingerprints,
             )
+            if pages_clicked > 0 and len(collected) == count_before:
+                # Prior click produced no newly accepted media (incl. fingerprint dupes).
+                break
             if pages_clicked >= self.max_pages or pending is None:
                 # _collect_wave already waited to deadline when empty and no targets.
+                break
+            if callable(should_continue) and not should_continue():
                 break
             try:
                 await self._click_callback(client, pending, deadline=deadline)
@@ -497,6 +540,7 @@ class DeepLinkResolver:
             settle_seconds=None,
             max_pages=None,
             page_click_interval_seconds=None,
+            should_continue=None,
     ) -> Optional[List[object]]:
         """若命中白名单深链则返回 bot 媒体消息列表；无深链返回 None；失败抛 DeepLinkResolveError。"""
         picked = pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist)
@@ -523,7 +567,11 @@ class DeepLinkResolver:
             async def _fetch():
                 await self.start_bot(client, bot, param, deadline=deadline)
                 return await self.wait_for_media_batch(
-                    client, bot, started_at, deadline=deadline,
+                    client,
+                    bot,
+                    started_at,
+                    deadline=deadline,
+                    should_continue=should_continue,
                 )
 
             try:

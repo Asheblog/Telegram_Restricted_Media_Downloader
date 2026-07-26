@@ -780,6 +780,13 @@ class WebTransferRunner:
             page_click_interval_seconds = (
                 page_interval_getter() if callable(page_interval_getter) else None
             )
+            task_id_for_resolve = int(task.get('id'))
+
+            def _deep_link_should_continue() -> bool:
+                current = host.transfer_store.get_task(task_id_for_resolve) or {}
+                status = current.get('status')
+                return status not in (TransferStatus.PAUSING, TransferStatus.PAUSED)
+
             try:
                 resolved_list = normalize_resolved_messages(
                     await resolver.resolve(
@@ -791,6 +798,7 @@ class WebTransferRunner:
                         settle_seconds=settle_seconds,
                         max_pages=max_pages,
                         page_click_interval_seconds=page_click_interval_seconds,
+                        should_continue=_deep_link_should_continue,
                     )
                 )
             except DeepLinkResolveError as e:
@@ -834,12 +842,14 @@ class WebTransferRunner:
 
         messages_to_send = resolved_list if resolved_list else [message]
         used_fallback = False
+        paused_mid_batch = False
         multi_resolved = bool(resolved_list) and len(resolved_list) > 1
         for send_message in messages_to_send:
             if await self.settle_web_task_pause_request(
                 int(task.get('id')),
                 before=str(getattr(send_message, 'id', '')),
             ):
+                paused_mid_batch = True
                 break
             forward_chat_id = origin_chat_id
             forward_message_id = message_id
@@ -1116,8 +1126,9 @@ class WebTransferRunner:
                         )
                     used_fallback = True
                     break
-        if multi_resolved and not used_fallback:
+        if multi_resolved and not used_fallback and not paused_mid_batch:
             # Mark the original source message complete so range/listen resume skips it.
+            # Do not mark complete when pause interrupted the batch mid-way.
             task_id = int(task.get('id'))
             if not host.transfer_store.is_source_message_terminal(
                     task_id, int(message_id), origin_chat_id
