@@ -459,6 +459,26 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function syncSystemLogsFiltersUI', WEB_UI_HTML)
         self.assertIn('setSystemLogsTodayOnlyEnabled(this.checked)', WEB_UI_HTML)
 
+    def test_system_logs_pagination_scrolls_to_top(self):
+        """系统日志上一页/下一页后应滚回列表顶部（桌面 + 移动）。"""
+        self.assertIn('function scrollPaginationContentToTop', WEB_UI_HTML)
+        self.assertIn('scrollPaginationContentToTop(wrap || header || document.getElementById(\'view-system-logs\'))', WEB_UI_HTML)
+        self.assertIn('function scrollPaginationContentToTop', WEB_UI_MOBILE_HTML)
+        self.assertIn('scrollPaginationContentToTop(list || subpage)', WEB_UI_MOBILE_HTML)
+
+    def test_mobile_system_logs_toggles_sit_side_by_side(self):
+        """移动端「仅今天 / 自动刷新」应并排，不被 .mob-body label 拉满整行。"""
+        self.assertIn('.mob-system-logs-toggles{', WEB_UI_MOBILE_HTML)
+        # Tailwind 压缩后可能是 flex-flow:wrap（隐含 row）或显式 flex-direction:row
+        self.assertTrue(
+            'flex-flow:wrap' in WEB_UI_MOBILE_HTML
+            or 'flex-direction:row' in WEB_UI_MOBILE_HTML
+        )
+        self.assertRegex(
+            WEB_UI_MOBILE_HTML,
+            r'\.mob-system-logs-toggle\{[^}]*width:auto',
+        )
+
     def test_mobile_profile_hosts_system_logs_subpage(self):
         """系统日志并入「我的」子页：入口、路由、列表与导出能力齐全。"""
         self.assertIn('data-profile-nav="system-logs"', WEB_UI_MOBILE_HTML)

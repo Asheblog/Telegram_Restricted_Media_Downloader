@@ -982,9 +982,12 @@ async function loadSystemLogs(page) {
         pageSize: SYSTEM_LOGS_PAGE_SIZE,
         total: total
       });
-      bindPaginationBar('system-logs', currentPage, totalPages, function(nextPage) {
+      bindPaginationBar('system-logs', currentPage, totalPages, async function(nextPage) {
         state.systemLogsPage = nextPage;
-        loadSystemLogs(nextPage);
+        await loadSystemLogs(nextPage);
+        var wrap = document.querySelector('#view-system-logs .overflow-auto');
+        var header = document.querySelector('#view-system-logs .panel-header');
+        scrollPaginationContentToTop(wrap || header || document.getElementById('view-system-logs'));
       });
     }
   } catch (e) {

@@ -1263,6 +1263,26 @@ function bindPaginationBar(prefix, page, totalPages, onPageChange) {
   }
 }
 
+/** 翻页后滚回列表顶部：先清空可滚动祖先，再把锚点滚入视口。 */
+function scrollPaginationContentToTop(anchor) {
+  if (!anchor) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  var node = anchor;
+  while (node && node !== document.body && node !== document.documentElement) {
+    if (node.scrollHeight > node.clientHeight) {
+      node.scrollTop = 0;
+    }
+    node = node.parentElement;
+  }
+  if (typeof anchor.scrollIntoView === 'function') {
+    anchor.scrollIntoView({ block: 'start', behavior: 'auto' });
+  } else {
+    window.scrollTo(0, 0);
+  }
+}
+
 function applyLanguage() {
   $$('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;

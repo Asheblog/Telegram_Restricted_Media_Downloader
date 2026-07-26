@@ -2180,9 +2180,12 @@ async function loadMobileSystemLogs(page) {
         total: total,
         variant: 'mobile'
       });
-      bindPaginationBar('mob-system-logs', currentPage, totalPages, function(newPage) {
+      bindPaginationBar('mob-system-logs', currentPage, totalPages, async function(newPage) {
         state.systemLogsPage = newPage;
-        loadMobileSystemLogs(newPage);
+        await loadMobileSystemLogs(newPage);
+        var list = document.getElementById('mob-system-logs-list');
+        var subpage = document.getElementById('mob-subpage-system-logs');
+        scrollPaginationContentToTop(list || subpage);
       });
     }
   } catch (e) {
