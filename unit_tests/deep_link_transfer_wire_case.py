@@ -263,14 +263,15 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertEqual(1, item['source_message_id'])
             self.assertIn('timeout', item['error_message'])
 
-    def test_resolve_none_skips_channel_cover_without_success(self):
-        """开启深链时无白名单链：跳过原帖封面，不标成功。"""
+    def test_resolve_none_with_comments_awaits_without_skip_item(self):
+        """开深链+评论区：主贴无链不转发封面、不记跳过项，交给评论区。"""
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/gokaidanbao',
                 'https://t.me/pikpak_bot',
                 resolve_deep_link=True,
+                include_comment=True,
             )
             task = store.get_task(task_id)
             resolver = SimpleNamespace(resolve=AsyncMock(return_value=None))
@@ -297,11 +298,52 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertFalse(result)
             self.assertEqual(0, len(host.forward_calls))
             host.create_web_transfer_fallback_download.assert_not_called()
+            self.assertEqual([], store.list_items(task_id))
+            events = store.list_events(task_id)
+            self.assertTrue(
+                any('交由评论区取片' in (e.get('message') or '') for e in events),
+                events,
+            )
+            _close_store(store)
+
+    def test_resolve_none_without_comments_marks_failure(self):
+        """开深链但未开评论区：主贴无链标失败，不回退封面成功。"""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/gokaidanbao',
+                'https://t.me/pikpak_bot',
+                resolve_deep_link=True,
+                include_comment=False,
+            )
+            task = store.get_task(task_id)
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=None))
+            host = _make_host(store, resolver=resolver)
+            runner = WebTransferRunner(host)
+            channel_msg = SimpleNamespace(
+                id=2509,
+                empty=False,
+                link='https://t.me/gokaidanbao/2509',
+                chat=SimpleNamespace(id='gokaidanbao', username='gokaidanbao'),
+                photo=SimpleNamespace(file_size=100_000),
+                video=None,
+                text='#一个人Yigeren33',
+            )
+
+            result = asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='gokaidanbao',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/gokaidanbao/2509',
+            ))
+
+            self.assertFalse(result)
+            self.assertEqual(0, len(host.forward_calls))
             items = store.list_items(task_id)
             self.assertEqual(1, len(items))
-            self.assertEqual(TransferStatus.SKIPPED, items[0]['status'])
-            self.assertEqual('skipped', items[0]['phase'])
-            self.assertIn('无白名单深链', items[0]['error_message'] or '')
+            self.assertEqual(TransferStatus.FAILURE, items[0]['status'])
+            self.assertIn('未向资源 bot 取片', items[0]['error_message'] or '')
             _close_store(store)
 
     def test_resolve_success_forward_fallback_uses_resolved_message(self):

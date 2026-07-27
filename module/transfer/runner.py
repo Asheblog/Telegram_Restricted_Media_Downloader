@@ -24,7 +24,8 @@ from module.enums import DownloadStatus, DownloadType
 from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import archive_source_folder, archive_source_folder_for_messages, media_group_post_message_id
 from module.transfer.deep_link import (
-    DEEP_LINK_SKIP_NO_LINK_MESSAGE,
+    DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
+    DEEP_LINK_NO_LINK_FAILURE_MESSAGE,
     DeepLinkResolveError,
     message_has_whitelisted_deep_link,
     messages_after_deep_link_resolve,
@@ -852,7 +853,30 @@ class WebTransferRunner:
             resolved_list=resolved_list,
         )
         if messages_to_send is None:
+            # 主贴无链：绝不回退封面成功；开了评论区则静默交给评论区，否则标失败。
             task_id = int(task.get('id'))
+            log_system = getattr(host, '_log_system_chain', None)
+            if bool(task.get('include_comment')):
+                host.transfer_store.add_event(
+                    task_id,
+                    DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
+                    level='info',
+                )
+                if callable(log_system):
+                    log_system(
+                        category='transfer',
+                        stage='deep_link_await_comment',
+                        message=DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
+                        level='info',
+                        source_chat_id=origin_chat_id,
+                        source_message_id=message_id,
+                        target_link=task.get('target_link'),
+                        details={
+                            'task_id': task_id,
+                            'source_link': source_link or '',
+                        },
+                    )
+                return False
             item_id = host.transfer_store.add_item(
                 task_id=task_id,
                 source_chat_id=origin_chat_id,
@@ -861,23 +885,22 @@ class WebTransferRunner:
                 source_link=source_link,
                 target_link=task.get('target_link'),
                 media_type='deep_link',
-                phase='skipped',
-                status=TransferStatus.SKIPPED,
-                error_message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
+                phase='failed',
+                status=TransferStatus.FAILURE,
+                error_message=DEEP_LINK_NO_LINK_FAILURE_MESSAGE,
             )
             host.transfer_store.add_event(
                 task_id,
-                DEEP_LINK_SKIP_NO_LINK_MESSAGE,
-                level='info',
+                DEEP_LINK_NO_LINK_FAILURE_MESSAGE,
+                level='error',
                 item_id=item_id,
             )
-            log_system = getattr(host, '_log_system_chain', None)
             if callable(log_system):
                 log_system(
                     category='transfer',
-                    stage='deep_link_skip_no_link',
-                    message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
-                    level='info',
+                    stage='item_failure',
+                    message=DEEP_LINK_NO_LINK_FAILURE_MESSAGE,
+                    level='error',
                     source_chat_id=origin_chat_id,
                     source_message_id=message_id,
                     target_link=task.get('target_link'),

@@ -352,8 +352,10 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertEqual(0, len(forward_calls))
         self.assertEqual(1, len(schedule_calls))
         self.assertEqual(2509, schedule_calls[0]['source_message_id'])
-        self.assertTrue(any(
-            '无白名单深链' in str(item)
+        # 主贴无链不得记 skipped，否则 UI 像整帖结束。
+        self.assertFalse(any(
+            (isinstance(item, tuple) and len(item[0]) >= 6 and item[0][5] == 'skipped')
+            or (isinstance(item, dict) and item.get('status') == 'skipped')
             for item in events
         ), events)
 

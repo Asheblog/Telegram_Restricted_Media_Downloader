@@ -43,7 +43,12 @@ _SOFT_SESSION_FAILURE_MARKERS = (
 _SESSION_FAILURE_MARKERS = _HARD_SESSION_FAILURE_MARKERS + _SOFT_SESSION_FAILURE_MARKERS
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
-DEEP_LINK_SKIP_NO_LINK_MESSAGE = '消息无白名单深链，已跳过原帖封面（不回退预览）'
+DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE = (
+    '主贴无白名单深链，不转发封面，交由评论区取片'
+)
+DEEP_LINK_NO_LINK_FAILURE_MESSAGE = (
+    '消息无白名单深链，未向资源 bot 取片（请开启包含评论区，或确认主贴/评论含白名单深链）'
+)
 _NON_PREVIEW_MEDIA_ATTRS = ('video', 'document', 'animation')
 
 log = logging.getLogger('deep_link')
@@ -174,7 +179,7 @@ def messages_after_deep_link_resolve(
     """选择实际转发的消息列表。
 
     开启深链取片时：仅转发 bot 回传；无白名单深链（resolved_list is None）则返回 None，
-    表示跳过原帖封面/预览，绝不回退频道媒体。
+    表示不转发频道封面（不回退预览），由调用方继续评论区取片或标失败。
     未开启时：原样转发来源消息。
     """
     if not resolve_enabled:

@@ -1028,7 +1028,7 @@ class LiveTransferService:
                     messages_to_forward = [message]
                     if resolve_deep_link:
                         from module.transfer.deep_link import (
-                            DEEP_LINK_SKIP_NO_LINK_MESSAGE,
+                            DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
                             DeepLinkResolveError,
                             messages_after_deep_link_resolve,
                             normalize_resolved_messages,
@@ -1069,22 +1069,18 @@ class LiveTransferService:
                             resolved_list=resolved_list,
                         )
                         if messages_to_forward is None:
-                            # 跳过封面转发，但仍继续后面的评论区延迟抓取。
+                            # 不转发封面；双开评论区时继续延迟抓取，不记「跳过」以免误判整帖结束。
                             self._log_system_chain(
                                 category='watch',
-                                stage='deep_link_skip_no_link',
-                                message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
+                                stage='deep_link_await_comment',
+                                message=DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
                                 level='info',
                                 trace_id=trace_id,
                                 watch_id=watch_id,
                                 source_chat_id=origin_chat_id,
                                 source_message_id=message_id,
                                 target_link=target_link,
-                            )
-                            self._record_watch_event(
-                                watch_id, origin_chat_id, message_id,
-                                _target_chat_id, target_link,
-                                'skipped', DEEP_LINK_SKIP_NO_LINK_MESSAGE,
+                                details={'include_comment': include_comment},
                             )
                             messages_to_forward = []
                     for forward_unit in messages_to_forward:
