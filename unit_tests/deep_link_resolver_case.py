@@ -14,6 +14,7 @@ from module.transfer.deep_link import (
     DeepLinkResolveError,
     DeepLinkResolver,
     text_has_hard_session_failure,
+    text_has_permanent_business_failure,
     text_has_session_failure,
     text_has_soft_session_failure,
 )
@@ -976,6 +977,65 @@ class DeepLinkResolverCase(unittest.TestCase):
         self.assertFalse(text_has_session_failure('#MYMPET'))
         self.assertFalse(text_has_session_failure(''))
         self.assertFalse(text_has_session_failure(None))
+
+    def test_text_has_permanent_business_failure_markers(self):
+        self.assertTrue(text_has_permanent_business_failure('未找到凭证码 A59928P4。'))
+        self.assertTrue(text_has_permanent_business_failure('提示：未找到凭证码'))
+        self.assertFalse(text_has_permanent_business_failure('会话已超时关闭。'))
+        self.assertFalse(text_has_permanent_business_failure(''))
+        self.assertFalse(text_has_permanent_business_failure(None))
+        # 永久失败不是可重试的会话失败类别
+        self.assertFalse(text_has_hard_session_failure('未找到凭证码 A59928P4。'))
+        self.assertFalse(text_has_soft_session_failure('未找到凭证码 A59928P4。'))
+        self.assertFalse(text_has_session_failure('未找到凭证码 A59928P4。'))
+
+    def test_resolve_credential_not_found_fails_fast_without_retry(self):
+        """「未找到凭证码」应立即失败，且不再 StartBot（同参重试无意义）。"""
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                yield SimpleNamespace(
+                    id=11,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started,
+                    text='未找到凭证码 A59928P4。',
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=30,
+                poll_interval=0.05,
+                settle_seconds=0.1,
+                min_interval_seconds=0,
+            )
+            t0 = time.time()
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                with self.assertRaises(DeepLinkResolveError) as ctx:
+                    await resolver.resolve(
+                        client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                    )
+            elapsed = time.time() - t0
+            self.assertIn('未找到凭证码', str(ctx.exception))
+            self.assertEqual(1, starts['n'])
+            self.assertLess(elapsed, 2.0)
+
+        asyncio.run(run_case())
 
     def test_collected_is_preview_only(self):
         self.assertTrue(DeepLinkResolver.collected_is_preview_only(None))

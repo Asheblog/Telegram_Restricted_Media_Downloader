@@ -41,8 +41,13 @@ _SOFT_SESSION_FAILURE_MARKERS = (
     '会话已退出',
 )
 _SESSION_FAILURE_MARKERS = _HARD_SESSION_FAILURE_MARKERS + _SOFT_SESSION_FAILURE_MARKERS
+# 永久业务失败：同 start 参重试无意义，立即失败且不再 StartBot。
+_PERMANENT_BUSINESS_FAILURE_MARKERS = (
+    '未找到凭证码',
+)
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
+_PERMANENT_FAILURE_MESSAGE = '资源 bot 未找到凭证码'
 # 预览图 settle 后「会话已超时关闭」常晚到几十到数百毫秒；终检只查一次会漏掉并误标成功。
 _POST_SETTLE_SESSION_GRACE_SECONDS = 2.0
 DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE = (
@@ -72,6 +77,13 @@ def text_has_soft_session_failure(text) -> bool:
 
 def text_has_session_failure(text) -> bool:
     return text_has_hard_session_failure(text) or text_has_soft_session_failure(text)
+
+
+def text_has_permanent_business_failure(text) -> bool:
+    raw = str(text or '')
+    if not raw:
+        return False
+    return any(marker in raw for marker in _PERMANENT_BUSINESS_FAILURE_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -440,6 +452,26 @@ class DeepLinkResolver:
             return True
         return False
 
+    def _history_has_permanent_business_failure(
+            self,
+            history: list,
+            started_at: float,
+    ) -> bool:
+        for message in history:
+            ts = self._message_timestamp(message)
+            if ts + 2 < started_at:  # allow small skew
+                continue
+            if bool(getattr(message, 'outgoing', False)):
+                continue
+            text = getattr(message, 'text', None)
+            caption = getattr(message, 'caption', None)
+            if (
+                    text_has_permanent_business_failure(text)
+                    or text_has_permanent_business_failure(caption)
+            ):
+                return True
+        return False
+
     def _history_has_session_failure(self, history: list, started_at: float) -> bool:
         """兼容旧调用：无 collected 时按预览波处理（软标记也会触发）。"""
         return self._history_triggers_session_failure(history, started_at, collected=None)
@@ -626,6 +658,11 @@ class DeepLinkResolver:
                 if first_media_at is None:
                     first_media_at = now
                 last_new_at = now
+            # 永久业务失败优先：同 start 参重试无意义，立刻失败且不走会话重试。
+            if self._history_has_permanent_business_failure(history, started_at):
+                collected.clear()
+                fingerprints.clear()
+                raise DeepLinkResolveError(_PERMANENT_FAILURE_MESSAGE)
             if self._history_triggers_session_failure(history, started_at, collected):
                 collected.clear()
                 fingerprints.clear()
@@ -763,6 +800,8 @@ class DeepLinkResolver:
                 )
             except asyncio.TimeoutError:
                 history = []
+            if self._history_has_permanent_business_failure(history, started_at):
+                raise DeepLinkResolveError(_PERMANENT_FAILURE_MESSAGE)
             if self._history_triggers_session_failure(history, started_at, collected):
                 raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
             now = time.time()
