@@ -35,6 +35,7 @@ _SESSION_FAILURE_MARKERS = (
     '会话已关闭',
 )
 _MAX_START_BOT_ATTEMPTS = 3
+_SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
 
 log = logging.getLogger('deep_link')
 
@@ -465,7 +466,7 @@ class DeepLinkResolver:
             if self._history_has_session_failure(history, started_at):
                 collected.clear()
                 fingerprints.clear()
-                raise DeepLinkSessionFailure('资源 bot 会话已超时关闭')
+                raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
             if self._collect_new_media(history, started_at, collected, fingerprints):
                 if first_media_at is None:
                     first_media_at = now
@@ -584,7 +585,7 @@ class DeepLinkResolver:
         except asyncio.TimeoutError:
             history = []
         if self._history_has_session_failure(history, started_at):
-            raise DeepLinkSessionFailure('资源 bot 会话已超时关闭')
+            raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
         return sorted(
             collected.values(),
             key=lambda message: (
@@ -624,6 +625,8 @@ class DeepLinkResolver:
                     float(page_click_interval_seconds or 0), 0.0,
                 )
             last_session_failure: Optional[BaseException] = None
+            attempts_used = 0
+            interrupted = False
             for attempt in range(1, _MAX_START_BOT_ATTEMPTS + 1):
                 # 仅在重试前检查暂停；首次不占用 should_continue 计数（与收片波次共用）。
                 if (
@@ -631,10 +634,12 @@ class DeepLinkResolver:
                         and callable(should_continue)
                         and not should_continue()
                 ):
+                    interrupted = True
                     break
                 await self._wait_min_interval()
                 started_at = time.time()
                 deadline = started_at + self.timeout_seconds
+                attempts_used = attempt
                 try:
                     await self.start_bot(client, bot, param, deadline=deadline)
                     media_msgs = await self.wait_for_media_batch(
@@ -661,7 +666,11 @@ class DeepLinkResolver:
                     media_msg._deep_link_meta = dict(meta)
                 return media_msgs
             if last_session_failure is not None:
+                if interrupted:
+                    raise DeepLinkResolveError(
+                        f'资源 bot 会话超时（已尝试 {attempts_used} 次后中断）'
+                    ) from last_session_failure
                 raise DeepLinkResolveError(
-                    f'资源 bot 会话超时，已重试 {_MAX_START_BOT_ATTEMPTS} 次仍失败'
+                    f'资源 bot 会话超时，已尝试 {_MAX_START_BOT_ATTEMPTS} 次仍失败'
                 ) from last_session_failure
             raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')

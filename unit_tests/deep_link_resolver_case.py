@@ -977,6 +977,73 @@ class DeepLinkResolverCase(unittest.TestCase):
                     )
             self.assertEqual(3, starts['n'])
             self.assertIn('会话超时', str(ctx.exception))
+            self.assertIn('已尝试 3 次仍失败', str(ctx.exception))
+
+        asyncio.run(run_case())
+
+    def test_resolve_session_failure_interrupted_reports_attempts_used(self):
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                yield SimpleNamespace(
+                    id=starts['n'] * 10,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=object(),
+                    outgoing=False,
+                    date=started,
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+                yield SimpleNamespace(
+                    id=starts['n'] * 10 + 1,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started,
+                    text='会话已超时关闭。',
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.4,
+                poll_interval=0.05,
+                settle_seconds=0.1,
+                min_interval_seconds=0,
+            )
+            continue_calls = {'n': 0}
+
+            def should_continue():
+                continue_calls['n'] += 1
+                # 首波：outer + _collect_wave 各 1 次；第 3 次为 resolve 重试门闩。
+                return continue_calls['n'] < 3
+
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                with self.assertRaises(DeepLinkResolveError) as ctx:
+                    await resolver.resolve(
+                        client,
+                        _source_message_with_deep_link(),
+                        whitelist=['a82bot'],
+                        should_continue=should_continue,
+                    )
+            self.assertEqual(1, starts['n'])
+            self.assertIn('已尝试 1 次后中断', str(ctx.exception))
 
         asyncio.run(run_case())
 
