@@ -56,6 +56,7 @@ class WebUiAssetsCase(unittest.TestCase):
             '/api/setup/status',
             '/api/setup/api',
             '/api/setup/rclone',
+            '/api/setup/bot',
             '/api/channel-downloads',
             '/api/uploads',
             '/api/statistics',
@@ -179,6 +180,12 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertNotIn('id="setup-btn-rclone-skip"', WEB_UI_MOBILE_HTML)
         self.assertIn('必须先配通 rclone', WEB_UI_HTML)
         self.assertIn('必须先配通 rclone', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="setup-form-bot"', WEB_UI_HTML)
+        self.assertIn('id="setup-form-bot"', WEB_UI_MOBILE_HTML)
+        self.assertIn('id="setup-btn-bot-skip"', WEB_UI_HTML)
+        self.assertIn('/api/setup/bot', WEB_UI_HTML)
+        self.assertIn('/api/setup/bot/skip', WEB_UI_HTML)
+        self.assertIn("current === 'bot'", WEB_UI_HTML)
         self.assertIn('id="login-form-preparing"', WEB_UI_HTML)
         self.assertIn('id="login-form-preparing"', WEB_UI_MOBILE_HTML)
         self.assertIn("current_step === 'telegram'", WEB_UI_HTML)

@@ -473,6 +473,10 @@ const i18n = {
     'error.setup_rclone_failed': '配置 rclone 失败。',
     'error.invalid_setup_api': 'API 凭证无效。',
     'error.invalid_setup_rclone': 'rclone 参数无效。',
+    'error.invalid_setup_bot': 'Bot Token 无效。',
+    'error.setup_bot_failed': '保存 Bot Token 失败。',
+    'error.setup_bot_network_failed': '无法连接 Telegram 校验 Bot Token，可跳过稍后配置。',
+    'error.setup_bot_skip_failed': '跳过 Bot Token 失败。',
     'error.invalid_task_id': '任务 ID 无效。',
     'error.task_not_found': '找不到任务。',
     'error.source_link_required': '请填写来源链接。',
@@ -953,6 +957,10 @@ const i18n = {
     'error.setup_rclone_failed': 'Failed to configure rclone.',
     'error.invalid_setup_api': 'Invalid API credentials.',
     'error.invalid_setup_rclone': 'Invalid rclone parameters.',
+    'error.invalid_setup_bot': 'Invalid Bot Token.',
+    'error.setup_bot_failed': 'Failed to save Bot Token.',
+    'error.setup_bot_network_failed': 'Cannot reach Telegram to verify Bot Token. You can skip and configure later.',
+    'error.setup_bot_skip_failed': 'Failed to skip Bot Token setup.',
     'error.invalid_task_id': 'Invalid task ID.',
     'error.task_not_found': 'Task not found.',
     'error.source_link_required': 'Source link is required.',
@@ -1749,7 +1757,7 @@ function hideSetupWizard() {
 }
 
 function showSetupStep(step) {
-  ['setup-form-api', 'setup-form-rclone', 'setup-form-done'].forEach(function(id) {
+  ['setup-form-api', 'setup-form-rclone', 'setup-form-bot', 'setup-form-done'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -1808,6 +1816,8 @@ async function checkSetupStatus() {
       if (hint) hint.textContent = rclone.message || '';
       var ri = document.getElementById('setup-rclone-remote');
       if (ri) ri.value = rclone.remote || 'pikpak';
+    } else if (current === 'bot') {
+      showSetupStep('bot');
     } else {
       showSetupStep('done');
       setTimeout(hideSetupWizard, 1200);
@@ -1865,8 +1875,7 @@ function bindSetupWizardHandlers() {
           overwrite: true
         });
         setupForceRclone = false;
-        showSetupStep('done');
-        setTimeout(function() { hideSetupWizard(); checkSetupStatus(); }, 1000);
+        await checkSetupStatus();
       } catch (e) {
         showSetupError(translateApiError(e, 'rclone 配置失败'));
       } finally {
@@ -1894,13 +1903,48 @@ function bindSetupWizardHandlers() {
         var probe = (result && result.probe) || {};
         if (probe.ok) {
           setupForceRclone = false;
-          showSetupStep('done');
-          setTimeout(hideSetupWizard, 1000);
+          await checkSetupStatus();
         } else {
           showSetupError(probe.message || 'remote 不可用');
         }
       } catch (e) {
         showSetupError(translateApiError(e, '验证失败'));
+      }
+    });
+  }
+
+  var botBtn = document.getElementById('setup-btn-bot');
+  if (botBtn && !botBtn.dataset.bound) {
+    botBtn.dataset.bound = '1';
+    botBtn.addEventListener('click', async function() {
+      var token = (document.getElementById('setup-bot-token').value || '').trim();
+      if (!token) { showSetupError('请填写 Bot Token，或不需要时点「跳过」'); return; }
+      botBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot', { bot_token: token });
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, 'Bot Token 校验失败'));
+      } finally {
+        botBtn.disabled = false;
+      }
+    });
+  }
+
+  var botSkipBtn = document.getElementById('setup-btn-bot-skip');
+  if (botSkipBtn && !botSkipBtn.dataset.bound) {
+    botSkipBtn.dataset.bound = '1';
+    botSkipBtn.addEventListener('click', async function() {
+      botSkipBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot/skip', {});
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, '跳过失败'));
+      } finally {
+        botSkipBtn.disabled = false;
       }
     });
   }

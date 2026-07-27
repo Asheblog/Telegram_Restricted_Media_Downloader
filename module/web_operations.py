@@ -1702,6 +1702,8 @@ class WebOperationsMixin:
             setup_rclone_configurer=self.configure_setup_rclone,
             setup_rclone_skipper=self.skip_setup_rclone,
             setup_rclone_tester=self.test_setup_rclone,
+            setup_bot_saver=self.save_setup_bot_token,
+            setup_bot_skipper=self.skip_setup_bot_token,
             setup_ready_checker=self.is_setup_ready,
         )
         if with_auth_provider:
@@ -1791,7 +1793,7 @@ class WebOperationsMixin:
         return bool(self.get_setup_status().get('ready'))
 
     def get_setup_status(self) -> dict:
-        from module.adapters.webui.setup import has_telegram_api_credentials
+        from module.adapters.webui.setup import has_configured_bot_token, has_telegram_api_credentials
         coordinator = getattr(self, 'setup_coordinator', None)
         if coordinator is None:
             from module.adapters.webui.setup import SetupCoordinator
@@ -1820,6 +1822,7 @@ class WebOperationsMixin:
             telegram_error=telegram_error,
             archive_enable=bool(archive.get('enable')),
             archive_remote=str(archive.get('remote') or 'pikpak'),
+            bot_token_configured=has_configured_bot_token(self.app.config),
         )
 
     def save_setup_api_credentials(self, payload: dict) -> dict:
@@ -1903,6 +1906,40 @@ class WebOperationsMixin:
             self._set_archive_settings(enable=True, remote=remote)
             coordinator.dismiss_rclone()
         return {'probe': probe, 'status': self.get_setup_status()}
+
+    def save_setup_bot_token(self, payload: dict) -> dict:
+        from module.adapters.webui.setup import verify_bot_token
+        payload = payload if isinstance(payload, dict) else {}
+        token = str(payload.get('bot_token') or '').strip()
+        proxy = self.app.config.get('proxy') if isinstance(self.app.config.get('proxy'), dict) else None
+        verified = verify_bot_token(token, proxy=proxy)
+        user_config = deepcopy(self.app.config)
+        user_config['bot_token'] = token
+        from module.adapters.webui.setup import apply_web_safe_user_defaults
+        user_config = apply_web_safe_user_defaults(user_config)
+        user_config = UserConfig.normalize_runtime_numbers(user_config)
+        self.app.save_config(user_config)
+        self.app.config = user_config
+        self.app.refresh_runtime_fields()
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        coordinator.dismiss_bot()
+        status = self.get_setup_status()
+        status['bot_probe'] = verified
+        return status
+
+    def skip_setup_bot_token(self, payload: Optional[dict] = None) -> dict:
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        coordinator.dismiss_bot()
+        return self.get_setup_status()
+
     async def process_web_operation(self, operation_id: str) -> None:
         operation = self.web_operations.get(operation_id)
         if not operation:

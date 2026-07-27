@@ -201,10 +201,10 @@ _Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI, in-memory-only ses
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
 _Avoid_: CLI login, console auth, terminal login
 
-**First-run Setup Wizard** — `--web` 模式下，在站内登录之后引导用户完成初始化：填写 Telegram API 凭证、完成 WebUI Telegram Login、**强制配置** rclone PikPak remote（新装不可跳过）。就绪判定以真实配置与会话为准（合法 `api_id`/`api_hash` + 已授权 Session）；已就绪的升级环境不弹全屏向导。rclone 探测成功后开启归档。
-_Avoid_: setup completed flag, optional rclone skip on new install, stdin config_guide in web mode, ttyd rclone wizard
+**First-run Setup Wizard** — `--web` 模式下，在站内登录之后引导用户完成初始化：填写 Telegram API 凭证、完成 WebUI Telegram Login、**强制配置** rclone PikPak remote（新装不可跳过）、可选配置 Bot Token（`getMe` 校验或跳过；已有合法 token 则自动跳过）。就绪判定以真实配置与会话为准（合法 `api_id`/`api_hash` + 已授权 Session）；已就绪的升级环境不弹全屏向导。rclone 探测成功后开启归档。
+_Avoid_: setup completed flag, optional rclone skip on new install, required bot token on first run, stdin config_guide in web mode, ttyd rclone wizard
 
-**Setup Ready** — First-run Setup Wizard 的硬门槛：API 凭证已保存且 Telegram 会话已授权。未就绪时屏蔽转存/监听等业务 API；新装另需配通 rclone 才结束向导。设置里可重新登录 Telegram 或重配 rclone。
+**Setup Ready** — First-run Setup Wizard 的硬门槛：API 凭证已保存且 Telegram 会话已授权。未就绪时屏蔽转存/监听等业务 API；新装另需配通 rclone，并处理可选 Bot Token 步（保存或跳过）后才结束向导。设置里可重新登录 Telegram、重配 rclone 或填写 Bot Token。
 _Avoid_: initialization token, wizard finished marker
 
 **PikPak Rclone Ingest** — 下载回退路径将本地文件经 rclone `copyto` 上传到 PikPak Ingest Folder（`My Telegram`），再复用既有 PikPak Archive（匹配/moveto/改名）；不再经 `@pikpak_bot` Telegram 上传。直接转发路径仍可走 bot。
@@ -246,7 +246,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0009](docs/adr/0009-watch-inline-transfer-execution-mode.md) — 监听下载回退用 watch_inline，不入 Web 队列
 - [ADR-0010](docs/adr/0010-unified-media-type-allowlist.md) — 统一媒体类型白名单与任务级覆盖
 - [ADR-0011](docs/adr/0011-source-post-archive-path.md) — 按频道主贴嵌套归档路径
-- [ADR-0012](docs/adr/0012-first-run-webui-setup.md) — WebUI 首启配置向导（API / Telegram / rclone）
+- [ADR-0012](docs/adr/0012-first-run-webui-setup.md) — WebUI 首启配置向导（API / Telegram / rclone / 可选 Bot Token）
 
 ---
 

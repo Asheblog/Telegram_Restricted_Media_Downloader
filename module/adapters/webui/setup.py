@@ -2,11 +2,22 @@
 """First-run Setup Wizard coordinator (ADR-0012)."""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import threading
-from typing import Callable, Optional
+import urllib.error
+import urllib.request
+from typing import Callable, Optional, Tuple
+
+
+class BotTokenInvalidError(ValueError):
+    """Bot token rejected by Telegram getMe / format check."""
+
+
+class BotTokenNetworkError(RuntimeError):
+    """getMe could not be reached (timeout, DNS, proxy, etc.)."""
 
 
 class SetupCoordinator:
@@ -14,7 +25,8 @@ class SetupCoordinator:
 
     Upgrade path: if API + Telegram are already ready at first status check,
     never force the full-screen wizard. New installs must configure rclone
-    (download→PikPak ingest now depends on rclone copyto My Telegram).
+    (download→PikPak ingest now depends on rclone copyto My Telegram), then
+    optionally configure Bot Token (skip allowed).
     """
 
     def __init__(
@@ -25,6 +37,7 @@ class SetupCoordinator:
         self._lock = threading.Lock()
         self._guided = False
         self._rclone_dismissed = False
+        self._bot_dismissed = False
         self._api_ready_event = threading.Event()
         self.runner = runner or subprocess.run
         self.rclone_bin = rclone_bin
@@ -38,6 +51,11 @@ class SetupCoordinator:
         """Kept for settings re-config probe success bookkeeping; no longer skips wizard."""
         with self._lock:
             self._rclone_dismissed = True
+
+    def dismiss_bot(self) -> None:
+        """Mark optional Bot Token step as handled without saving a token."""
+        with self._lock:
+            self._bot_dismissed = True
 
     def signal_api_ready(self) -> None:
         self._api_ready_event.set()
@@ -58,6 +76,11 @@ class SetupCoordinator:
         with self._lock:
             return self._rclone_dismissed
 
+    @property
+    def bot_dismissed(self) -> bool:
+        with self._lock:
+            return self._bot_dismissed
+
     def build_status(
             self,
             *,
@@ -67,6 +90,7 @@ class SetupCoordinator:
             telegram_error: Optional[str] = None,
             archive_enable: bool = False,
             archive_remote: str = 'pikpak',
+            bot_token_configured: bool = False,
     ) -> dict:
         ready = bool(api_done and telegram_done)
         self.mark_guided_if_incomplete(ready)
@@ -76,11 +100,17 @@ class SetupCoordinator:
         with self._lock:
             guided = self._guided
             dismissed = self._rclone_dismissed
+            bot_dismissed = self._bot_dismissed
 
         # New installs (guided): rclone probe must succeed — skip/dismiss no longer resolves.
         # Upgrades that never entered incomplete setup remain unforced.
         rclone_resolved = rclone_ok or (not guided)
-        wizard_active = (not ready) or (guided and not rclone_resolved)
+        bot_resolved = bool(bot_token_configured) or bot_dismissed or (not guided)
+        wizard_active = (
+            (not ready)
+            or (guided and not rclone_resolved)
+            or (guided and rclone_resolved and not bot_resolved)
+        )
 
         if not api_done:
             current = 'api'
@@ -88,6 +118,8 @@ class SetupCoordinator:
             current = 'telegram'
         elif guided and not rclone_resolved:
             current = 'rclone'
+        elif guided and not bot_resolved:
+            current = 'bot'
         else:
             current = 'done'
 
@@ -112,6 +144,13 @@ class SetupCoordinator:
                     'archive_enable': bool(archive_enable),
                     'message': rclone_info.get('message') or '',
                     'remotes': rclone_info.get('remotes') or [],
+                },
+                'bot': {
+                    'done': bot_resolved,
+                    'prompt': guided and rclone_resolved and not bot_resolved,
+                    'optional': True,
+                    'dismissed': bot_dismissed,
+                    'configured': bool(bot_token_configured),
                 },
             },
         }
@@ -235,6 +274,158 @@ def has_telegram_api_credentials(config: Optional[dict]) -> bool:
     except (TypeError, ValueError):
         return False
     return len(str(api_hash).strip()) >= 16
+
+
+def has_configured_bot_token(config: Optional[dict]) -> bool:
+    if not isinstance(config, dict):
+        return False
+    token = str(config.get('bot_token') or '').strip()
+    if not token:
+        return False
+    from module.core.enums import Validator
+    return Validator.is_valid_bot_token(token)
+
+
+_BOT_NETWORK_HINT = (
+    '无法连接 Telegram 校验 Bot Token（网络/代理问题）。可跳过本步，稍后在设置中配置。'
+)
+
+
+def verify_bot_token(
+        bot_token: str,
+        *,
+        proxy: Optional[dict] = None,
+        fetch: Optional[Callable[[str], Tuple[int, str]]] = None,
+        timeout: float = 15.0,
+) -> dict:
+    """Validate bot token via Telegram getMe. Returns result payload (username, …)."""
+    token = str(bot_token or '').strip()
+    from module.core.enums import Validator
+    if not Validator.is_valid_bot_token(token):
+        raise BotTokenInvalidError('bot_token 格式无效，须包含 ":"（BotFather 发放的完整 token）。')
+
+    url = f'https://api.telegram.org/bot{token}/getMe'
+    fetcher = fetch or (lambda u: _default_getme_fetch(u, proxy=proxy, timeout=timeout))
+    try:
+        status, body = fetcher(url)
+    except BotTokenInvalidError:
+        raise
+    except BotTokenNetworkError:
+        raise
+    except Exception as e:
+        raise BotTokenNetworkError(_network_error_message(e, token=token)) from e
+
+    try:
+        payload = json.loads(body or '{}')
+    except json.JSONDecodeError as e:
+        raise BotTokenNetworkError('Telegram 响应无法解析，请稍后重试或跳过本步。') from e
+
+    if status == 401 or (isinstance(payload, dict) and payload.get('error_code') == 401):
+        raise BotTokenInvalidError('Bot Token 无效（Telegram 返回 Unauthorized）。请检查后重试，或跳过本步。')
+    if status >= 500 or status == 429:
+        raise BotTokenNetworkError('Telegram 服务暂时不可用，请稍后重试或跳过本步。')
+    if not isinstance(payload, dict) or not payload.get('ok'):
+        description = ''
+        if isinstance(payload, dict):
+            description = str(payload.get('description') or '')
+        lowered = description.lower()
+        if status == 404 or 'not found' in lowered or 'unauthorized' in lowered:
+            raise BotTokenInvalidError(
+                'Bot Token 无效。请检查后重试，或跳过本步。'
+            )
+        if 400 <= status < 500:
+            # Other client errors: treat as invalid token rather than leaking upstream text.
+            raise BotTokenInvalidError(
+                f'Bot Token 校验失败（HTTP {status}）。请检查后重试，或跳过本步。'
+            )
+        raise BotTokenNetworkError('校验 Bot Token 失败，请稍后重试或跳过本步。')
+
+    result = payload.get('result') if isinstance(payload.get('result'), dict) else {}
+    username = str(result.get('username') or '').strip()
+    return {
+        'id': result.get('id'),
+        'username': username,
+        'first_name': result.get('first_name'),
+        'is_bot': bool(result.get('is_bot')),
+    }
+
+
+def _network_error_message(exc: BaseException, *, token: str = '') -> str:
+    detail = _redact_secrets(str(exc), token=token)
+    if detail:
+        return f'{_BOT_NETWORK_HINT}原因: {detail}'
+    return _BOT_NETWORK_HINT
+
+
+def _redact_secrets(text: str, *, token: str = '') -> str:
+    out = str(text or '')
+    if token:
+        out = out.replace(token, '***')
+    # Bot API path shape even if token formatting differs slightly.
+    if 'api.telegram.org/bot' in out:
+        parts = out.split('api.telegram.org/bot', 1)
+        rest = parts[1]
+        slash = rest.find('/')
+        if slash >= 0:
+            out = parts[0] + 'api.telegram.org/bot***/' + rest[slash + 1:]
+        else:
+            out = parts[0] + 'api.telegram.org/bot***'
+    return out
+
+
+def _default_getme_fetch(
+        url: str,
+        *,
+        proxy: Optional[dict] = None,
+        timeout: float = 15.0,
+) -> Tuple[int, str]:
+    handlers = []
+    proxy_url = _http_proxy_url(proxy)
+    if proxy_url:
+        handlers.append(urllib.request.ProxyHandler({
+            'http': proxy_url,
+            'https': proxy_url,
+        }))
+    opener = urllib.request.build_opener(*handlers) if handlers else urllib.request.build_opener()
+    request = urllib.request.Request(url, method='GET')
+    token_for_redact = ''
+    marker = 'api.telegram.org/bot'
+    if marker in url:
+        token_for_redact = url.split(marker, 1)[1].split('/', 1)[0]
+    try:
+        with opener.open(request, timeout=timeout) as resp:
+            body = resp.read().decode('utf-8', errors='replace')
+            return int(getattr(resp, 'status', 200) or 200), body
+    except urllib.error.HTTPError as e:
+        body = ''
+        try:
+            body = e.read().decode('utf-8', errors='replace')
+        except Exception:
+            body = ''
+        return int(e.code), body
+    except Exception as e:
+        raise BotTokenNetworkError(_network_error_message(e, token=token_for_redact)) from e
+
+
+def _http_proxy_url(proxy: Optional[dict]) -> Optional[str]:
+    if not isinstance(proxy, dict) or not proxy.get('enable_proxy'):
+        return None
+    scheme = str(proxy.get('scheme') or '').strip().lower()
+    hostname = str(proxy.get('hostname') or '').strip()
+    port = proxy.get('port')
+    if not hostname or port in (None, ''):
+        return None
+    if scheme not in ('http', 'https'):
+        # Socks not supported by stdlib urllib here; caller relies on network-error + skip.
+        return None
+    try:
+        port_int = int(port)
+    except (TypeError, ValueError):
+        return None
+    user = str(proxy.get('username') or '').strip()
+    password = str(proxy.get('password') or '')
+    auth = f'{user}:{password}@' if user else ''
+    return f'{scheme}://{auth}{hostname}:{port_int}'
 
 
 def apply_web_safe_user_defaults(config: dict) -> dict:

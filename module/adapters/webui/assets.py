@@ -315,7 +315,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="login-card" style="max-width:480px;width:100%">
       <div class="login-error" id="setup-error"></div>
       <div id="setup-form-api" class="login-step hidden">
-        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 1 / 3</div>
+        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 1 / 4</div>
         <h2 class="text-xl font-bold m-0 mb-1.5 text-text">Telegram API 凭证</h2>
         <p class="text-sm text-muted m-0 mb-5">到 my.telegram.org 创建应用后填写 api_id / api_hash</p>
         <div class="login-field">
@@ -340,7 +340,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </div>
       </div>
       <div id="setup-form-rclone" class="login-step hidden">
-        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 3 / 3（必选）</div>
+        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 3 / 4（必选）</div>
         <h2 class="text-xl font-bold m-0 mb-1.5 text-text">配置 PikPak rclone</h2>
         <p class="text-sm text-muted m-0 mb-5">下载回退会直传 My Telegram，必须先配通 rclone</p>
         <div class="login-field">
@@ -361,10 +361,24 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <button type="button" id="setup-btn-rclone" class="login-submit !w-auto px-6">保存并验证</button>
         </div>
       </div>
+      <div id="setup-form-bot" class="login-step hidden">
+        <div class="text-xs text-muted uppercase tracking-[0.04em] mb-2">步骤 4 / 4（可选）</div>
+        <h2 class="text-xl font-bold m-0 mb-1.5 text-text">连接 Telegram Bot</h2>
+        <p class="text-sm text-muted m-0 mb-5">在 <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" class="text-accent underline">@BotFather</a> 创建机器人并粘贴 Token。不填则无法使用机器人功能，可稍后在设置中配置。</p>
+        <div class="login-field">
+          <label for="setup-bot-token">Bot Token</label>
+          <input id="setup-bot-token" type="password" autocomplete="off" placeholder="123456:ABC-DEF…">
+        </div>
+        <p class="text-xs text-muted mb-4" id="setup-bot-hint">保存时会向 Telegram 校验 Token；网络不通时可跳过。</p>
+        <div class="flex flex-wrap gap-2.5 justify-end">
+          <button type="button" class="btn" id="setup-btn-bot-skip">跳过</button>
+          <button type="button" id="setup-btn-bot" class="login-submit !w-auto px-6">保存并验证</button>
+        </div>
+      </div>
       <div id="setup-form-done" class="login-step hidden">
         <div class="text-center py-4">
           <p class="text-base font-semibold text-success m-0 mb-2">初始化完成</p>
-          <p class="text-sm text-muted m-0" id="setup-done-summary">可以开始创建转存任务了。</p>
+          <p class="text-sm text-muted m-0" id="setup-done-summary">可以开始创建转存任务了。机器人功能将在服务就绪后生效。</p>
         </div>
       </div>
     </div>
@@ -1547,23 +1561,6 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </section>
 
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.diagnosticExport">诊断包导出</h4>
-      <p class="text-xs text-muted mb-2" data-i18n="settings.diagnosticExportHint">导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。</p>
-      <div class="flex flex-wrap items-center gap-3 mb-2">
-        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-          <input type="checkbox" id="diagnostic-export-ack" class="w-4 h-4">
-          <span data-i18n="settings.diagnosticExportAck">我已知晓包含密钥与 session</span>
-        </label>
-        <label class="flex items-center gap-2 text-sm text-muted">
-          <span data-i18n="settings.diagnosticExportTaskId">任务 ID（可选）</span>
-          <input class="form-input !w-28 h-8 text-xs py-0" id="diagnostic-export-task-id" inputmode="numeric" placeholder="auto">
-        </label>
-      </div>
-      <button type="button" class="btn btn-sm btn-primary" id="diagnostic-export-btn" data-i18n="settings.diagnosticExportAction" disabled>导出诊断包 ZIP</button>
-      <div id="diagnostic-export-notice" class="text-xs hidden mt-2"></div>
-    </section>
-
-    <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.exports">导出表格</h4>
       <div class="settings-type-grid">
           <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
@@ -2048,15 +2045,6 @@ const i18n = {
     'settings.forwardWatchExportFailed': '导出失败。',
     'settings.forwardWatchImportFailed': '导入失败。',
     'settings.forwardWatchImportResult': '导入完成：新增 {created} 条，跳过 {skipped} 条，失败 {failed} 条。',
-    'settings.diagnosticExport': '诊断包导出',
-    'settings.diagnosticExportHint': '导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。',
-    'settings.diagnosticExportAck': '我已知晓包含密钥与 session',
-    'settings.diagnosticExportTaskId': '任务 ID（可选）',
-    'settings.diagnosticExportAction': '导出诊断包 ZIP',
-    'settings.diagnosticExportConfirm': '将向 PikPak 再实测最多 5 条失败消息的 copy/forward，并打包含登录态的 ZIP。仅私密传输，确定继续？',
-    'settings.diagnosticExportFailed': '诊断包导出失败。',
-    'settings.diagnosticExportDone': '诊断包已开始下载。',
-    'settings.diagnosticExportNeedAck': '请先勾选「我已知晓包含密钥与 session」。',
     'settings.exportLink': '链接统计表',
     'settings.exportCount': '计数统计表',
     'settings.exportUpload': '上传统计表',
@@ -2204,6 +2192,10 @@ const i18n = {
     'error.setup_rclone_failed': '配置 rclone 失败。',
     'error.invalid_setup_api': 'API 凭证无效。',
     'error.invalid_setup_rclone': 'rclone 参数无效。',
+    'error.invalid_setup_bot': 'Bot Token 无效。',
+    'error.setup_bot_failed': '保存 Bot Token 失败。',
+    'error.setup_bot_network_failed': '无法连接 Telegram 校验 Bot Token，可跳过稍后配置。',
+    'error.setup_bot_skip_failed': '跳过 Bot Token 失败。',
     'error.invalid_task_id': '任务 ID 无效。',
     'error.task_not_found': '找不到任务。',
     'error.source_link_required': '请填写来源链接。',
@@ -2537,15 +2529,6 @@ const i18n = {
     'settings.forwardWatchExportFailed': 'Export failed.',
     'settings.forwardWatchImportFailed': 'Import failed.',
     'settings.forwardWatchImportResult': 'Import done: {created} added, {skipped} skipped, {failed} failed.',
-    'settings.diagnosticExport': 'Diagnostic export',
-    'settings.diagnosticExportHint': 'Exports config, session, transfer DB, system logs, and live copy/forward probes for failed items. Contains login state — private transfer only.',
-    'settings.diagnosticExportAck': 'I understand this includes secrets and session files',
-    'settings.diagnosticExportTaskId': 'Task ID (optional)',
-    'settings.diagnosticExportAction': 'Export diagnostic ZIP',
-    'settings.diagnosticExportConfirm': 'Will probe up to 5 failed items with copy/forward to PikPak and download a ZIP that includes login state. Private only — continue?',
-    'settings.diagnosticExportFailed': 'Diagnostic export failed.',
-    'settings.diagnosticExportDone': 'Diagnostic ZIP download started.',
-    'settings.diagnosticExportNeedAck': 'Check the secrets acknowledgement first.',
     'settings.exportLink': 'Link table',
     'settings.exportCount': 'Count table',
     'settings.exportUpload': 'Upload table',
@@ -2693,6 +2676,10 @@ const i18n = {
     'error.setup_rclone_failed': 'Failed to configure rclone.',
     'error.invalid_setup_api': 'Invalid API credentials.',
     'error.invalid_setup_rclone': 'Invalid rclone parameters.',
+    'error.invalid_setup_bot': 'Invalid Bot Token.',
+    'error.setup_bot_failed': 'Failed to save Bot Token.',
+    'error.setup_bot_network_failed': 'Cannot reach Telegram to verify Bot Token. You can skip and configure later.',
+    'error.setup_bot_skip_failed': 'Failed to skip Bot Token setup.',
     'error.invalid_task_id': 'Invalid task ID.',
     'error.task_not_found': 'Task not found.',
     'error.source_link_required': 'Source link is required.',
@@ -3215,49 +3202,6 @@ async function downloadForwardWatchBackup() {
   URL.revokeObjectURL(url);
 }
 
-function syncDiagnosticExportAck(ackEl, btnEl) {
-  if (!btnEl) return;
-  btnEl.disabled = !(ackEl && ackEl.checked);
-}
-
-async function downloadDiagnosticBundle(options) {
-  options = options || {};
-  const taskRaw = String(options.taskId || '').trim();
-  const payload = {
-    acknowledge_secrets: true,
-    run_probe: true,
-    probe_limit: 5,
-  };
-  if (taskRaw) payload.task_id = Number(taskRaw);
-  const resp = await fetch('/api/diagnostics/export', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (resp.status === 401) {
-    redirectToLoginPage();
-    throw { error_code: 'auth_required' };
-  }
-  if (!resp.ok) {
-    let data = null;
-    try { data = await resp.json(); } catch (_) {}
-    throw data || { error_code: 'diagnostic_export_failed' };
-  }
-  const blob = await resp.blob();
-  const disposition = resp.headers.get('content-disposition') || '';
-  const match = disposition.match(/filename=\"([^\"]+)\"/);
-  const filename = match ? match[1] : ('trmd-diagnostic-' + Date.now() + '.zip');
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 async function importForwardWatchBackupFile(file) {
   const text = await file.text();
   const payload = JSON.parse(text);
@@ -3532,7 +3476,7 @@ function hideSetupWizard() {
 }
 
 function showSetupStep(step) {
-  ['setup-form-api', 'setup-form-rclone', 'setup-form-done'].forEach(function(id) {
+  ['setup-form-api', 'setup-form-rclone', 'setup-form-bot', 'setup-form-done'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -3591,6 +3535,8 @@ async function checkSetupStatus() {
       if (hint) hint.textContent = rclone.message || '';
       var ri = document.getElementById('setup-rclone-remote');
       if (ri) ri.value = rclone.remote || 'pikpak';
+    } else if (current === 'bot') {
+      showSetupStep('bot');
     } else {
       showSetupStep('done');
       setTimeout(hideSetupWizard, 1200);
@@ -3648,8 +3594,7 @@ function bindSetupWizardHandlers() {
           overwrite: true
         });
         setupForceRclone = false;
-        showSetupStep('done');
-        setTimeout(function() { hideSetupWizard(); checkSetupStatus(); }, 1000);
+        await checkSetupStatus();
       } catch (e) {
         showSetupError(translateApiError(e, 'rclone 配置失败'));
       } finally {
@@ -3677,13 +3622,48 @@ function bindSetupWizardHandlers() {
         var probe = (result && result.probe) || {};
         if (probe.ok) {
           setupForceRclone = false;
-          showSetupStep('done');
-          setTimeout(hideSetupWizard, 1000);
+          await checkSetupStatus();
         } else {
           showSetupError(probe.message || 'remote 不可用');
         }
       } catch (e) {
         showSetupError(translateApiError(e, '验证失败'));
+      }
+    });
+  }
+
+  var botBtn = document.getElementById('setup-btn-bot');
+  if (botBtn && !botBtn.dataset.bound) {
+    botBtn.dataset.bound = '1';
+    botBtn.addEventListener('click', async function() {
+      var token = (document.getElementById('setup-bot-token').value || '').trim();
+      if (!token) { showSetupError('请填写 Bot Token，或不需要时点「跳过」'); return; }
+      botBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot', { bot_token: token });
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, 'Bot Token 校验失败'));
+      } finally {
+        botBtn.disabled = false;
+      }
+    });
+  }
+
+  var botSkipBtn = document.getElementById('setup-btn-bot-skip');
+  if (botSkipBtn && !botSkipBtn.dataset.bound) {
+    botSkipBtn.dataset.bound = '1';
+    botSkipBtn.addEventListener('click', async function() {
+      botSkipBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot/skip', {});
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, '跳过失败'));
+      } finally {
+        botSkipBtn.disabled = false;
       }
     });
   }
@@ -6185,45 +6165,6 @@ $('#forward-watch-export-btn')?.addEventListener('click', async function() {
   }
 });
 
-(function bindDiagnosticExportUi() {
-  const ack = $('#diagnostic-export-ack');
-  const btn = $('#diagnostic-export-btn');
-  const notice = $('#diagnostic-export-notice');
-  const taskInput = $('#diagnostic-export-task-id');
-  syncDiagnosticExportAck(ack, btn);
-  ack?.addEventListener('change', function() { syncDiagnosticExportAck(ack, btn); });
-  btn?.addEventListener('click', async function() {
-    if (!ack || !ack.checked) {
-      alert(t('settings.diagnosticExportNeedAck'));
-      return;
-    }
-    if (!confirm(t('settings.diagnosticExportConfirm'))) return;
-    btn.disabled = true;
-    if (notice) {
-      notice.className = 'text-xs text-muted mt-2';
-      notice.textContent = '...';
-      notice.style.display = '';
-    }
-    try {
-      await downloadDiagnosticBundle({ taskId: taskInput ? taskInput.value : '' });
-      if (notice) {
-        notice.className = 'text-xs text-success mt-2';
-        notice.textContent = t('settings.diagnosticExportDone');
-      }
-    } catch (e) {
-      if (e && e.error_code === 'auth_required') redirectToLoginPage();
-      else if (notice) {
-        notice.className = 'text-xs text-danger mt-2';
-        notice.textContent = translateApiError(e, 'settings.diagnosticExportFailed');
-      } else {
-        alert(t('settings.diagnosticExportFailed'));
-      }
-    } finally {
-      syncDiagnosticExportAck(ack, btn);
-    }
-  });
-})();
-
 $('#forward-watch-import-input')?.addEventListener('change', async function() {
   const file = this.files && this.files[0];
   this.value = '';
@@ -7396,7 +7337,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
   <div class="mob-login-card">
     <div class="mob-login-error" id="setup-error"></div>
     <div id="setup-form-api" class="login-step hidden">
-      <div class="mob-login-card__step">步骤 1 / 3</div>
+      <div class="mob-login-card__step">步骤 1 / 4</div>
       <h2 class="mob-login-card__title">Telegram API 凭证</h2>
       <p class="mob-login-card__subtitle">到 my.telegram.org 创建应用后填写</p>
       <div class="mob-login-field">
@@ -7421,7 +7362,7 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
       </div>
     </div>
     <div id="setup-form-rclone" class="login-step hidden">
-      <div class="mob-login-card__step">步骤 3 / 3（必选）</div>
+      <div class="mob-login-card__step">步骤 3 / 4（必选）</div>
       <h2 class="mob-login-card__title">配置 PikPak rclone</h2>
       <p class="mob-login-card__subtitle">下载回退会直传 My Telegram，必须先配通 rclone</p>
       <div class="mob-login-field">
@@ -7442,9 +7383,23 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
         <button type="button" id="setup-btn-rclone" class="mob-btn mob-login-submit">保存并验证</button>
       </div>
     </div>
+    <div id="setup-form-bot" class="login-step hidden">
+      <div class="mob-login-card__step">步骤 4 / 4（可选）</div>
+      <h2 class="mob-login-card__title">连接 Telegram Bot</h2>
+      <p class="mob-login-card__subtitle">在 @BotFather 创建机器人并粘贴 Token；可跳过，稍后在设置中配置</p>
+      <div class="mob-login-field">
+        <label for="setup-bot-token">Bot Token</label>
+        <input id="setup-bot-token" type="password" autocomplete="off" placeholder="123456:ABC-DEF…">
+      </div>
+      <p class="mob-login-field__hint" id="setup-bot-hint">保存时会向 Telegram 校验；网络不通可跳过</p>
+      <div class="mob-login-actions" style="flex-wrap:wrap">
+        <button type="button" class="mob-btn mob-btn-muted" id="setup-btn-bot-skip">跳过</button>
+        <button type="button" id="setup-btn-bot" class="mob-btn mob-login-submit">保存并验证</button>
+      </div>
+    </div>
     <div id="setup-form-done" class="login-step hidden">
       <div class="mob-login-success">
-        <p class="mob-login-success__text" id="setup-done-summary">初始化完成</p>
+        <p class="mob-login-success__text" id="setup-done-summary">初始化完成。机器人功能将在服务就绪后生效。</p>
       </div>
     </div>
   </div>
@@ -7900,22 +7855,6 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             </label>
           </div>
           <p id="mob-forward-watch-import-notice" class="mob-form-notice hidden" style="margin-top:8px;"></p>
-        </div>
-      </div>
-      <div class="mob-collapse" id="collapse-settings-diagnostic-export">
-        <div class="mob-collapse__head" data-i18n="settings.diagnosticExport">诊断包导出 <span class="mob-collapse__arrow">&#9660;</span></div>
-        <div class="mob-collapse__body">
-          <p class="text-xs text-muted" style="margin-bottom:8px;" data-i18n="settings.diagnosticExportHint">导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。</p>
-          <label class="flex items-center gap-2 text-sm" style="margin-bottom:8px;">
-            <input type="checkbox" id="mob-diagnostic-export-ack">
-            <span data-i18n="settings.diagnosticExportAck">我已知晓包含密钥与 session</span>
-          </label>
-          <label class="text-xs text-muted" style="display:block;margin-bottom:8px;">
-            <span data-i18n="settings.diagnosticExportTaskId">任务 ID（可选）</span>
-            <input class="form-input" id="mob-diagnostic-export-task-id" inputmode="numeric" placeholder="auto" style="margin-top:4px;">
-          </label>
-          <button type="button" class="mob-btn" id="mob-diagnostic-export-btn" data-i18n="settings.diagnosticExportAction" disabled>导出诊断包 ZIP</button>
-          <p id="mob-diagnostic-export-notice" class="mob-form-notice hidden" style="margin-top:8px;"></p>
         </div>
       </div>
       <div class="mob-collapse" id="collapse-settings-exports">
@@ -8447,15 +8386,6 @@ const i18n = {
     'settings.forwardWatchExportFailed': '导出失败。',
     'settings.forwardWatchImportFailed': '导入失败。',
     'settings.forwardWatchImportResult': '导入完成：新增 {created} 条，跳过 {skipped} 条，失败 {failed} 条。',
-    'settings.diagnosticExport': '诊断包导出',
-    'settings.diagnosticExportHint': '导出配置、session、转存库、系统日志，并对失败直转项实测 copy/forward。含登录态，仅私密传输，勿公开分享。',
-    'settings.diagnosticExportAck': '我已知晓包含密钥与 session',
-    'settings.diagnosticExportTaskId': '任务 ID（可选）',
-    'settings.diagnosticExportAction': '导出诊断包 ZIP',
-    'settings.diagnosticExportConfirm': '将向 PikPak 再实测最多 5 条失败消息的 copy/forward，并打包含登录态的 ZIP。仅私密传输，确定继续？',
-    'settings.diagnosticExportFailed': '诊断包导出失败。',
-    'settings.diagnosticExportDone': '诊断包已开始下载。',
-    'settings.diagnosticExportNeedAck': '请先勾选「我已知晓包含密钥与 session」。',
     'settings.exportLink': '链接统计表',
     'settings.exportCount': '计数统计表',
     'settings.exportUpload': '上传统计表',
@@ -8603,6 +8533,10 @@ const i18n = {
     'error.setup_rclone_failed': '配置 rclone 失败。',
     'error.invalid_setup_api': 'API 凭证无效。',
     'error.invalid_setup_rclone': 'rclone 参数无效。',
+    'error.invalid_setup_bot': 'Bot Token 无效。',
+    'error.setup_bot_failed': '保存 Bot Token 失败。',
+    'error.setup_bot_network_failed': '无法连接 Telegram 校验 Bot Token，可跳过稍后配置。',
+    'error.setup_bot_skip_failed': '跳过 Bot Token 失败。',
     'error.invalid_task_id': '任务 ID 无效。',
     'error.task_not_found': '找不到任务。',
     'error.source_link_required': '请填写来源链接。',
@@ -8936,15 +8870,6 @@ const i18n = {
     'settings.forwardWatchExportFailed': 'Export failed.',
     'settings.forwardWatchImportFailed': 'Import failed.',
     'settings.forwardWatchImportResult': 'Import done: {created} added, {skipped} skipped, {failed} failed.',
-    'settings.diagnosticExport': 'Diagnostic export',
-    'settings.diagnosticExportHint': 'Exports config, session, transfer DB, system logs, and live copy/forward probes for failed items. Contains login state — private transfer only.',
-    'settings.diagnosticExportAck': 'I understand this includes secrets and session files',
-    'settings.diagnosticExportTaskId': 'Task ID (optional)',
-    'settings.diagnosticExportAction': 'Export diagnostic ZIP',
-    'settings.diagnosticExportConfirm': 'Will probe up to 5 failed items with copy/forward to PikPak and download a ZIP that includes login state. Private only — continue?',
-    'settings.diagnosticExportFailed': 'Diagnostic export failed.',
-    'settings.diagnosticExportDone': 'Diagnostic ZIP download started.',
-    'settings.diagnosticExportNeedAck': 'Check the secrets acknowledgement first.',
     'settings.exportLink': 'Link table',
     'settings.exportCount': 'Count table',
     'settings.exportUpload': 'Upload table',
@@ -9092,6 +9017,10 @@ const i18n = {
     'error.setup_rclone_failed': 'Failed to configure rclone.',
     'error.invalid_setup_api': 'Invalid API credentials.',
     'error.invalid_setup_rclone': 'Invalid rclone parameters.',
+    'error.invalid_setup_bot': 'Invalid Bot Token.',
+    'error.setup_bot_failed': 'Failed to save Bot Token.',
+    'error.setup_bot_network_failed': 'Cannot reach Telegram to verify Bot Token. You can skip and configure later.',
+    'error.setup_bot_skip_failed': 'Failed to skip Bot Token setup.',
     'error.invalid_task_id': 'Invalid task ID.',
     'error.task_not_found': 'Task not found.',
     'error.source_link_required': 'Source link is required.',
@@ -9614,49 +9543,6 @@ async function downloadForwardWatchBackup() {
   URL.revokeObjectURL(url);
 }
 
-function syncDiagnosticExportAck(ackEl, btnEl) {
-  if (!btnEl) return;
-  btnEl.disabled = !(ackEl && ackEl.checked);
-}
-
-async function downloadDiagnosticBundle(options) {
-  options = options || {};
-  const taskRaw = String(options.taskId || '').trim();
-  const payload = {
-    acknowledge_secrets: true,
-    run_probe: true,
-    probe_limit: 5,
-  };
-  if (taskRaw) payload.task_id = Number(taskRaw);
-  const resp = await fetch('/api/diagnostics/export', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (resp.status === 401) {
-    redirectToLoginPage();
-    throw { error_code: 'auth_required' };
-  }
-  if (!resp.ok) {
-    let data = null;
-    try { data = await resp.json(); } catch (_) {}
-    throw data || { error_code: 'diagnostic_export_failed' };
-  }
-  const blob = await resp.blob();
-  const disposition = resp.headers.get('content-disposition') || '';
-  const match = disposition.match(/filename=\"([^\"]+)\"/);
-  const filename = match ? match[1] : ('trmd-diagnostic-' + Date.now() + '.zip');
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 async function importForwardWatchBackupFile(file) {
   const text = await file.text();
   const payload = JSON.parse(text);
@@ -9931,7 +9817,7 @@ function hideSetupWizard() {
 }
 
 function showSetupStep(step) {
-  ['setup-form-api', 'setup-form-rclone', 'setup-form-done'].forEach(function(id) {
+  ['setup-form-api', 'setup-form-rclone', 'setup-form-bot', 'setup-form-done'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -9990,6 +9876,8 @@ async function checkSetupStatus() {
       if (hint) hint.textContent = rclone.message || '';
       var ri = document.getElementById('setup-rclone-remote');
       if (ri) ri.value = rclone.remote || 'pikpak';
+    } else if (current === 'bot') {
+      showSetupStep('bot');
     } else {
       showSetupStep('done');
       setTimeout(hideSetupWizard, 1200);
@@ -10047,8 +9935,7 @@ function bindSetupWizardHandlers() {
           overwrite: true
         });
         setupForceRclone = false;
-        showSetupStep('done');
-        setTimeout(function() { hideSetupWizard(); checkSetupStatus(); }, 1000);
+        await checkSetupStatus();
       } catch (e) {
         showSetupError(translateApiError(e, 'rclone 配置失败'));
       } finally {
@@ -10076,13 +9963,48 @@ function bindSetupWizardHandlers() {
         var probe = (result && result.probe) || {};
         if (probe.ok) {
           setupForceRclone = false;
-          showSetupStep('done');
-          setTimeout(hideSetupWizard, 1000);
+          await checkSetupStatus();
         } else {
           showSetupError(probe.message || 'remote 不可用');
         }
       } catch (e) {
         showSetupError(translateApiError(e, '验证失败'));
+      }
+    });
+  }
+
+  var botBtn = document.getElementById('setup-btn-bot');
+  if (botBtn && !botBtn.dataset.bound) {
+    botBtn.dataset.bound = '1';
+    botBtn.addEventListener('click', async function() {
+      var token = (document.getElementById('setup-bot-token').value || '').trim();
+      if (!token) { showSetupError('请填写 Bot Token，或不需要时点「跳过」'); return; }
+      botBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot', { bot_token: token });
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, 'Bot Token 校验失败'));
+      } finally {
+        botBtn.disabled = false;
+      }
+    });
+  }
+
+  var botSkipBtn = document.getElementById('setup-btn-bot-skip');
+  if (botSkipBtn && !botSkipBtn.dataset.bound) {
+    botSkipBtn.dataset.bound = '1';
+    botSkipBtn.addEventListener('click', async function() {
+      botSkipBtn.disabled = true;
+      showSetupError('');
+      try {
+        await postJson('/api/setup/bot/skip', {});
+        await checkSetupStatus();
+      } catch (e) {
+        showSetupError(translateApiError(e, '跳过失败'));
+      } finally {
+        botSkipBtn.disabled = false;
       }
     });
   }
@@ -13346,49 +13268,6 @@ async function runArchiveOrganizeMobile() {
         else alert(t('settings.forwardWatchExportFailed'));
       } finally {
         mobForwardExportBtn.disabled = false;
-      }
-    });
-  }
-
-  var mobDiagAck = document.getElementById('mob-diagnostic-export-ack');
-  var mobDiagBtn = document.getElementById('mob-diagnostic-export-btn');
-  var mobDiagNotice = document.getElementById('mob-diagnostic-export-notice');
-  var mobDiagTask = document.getElementById('mob-diagnostic-export-task-id');
-  syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
-  if (mobDiagAck) {
-    mobDiagAck.addEventListener('change', function() {
-      syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
-    });
-  }
-  if (mobDiagBtn) {
-    mobDiagBtn.addEventListener('click', async function() {
-      if (!mobDiagAck || !mobDiagAck.checked) {
-        alert(t('settings.diagnosticExportNeedAck'));
-        return;
-      }
-      if (!confirm(t('settings.diagnosticExportConfirm'))) return;
-      mobDiagBtn.disabled = true;
-      if (mobDiagNotice) {
-        mobDiagNotice.className = 'mob-form-notice';
-        mobDiagNotice.textContent = '...';
-        mobDiagNotice.classList.remove('hidden');
-      }
-      try {
-        await downloadDiagnosticBundle({ taskId: mobDiagTask ? mobDiagTask.value : '' });
-        if (mobDiagNotice) {
-          mobDiagNotice.className = 'mob-form-notice text-success';
-          mobDiagNotice.textContent = t('settings.diagnosticExportDone');
-        }
-      } catch (e) {
-        if (e && e.error_code === 'auth_required') redirectToLoginPage();
-        else if (mobDiagNotice) {
-          mobDiagNotice.className = 'mob-form-notice text-danger';
-          mobDiagNotice.textContent = translateApiError(e, 'settings.diagnosticExportFailed');
-        } else {
-          alert(t('settings.diagnosticExportFailed'));
-        }
-      } finally {
-        syncDiagnosticExportAck(mobDiagAck, mobDiagBtn);
       }
     });
   }

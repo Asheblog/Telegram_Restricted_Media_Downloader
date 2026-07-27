@@ -91,16 +91,106 @@ class SetupWizardCase(unittest.TestCase):
         self.assertEqual('rclone', status['current_step'])
         self.assertTrue(status['steps']['rclone']['required'])
 
-    def test_guided_rclone_ok_completes_wizard(self):
+    def test_guided_rclone_ok_prompts_optional_bot(self):
         coord = SetupCoordinator(runner=lambda *a, **k: _FakeCompleted(stdout='pikpak:\n'))
         with patch.object(coord, 'probe_rclone', return_value={'ok': False, 'message': 'missing', 'remotes': []}):
             coord.build_status(api_done=False, telegram_done=False)
         with patch.object(coord, 'probe_rclone', return_value={'ok': True, 'message': 'ok', 'remotes': ['pikpak']}):
-            status = coord.build_status(api_done=True, telegram_done=True, telegram_step='done')
+            status = coord.build_status(
+                api_done=True,
+                telegram_done=True,
+                telegram_step='done',
+                bot_token_configured=False,
+            )
+        self.assertTrue(status['ready'])
+        self.assertTrue(status['wizard_active'])
+        self.assertEqual('bot', status['current_step'])
+        self.assertTrue(status['steps']['rclone']['done'])
+        self.assertTrue(status['steps']['bot']['prompt'])
+        self.assertTrue(status['steps']['bot']['optional'])
+        self.assertFalse(status['steps']['bot']['done'])
+
+    def test_guided_bot_skip_completes_wizard(self):
+        coord = SetupCoordinator(runner=lambda *a, **k: _FakeCompleted(stdout='pikpak:\n'))
+        with patch.object(coord, 'probe_rclone', return_value={'ok': False, 'message': 'missing', 'remotes': []}):
+            coord.build_status(api_done=False, telegram_done=False)
+        with patch.object(coord, 'probe_rclone', return_value={'ok': True, 'message': 'ok', 'remotes': ['pikpak']}):
+            coord.build_status(api_done=True, telegram_done=True, telegram_step='done')
+            coord.dismiss_bot()
+            status = coord.build_status(
+                api_done=True,
+                telegram_done=True,
+                telegram_step='done',
+                bot_token_configured=False,
+            )
         self.assertTrue(status['ready'])
         self.assertFalse(status['wizard_active'])
         self.assertEqual('done', status['current_step'])
-        self.assertTrue(status['steps']['rclone']['done'])
+        self.assertTrue(status['steps']['bot']['done'])
+        self.assertTrue(status['steps']['bot']['dismissed'])
+
+    def test_guided_existing_bot_token_skips_bot_step(self):
+        coord = SetupCoordinator(runner=lambda *a, **k: _FakeCompleted(stdout='pikpak:\n'))
+        with patch.object(coord, 'probe_rclone', return_value={'ok': False, 'message': 'missing', 'remotes': []}):
+            coord.build_status(api_done=False, telegram_done=False)
+        with patch.object(coord, 'probe_rclone', return_value={'ok': True, 'message': 'ok', 'remotes': ['pikpak']}):
+            status = coord.build_status(
+                api_done=True,
+                telegram_done=True,
+                telegram_step='done',
+                bot_token_configured=True,
+            )
+        self.assertFalse(status['wizard_active'])
+        self.assertEqual('done', status['current_step'])
+        self.assertTrue(status['steps']['bot']['done'])
+
+    def test_verify_bot_token_rejects_invalid_token(self):
+        from module.adapters.webui.setup import BotTokenInvalidError, verify_bot_token
+
+        def fetch(_url):
+            return 401, '{"ok":false,"error_code":401,"description":"Unauthorized"}'
+
+        with self.assertRaises(BotTokenInvalidError):
+            verify_bot_token('123456:ABC-DEF', fetch=fetch)
+
+    def test_verify_bot_token_maps_network_failure(self):
+        from module.adapters.webui.setup import BotTokenNetworkError, verify_bot_token
+
+        def fetch(_url):
+            raise TimeoutError('timed out')
+
+        with self.assertRaises(BotTokenNetworkError):
+            verify_bot_token('123456:ABC-DEF', fetch=fetch)
+
+    def test_verify_bot_token_maps_rate_limit_as_network(self):
+        from module.adapters.webui.setup import BotTokenNetworkError, verify_bot_token
+
+        def fetch(_url):
+            return 429, '{"ok":false,"error_code":429,"description":"Too Many Requests"}'
+
+        with self.assertRaises(BotTokenNetworkError):
+            verify_bot_token('123456:ABC-DEF', fetch=fetch)
+
+    def test_verify_bot_token_redacts_token_in_network_errors(self):
+        from module.adapters.webui.setup import BotTokenNetworkError, verify_bot_token
+
+        token = '123456:ABC-DEF-SECRET'
+        def fetch(_url):
+            raise ConnectionError(f'failed https://api.telegram.org/bot{token}/getMe')
+
+        with self.assertRaises(BotTokenNetworkError) as ctx:
+            verify_bot_token(token, fetch=fetch)
+        self.assertNotIn(token, str(ctx.exception))
+        self.assertIn('***', str(ctx.exception))
+
+    def test_verify_bot_token_success_returns_username(self):
+        from module.adapters.webui.setup import verify_bot_token
+
+        def fetch(_url):
+            return 200, '{"ok":true,"result":{"id":1,"is_bot":true,"username":"demo_bot"}}'
+
+        result = verify_bot_token('123456:ABC-DEF', fetch=fetch)
+        self.assertEqual(result['username'], 'demo_bot')
 
     def test_configure_pikpak_remote_uses_rclone_noninteractive(self):
         calls = []

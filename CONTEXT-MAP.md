@@ -52,7 +52,7 @@
 | `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
 | `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
 | `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP + REST API | ~1670 |
-| `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone 配置 | ~250 |
+| `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone / 可选 Bot Token | ~350 |
 | `adapters/webui/view_model.py` | `webui_view_model.py` | 桌面/移动统一 ViewModel | ~550 |
 | `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~500 |
 | `adapters/webui/statistics_payload.py` | `statistics_payload.py` | 统计面板 payload | ~80 |
@@ -133,6 +133,8 @@
 | `/api/setup/rclone` | POST | 非交互创建/覆盖 PikPak rclone remote 并探测 |
 | `/api/setup/rclone/skip` | POST | 跳过 rclone；关闭归档 |
 | `/api/setup/rclone/test` | POST | 探测已有 remote |
+| `/api/setup/bot` | POST | 校验（getMe）并保存可选 `bot_token` |
+| `/api/setup/bot/skip` | POST | 跳过可选 Bot Token 步 |
 
 ## 术语 → 代码实体
 

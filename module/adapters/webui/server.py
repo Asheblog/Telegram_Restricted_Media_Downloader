@@ -200,6 +200,8 @@ class WebUiServer:
             setup_rclone_configurer: Optional[Callable[[dict], dict]] = None,
             setup_rclone_skipper: Optional[Callable[[Optional[dict]], dict]] = None,
             setup_rclone_tester: Optional[Callable[[Optional[dict]], dict]] = None,
+            setup_bot_saver: Optional[Callable[[dict], dict]] = None,
+            setup_bot_skipper: Optional[Callable[[Optional[dict]], dict]] = None,
             setup_ready_checker: Optional[Callable[[], bool]] = None,
     ):
         self.store = store
@@ -219,6 +221,8 @@ class WebUiServer:
         self.setup_rclone_configurer = setup_rclone_configurer
         self.setup_rclone_skipper = setup_rclone_skipper
         self.setup_rclone_tester = setup_rclone_tester
+        self.setup_bot_saver = setup_bot_saver
+        self.setup_bot_skipper = setup_bot_skipper
         self.setup_ready_checker = setup_ready_checker
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
@@ -972,6 +976,35 @@ class WebUiServer:
                     except Exception as e:
                         server.diagnostic.exception('[WebUI] 探测 rclone 失败。')
                         self._send_error('setup_rclone_test_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed.path == '/api/setup/bot':
+                    if not callable(server.setup_bot_saver):
+                        self._send_error('setup_unavailable', 'Setup bot unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        from module.adapters.webui.setup import BotTokenInvalidError, BotTokenNetworkError
+                        payload = self._read_json()
+                        self._send_json(server.setup_bot_saver(payload))
+                    except BotTokenInvalidError as e:
+                        self._send_error('invalid_setup_bot', str(e), HTTPStatus.BAD_REQUEST)
+                    except BotTokenNetworkError as e:
+                        self._send_error('setup_bot_network_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    except ValueError as e:
+                        self._send_error('invalid_setup_bot', str(e), HTTPStatus.BAD_REQUEST)
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 保存 Bot Token 失败。')
+                        self._send_error('setup_bot_failed', str(e), HTTPStatus.BAD_REQUEST)
+                    return
+                if parsed.path == '/api/setup/bot/skip':
+                    if not callable(server.setup_bot_skipper):
+                        self._send_error('setup_unavailable', 'Setup bot skip unavailable.', HTTPStatus.NOT_FOUND)
+                        return
+                    try:
+                        payload = self._read_json()
+                        self._send_json(server.setup_bot_skipper(payload))
+                    except Exception as e:
+                        server.diagnostic.exception('[WebUI] 跳过 Bot Token 失败。')
+                        self._send_error('setup_bot_skip_failed', str(e), HTTPStatus.BAD_REQUEST)
                     return
                 task_action = server.parse_task_action_path(parsed.path)
                 if task_action:
