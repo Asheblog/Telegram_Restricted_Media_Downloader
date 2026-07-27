@@ -1201,6 +1201,76 @@ class DeepLinkResolverCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_resolve_hard_timeout_with_video_still_retries(self):
+        """硬标记即使已有 video 也整波作废并再 StartBot。"""
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                if starts['n'] <= 1:
+                    yield SimpleNamespace(
+                        id=20,
+                        video=object(),
+                        document=None,
+                        animation=None,
+                        photo=None,
+                        outgoing=False,
+                        date=started,
+                        text=None,
+                        caption=None,
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    yield SimpleNamespace(
+                        id=21,
+                        video=None,
+                        document=None,
+                        animation=None,
+                        photo=None,
+                        outgoing=False,
+                        date=started + 0.01,
+                        text='会话已超时关闭。',
+                        caption=None,
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    return
+                yield SimpleNamespace(
+                    id=30,
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=time.time(),
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.8,
+                poll_interval=0.05,
+                settle_seconds=0.1,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(2, starts['n'])
+            self.assertTrue(getattr(result[0], 'video', None))
+
+        asyncio.run(run_case())
+
     def test_resolve_soft_close_after_video_keeps_media_without_retry(self):
         """回归 3b37e9c：真资源 video 后的「会话已关闭」是正常收尾，不得整波作废重试。"""
         async def run_case():
