@@ -28,24 +28,43 @@ _PAGE_STATUS_RE = re.compile(
     r'(?:(\d+)\s*-\s*)?(\d+)\s*/\s*(\d+)',
 )
 
-# 资源 bot 业务会话失败文案（命中后整波作废，可再 StartBot）。
-# 不含单独的「会话已关闭」：该句常为 bot 正常收尾，会误伤后续 StartBot。
-_SESSION_FAILURE_MARKERS = (
+# 资源 bot 业务会话失败文案（命中后可再 StartBot）。
+# 硬标记：无论是否已有媒体，整波作废（预览图 + 超时文案）。
+_HARD_SESSION_FAILURE_MARKERS = (
     '会话已超时关闭',
     '会话超时',
 )
+# 软标记：仅在本波无媒体或仅有 photo（预览）时作废并重试。
+# 已有 video/document/animation 时视为正常收尾（见 3b37e9c），保留已收媒体，避免误伤。
+_SOFT_SESSION_FAILURE_MARKERS = (
+    '会话已关闭',
+    '会话已退出',
+)
+_SESSION_FAILURE_MARKERS = _HARD_SESSION_FAILURE_MARKERS + _SOFT_SESSION_FAILURE_MARKERS
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
 DEEP_LINK_SKIP_NO_LINK_MESSAGE = '消息无白名单深链，已跳过原帖封面（不回退预览）'
+_NON_PREVIEW_MEDIA_ATTRS = ('video', 'document', 'animation')
 
 log = logging.getLogger('deep_link')
 
 
-def text_has_session_failure(text) -> bool:
+def text_has_hard_session_failure(text) -> bool:
     raw = str(text or '')
     if not raw:
         return False
-    return any(marker in raw for marker in _SESSION_FAILURE_MARKERS)
+    return any(marker in raw for marker in _HARD_SESSION_FAILURE_MARKERS)
+
+
+def text_has_soft_session_failure(text) -> bool:
+    raw = str(text or '')
+    if not raw:
+        return False
+    return any(marker in raw for marker in _SOFT_SESSION_FAILURE_MARKERS)
+
+
+def text_has_session_failure(text) -> bool:
+    return text_has_hard_session_failure(text) or text_has_soft_session_failure(text)
 
 
 @dataclass(frozen=True)
@@ -297,14 +316,46 @@ class DeepLinkResolver:
             or text_has_session_failure(getattr(message, 'caption', None))
         )
 
-    def _history_has_session_failure(self, history: list, started_at: float) -> bool:
+    @staticmethod
+    def collected_is_preview_only(collected: Optional[dict]) -> bool:
+        """True when wave is empty or only photo media (no video/document/animation)."""
+        if not collected:
+            return True
+        for message in collected.values():
+            if any(getattr(message, attr, None) for attr in _NON_PREVIEW_MEDIA_ATTRS):
+                return False
+        return True
+
+    def _history_triggers_session_failure(
+            self,
+            history: list,
+            started_at: float,
+            collected: Optional[dict] = None,
+    ) -> bool:
+        """硬标记始终触发；软标记仅在预览波（无片或仅 photo）时触发。"""
+        saw_hard = False
+        saw_soft = False
         for message in history:
             ts = self._message_timestamp(message)
             if ts + 2 < started_at:  # allow small skew
                 continue
-            if self.message_has_session_failure(message):
-                return True
+            if bool(getattr(message, 'outgoing', False)):
+                continue
+            text = getattr(message, 'text', None)
+            caption = getattr(message, 'caption', None)
+            if text_has_hard_session_failure(text) or text_has_hard_session_failure(caption):
+                saw_hard = True
+            if text_has_soft_session_failure(text) or text_has_soft_session_failure(caption):
+                saw_soft = True
+        if saw_hard:
+            return True
+        if saw_soft and self.collected_is_preview_only(collected):
+            return True
         return False
+
+    def _history_has_session_failure(self, history: list, started_at: float) -> bool:
+        """兼容旧调用：无 collected 时按预览波处理（软标记也会触发）。"""
+        return self._history_triggers_session_failure(history, started_at, collected=None)
 
     @staticmethod
     def _message_timestamp(message) -> float:
@@ -482,15 +533,16 @@ class DeepLinkResolver:
             except asyncio.TimeoutError:
                 break
             now = time.time()
-            # 会话失败文案优先：预览图 +「会话已超时关闭」整波作废，不进入 settle 成功路径。
-            if self._history_has_session_failure(history, started_at):
-                collected.clear()
-                fingerprints.clear()
-                raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
+            # 先收媒体再判会话失败：同一波里 video +「会话已关闭」时，须先把真资源记入 collected，
+            # 否则软标记会在空 collected 上误触发（回归 3b37e9c）。
             if self._collect_new_media(history, started_at, collected, fingerprints):
                 if first_media_at is None:
                     first_media_at = now
                 last_new_at = now
+            if self._history_triggers_session_failure(history, started_at, collected):
+                collected.clear()
+                fingerprints.clear()
+                raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
 
             # 只点本次 StartBot 之后的翻页/组别按钮，避免误点历史菜单提前收工。
             recent_history = [
@@ -615,7 +667,7 @@ class DeepLinkResolver:
             )
         except asyncio.TimeoutError:
             history = []
-        if self._history_has_session_failure(history, started_at):
+        if self._history_triggers_session_failure(history, started_at, collected):
             raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
         return sorted(
             collected.values(),

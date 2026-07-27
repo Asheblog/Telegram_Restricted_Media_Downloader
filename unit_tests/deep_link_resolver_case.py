@@ -13,7 +13,9 @@ sys.argv = [_ORIGINAL_ARGV[0]]
 from module.transfer.deep_link import (
     DeepLinkResolveError,
     DeepLinkResolver,
+    text_has_hard_session_failure,
     text_has_session_failure,
+    text_has_soft_session_failure,
 )
 sys.argv = _ORIGINAL_ARGV
 
@@ -848,12 +850,26 @@ class DeepLinkResolverCase(unittest.TestCase):
     def test_text_has_session_failure_markers(self):
         self.assertTrue(text_has_session_failure('会话已超时关闭。'))
         self.assertTrue(text_has_session_failure('提示：会话超时，请重新打开'))
-        # 普通「会话已关闭」是 bot 正常收尾，不能当本次取片失败。
-        self.assertFalse(text_has_session_failure('会话已关闭'))
-        self.assertFalse(text_has_session_failure('会话已关闭。'))
+        self.assertTrue(text_has_session_failure('会话已关闭'))
+        self.assertTrue(text_has_session_failure('会话已关闭。'))
+        self.assertTrue(text_has_session_failure('会话已退出'))
+        self.assertTrue(text_has_hard_session_failure('会话已超时关闭。'))
+        self.assertFalse(text_has_hard_session_failure('会话已关闭'))
+        self.assertTrue(text_has_soft_session_failure('会话已关闭'))
+        self.assertTrue(text_has_soft_session_failure('会话已退出'))
+        self.assertFalse(text_has_soft_session_failure('会话已超时关闭。'))
         self.assertFalse(text_has_session_failure('#MYMPET'))
         self.assertFalse(text_has_session_failure(''))
         self.assertFalse(text_has_session_failure(None))
+
+    def test_collected_is_preview_only(self):
+        self.assertTrue(DeepLinkResolver.collected_is_preview_only(None))
+        self.assertTrue(DeepLinkResolver.collected_is_preview_only({}))
+        photo = SimpleNamespace(photo=object(), video=None, document=None, animation=None)
+        video = SimpleNamespace(photo=None, video=object(), document=None, animation=None)
+        self.assertTrue(DeepLinkResolver.collected_is_preview_only({1: photo}))
+        self.assertFalse(DeepLinkResolver.collected_is_preview_only({1: video}))
+        self.assertFalse(DeepLinkResolver.collected_is_preview_only({1: photo, 2: video}))
 
     def test_resolve_ignores_stale_pagination_and_waits_for_late_media(self):
         async def run_case():
@@ -1053,6 +1069,192 @@ class DeepLinkResolverCase(unittest.TestCase):
             self.assertEqual(1, len(result))
             self.assertTrue(getattr(result[0], 'video', None))
             self.assertFalse(getattr(result[0], 'photo', None))
+
+        asyncio.run(run_case())
+
+    def test_resolve_soft_close_with_preview_photo_retries(self):
+        """预览 photo +「会话已关闭」应作废并再 StartBot（用户选 A）。"""
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                if starts['n'] <= 1:
+                    yield SimpleNamespace(
+                        id=10,
+                        video=None,
+                        document=None,
+                        animation=None,
+                        photo=object(),
+                        outgoing=False,
+                        date=started,
+                        text=None,
+                        caption='#preview',
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    yield SimpleNamespace(
+                        id=11,
+                        video=None,
+                        document=None,
+                        animation=None,
+                        photo=None,
+                        outgoing=False,
+                        date=started,
+                        text='会话已关闭。',
+                        caption=None,
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    return
+                yield SimpleNamespace(
+                    id=20,
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=time.time(),
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.8,
+                poll_interval=0.05,
+                settle_seconds=0.15,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(2, starts['n'])
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+
+        asyncio.run(run_case())
+
+    def test_resolve_soft_exit_with_zero_media_retries(self):
+        """零媒体 +「会话已退出」应再 StartBot。"""
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                if starts['n'] <= 1:
+                    yield SimpleNamespace(
+                        id=11,
+                        video=None,
+                        document=None,
+                        animation=None,
+                        photo=None,
+                        outgoing=False,
+                        date=started,
+                        text='会话已退出',
+                        caption=None,
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    return
+                yield SimpleNamespace(
+                    id=20,
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=time.time(),
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.8,
+                poll_interval=0.05,
+                settle_seconds=0.15,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(2, starts['n'])
+            self.assertTrue(getattr(result[0], 'video', None))
+
+        asyncio.run(run_case())
+
+    def test_resolve_soft_close_after_video_keeps_media_without_retry(self):
+        """回归 3b37e9c：真资源 video 后的「会话已关闭」是正常收尾，不得整波作废重试。"""
+        async def run_case():
+            starts = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+
+            async def get_chat_history(bot_username, limit=10):
+                yield SimpleNamespace(
+                    id=20,
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started,
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+                yield SimpleNamespace(
+                    id=21,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started + 0.01,
+                    text='会话已关闭。',
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.8,
+                poll_interval=0.05,
+                settle_seconds=0.1,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(1, starts['n'])
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
 
         asyncio.run(run_case())
 
