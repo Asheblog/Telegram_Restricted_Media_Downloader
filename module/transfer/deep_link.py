@@ -29,10 +29,10 @@ _PAGE_STATUS_RE = re.compile(
 )
 
 # 资源 bot 业务会话失败文案（命中后整波作废，可再 StartBot）。
+# 不含单独的「会话已关闭」：该句常为 bot 正常收尾，会误伤后续 StartBot。
 _SESSION_FAILURE_MARKERS = (
     '会话已超时关闭',
     '会话超时',
-    '会话已关闭',
 )
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
@@ -472,7 +472,14 @@ class DeepLinkResolver:
                     first_media_at = now
                 last_new_at = now
 
-            pending_target = pick_pagination_click_target(history, clicked_callback_data)
+            # 只点本次 StartBot 之后的翻页/组别按钮，避免误点历史菜单提前收工。
+            recent_history = [
+                message for message in history
+                if self._message_timestamp(message) + 2 >= started_at
+            ]
+            pending_target = pick_pagination_click_target(
+                recent_history, clicked_callback_data,
+            )
 
             if first_media_at is not None:
                 if self.settle_seconds <= 0:
@@ -542,10 +549,14 @@ class DeepLinkResolver:
                 should_continue=should_continue,
             )
             if pages_clicked > 0 and len(collected) == count_before:
-                # Prior click produced no newly accepted media (incl. fingerprint dupes).
+                # 已有媒体时：翻页无新媒体则停翻，保留已收结果。
+                # 零媒体时：可能是点了失效按钮或 bot 仍在出片，继续等到 deadline。
+                if collected:
+                    break
+            if pages_clicked >= self.max_pages:
                 break
-            if pages_clicked >= self.max_pages or pending is None:
-                # _collect_wave already waited to deadline when empty and no targets.
+            if pending is None:
+                # _collect_wave 在无按钮时会等到 deadline（或已有媒体 settle 结束）。
                 break
             if callable(should_continue) and not should_continue():
                 break

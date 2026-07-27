@@ -848,10 +848,142 @@ class DeepLinkResolverCase(unittest.TestCase):
     def test_text_has_session_failure_markers(self):
         self.assertTrue(text_has_session_failure('会话已超时关闭。'))
         self.assertTrue(text_has_session_failure('提示：会话超时，请重新打开'))
-        self.assertTrue(text_has_session_failure('会话已关闭'))
+        # 普通「会话已关闭」是 bot 正常收尾，不能当本次取片失败。
+        self.assertFalse(text_has_session_failure('会话已关闭'))
+        self.assertFalse(text_has_session_failure('会话已关闭。'))
         self.assertFalse(text_has_session_failure('#MYMPET'))
         self.assertFalse(text_has_session_failure(''))
         self.assertFalse(text_has_session_failure(None))
+
+    def test_resolve_ignores_stale_pagination_and_waits_for_late_media(self):
+        async def run_case():
+            now = time.time()
+            stale_pager = SimpleNamespace(
+                id=1,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=now - 120,
+                text='旧菜单',
+                caption=None,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='1', callback_data=b'stale-g1', url=None),
+                    SimpleNamespace(text='下 10 页 »', callback_data=b'stale-next', url=None),
+                ]]),
+                click=AsyncMock(),
+            )
+            late_video = SimpleNamespace(
+                id=20,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=now + 0.05,
+                text=None,
+                caption=None,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            polls = {'n': 0}
+
+            async def get_chat_history(bot_username, limit=10):
+                polls['n'] += 1
+                if polls['n'] < 4:
+                    yield stale_pager
+                    return
+                yield late_video
+                yield stale_pager
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=1.0,
+                poll_interval=0.05,
+                settle_seconds=0,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+            stale_pager.click.assert_not_awaited()
+
+        asyncio.run(run_case())
+
+    def test_resolve_keeps_waiting_when_empty_pagination_click_yields_nothing(self):
+        async def run_case():
+            started = time.time()
+            pager = SimpleNamespace(
+                id=2,
+                video=None,
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started,
+                text=None,
+                caption=None,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(text='下一页 ▶️', callback_data=b'next1', url=None),
+                ]]),
+                click=AsyncMock(),
+            )
+            late_video = SimpleNamespace(
+                id=30,
+                video=object(),
+                document=None,
+                animation=None,
+                photo=None,
+                outgoing=False,
+                date=started + 0.2,
+                text=None,
+                caption=None,
+                chat=SimpleNamespace(id='bot'),
+                reply_markup=None,
+            )
+            polls = {'n': 0}
+
+            async def get_chat_history(bot_username, limit=10):
+                polls['n'] += 1
+                if polls['n'] <= 2:
+                    yield pager
+                    return
+                yield late_video
+                yield pager
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=1.2,
+                poll_interval=0.05,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                page_click_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+            pager.click.assert_awaited()
+
+        asyncio.run(run_case())
 
     def test_resolve_session_failure_retries_then_succeeds(self):
         async def run_case():
