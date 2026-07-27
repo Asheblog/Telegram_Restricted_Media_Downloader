@@ -28,7 +28,22 @@ _PAGE_STATUS_RE = re.compile(
     r'(?:(\d+)\s*-\s*)?(\d+)\s*/\s*(\d+)',
 )
 
+# 资源 bot 业务会话失败文案（命中后整波作废，可再 StartBot）。
+_SESSION_FAILURE_MARKERS = (
+    '会话已超时关闭',
+    '会话超时',
+    '会话已关闭',
+)
+_MAX_START_BOT_ATTEMPTS = 3
+
 log = logging.getLogger('deep_link')
+
+
+def text_has_session_failure(text) -> bool:
+    raw = str(text or '')
+    if not raw:
+        return False
+    return any(marker in raw for marker in _SESSION_FAILURE_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -221,6 +236,10 @@ class DeepLinkResolveError(Exception):
     pass
 
 
+class DeepLinkSessionFailure(Exception):
+    """资源 bot 业务会话失败；resolve 内可重试，耗尽后升为 DeepLinkResolveError。"""
+
+
 class DeepLinkResolver:
     def __init__(
             self,
@@ -245,6 +264,26 @@ class DeepLinkResolver:
         if message is None or bool(getattr(message, 'empty', False)):
             return False
         return any(getattr(message, attr, None) for attr in _RESOLVABLE_MEDIA_ATTRS)
+
+    @classmethod
+    def message_has_session_failure(cls, message) -> bool:
+        if message is None or bool(getattr(message, 'empty', False)):
+            return False
+        if bool(getattr(message, 'outgoing', False)):
+            return False
+        return (
+            text_has_session_failure(getattr(message, 'text', None))
+            or text_has_session_failure(getattr(message, 'caption', None))
+        )
+
+    def _history_has_session_failure(self, history: list, started_at: float) -> bool:
+        for message in history:
+            ts = self._message_timestamp(message)
+            if ts + 2 < started_at:  # allow small skew
+                continue
+            if self.message_has_session_failure(message):
+                return True
+        return False
 
     @staticmethod
     def _message_timestamp(message) -> float:
@@ -422,6 +461,11 @@ class DeepLinkResolver:
             except asyncio.TimeoutError:
                 break
             now = time.time()
+            # 会话失败文案优先：预览图 +「会话已超时关闭」整波作废，不进入 settle 成功路径。
+            if self._history_has_session_failure(history, started_at):
+                collected.clear()
+                fingerprints.clear()
+                raise DeepLinkSessionFailure('资源 bot 会话已超时关闭')
             if self._collect_new_media(history, started_at, collected, fingerprints):
                 if first_media_at is None:
                     first_media_at = now
@@ -530,6 +574,17 @@ class DeepLinkResolver:
 
         if not collected:
             raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
+        # 收齐后终检：超时文案若紧随末波媒体到达，避免误返回预览图。
+        remaining = max(0.1, deadline - time.time())
+        try:
+            history = await asyncio.wait_for(
+                self._collect_chat_history(client, bot_username, limit=50),
+                timeout=remaining,
+            )
+        except asyncio.TimeoutError:
+            history = []
+        if self._history_has_session_failure(history, started_at):
+            raise DeepLinkSessionFailure('资源 bot 会话已超时关闭')
         return sorted(
             collected.values(),
             key=lambda message: (
@@ -568,25 +623,45 @@ class DeepLinkResolver:
                 self.page_click_interval_seconds = max(
                     float(page_click_interval_seconds or 0), 0.0,
                 )
-            await self._wait_min_interval()
-            started_at = time.time()
-            deadline = started_at + self.timeout_seconds
-
-            async def _fetch():
-                await self.start_bot(client, bot, param, deadline=deadline)
-                return await self.wait_for_media_batch(
-                    client,
-                    bot,
-                    started_at,
-                    deadline=deadline,
-                    should_continue=should_continue,
-                )
-
-            try:
-                media_msgs = await _fetch()
-            except asyncio.TimeoutError as e:
-                raise DeepLinkResolveError('资源 bot 未在超时内返回媒体') from e
-            meta = {'bot': bot, 'start_param': param}
-            for media_msg in media_msgs:
-                media_msg._deep_link_meta = dict(meta)
-            return media_msgs
+            last_session_failure: Optional[BaseException] = None
+            for attempt in range(1, _MAX_START_BOT_ATTEMPTS + 1):
+                # 仅在重试前检查暂停；首次不占用 should_continue 计数（与收片波次共用）。
+                if (
+                        attempt > 1
+                        and callable(should_continue)
+                        and not should_continue()
+                ):
+                    break
+                await self._wait_min_interval()
+                started_at = time.time()
+                deadline = started_at + self.timeout_seconds
+                try:
+                    await self.start_bot(client, bot, param, deadline=deadline)
+                    media_msgs = await self.wait_for_media_batch(
+                        client,
+                        bot,
+                        started_at,
+                        deadline=deadline,
+                        should_continue=should_continue,
+                    )
+                except DeepLinkSessionFailure as e:
+                    last_session_failure = e
+                    log.warning(
+                        'deep_link session failure attempt %s/%s for @%s: %s',
+                        attempt,
+                        _MAX_START_BOT_ATTEMPTS,
+                        bot,
+                        e,
+                    )
+                    continue
+                except asyncio.TimeoutError as e:
+                    raise DeepLinkResolveError('资源 bot 未在超时内返回媒体') from e
+                meta = {'bot': bot, 'start_param': param}
+                for media_msg in media_msgs:
+                    media_msg._deep_link_meta = dict(meta)
+                return media_msgs
+            if last_session_failure is not None:
+                raise DeepLinkResolveError(
+                    f'资源 bot 会话超时，已重试 {_MAX_START_BOT_ATTEMPTS} 次仍失败'
+                ) from last_session_failure
+            raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
