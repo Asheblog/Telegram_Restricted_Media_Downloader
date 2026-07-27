@@ -1072,6 +1072,82 @@ class DeepLinkResolverCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_resolve_late_timeout_after_preview_settle_retries(self):
+        """预览图先 settle、超时文案晚到：宽限终检须捕捉并再 StartBot（图4卡死根因）。"""
+        async def run_case():
+            starts = {'n': 0}
+            polls = {'n': 0}
+            started = time.time()
+
+            async def start_bot(client, bot_username, start_param, deadline=None):
+                starts['n'] += 1
+                polls['n'] = 0
+
+            async def get_chat_history(bot_username, limit=10):
+                polls['n'] += 1
+                if starts['n'] <= 1:
+                    yield SimpleNamespace(
+                        id=10,
+                        video=None,
+                        document=None,
+                        animation=None,
+                        photo=object(),
+                        outgoing=False,
+                        date=started,
+                        text=None,
+                        caption='#MYMPET',
+                        chat=SimpleNamespace(id='bot'),
+                    )
+                    # settle 结束后宽限轮次才出现超时文案（模拟图4）。
+                    if polls['n'] >= 5:
+                        yield SimpleNamespace(
+                            id=11,
+                            video=None,
+                            document=None,
+                            animation=None,
+                            photo=None,
+                            outgoing=False,
+                            date=started + 0.2,
+                            text='会话已超时关闭。',
+                            caption=None,
+                            chat=SimpleNamespace(id='bot'),
+                        )
+                    return
+                yield SimpleNamespace(
+                    id=20,
+                    video=object(),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=time.time(),
+                    text=None,
+                    caption=None,
+                    chat=SimpleNamespace(id='bot'),
+                )
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+                rnd_id=lambda: 1,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0,
+                poll_interval=0.05,
+                settle_seconds=0.1,
+                min_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=start_bot)):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertGreaterEqual(starts['n'], 2)
+            self.assertEqual(1, len(result))
+            self.assertTrue(getattr(result[0], 'video', None))
+
+        asyncio.run(run_case())
+
     def test_resolve_soft_close_with_preview_photo_retries(self):
         """预览 photo +「会话已关闭」应作废并再 StartBot（用户选 A）。"""
         async def run_case():

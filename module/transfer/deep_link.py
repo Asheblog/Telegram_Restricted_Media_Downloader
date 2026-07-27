@@ -43,6 +43,8 @@ _SOFT_SESSION_FAILURE_MARKERS = (
 _SESSION_FAILURE_MARKERS = _HARD_SESSION_FAILURE_MARKERS + _SOFT_SESSION_FAILURE_MARKERS
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
+# 预览图 settle 后「会话已超时关闭」常晚到几十到数百毫秒；终检只查一次会漏掉并误标成功。
+_POST_SETTLE_SESSION_GRACE_SECONDS = 2.0
 DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE = (
     '主贴无白名单深链，不转发封面，交由评论区取片'
 )
@@ -663,17 +665,28 @@ class DeepLinkResolver:
 
         if not collected:
             raise DeepLinkResolveError('资源 bot 未在超时内返回媒体')
-        # 收齐后终检：超时文案若紧随末波媒体到达，避免误返回预览图。
-        remaining = max(0.1, deadline - time.time())
-        try:
-            history = await asyncio.wait_for(
-                self._collect_chat_history(client, bot_username, limit=50),
-                timeout=remaining,
-            )
-        except asyncio.TimeoutError:
-            history = []
-        if self._history_triggers_session_failure(history, started_at, collected):
-            raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
+        # 收齐后终检。仅 photo 预览波做宽限轮询：图4 常在 collage 后才出「会话已超时关闭」。
+        # 已有 video/document/animation 时只查一次，避免拖长成功路径。
+        grace_until = time.time()
+        if self.collected_is_preview_only(collected):
+            grace_until = min(float(deadline), time.time() + _POST_SETTLE_SESSION_GRACE_SECONDS)
+        while True:
+            if callable(should_continue) and not should_continue():
+                break
+            remaining = max(0.05, float(deadline) - time.time())
+            try:
+                history = await asyncio.wait_for(
+                    self._collect_chat_history(client, bot_username, limit=50),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                history = []
+            if self._history_triggers_session_failure(history, started_at, collected):
+                raise DeepLinkSessionFailure(_SESSION_FAILURE_MESSAGE)
+            now = time.time()
+            if now >= grace_until or now >= float(deadline):
+                break
+            await asyncio.sleep(min(self.poll_interval, max(0.0, grace_until - now)))
         return sorted(
             collected.values(),
             key=lambda message: (
