@@ -1029,6 +1029,7 @@ class LiveTransferService:
                     if resolve_deep_link:
                         from module.transfer.deep_link import (
                             DeepLinkResolveError,
+                            messages_after_deep_link_resolve,
                             normalize_resolved_messages,
                         )
                         resolver = self.get_deep_link_resolver()
@@ -1061,8 +1062,30 @@ class LiveTransferService:
                                 details={'error': str(e)},
                             )
                             continue
-                        if resolved_list is not None:
-                            messages_to_forward = resolved_list
+                        messages_to_forward = messages_after_deep_link_resolve(
+                            resolve_enabled=True,
+                            source_message=message,
+                            resolved_list=resolved_list,
+                        )
+                        if messages_to_forward is None:
+                            skip_message = '消息无白名单深链，已跳过原帖封面（不回退预览）'
+                            self._log_system_chain(
+                                category='watch',
+                                stage='deep_link_skip_no_link',
+                                message=skip_message,
+                                level='info',
+                                trace_id=trace_id,
+                                watch_id=watch_id,
+                                source_chat_id=origin_chat_id,
+                                source_message_id=message_id,
+                                target_link=target_link,
+                            )
+                            self._record_watch_event(
+                                watch_id, origin_chat_id, message_id,
+                                _target_chat_id, target_link,
+                                'skipped', skip_message,
+                            )
+                            return
                     for forward_unit in messages_to_forward:
                         if not runtime_filter.should_pass(forward_unit):
                             reject_reason = (

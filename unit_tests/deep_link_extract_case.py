@@ -1,13 +1,20 @@
 # coding=UTF-8
+import sys
 import unittest
 from types import SimpleNamespace
 
+from unit_tests.pyrogram_stub import install_pyrogram_stub
+install_pyrogram_stub()
+_ORIGINAL_ARGV = sys.argv
+sys.argv = [_ORIGINAL_ARGV[0]]
 from module.transfer.deep_link import (
     extract_deep_link_candidates,
+    messages_after_deep_link_resolve,
     normalize_bot_username,
     pick_whitelisted_deep_link,
     parse_deep_link_url,
 )
+sys.argv = _ORIGINAL_ARGV
 
 
 class DeepLinkExtractCase(unittest.TestCase):
@@ -45,6 +52,37 @@ class DeepLinkExtractCase(unittest.TestCase):
     def test_non_whitelist_returns_none(self):
         cands = [('otherbot', 'x')]
         self.assertIsNone(pick_whitelisted_deep_link(cands, ['a82bot']))
+
+    def test_messages_after_resolve_skips_source_when_no_deep_link(self):
+        source = SimpleNamespace(id=2509, photo=object())
+        self.assertIsNone(messages_after_deep_link_resolve(
+            resolve_enabled=True,
+            source_message=source,
+            resolved_list=None,
+        ))
+
+    def test_messages_after_resolve_uses_bot_media_when_present(self):
+        source = SimpleNamespace(id=2509)
+        bot_msg = SimpleNamespace(id=99)
+        self.assertEqual(
+            [bot_msg],
+            messages_after_deep_link_resolve(
+                resolve_enabled=True,
+                source_message=source,
+                resolved_list=[bot_msg],
+            ),
+        )
+
+    def test_messages_after_resolve_keeps_source_when_disabled(self):
+        source = SimpleNamespace(id=2509)
+        self.assertEqual(
+            [source],
+            messages_after_deep_link_resolve(
+                resolve_enabled=False,
+                source_message=source,
+                resolved_list=None,
+            ),
+        )
 
 
 if __name__ == '__main__':

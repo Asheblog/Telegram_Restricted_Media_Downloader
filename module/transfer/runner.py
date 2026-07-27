@@ -26,6 +26,7 @@ from module.source_folders import archive_source_folder, archive_source_folder_f
 from module.transfer.deep_link import (
     DeepLinkResolveError,
     message_has_whitelisted_deep_link,
+    messages_after_deep_link_resolve,
     normalize_resolved_messages,
 )
 from module.transfer_store import TransferStatus
@@ -844,7 +845,50 @@ class WebTransferRunner:
                 host.refresh_transfer_task_counts(task_id)
                 return False
 
-        messages_to_send = resolved_list if resolved_list else [message]
+        messages_to_send = messages_after_deep_link_resolve(
+            resolve_enabled=bool(task.get('resolve_deep_link')),
+            source_message=message,
+            resolved_list=resolved_list,
+        )
+        if messages_to_send is None:
+            skip_message = '消息无白名单深链，已跳过原帖封面（不回退预览）'
+            task_id = int(task.get('id'))
+            item_id = host.transfer_store.add_item(
+                task_id=task_id,
+                source_chat_id=origin_chat_id,
+                source_message_id=message_id,
+                range_message_id=range_message_id,
+                source_link=source_link,
+                target_link=task.get('target_link'),
+                media_type='deep_link',
+                phase='skipped',
+                status=TransferStatus.SKIPPED,
+                error_message=skip_message,
+            )
+            host.transfer_store.add_event(
+                task_id,
+                skip_message,
+                level='info',
+                item_id=item_id,
+            )
+            log_system = getattr(host, '_log_system_chain', None)
+            if callable(log_system):
+                log_system(
+                    category='transfer',
+                    stage='deep_link_skip_no_link',
+                    message=skip_message,
+                    level='info',
+                    source_chat_id=origin_chat_id,
+                    source_message_id=message_id,
+                    target_link=task.get('target_link'),
+                    details={
+                        'task_id': task_id,
+                        'item_id': int(item_id),
+                        'source_link': source_link or '',
+                    },
+                )
+            host.refresh_transfer_task_counts(task_id)
+            return False
         used_fallback = False
         paused_mid_batch = False
         multi_resolved = bool(resolved_list) and len(resolved_list) > 1

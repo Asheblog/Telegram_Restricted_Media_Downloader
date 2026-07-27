@@ -145,6 +145,25 @@ def normalize_resolved_messages(resolved) -> Optional[List[object]]:
     return [resolved]
 
 
+def messages_after_deep_link_resolve(
+        *,
+        resolve_enabled: bool,
+        source_message,
+        resolved_list: Optional[List[object]],
+) -> Optional[List[object]]:
+    """选择实际转发的消息列表。
+
+    开启深链取片时：仅转发 bot 回传；无白名单深链（resolved_list is None）则返回 None，
+    表示跳过原帖封面/预览，绝不回退频道媒体。
+    未开启时：原样转发来源消息。
+    """
+    if not resolve_enabled:
+        return [source_message]
+    if resolved_list is None:
+        return None
+    return resolved_list
+
+
 def classify_pagination_button(text: str) -> str:
     """Classify inline button label: next|prev|status|group|other."""
     raw = str(text or '').strip()

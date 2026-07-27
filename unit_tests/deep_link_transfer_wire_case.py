@@ -1,5 +1,6 @@
 # coding=UTF-8
 import asyncio
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -7,12 +8,14 @@ from unittest.mock import AsyncMock, patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
-
+_ORIGINAL_ARGV = sys.argv
+sys.argv = [_ORIGINAL_ARGV[0]]
 from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
 from module.persistence.transfer_store import TransferStore
 from module.transfer.deep_link import DeepLinkResolveError
 from module.transfer.runner import WebTransferRunner
 from module.transfer_store import TransferStatus
+sys.argv = _ORIGINAL_ARGV
 
 
 def _close_store(store):
@@ -259,6 +262,47 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertEqual('source-chat', item['source_chat_id'])
             self.assertEqual(1, item['source_message_id'])
             self.assertIn('timeout', item['error_message'])
+
+    def test_resolve_none_skips_channel_cover_without_success(self):
+        """开启深链时无白名单链：跳过原帖封面，不标成功。"""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/gokaidanbao',
+                'https://t.me/pikpak_bot',
+                resolve_deep_link=True,
+            )
+            task = store.get_task(task_id)
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=None))
+            host = _make_host(store, resolver=resolver)
+            runner = WebTransferRunner(host)
+            channel_msg = SimpleNamespace(
+                id=2509,
+                empty=False,
+                link='https://t.me/gokaidanbao/2509',
+                chat=SimpleNamespace(id='gokaidanbao', username='gokaidanbao'),
+                photo=SimpleNamespace(file_size=100_000),
+                video=None,
+                text='#一个人Yigeren33',
+            )
+
+            result = asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=channel_msg,
+                origin_chat_id='gokaidanbao',
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/gokaidanbao/2509',
+            ))
+
+            self.assertFalse(result)
+            self.assertEqual(0, len(host.forward_calls))
+            host.create_web_transfer_fallback_download.assert_not_called()
+            items = store.list_items(task_id)
+            self.assertEqual(1, len(items))
+            self.assertEqual(TransferStatus.SKIPPED, items[0]['status'])
+            self.assertEqual('skipped', items[0]['phase'])
+            self.assertIn('无白名单深链', items[0]['error_message'] or '')
+            _close_store(store)
 
     def test_resolve_success_forward_fallback_uses_resolved_message(self):
         from pyrogram.errors.exceptions.bad_request_400 import ChatForwardsRestricted
