@@ -263,6 +263,67 @@ class DeepLinkTransferWireCase(unittest.TestCase):
             self.assertEqual(1, item['source_message_id'])
             self.assertIn('timeout', item['error_message'])
 
+    def test_deep_link_comment_bypasses_keyword_blacklist(self):
+        """评论区资源卡含「搜索」等关键词时，仍应 resolve 取片，不得跳过。"""
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/gokaidanbao',
+                'https://t.me/pikpak_bot',
+                resolve_deep_link=True,
+                include_comment=True,
+            )
+            task = store.get_task(task_id)
+            resolved = SimpleNamespace(
+                id=99,
+                video=SimpleNamespace(file_size=10, file_name='clip.mp4'),
+                chat=SimpleNamespace(id='bot-chat', username='a82bot'),
+                link=None,
+                _deep_link_meta={'bot': 'a82bot', 'start_param': 'pack'},
+            )
+            resolver = SimpleNamespace(resolve=AsyncMock(return_value=resolved))
+            host = _make_host(store, resolver=resolver)
+            host.gc.message_filter = {
+                'enabled': True,
+                'media_types': dict(MEDIA_TYPES_DEFAULT),
+                'keywords': {'enabled': True, 'words': ['搜索']},
+            }
+            runner = WebTransferRunner(host)
+            comment = SimpleNamespace(
+                id=163682,
+                empty=False,
+                link='https://t.me/c/2775073467/163682',
+                chat=SimpleNamespace(id=-1002775073467, username=None),
+                photo=None,
+                video=None,
+                text='立即搜索资源 https://t.me/a82bot?start=pack',
+                caption=None,
+                entities=None,
+                caption_entities=None,
+                reply_markup=SimpleNamespace(inline_keyboard=[[
+                    SimpleNamespace(url='https://t.me/a82bot?start=pack', text='立即查看资源'),
+                ]]),
+            )
+
+            asyncio.run(runner.transfer_message_to_web_target(
+                task=task,
+                message=comment,
+                origin_chat_id=-1002775073467,
+                target_chat_id='pikpak-chat',
+                source_link='https://t.me/c/2775073467/163682',
+            ))
+
+            resolver.resolve.assert_awaited_once()
+            self.assertEqual(1, len(host.forward_calls))
+            self.assertIs(resolved, host.forward_calls[0]['message'])
+            items = store.list_items(task_id)
+            self.assertFalse(any(
+                '搜索' in (item.get('error_message') or '')
+                or item.get('status') == TransferStatus.SKIPPED
+                for item in items
+            ), items)
+            _close_store(store)
+
     def test_resolve_none_with_comments_awaits_without_skip_item(self):
         """开深链+评论区：主贴无链不转发封面、不记跳过项，交给评论区。"""
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:

@@ -743,8 +743,20 @@ class WebTransferRunner:
             mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
             source_filter = build_runtime_message_filter(mf, task.get('media_types'))
         # Keyword Blacklist on Source Post before deep-link resolve.
-        if not source_filter.should_pass(message):
-            reject_reason = source_filter.get_reject_reason(message) or '媒体类型未允许'
+        # 含白名单深链的消息（多为评论区资源卡）跳过关键词，避免「搜索」等字误杀取片。
+        resolve_deep_link = bool(task.get('resolve_deep_link'))
+        whitelist_for_filter = []
+        if resolve_deep_link:
+            getter = getattr(host.gc, 'get_deep_link_bot_whitelist', None)
+            whitelist_for_filter = getter() if callable(getter) else []
+        ignore_source_keywords = (
+            resolve_deep_link
+            and message_has_whitelisted_deep_link(message, whitelist_for_filter)
+        )
+        if not source_filter.should_pass(message, ignore_keywords=ignore_source_keywords):
+            reject_reason = source_filter.get_reject_reason(
+                message, ignore_keywords=ignore_source_keywords,
+            ) or '媒体类型未允许'
             skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
             if callable(skip_fn):
                 skip_fn(
@@ -771,7 +783,7 @@ class WebTransferRunner:
                 )
             return False
         resolved_list = None
-        if bool(task.get('resolve_deep_link')):
+        if resolve_deep_link:
             resolver = host.get_deep_link_resolver()
             settle_getter = getattr(host.gc, 'get_deep_link_settle_seconds', None)
             settle_seconds = settle_getter() if callable(settle_getter) else None
@@ -946,8 +958,14 @@ class WebTransferRunner:
                 from module.core.media_types import build_runtime_message_filter
                 mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
                 runtime_filter = build_runtime_message_filter(mf, task.get('media_types'))
-            if not runtime_filter.should_pass(send_message):
-                reject_reason = runtime_filter.get_reject_reason(send_message) or '媒体类型未允许'
+            # 深链取回的 bot 媒体跳过关键词（caption 也可能含「搜索」等）。
+            ignore_resolved_keywords = resolved_list is not None
+            if not runtime_filter.should_pass(
+                    send_message, ignore_keywords=ignore_resolved_keywords,
+            ):
+                reject_reason = runtime_filter.get_reject_reason(
+                    send_message, ignore_keywords=ignore_resolved_keywords,
+                ) or '媒体类型未允许'
                 skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
                 if callable(skip_fn):
                     skip_fn(

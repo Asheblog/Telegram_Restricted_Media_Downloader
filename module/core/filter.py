@@ -103,19 +103,16 @@ class MessageFilter:
 
     # ── 主入口 ──
 
-    def should_pass(self, message: pyrogram.types.Message) -> bool:
-        """判断消息是否通过所有启用的过滤条件。
-
-        Returns:
-            True 表示消息应被处理，False 表示应跳过。
-        """
-        passed, _reason = self.check_pass_with_reason(message)
-        return passed
-
-    def check_pass_with_reason(self, message: pyrogram.types.Message) -> tuple[bool, Optional[str]]:
+    def check_pass_with_reason(
+            self,
+            message: pyrogram.types.Message,
+            *,
+            ignore_keywords: bool = False,
+    ) -> tuple[bool, Optional[str]]:
         """判断消息是否通过过滤，并返回拒绝原因（若被拒绝）。
 
         媒体类型始终生效（不受 enabled 总开关影响）；enabled 只控制日期与关键词。
+        ignore_keywords：深链评论/取回媒体跳过关键词黑名单（资源卡常含「搜索」等）。
         """
         if not self._check_media_type(message):
             enabled_types = [k for k, v in self.media_types.items() if v]
@@ -124,14 +121,34 @@ class MessageFilter:
             return True, None
         if not self._check_date_range(message):
             return False, '消息日期不在允许范围内'
-        reject_keyword = self._reject_keyword(message)
-        if reject_keyword:
-            return False, f'命中过滤关键词: {reject_keyword}'
+        if not ignore_keywords:
+            reject_keyword = self._reject_keyword(message)
+            if reject_keyword:
+                return False, f'命中过滤关键词: {reject_keyword}'
         return True, None
 
-    def get_reject_reason(self, message: pyrogram.types.Message) -> Optional[str]:
+    def should_pass(
+            self,
+            message: pyrogram.types.Message,
+            *,
+            ignore_keywords: bool = False,
+    ) -> bool:
+        """判断消息是否通过所有启用的过滤条件。"""
+        passed, _reason = self.check_pass_with_reason(
+            message, ignore_keywords=ignore_keywords,
+        )
+        return passed
+
+    def get_reject_reason(
+            self,
+            message: pyrogram.types.Message,
+            *,
+            ignore_keywords: bool = False,
+    ) -> Optional[str]:
         """若消息被过滤则返回原因，否则返回 None。"""
-        passed, reason = self.check_pass_with_reason(message)
+        passed, reason = self.check_pass_with_reason(
+            message, ignore_keywords=ignore_keywords,
+        )
         if passed:
             return None
         return reason

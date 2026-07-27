@@ -882,7 +882,10 @@ class LiveTransferService:
                         messages_to_forward.append((resolved, None))
                 runtime_filter = self.runtime_message_filter(media_types_override)
                 for forward_message, forward_group in messages_to_forward:
-                    if not runtime_filter.should_pass(forward_message):
+                    # 深链取回媒体跳过关键词；未开深链时评论仍走完整过滤。
+                    if not runtime_filter.should_pass(
+                            forward_message, ignore_keywords=resolve_deep_link,
+                    ):
                         continue
                     forward_chat = getattr(forward_message, 'chat', None)
                     forward_chat_id = getattr(forward_chat, 'id', None)
@@ -1084,9 +1087,16 @@ class LiveTransferService:
                             )
                             messages_to_forward = []
                     for forward_unit in messages_to_forward:
-                        if not runtime_filter.should_pass(forward_unit):
+                        ignore_kw = (
+                            resolve_deep_link and forward_unit is not message
+                        )
+                        if not runtime_filter.should_pass(
+                                forward_unit, ignore_keywords=ignore_kw,
+                        ):
                             reject_reason = (
-                                runtime_filter.get_reject_reason(forward_unit) or '媒体类型未允许'
+                                runtime_filter.get_reject_reason(
+                                    forward_unit, ignore_keywords=ignore_kw,
+                                ) or '媒体类型未允许'
                             )
                             self._log_system_chain(
                                 category='filter',
