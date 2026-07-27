@@ -48,6 +48,7 @@ class WebOperationsMixin:
     def _ensure_transfer_store(self) -> TransferStore:
         store = getattr(self, 'transfer_store', None)
         if store is not None:
+            self._bind_transfer_store_runtime(store)
             return store
         temp_directory = getattr(getattr(self, 'app', None), 'temp_directory', None)
         if not temp_directory:
@@ -60,7 +61,31 @@ class WebOperationsMixin:
         system_log = getattr(self, 'system_log', None)
         if system_log is not None:
             system_log.bind(store=store)
+        self._bind_transfer_store_runtime(store)
         return store
+
+    def _bind_transfer_store_runtime(self, store: TransferStore) -> None:
+        gc = getattr(self, 'gc', None)
+        if gc is not None and hasattr(store, 'set_item_stale_timeout_seconds_getter'):
+            store.set_item_stale_timeout_seconds_getter(
+                lambda: int(gc.get_item_stale_timeout_minutes()) * 60
+            )
+        log_system = getattr(self, '_log_system_chain', None)
+        if callable(log_system) and hasattr(store, 'set_stale_item_logger'):
+
+            def _stale_logger(item_id: int, task_id: int, message: str) -> None:
+                log_system(
+                    category='transfer',
+                    stage='item_stale_timeout',
+                    message=message,
+                    level='warning',
+                    details={
+                        'task_id': int(task_id),
+                        'item_id': int(item_id),
+                    },
+                )
+
+            store.set_stale_item_logger(_stale_logger)
 
     def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
         scheduler = self.__dict__.get('comment_delay_scheduler')
@@ -211,6 +236,14 @@ class WebOperationsMixin:
             return False
         task = self.transfer_store.get_task(int(task_id))
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def should_continue_web_transfer_item(self, item_id: int) -> bool:
+        """False once reconcile/UI marked the item failed — abort in-flight IO cooperatively."""
+        store = getattr(self, 'transfer_store', None)
+        if not store or not item_id:
+            return False
+        item = store.get_item(int(item_id)) or {}
+        return item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
 
     def should_start_next_web_transfer_item(self, task_id: int) -> bool:
         """Whether a new Transfer Item may start. False while pausing/paused."""
@@ -1651,7 +1684,10 @@ class WebOperationsMixin:
         global_config = merge_allowed_settings(
             target=deepcopy(self.gc.config),
             patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={'notice', 'export_table', 'upload', 'forward_type', 'target_profiles', 'message_filter', 'live_watch', 'deep_link'}
+            allowed={
+                'notice', 'export_table', 'upload', 'forward_type', 'target_profiles',
+                'message_filter', 'live_watch', 'transfer', 'deep_link',
+            }
         )
         user_config = UserConfig.normalize_runtime_numbers(user_config)
         self.app.save_config(user_config)
@@ -1682,6 +1718,7 @@ class WebOperationsMixin:
         system_log = getattr(self, 'system_log', None)
         if system_log is not None:
             system_log.bind(store=self.transfer_store)
+        self._bind_transfer_store_runtime(self.transfer_store)
         ctx = self.__dict__.get('ctx')
         if ctx is not None:
             ctx.transfer_store = self.transfer_store

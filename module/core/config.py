@@ -688,6 +688,9 @@ class GlobalConfig(BaseConfig):
         'live_watch': {
             'comment_delay_minutes': 20,
         },
+        'transfer': {
+            'item_stale_timeout_minutes': 5,
+        },
         'deep_link': {
             'bot_whitelist': [],
             'timeout_seconds': 60,
@@ -705,6 +708,7 @@ class GlobalConfig(BaseConfig):
         self.default_forward_type_nesting = self.TEMPLATE.get('forward_type')
         self.default_message_filter_nesting = self.TEMPLATE.get('message_filter')
         self.default_live_watch_nesting = self.TEMPLATE.get('live_watch')
+        self.default_transfer_nesting = self.TEMPLATE.get('transfer')
         self.default_deep_link_nesting = self.TEMPLATE.get('deep_link')
         self.load_config()
         self.__check_params(deepcopy(self.config))
@@ -725,6 +729,8 @@ class GlobalConfig(BaseConfig):
         self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
         self.live_watch: dict = self.config.get('live_watch', self.default_live_watch_nesting)
         self.comment_delay_minutes: int = self.get_comment_delay_minutes()
+        self.transfer: dict = self.config.get('transfer', self.default_transfer_nesting)
+        self.item_stale_timeout_minutes: int = self.get_item_stale_timeout_minutes()
         self.deep_link: dict = self.config.get('deep_link', self.default_deep_link_nesting)
         self.deep_link_bot_whitelist: list = self.get_deep_link_bot_whitelist()
         self.deep_link_timeout_seconds: int = self.get_deep_link_timeout_seconds()
@@ -812,6 +818,18 @@ class GlobalConfig(BaseConfig):
         except (TypeError, ValueError, AttributeError):
             value = default_value
         return min(max(value, 0), 1440)
+
+    def get_item_stale_timeout_minutes(self) -> int:
+        default_value = int(self.default_transfer_nesting.get('item_stale_timeout_minutes', 5))
+        try:
+            value = int(self.get_nesting_config(
+                default_nesting=self.default_transfer_nesting,
+                param='transfer',
+                nesting_param='item_stale_timeout_minutes'
+            ))
+        except (TypeError, ValueError, AttributeError):
+            value = default_value
+        return min(max(value, 1), 180)
 
     def get_deep_link_bot_whitelist(self) -> list:
         try:
@@ -916,6 +934,8 @@ class GlobalConfig(BaseConfig):
         self.message_filter: dict = self.config.get('message_filter', self.default_message_filter_nesting)
         self.live_watch = self.config.get('live_watch', self.default_live_watch_nesting)
         self.comment_delay_minutes = self.get_comment_delay_minutes()
+        self.transfer = self.config.get('transfer', self.default_transfer_nesting)
+        self.item_stale_timeout_minutes = self.get_item_stale_timeout_minutes()
         self.deep_link = self.config.get('deep_link', self.default_deep_link_nesting)
         self.deep_link_bot_whitelist = self.get_deep_link_bot_whitelist()
         self.deep_link_timeout_seconds = self.get_deep_link_timeout_seconds()
@@ -1023,6 +1043,7 @@ class GlobalConfig(BaseConfig):
         self.process_nesting(param_name='forward_type', config=config)
         self.process_message_filter(config=config)
         self.process_nesting(param_name='live_watch', config=config)
+        self.process_nesting(param_name='transfer', config=config)
         self.process_nesting(param_name='deep_link', config=config)
         # 删除父级模板中没有的字段。
         self.remove_extra_keys(

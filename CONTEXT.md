@@ -111,7 +111,7 @@ _Avoid_: Listen queue job, ghost task
 **Transfer Task** — 一条持久化的转存请求（来源链接 → 目标链接，含可选 ID 范围）。存储在 SQLite 的 `transfer_tasks` 表。
 _Avoid_: Download task, forward job
 
-**Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。
+**Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。长时间停在 `PENDING`/`RUNNING` 且无进度更新时，对账按全局 `transfer.item_stale_timeout_minutes`（默认 5）判失败并协作中止在途下载/转发，以释放队列；有下载/上传进度刷新 `updated_at` 时不误杀。
 _Avoid_: File task, message job
 
 **Transfer Progress** — 已完成 Transfer Item 的集合。同名 Task 再次执行时跳过已完成的 Item，实现断点续传。

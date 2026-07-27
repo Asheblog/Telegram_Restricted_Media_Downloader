@@ -1144,6 +1144,19 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                     while True:
                         if transfer_task_id and not self.should_continue_web_transfer_task(int(transfer_task_id)):
                             raise asyncio.CancelledError()
+                        progress_meta = progress_args[-1] if progress_args else None
+                        active_item_id = (
+                            progress_meta.get('item_id')
+                            if isinstance(progress_meta, dict)
+                            else None
+                        )
+                        continue_item = getattr(self, 'should_continue_web_transfer_item', None)
+                        if (
+                                active_item_id
+                                and callable(continue_item)
+                                and not continue_item(int(active_item_id))
+                        ):
+                            raise asyncio.CancelledError()
                         if progress_timeout_seconds and progress_timeout_seconds > 0:
                             chunk = await asyncio.wait_for(
                                 anext(stream),

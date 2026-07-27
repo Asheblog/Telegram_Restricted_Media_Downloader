@@ -80,12 +80,17 @@ class WebUiAssetsCase(unittest.TestCase):
             'nav.downloadsUploads', 'dl.title', 'dl.uploadTitle',
             'statistics.title', 'records.title', 'media.title',
             'settings.title', 'settings.save', 'settings.saved',
+            'settings.itemStaleTimeoutMinutes', 'settings.itemStaleTimeoutHint',
             'form.createFailed', 'form.createSuccess', 'form.creatingTransfer',
             'status.pending', 'status.running', 'status.pausing', 'status.success', 'status.failure',
             'action.refresh', 'nav.logout',
             'side.failed', 'side.status',
         ):
             self.assertIn(key, WEB_UI_HTML)
+
+    def test_settings_has_item_stale_timeout_field(self):
+        self.assertIn('name="global.transfer.item_stale_timeout_minutes"', WEB_UI_HTML)
+        self.assertIn('name="global.transfer.item_stale_timeout_minutes"', WEB_UI_MOBILE_HTML)
 
     def test_login_page_has_blue_theme(self):
         self.assertIn('<!doctype html>', LOGIN_PAGE_HTML.lower())

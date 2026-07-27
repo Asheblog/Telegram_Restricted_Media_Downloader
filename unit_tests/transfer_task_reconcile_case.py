@@ -76,6 +76,11 @@ class TransferTaskReconcileCase(unittest.TestCase):
             self.assertIsNotNone(task['finished_at'])
             self.assertEqual(0, task['total_items'])
 
+    def test_default_stale_item_timeout_is_five_minutes(self):
+        from module.persistence.transfer_store import TransferStore
+
+        self.assertEqual(5 * 60, TransferStore.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS)
+
     def test_reconcile_fails_stale_active_items_and_finalizes_task(self):
         from module.persistence.transfer_store import TransferStore, TransferStatus
 
@@ -109,9 +114,46 @@ class TransferTaskReconcileCase(unittest.TestCase):
             self.assertGreaterEqual(changed, 1)
             item = store.get_item(item_id)
             self.assertEqual(TransferStatus.FAILURE, item['status'])
+            self.assertIn('5分钟无进展', item.get('error_message') or '')
             task = store.get_task(task_id)
             self.assertEqual(TransferStatus.FAILURE, task['status'])
             self.assertIsNotNone(task['finished_at'])
+
+    def test_reconcile_uses_item_timeout_getter_minutes(self):
+        from module.persistence.transfer_store import TransferStore, TransferStatus
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            store.set_item_stale_timeout_seconds_getter(lambda: 2 * 60)
+            task_id = store.create_task('https://t.me/source/2', 'https://t.me/pikpak_bot')
+            store.update_task(
+                task_id,
+                status=TransferStatus.RUNNING,
+                total_items=1,
+                assignment_completed=True,
+                started=True,
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.RUNNING,
+                phase='forwarding',
+            )
+            stale_at = self._stale_iso(seconds=2 * 60 + 30)
+            with store.connect(run_maintenance=False) as conn:
+                conn.execute(
+                    'UPDATE transfer_items SET updated_at = ? WHERE id = ?',
+                    (stale_at, item_id),
+                )
+
+            changed = store.reconcile_active_tasks(force=True)
+
+            self.assertGreaterEqual(changed, 1)
+            item = store.get_item(item_id)
+            self.assertEqual(TransferStatus.FAILURE, item['status'])
+            self.assertIn('2分钟无进展', item.get('error_message') or '')
 
     def test_reconcile_fails_stale_empty_watch_inline_task(self):
         from module.persistence.transfer_store import ExecutionMode, TransferStore, TransferStatus

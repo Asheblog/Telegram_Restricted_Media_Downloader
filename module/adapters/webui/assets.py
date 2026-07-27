@@ -1405,6 +1405,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
           <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
+        <div class="form-group mt-3">
+          <label class="form-label" data-i18n="settings.itemStaleTimeoutMinutes">转存项无进展超时（分钟）</label>
+          <input class="form-input" name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180">
+          <p class="text-xs text-muted mt-1" data-i18n="settings.itemStaleTimeoutHint">单条转存项长时间无进度更新后判失败并释放队列，便于尽快重试。有下载/上传进度时不会误杀。</p>
+        </div>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
         <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
@@ -2013,6 +2018,8 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
     'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
+    'settings.itemStaleTimeoutMinutes': '转存项无进展超时（分钟）',
+    'settings.itemStaleTimeoutHint': '单条转存项长时间无进度更新后判失败并释放队列，便于尽快重试。有下载/上传进度时不会误杀。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -2497,6 +2504,8 @@ const i18n = {
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
     'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.itemStaleTimeoutMinutes': 'Transfer item stall timeout (minutes)',
+    'settings.itemStaleTimeoutHint': 'Fail a transfer item after this long with no progress updates, then free the queue for retry. Items with active download/upload progress are not killed.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
@@ -6012,6 +6021,7 @@ function renderSettings() {
   setCheckboxVal('global.upload.delete', sg.upload?.delete);
   setFieldVal('global.upload.pending_limit', sg.upload?.pending_limit);
   setFieldVal('global.live_watch.comment_delay_minutes', sg.live_watch?.comment_delay_minutes ?? 20);
+  setFieldVal('global.transfer.item_stale_timeout_minutes', sg.transfer?.item_stale_timeout_minutes ?? 5);
   const deepLinkWhitelist = sg.deep_link?.bot_whitelist;
   setFieldVal(
     'global.deep_link.bot_whitelist',
@@ -8354,6 +8364,8 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
     'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
+    'settings.itemStaleTimeoutMinutes': '转存项无进展超时（分钟）',
+    'settings.itemStaleTimeoutHint': '单条转存项长时间无进度更新后判失败并释放队列，便于尽快重试。有下载/上传进度时不会误杀。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -8838,6 +8850,8 @@ const i18n = {
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
     'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.itemStaleTimeoutMinutes': 'Transfer item stall timeout (minutes)',
+    'settings.itemStaleTimeoutHint': 'Fail a transfer item after this long with no progress updates, then free the queue for retry. Items with active download/upload progress are not killed.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
@@ -11682,6 +11696,8 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<label style="margin-top:10px;"><span>转存项无进展超时（分钟）</span><input name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180" value="' + (getSettingLeafKey(glob, 'transfer.item_stale_timeout_minutes') ?? 5) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">单条转存项长时间无进度则判失败并释放队列。有进度更新时不会误杀。</p>' +
     '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +

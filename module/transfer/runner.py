@@ -47,6 +47,7 @@ class WebTransferHost(Protocol):
     transfer_engine: object
 
     def should_continue_web_transfer_task(self, task_id: int) -> bool: ...
+    def should_continue_web_transfer_item(self, item_id: int) -> bool: ...
     async def wait_for_telegram_flood(self, error, task_id: Optional[int] = None, action: str = 'request') -> None: ...
     async def forward(self, **kwargs): ...
     async def create_download_task(self, **kwargs) -> dict: ...
@@ -100,6 +101,17 @@ class WebTransferRunner:
         task = transfer_store.get_task(int(task_id))
         # PAUSING keeps in-flight download/upload alive; only PAUSED aborts mid-item.
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def should_continue_web_transfer_item(self, item_id: int) -> bool:
+        host = self._host
+        checker = getattr(host, 'should_continue_web_transfer_item', None)
+        if callable(checker):
+            return bool(checker(item_id))
+        transfer_store = host.transfer_store
+        if not transfer_store or not item_id:
+            return False
+        item = transfer_store.get_item(int(item_id)) or {}
+        return item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
 
     def should_start_next_web_transfer_item(self, task_id: int) -> bool:
         host = self._host
@@ -1085,6 +1097,8 @@ class WebTransferRunner:
                             item_id=item_id,
                         )
                     if host.is_pikpak_target(task.get('target_link'), task.get('target_profile')):
+                        if not self.should_continue_web_transfer_item(int(item_id)):
+                            break
                         if not host.forwarded_message_has_identity(forwarded_message):
                             # Deep-link bot packs often expire into MessageEmpty on re-fetch.
                             # Fall back to download/upload from the held message when possible.
@@ -1115,6 +1129,8 @@ class WebTransferRunner:
                             target_chat_id=target_chat_id,
                             forwarded_message=forwarded_message
                         )
+                        if not self.should_continue_web_transfer_item(int(item_id)):
+                            break
                         if not confirmed:
                             # While pausing, do not block on sync archive recovery — defer like
                             # successful ingest so Transfer Task Pausing can settle promptly.

@@ -38,7 +38,7 @@ class TransferStore:
     FILE_NAME = 'transfer_tasks.sqlite3'
     DEFAULT_MAINTENANCE_MIN_INTERVAL_SECONDS = 6 * 60 * 60
     DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS = 60
-    STALE_TRANSFER_ITEM_TIMEOUT_SECONDS = 30 * 60
+    STALE_TRANSFER_ITEM_TIMEOUT_SECONDS = 5 * 60
     STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS = 10 * 60
     DEFAULT_EVENT_PURGE_MIN_INTERVAL_SECONDS = 7 * 24 * 60 * 60
     TRANSFER_EVENTS_RETENTION_DAYS = 90
@@ -55,9 +55,28 @@ class TransferStore:
         self._last_reconcile_check = 0.0
         self._schema_ready = False
         self._tls = threading.local()
+        self._item_stale_timeout_seconds_getter = None
+        self._stale_item_logger = None
         self._init_schema()
         self._schema_ready = True
         self.maintain()
+
+    def set_item_stale_timeout_seconds_getter(self, getter) -> None:
+        self._item_stale_timeout_seconds_getter = getter
+
+    def set_stale_item_logger(self, logger) -> None:
+        """Optional logger(item_id, task_id, message) for system-log / diagnostics."""
+        self._stale_item_logger = logger
+
+    def resolve_item_stale_timeout_seconds(self) -> int:
+        getter = self._item_stale_timeout_seconds_getter
+        if callable(getter):
+            try:
+                value = int(getter())
+            except (TypeError, ValueError):
+                value = self.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS
+            return max(60, value)
+        return int(self.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS)
 
     @staticmethod
     def utc_now() -> str:
@@ -1397,7 +1416,7 @@ class TransferStore:
             *,
             min_interval_seconds: int = DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS,
             force: bool = False,
-            item_timeout_seconds: int = STALE_TRANSFER_ITEM_TIMEOUT_SECONDS,
+            item_timeout_seconds: int | None = None,
             empty_watch_timeout_seconds: int = STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS,
     ) -> int:
         if getattr(self._tls, 'reconciling', False):
@@ -1412,7 +1431,12 @@ class TransferStore:
         self._tls.reconciling = True
         try:
             changed = 0
-            changed += self._fail_stale_active_items(item_timeout_seconds)
+            resolved_item_timeout = (
+                int(item_timeout_seconds)
+                if item_timeout_seconds is not None
+                else self.resolve_item_stale_timeout_seconds()
+            )
+            changed += self._fail_stale_active_items(resolved_item_timeout)
             changed += self._fail_stale_empty_watch_inline_tasks(empty_watch_timeout_seconds)
 
             with self.connect(run_maintenance=False) as conn:
@@ -1458,8 +1482,12 @@ class TransferStore:
         if not rows:
             return 0
         now = self.utc_now()
-        message = f'Transfer item timed out after {timeout_label} minutes without progress.'
+        message = (
+            f'转存项超过{timeout_label}分钟无进展，已超时失败 '
+            f'(timed out after {timeout_label} minutes without progress).'
+        )
         affected_tasks: set[int] = set()
+        logger = self._stale_item_logger
         with self.connect(run_maintenance=False) as conn:
             for row in rows:
                 item_id = int(row['id'])
@@ -1476,6 +1504,11 @@ class TransferStore:
                     (TransferStatus.FAILURE, message, now, item_id)
                 )
                 affected_tasks.add(task_id)
+                if callable(logger):
+                    try:
+                        logger(item_id, task_id, message)
+                    except Exception:
+                        pass
         for task_id in affected_tasks:
             self.add_event(task_id, message, level='warning')
             self.refresh_task_counts(task_id)

@@ -169,11 +169,30 @@ class TelegramUploader:
     def _upload_task_matches_task_id(upload_task: UploadTask, task_id: int) -> bool:
         return int((getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id') or 0) == int(task_id)
 
-    def _should_continue_upload_for_task(self, task_id: int) -> bool:
+    def _should_continue_upload_for_task(
+            self,
+            task_id: int,
+            item_id: int | None = None,
+    ) -> bool:
         checker = getattr(self.upload_context, 'should_continue_web_transfer_task', None)
-        if callable(checker):
-            return bool(checker(task_id))
+        if callable(checker) and not bool(checker(task_id)):
+            return False
+        if item_id is not None:
+            item_checker = getattr(self.upload_context, 'should_continue_web_transfer_item', None)
+            if callable(item_checker) and not bool(item_checker(int(item_id))):
+                return False
         return True
+
+    def _should_continue_upload_task(self, upload_task: UploadTask) -> bool:
+        meta = getattr(upload_task, 'transfer_meta', {}) or {}
+        task_id = meta.get('task_id')
+        if not task_id:
+            return True
+        item_id = meta.get('item_id')
+        return self._should_continue_upload_for_task(
+            int(task_id),
+            int(item_id) if item_id is not None else None,
+        )
 
     async def _wait_for_interruptible(self, seconds: float, task_id: int = None) -> bool:
         if not task_id:
@@ -364,8 +383,7 @@ class TelegramUploader:
             self.diagnostic.info(f'需要上传的分片:{len(missing_parts)}/{file_total_parts}')
         # 上传缺失的分片。
         for part_index in missing_parts:
-            transfer_task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
-            if transfer_task_id and not self._should_continue_upload_for_task(int(transfer_task_id)):
+            if not self._should_continue_upload_task(upload_task):
                 raise asyncio.CancelledError()
             try:
                 part_size = 512 * 1024
@@ -500,8 +518,7 @@ class TelegramUploader:
             try:
                 media, upload_task = await self.upload_queue.get()
 
-                task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
-                if task_id and not self._should_continue_upload_for_task(int(task_id)):
+                if not self._should_continue_upload_task(upload_task):
                     self._pause_upload_task(upload_task)
                     continue
 
@@ -965,8 +982,7 @@ class TelegramUploader:
             self.current_task_num -= 1
             self.pb.progress.remove_task(task_id=task_id)
             self.event.set()
-            transfer_task_id = (getattr(upload_task, 'transfer_meta', {}) or {}).get('task_id')
-            if transfer_task_id and not self._should_continue_upload_for_task(int(transfer_task_id)):
+            if not self._should_continue_upload_task(upload_task):
                 self._pause_upload_task(upload_task)
             return
         except Exception as e:
@@ -1059,13 +1075,13 @@ class TelegramUploader:
     async def _pikpak_rclone_ingest(self, upload_task: UploadTask) -> None:
         """Copy local file to PikPak ingest folder, then hand off to archive callbacks."""
         task_id = (upload_task.transfer_meta or {}).get('task_id')
-        if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+        if not self._should_continue_upload_task(upload_task):
             self._pause_upload_task(upload_task)
             return
 
         # Share TelegramUploader concurrency budget with MTProto uploads.
         while self.current_task_num >= self.max_upload_task:
-            if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+            if not self._should_continue_upload_task(upload_task):
                 self._pause_upload_task(upload_task)
                 return
             await self.event.wait()
@@ -1115,7 +1131,7 @@ class TelegramUploader:
                     timeout=timeout,
                 )
 
-            if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+            if not self._should_continue_upload_task(upload_task):
                 self._pause_upload_task(upload_task)
                 return
 
@@ -1161,7 +1177,6 @@ class TelegramUploader:
             command: list[str],
             timeout: float,
     ) -> None:
-        task_id = (upload_task.transfer_meta or {}).get('task_id')
         proc = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.DEVNULL,
@@ -1173,7 +1188,7 @@ class TelegramUploader:
         deadline = loop.time() + max(float(timeout), 1.0)
         try:
             while True:
-                if task_id is not None and not self._should_continue_upload_for_task(int(task_id)):
+                if not self._should_continue_upload_task(upload_task):
                     proc.kill()
                     await wait_task
                     raise asyncio.CancelledError()
