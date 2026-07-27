@@ -24,6 +24,7 @@ from module.enums import DownloadStatus, DownloadType
 from module.pikpak_integration import PikpakIntegrationManager
 from module.source_folders import archive_source_folder, archive_source_folder_for_messages, media_group_post_message_id
 from module.transfer.deep_link import (
+    DEEP_LINK_SKIP_NO_LINK_MESSAGE,
     DeepLinkResolveError,
     message_has_whitelisted_deep_link,
     messages_after_deep_link_resolve,
@@ -851,7 +852,6 @@ class WebTransferRunner:
             resolved_list=resolved_list,
         )
         if messages_to_send is None:
-            skip_message = '消息无白名单深链，已跳过原帖封面（不回退预览）'
             task_id = int(task.get('id'))
             item_id = host.transfer_store.add_item(
                 task_id=task_id,
@@ -863,11 +863,11 @@ class WebTransferRunner:
                 media_type='deep_link',
                 phase='skipped',
                 status=TransferStatus.SKIPPED,
-                error_message=skip_message,
+                error_message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
             )
             host.transfer_store.add_event(
                 task_id,
-                skip_message,
+                DEEP_LINK_SKIP_NO_LINK_MESSAGE,
                 level='info',
                 item_id=item_id,
             )
@@ -876,7 +876,7 @@ class WebTransferRunner:
                 log_system(
                     category='transfer',
                     stage='deep_link_skip_no_link',
-                    message=skip_message,
+                    message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
                     level='info',
                     source_chat_id=origin_chat_id,
                     source_message_id=message_id,

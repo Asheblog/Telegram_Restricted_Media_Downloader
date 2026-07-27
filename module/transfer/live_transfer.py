@@ -1028,6 +1028,7 @@ class LiveTransferService:
                     messages_to_forward = [message]
                     if resolve_deep_link:
                         from module.transfer.deep_link import (
+                            DEEP_LINK_SKIP_NO_LINK_MESSAGE,
                             DeepLinkResolveError,
                             messages_after_deep_link_resolve,
                             normalize_resolved_messages,
@@ -1068,11 +1069,11 @@ class LiveTransferService:
                             resolved_list=resolved_list,
                         )
                         if messages_to_forward is None:
-                            skip_message = '消息无白名单深链，已跳过原帖封面（不回退预览）'
+                            # 跳过封面转发，但仍继续后面的评论区延迟抓取。
                             self._log_system_chain(
                                 category='watch',
                                 stage='deep_link_skip_no_link',
-                                message=skip_message,
+                                message=DEEP_LINK_SKIP_NO_LINK_MESSAGE,
                                 level='info',
                                 trace_id=trace_id,
                                 watch_id=watch_id,
@@ -1083,9 +1084,9 @@ class LiveTransferService:
                             self._record_watch_event(
                                 watch_id, origin_chat_id, message_id,
                                 _target_chat_id, target_link,
-                                'skipped', skip_message,
+                                'skipped', DEEP_LINK_SKIP_NO_LINK_MESSAGE,
                             )
-                            return
+                            messages_to_forward = []
                     for forward_unit in messages_to_forward:
                         if not runtime_filter.should_pass(forward_unit):
                             reject_reason = (

@@ -285,6 +285,78 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertEqual('target-chat', held_copy_calls[0]['chat_id'])
         self.assertEqual(0, len(copy_message_calls))
 
+    def test_listen_forward_no_deep_link_skips_cover_but_schedules_comments(self):
+        """开启深链且主贴无链：不转发封面，但仍调度评论区延迟抓取。"""
+        from unittest.mock import patch
+        from module.transfer.live_transfer import LiveTransferService
+
+        schedule_calls = []
+        forward_calls = []
+        events = []
+
+        async def fake_schedule(**kwargs):
+            schedule_calls.append(kwargs)
+
+        async def fake_forward(**kwargs):
+            forward_calls.append(kwargs)
+            return SimpleNamespace(id=1)
+
+        async def fake_parse_link(client, link):
+            return {'chat_id': 'gokaidanbao'}
+
+        host = SimpleNamespace(
+            app=SimpleNamespace(client=object()),
+            gc=SimpleNamespace(
+                get_deep_link_bot_whitelist=lambda: ['a82bot'],
+                get_deep_link_timeout_seconds=lambda: 60,
+                get_deep_link_min_interval_seconds=lambda: 0,
+                get_deep_link_settle_seconds=lambda: 0,
+                get_deep_link_max_pages=lambda: 20,
+                get_deep_link_page_click_interval_seconds=lambda: 0,
+            ),
+            listen_forward_chat=[
+                'https://t.me/gokaidanbao https://t.me/pikpak_bot '
+                '--include-comment --resolve-deep-link',
+            ],
+            watch_manager=SimpleNamespace(forward_watch_id=lambda m: 'watch-1'),
+            handle_media_groups={},
+            get_deep_link_resolver=lambda: SimpleNamespace(
+                resolve=AsyncMock(return_value=None),
+            ),
+            runtime_message_filter=lambda override=None: SimpleNamespace(
+                should_pass=lambda message: True,
+                get_reject_reason=lambda message: None,
+                media_types={'photo': True, 'video': True},
+            ),
+            _watch_media_types_override=lambda watch_id: None,
+            _message_chain_context=lambda message, watch_id=None: (
+                'trace', 'gokaidanbao', getattr(message, 'id', None),
+            ),
+            _log_system_chain=lambda **kwargs: None,
+            _record_watch_event=lambda *a, **k: events.append((a, k)),
+            schedule_or_forward_discussion_replies=fake_schedule,
+            forward=fake_forward,
+        )
+        service = LiveTransferService(host=host)
+        message = SimpleNamespace(
+            id=2509,
+            link='https://t.me/gokaidanbao/2509',
+            photo=SimpleNamespace(file_size=100_000),
+            chat=SimpleNamespace(id='gokaidanbao', username='gokaidanbao'),
+            text='#一个人',
+        )
+
+        with patch('module.transfer.live_transfer.parse_link', new=fake_parse_link):
+            asyncio.run(service.listen_forward(client=object(), message=message))
+
+        self.assertEqual(0, len(forward_calls))
+        self.assertEqual(1, len(schedule_calls))
+        self.assertEqual(2509, schedule_calls[0]['source_message_id'])
+        self.assertTrue(any(
+            '无白名单深链' in str(item)
+            for item in events
+        ), events)
+
 
 if __name__ == '__main__':
     unittest.main()

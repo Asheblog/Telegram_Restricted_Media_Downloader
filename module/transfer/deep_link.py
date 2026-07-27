@@ -36,6 +36,7 @@ _SESSION_FAILURE_MARKERS = (
 )
 _MAX_START_BOT_ATTEMPTS = 3
 _SESSION_FAILURE_MESSAGE = '资源 bot 会话已超时关闭'
+DEEP_LINK_SKIP_NO_LINK_MESSAGE = '消息无白名单深链，已跳过原帖封面（不回退预览）'
 
 log = logging.getLogger('deep_link')
 
