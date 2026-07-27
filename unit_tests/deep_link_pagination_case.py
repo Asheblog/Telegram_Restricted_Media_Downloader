@@ -9,6 +9,8 @@ _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 from module.transfer.deep_link import (
     classify_pagination_button,
+    group_button_is_marked,
+    group_button_number,
     is_last_page_status_text,
     pick_pagination_click_target,
 )
@@ -94,6 +96,64 @@ class DeepLinkPaginationCase(unittest.TestCase):
             SimpleNamespace(text='打开', callback_data=None, url='https://t.me/x'),
         ]])
         self.assertIsNone(pick_pagination_click_target([msg], set()))
+
+    def test_group_button_marked_and_number(self):
+        self.assertTrue(group_button_is_marked('❄️ 1'))
+        self.assertTrue(group_button_is_marked('✅2'))
+        self.assertFalse(group_button_is_marked('3'))
+        self.assertEqual(1, group_button_number('❄️ 1'))
+        self.assertEqual(2, group_button_number('✅2'))
+        self.assertEqual(3, group_button_number('3'))
+
+    def test_pick_with_media_skips_current_group_prefers_forward(self):
+        """已有媒体时跳过 ❄️ 当前页，点未选中的更高组别（发片机键盘）。"""
+        msg = _msg_with_keyboard([
+            [
+                _btn('◀️ 上一页', b'prev'),
+                _btn('📋 1-3/3', b'status'),
+                _btn('下一页 ▶️', b'next'),
+            ],
+            [_btn('❄️ 1', b'g1'), _btn('2', b'g2'), _btn('3', b'g3')],
+        ])
+        target = pick_pagination_click_target(
+            [msg], clicked_callback_data=set(), has_media=True,
+        )
+        self.assertIsNotNone(target)
+        self.assertEqual('group', target.kind)
+        self.assertEqual(b'g2', target.callback_data)
+
+        target2 = pick_pagination_click_target(
+            [msg], clicked_callback_data={b'g2'}, has_media=True,
+        )
+        self.assertEqual(b'g3', target2.callback_data)
+
+    def test_pick_with_media_allows_marked_forward_group(self):
+        """已有媒体时只跳过当前页，不把 ✅ 更高组别整类跳过。"""
+        msg = _msg_with_keyboard([
+            [_btn('📋 1/3', b'status'), _btn('下一页 ▶️', b'next')],
+            [_btn('❄️ 1', b'g1'), _btn('✅2', b'g2'), _btn('3', b'g3')],
+        ])
+        target = pick_pagination_click_target(
+            [msg], clicked_callback_data=set(), has_media=True,
+        )
+        self.assertEqual(b'g2', target.callback_data)
+
+    def test_pick_with_media_falls_back_to_next_despite_range_status(self):
+        """发片机 1-3/3 不是内容末页；无更高组别时应回退点下一页。"""
+        msg = _msg_with_keyboard([
+            [
+                _btn('◀️ 上一页', b'prev'),
+                _btn('📋 1-3/3', b'status'),
+                _btn('下一页 ▶️', b'next'),
+            ],
+            [_btn('❄️ 1', b'g1')],
+        ])
+        target = pick_pagination_click_target(
+            [msg], clicked_callback_data=set(), has_media=True,
+        )
+        self.assertIsNotNone(target)
+        self.assertEqual('next', target.kind)
+        self.assertEqual(b'next', target.callback_data)
 
 
 if __name__ == '__main__':

@@ -791,6 +791,121 @@ class DeepLinkResolverCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_resolve_fapianji_style_skips_current_group_and_collects_all_pages(self):
+        """回归：发片机式键盘（❄️当前页 + 2/3 + 下一页）在已有第1批媒体后不得停翻。
+
+        复现用户截图：首波已拿到第1批，若优先点「❄️ 1」且无新媒体就停，会漏掉 2/3 页。
+        历史按真实点击推进：点当前页不前进；点 2/3/下一页才出下一批。
+        """
+        async def run_case():
+            started = time.time()
+            clicks = []
+
+            def _media(msg_id, uid, when):
+                return SimpleNamespace(
+                    id=msg_id,
+                    video=SimpleNamespace(file_unique_id=uid, file_id=f'f-{uid}'),
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=when,
+                    chat=SimpleNamespace(id='bot'),
+                    reply_markup=None,
+                )
+
+            page1 = _media(1, 'uid-p1', started)
+            page2 = _media(2, 'uid-p2', started + 0.2)
+            page3 = _media(3, 'uid-p3', started + 0.4)
+            state = {'page': 1}
+
+            def _marks(page):
+                return tuple(
+                    (f'❄️ {n}' if n == page else str(n)) for n in (1, 2, 3)
+                )
+
+            async def _click(button_text_or_index):
+                label = str(button_text_or_index)
+                clicks.append(label)
+                if label in ('❄️ 1', '1'):
+                    # 重点当前页 / 回第1页：不产生新媒体批次
+                    state['page'] = 1
+                    return
+                if label in ('2', '❄️ 2'):
+                    state['page'] = 2
+                    return
+                if label in ('3', '❄️ 3'):
+                    state['page'] = 3
+                    return
+                if label == '下一页 ▶️':
+                    state['page'] = min(3, state['page'] + 1)
+                    return
+
+            def _pager():
+                mark1, mark2, mark3 = _marks(state['page'])
+                return SimpleNamespace(
+                    id=100,
+                    video=None,
+                    document=None,
+                    animation=None,
+                    photo=None,
+                    outgoing=False,
+                    date=started,
+                    chat=SimpleNamespace(id='bot'),
+                    text='✅ 第1批已发送 (共3批，当前已获取20/55个) 使用下方按钮翻页查看更多↓',
+                    reply_markup=SimpleNamespace(inline_keyboard=[
+                        [
+                            SimpleNamespace(text='◀️ 上一页', callback_data=b'prev', url=None),
+                            SimpleNamespace(text='📋 1-3/3', callback_data=b'status', url=None),
+                            SimpleNamespace(text='下一页 ▶️', callback_data=b'next', url=None),
+                        ],
+                        [
+                            SimpleNamespace(text=mark1, callback_data=b'g1', url=None),
+                            SimpleNamespace(text=mark2, callback_data=b'g2', url=None),
+                            SimpleNamespace(text=mark3, callback_data=b'g3', url=None),
+                        ],
+                    ]),
+                    click=_click,
+                )
+
+            def _history_for_page():
+                pager = _pager()
+                if state['page'] == 1:
+                    return [pager, page1]
+                if state['page'] == 2:
+                    return [pager, page2, page1]
+                return [pager, page3, page2, page1]
+
+            async def get_chat_history(bot_username, limit=10):
+                for msg in _history_for_page():
+                    yield msg
+
+            client = SimpleNamespace(
+                resolve_peer=AsyncMock(return_value=object()),
+                invoke=AsyncMock(),
+                get_chat_history=get_chat_history,
+            )
+            resolver = DeepLinkResolver(
+                timeout_seconds=2.0,
+                poll_interval=0.02,
+                settle_seconds=0,
+                min_interval_seconds=0,
+                max_pages=5,
+                page_click_interval_seconds=0,
+            )
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                result = await resolver.resolve(
+                    client, _source_message_with_deep_link(), whitelist=['a82bot'],
+                )
+            self.assertEqual([page1, page2, page3], result)
+            self.assertNotEqual(
+                ['❄️ 1'],
+                clicks[:1],
+                f'should not start by re-clicking current page; clicks={clicks}',
+            )
+
+        asyncio.run(run_case())
+
     def test_resolve_should_continue_false_returns_partial_media(self):
         async def run_case():
             started = time.time()

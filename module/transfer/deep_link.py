@@ -209,6 +209,43 @@ def classify_pagination_button(text: str) -> str:
     return 'other'
 
 
+def parse_group_button(text: str) -> Optional[Tuple[int, bool]]:
+    """Return (group_number, is_marked) for group labels; else None."""
+    raw = str(text or '').strip()
+    m = _GROUP_RE.match(raw)
+    if not m:
+        return None
+    return int(m.group(1)), not re.fullmatch(r'\d{1,3}', raw)
+
+
+def group_button_number(text: str) -> Optional[int]:
+    parsed = parse_group_button(text)
+    return parsed[0] if parsed else None
+
+
+def group_button_is_marked(text: str) -> bool:
+    """True when group label has a current/visited marker (e.g. ❄️ 1 / ✅2)."""
+    parsed = parse_group_button(text)
+    return bool(parsed and parsed[1])
+
+
+def group_button_is_current_mark(text: str) -> bool:
+    """True when label looks like the active page marker (❄/❄️), not merely visited (✅)."""
+    raw = str(text or '').strip()
+    parsed = parse_group_button(raw)
+    if not parsed or not parsed[1]:
+        return False
+    return '❄' in raw
+
+
+def page_status_total(text: str) -> Optional[int]:
+    m = _PAGE_STATUS_RE.search(str(text or ''))
+    if not m:
+        return None
+    total = int(m.group(3))
+    return total if total > 0 else None
+
+
 def is_last_page_status_text(text: str) -> bool:
     """True when page indicator shows we are already on the last page."""
     m = _PAGE_STATUS_RE.search(str(text or ''))
@@ -248,8 +285,15 @@ def _iter_callback_buttons(message) -> List[Tuple[str, bytes]]:
 def pick_pagination_click_target(
         messages: Iterable[object],
         clicked_callback_data: Optional[Set[bytes]] = None,
+        *,
+        has_media: bool = False,
 ) -> Optional[PaginationClickTarget]:
-    """Pick next pagination/group callback to click from recent bot messages."""
+    """Pick next pagination/group callback to click from recent bot messages.
+
+    When media is already collected, skip the marked current group (e.g. ❄️ 1)
+    and prefer a higher group number or 「下一页」— re-clicking the current page
+    yields no new media and would stop pagination early.
+    """
     clicked = clicked_callback_data or set()
     for message in messages:
         buttons = _iter_callback_buttons(message)
@@ -258,10 +302,25 @@ def pick_pagination_click_target(
         groups: List[PaginationClickTarget] = []
         nexts: List[PaginationClickTarget] = []
         on_last_page = False
+        status_total: Optional[int] = None
+        snowflake_current: Optional[int] = None
+        first_marked: Optional[int] = None
         for text, data in buttons:
             kind = classify_pagination_button(text)
-            if kind == 'status' and is_last_page_status_text(text):
-                on_last_page = True
+            if kind == 'status':
+                total = page_status_total(text)
+                if total is not None:
+                    status_total = total
+                if is_last_page_status_text(text):
+                    on_last_page = True
+            if kind == 'group':
+                parsed = parse_group_button(text)
+                if parsed and parsed[1]:
+                    num, _marked = parsed
+                    if first_marked is None:
+                        first_marked = num
+                    if snowflake_current is None and group_button_is_current_mark(text):
+                        snowflake_current = num
             if data in clicked:
                 continue
             if kind == 'group':
@@ -272,6 +331,27 @@ def pick_pagination_click_target(
                 nexts.append(PaginationClickTarget(
                     message=message, callback_data=data, kind='next', button_text=text,
                 ))
+        current_group_num = (
+            snowflake_current if snowflake_current is not None else first_marked
+        )
+        if has_media:
+            # 发片机「📋 1-3/3」表示页码条范围，不等于内容已在末页；
+            # 有当前组别时用 current/total 判断是否还可点「下一页」。
+            if current_group_num is not None and status_total is not None:
+                on_last_page = current_group_num >= status_total
+            forward_groups = []
+            for target in groups:
+                num = group_button_number(target.button_text)
+                if num is None:
+                    continue
+                if current_group_num is not None and num <= current_group_num:
+                    continue
+                forward_groups.append(target)
+            if forward_groups:
+                return forward_groups[0]
+            if nexts and not on_last_page:
+                return nexts[0]
+            continue
         if groups:
             return groups[0]
         if nexts and not on_last_page:
@@ -557,7 +637,9 @@ class DeepLinkResolver:
                 if self._message_timestamp(message) + 2 >= started_at
             ]
             pending_target = pick_pagination_click_target(
-                recent_history, clicked_callback_data,
+                recent_history,
+                clicked_callback_data,
+                has_media=bool(collected),
             )
 
             if first_media_at is not None:
