@@ -928,6 +928,356 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual('ambiguous', result.status)
         self.assertFalse(any(args[1] == 'moveto' for args in calls))
 
+    def test_rclone_archive_disambiguates_same_size_by_original_name_from_archive_name(self):
+        """Bot ingest keeps original names; archive wants '{id} - {stem}.ext'."""
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '1.mp4',
+                            'Size': 1000,
+                            'Path': '1.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                        {
+                            'Name': '16.mp4',
+                            'Size': 1000,
+                            'Path': '16.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:20Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2548 - #Mrber',
+            file_name='2548 - 1.mp4',
+            file_size=1000,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(
+            'Telegram/gokaidanbao/2548 - #Mrber/2548 - 1.mp4',
+            result.archive_path,
+        )
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/1.mp4',
+                'pikpak:Telegram/gokaidanbao/2548 - #Mrber/2548 - 1.mp4',
+            ],
+            calls,
+        )
+
+    def test_rclone_archive_prefers_exact_ingest_name_over_pikpak_duplicate_suffix(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '1(1).mp4',
+                            'Size': 1000,
+                            'Path': '1(1).mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:05Z',
+                        },
+                        {
+                            'Name': '1.mp4',
+                            'Size': 1000,
+                            'Path': '1.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:30Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2548 - #Mrber',
+            file_name='2548 - 1.mp4',
+            file_size=1000,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/1.mp4',
+                'pikpak:Telegram/gokaidanbao/2548 - #Mrber/2548 - 1.mp4',
+            ],
+            calls,
+        )
+
+    def test_rclone_archive_picks_closest_mod_time_among_duplicate_suffix_matches(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '1(1).mp4',
+                            'Size': 1000,
+                            'Path': '1(1).mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                        {
+                            'Name': '1(2).mp4',
+                            'Size': 1000,
+                            'Path': '1(2).mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:05:00Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2548 - #Mrber',
+            file_name='2548 - 1.mp4',
+            file_size=1000,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                'pikpak:My Telegram/1(1).mp4',
+                'pikpak:Telegram/gokaidanbao/2548 - #Mrber/2548 - 1.mp4',
+            ],
+            calls,
+        )
+
+    def test_rclone_archive_stays_ambiguous_when_name_and_time_cannot_break_tie(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'copy/video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual('ambiguous', result.status)
+        self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
+    def test_rclone_archive_stays_ambiguous_when_duplicate_suffix_times_tie(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '1(1).mp4',
+                            'Size': 1000,
+                            'Path': '1(1).mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                        {
+                            'Name': '1(2).mp4',
+                            'Size': 1000,
+                            'Path': '1(2).mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2548 - #Mrber',
+            file_name='2548 - 1.mp4',
+            file_size=1000,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual('ambiguous', result.status)
+        self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
+    def test_rclone_archive_does_not_guess_by_time_when_ingest_name_absent(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': '16.mp4',
+                            'Size': 1000,
+                            'Path': '16.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:10Z',
+                        },
+                        {
+                            'Name': '17.mp4',
+                            'Size': 1000,
+                            'Path': '17.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-27T16:00:20Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2548 - #Mrber',
+            file_name='2548 - 1.mp4',
+            file_size=1000,
+            transferred_at=1785168010.0,
+            match_original_name=False,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual('ambiguous', result.status)
+        self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
     def test_rclone_archive_can_match_photo_without_file_name_by_size_and_time(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
 

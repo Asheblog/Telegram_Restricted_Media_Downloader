@@ -120,7 +120,7 @@ _Avoid_: Chapter cursor, runtime offset
 **PikPak Target** — 与 PikPak 官方 bot 的 Telegram 会话，作为接收转存媒体的目标。
 _Avoid_: PikPak API, cloud drive target
 
-**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，下载回退与直接转发均在入库确认后**延迟归档**（`archive_status=pending`）；Transfer Item 可先标 SUCCESS，归档失败记 archive 状态并可重试，不回滚转存成功。监听转发路径的归档在后台线程执行，不阻塞转发循环。
+**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，下载回退与直接转发均在入库确认后**延迟归档**（`archive_status=pending`）；Transfer Item 可先标 SUCCESS，归档失败记 archive 状态并可重试，不回滚转存成功。监听转发路径的归档在后台线程执行，不阻塞转发循环。Bot 直转入库名常为原始 basename，归档目标为 `{message_id} - {stem}.ext`；同 size 多候选时先按原始名（含 PikPak `name(N).ext`）消歧，名命中多个再取 ModTime 最接近 `transferred_at` 者；有 `{message_id} -` 前缀却无名命中、或时间并列时保持 ambiguous（不按时间对无关文件名猜选）。
 _Avoid_: Local download folder, bot chat folder
 
 **PikPak Ingest Folder** — PikPak bot 入库后的默认目录（"My Telegram"），PikPak Archive 执行前文件暂存于此。

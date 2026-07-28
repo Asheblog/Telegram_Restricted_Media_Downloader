@@ -126,6 +126,11 @@ class RclonePikPakArchiveClient:
                     file_size=file_size,
                     transferred_at=transferred_at
                 )
+                archived_candidates = disambiguate_archive_candidates(
+                    archived_candidates,
+                    target_name=target_name,
+                    transferred_at=transferred_at,
+                )
                 if len(archived_candidates) == 1:
                     archived_name = clean_remote_segment(target_name or archived_candidates[0].get('Name'))
                     if not archived_name:
@@ -138,6 +143,11 @@ class RclonePikPakArchiveClient:
                 if len(archived_candidates) > 1:
                     return PikPakArchiveResult(False, 'ambiguous', f'Multiple archived PikPak files matched {target_name}.')
                 return PikPakArchiveResult(False, 'not_found', f'No PikPak file matched {target_name}.')
+            candidates = disambiguate_archive_candidates(
+                candidates,
+                target_name=target_name,
+                transferred_at=transferred_at,
+            )
             if len(candidates) > 1:
                 return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {target_name}.')
             source_path = candidate_remote_path(source_root, candidates[0].get('Path') or candidates[0].get('Name'))
@@ -532,3 +542,97 @@ def normalized_archive_name_key(file_name: str) -> tuple[str, str]:
     stem, extension = posixpath.splitext(file_name)
     stem = re.sub(r'[\s._-]+', '_', stem).strip('_').casefold()
     return stem, extension.casefold()
+
+
+_ARCHIVE_MESSAGE_ID_PREFIX = re.compile(r'^(\d+) - (.+)$')
+_PIKPAK_DUPLICATE_SUFFIX = re.compile(r'\(\d+\)$')
+
+
+def ingest_name_from_archive_name(archive_name: Optional[str]) -> Optional[str]:
+    """Bot ingest keeps the original basename; archive target is '{message_id} - {stem}.ext'."""
+    name = clean_remote_segment(archive_name or '')
+    match = _ARCHIVE_MESSAGE_ID_PREFIX.match(name)
+    if not match:
+        return None
+    return match.group(2) or None
+
+
+def stem_without_duplicate_suffix(stem: str) -> str:
+    return _PIKPAK_DUPLICATE_SUFFIX.sub('', str(stem or '')).rstrip()
+
+
+def candidate_matches_ingest_name(candidate_name: Optional[str], ingest_name: str) -> bool:
+    candidate_name = clean_remote_segment(candidate_name or '')
+    ingest_name = clean_remote_segment(ingest_name or '')
+    if not candidate_name or not ingest_name:
+        return False
+    if candidate_name == ingest_name:
+        return True
+    candidate_stem, candidate_ext = posixpath.splitext(candidate_name)
+    ingest_stem, ingest_ext = posixpath.splitext(ingest_name)
+    if candidate_ext.casefold() != ingest_ext.casefold():
+        return False
+    candidate_base = stem_without_duplicate_suffix(candidate_stem)
+    ingest_base = stem_without_duplicate_suffix(ingest_stem)
+    return bool(candidate_base and ingest_base and candidate_base.casefold() == ingest_base.casefold())
+
+
+def filter_candidates_by_ingest_name(candidates: list[dict], ingest_name: str) -> list[dict]:
+    ingest_name = clean_remote_segment(ingest_name or '')
+    if not ingest_name or not candidates:
+        return []
+    exact = [
+        item for item in candidates
+        if clean_remote_segment(item.get('Name')) == ingest_name
+    ]
+    if exact:
+        return exact
+    return [
+        item for item in candidates
+        if candidate_matches_ingest_name(item.get('Name'), ingest_name)
+    ]
+
+
+def closest_candidates_by_mod_time(
+        candidates: list[dict],
+        transferred_at: Optional[float],
+) -> list[dict]:
+    if transferred_at is None or len(candidates) <= 1:
+        return candidates
+    scored = []
+    for item in candidates:
+        mod_time = parse_rclone_time(item.get('ModTime') or item.get('Modified'))
+        if mod_time is None:
+            continue
+        scored.append((abs(mod_time - float(transferred_at)), item))
+    if not scored:
+        return candidates
+    scored.sort(key=lambda pair: pair[0])
+    best_delta = scored[0][0]
+    return [item for delta, item in scored if delta == best_delta]
+
+
+def disambiguate_archive_candidates(
+        candidates: list[dict],
+        *,
+        target_name: Optional[str],
+        transferred_at: Optional[float],
+) -> list[dict]:
+    """Narrow size/time collisions using ingest basename, then closest ModTime.
+
+    When the archive target carries a ``{message_id} - `` prefix but no candidate
+    matches that ingest basename (including ``name(N).ext``), do not guess by
+    ModTime among unrelated names — leave the set ambiguous.
+    """
+    if len(candidates) <= 1:
+        return candidates
+    narrowed = list(candidates)
+    ingest_name = ingest_name_from_archive_name(target_name)
+    if ingest_name:
+        by_name = filter_candidates_by_ingest_name(narrowed, ingest_name)
+        if not by_name:
+            return narrowed
+        narrowed = by_name
+        if len(narrowed) == 1:
+            return narrowed
+    return closest_candidates_by_mod_time(narrowed, transferred_at)
