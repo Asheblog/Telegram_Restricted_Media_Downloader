@@ -910,8 +910,8 @@ class SourceFolderArchiveCase(unittest.TestCase):
                 return SimpleNamespace(
                     returncode=0,
                     stdout=json.dumps([
-                        {'Name': 'video.mp4', 'Size': 5, 'Path': 'video.mp4', 'IsDir': False},
-                        {'Name': 'video.mp4', 'Size': 5, 'Path': 'copy/video.mp4', 'IsDir': False}
+                        {'Name': 'video.mp4', 'Size': 5, 'Path': 'a/video.mp4', 'IsDir': False},
+                        {'Name': 'video.mp4', 'Size': 5, 'Path': 'b/video.mp4', 'IsDir': False}
                     ]),
                     stderr=''
                 )
@@ -1130,14 +1130,14 @@ class SourceFolderArchiveCase(unittest.TestCase):
                         {
                             'Name': 'video.mp4',
                             'Size': 5,
-                            'Path': 'video.mp4',
+                            'Path': 'a/video.mp4',
                             'IsDir': False,
                             'ModTime': '2026-07-27T16:00:10Z',
                         },
                         {
                             'Name': 'video.mp4',
                             'Size': 5,
-                            'Path': 'copy/video.mp4',
+                            'Path': 'b/video.mp4',
                             'IsDir': False,
                             'ModTime': '2026-07-27T16:00:10Z',
                         },
@@ -1277,6 +1277,132 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual('ambiguous', result.status)
         self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
+    def test_rclone_archive_prefers_shallow_path_for_duplicate_full_archive_names(self):
+        """Retry residue may leave the same archive basename under a ghost subdir."""
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        archive_name = '2937 - 075title.mp4'
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(args)
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': archive_name,
+                            'Size': 5000,
+                            'Path': f'ghost/{archive_name}',
+                            'IsDir': False,
+                            'ModTime': '2026-07-28T13:18:00Z',
+                        },
+                        {
+                            'Name': archive_name,
+                            'Size': 5000,
+                            'Path': archive_name,
+                            'IsDir': False,
+                            'ModTime': '2026-07-28T13:18:00Z',
+                        },
+                    ]),
+                    stderr=''
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='gokaidanbao/2937 - cookie',
+            file_name=archive_name,
+            file_size=5000,
+            transferred_at=1785244680.0,
+            match_original_name=False,
+        )
+
+        self.assertTrue(result.ok, result.message)
+        self.assertIn(
+            [
+                'rclone',
+                'moveto',
+                f'pikpak:My Telegram/{archive_name}',
+                f'pikpak:Telegram/gokaidanbao/2937 - cookie/{archive_name}',
+            ],
+            calls,
+        )
+
+    def test_rclone_archive_falls_back_to_non_recursive_lsjson_when_ghost_dirs_break_listing(self):
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(list(args))
+            if args[:2] == ['rclone', 'lsjson'] and '--recursive' in args:
+                return SimpleNamespace(
+                    returncode=1,
+                    stdout='',
+                    stderr=(
+                        'Failed to lsjson with 2 errors: last error was: '
+                        'error in ListJSON: couldn\'t list files: Error "file_not_found" (5)'
+                    ),
+                )
+            if args[:2] == ['rclone', 'lsjson']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 9,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-28T10:00:00Z',
+                        },
+                    ]),
+                    stderr='',
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=9,
+            transferred_at=1785232800.0,
+            match_original_name=True,
+        )
+
+        self.assertTrue(result.ok, result.message)
+        self.assertTrue(any('--recursive' in args for args in calls if args[:2] == ['rclone', 'lsjson']))
+        self.assertTrue(any(
+            args[:2] == ['rclone', 'lsjson'] and '--recursive' not in args
+            for args in calls
+        ))
+        self.assertIn(
+            ['rclone', 'moveto', 'pikpak:My Telegram/video.mp4', 'pikpak:Telegram/ctuxas/video.mp4'],
+            calls,
+        )
 
     def test_rclone_archive_can_match_photo_without_file_name_by_size_and_time(self):
         from module.pikpak_archive import RclonePikPakArchiveClient
@@ -1603,6 +1729,78 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertEqual('already_archived', result.status)
         self.assertEqual('Telegram/ctuxas/video.mp4', result.archive_path)
         self.assertFalse(any(args[1] == 'moveto' for args in calls))
+
+    def test_rclone_archive_treats_missing_source_as_already_archived_when_target_unique(self):
+        """Concurrent archive may move the ingest file before moveto; recover via target."""
+        from module.pikpak_archive import RclonePikPakArchiveClient
+
+        calls = []
+
+        def fake_runner(args, **kwargs):
+            calls.append(list(args))
+            if args[:2] == ['rclone', 'lsjson'] and args[2] == 'pikpak:My Telegram':
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-28T13:18:00Z',
+                        }
+                    ]),
+                    stderr='',
+                )
+            if args[:2] == ['rclone', 'moveto']:
+                return SimpleNamespace(
+                    returncode=1,
+                    stdout='',
+                    stderr=(
+                        "2026/07/28 21:18:18 CRITICAL: "
+                        "Source doesn't exist or is a directory and destination is a file"
+                    ),
+                )
+            if args[:2] == ['rclone', 'lsjson'] and args[2] == 'pikpak:Telegram/ctuxas':
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps([
+                        {
+                            'Name': 'video.mp4',
+                            'Size': 5,
+                            'Path': 'video.mp4',
+                            'IsDir': False,
+                            'ModTime': '2026-07-28T13:18:00Z',
+                        }
+                    ]),
+                    stderr='',
+                )
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        client = RclonePikPakArchiveClient(
+            {
+                'enable': True,
+                'remote': 'pikpak',
+                'source_directory': 'My Telegram',
+                'root_directory': 'Telegram',
+                'poll_seconds': 0,
+                'match_window_seconds': 3600,
+            },
+            runner=fake_runner,
+        )
+
+        result = client.archive_file(
+            source_folder='ctuxas',
+            file_name='video.mp4',
+            file_size=5,
+            transferred_at=1785244680.0,
+            match_original_name=True,
+        )
+
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual('already_archived', result.status)
+        self.assertEqual('Telegram/ctuxas/video.mp4', result.archive_path)
+        self.assertTrue(any(args[1] == 'moveto' for args in calls))
 
     def test_disabled_archive_is_noop(self):
         from module.pikpak_archive import build_pikpak_archive_client

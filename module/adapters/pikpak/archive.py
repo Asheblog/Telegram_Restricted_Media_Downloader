@@ -159,7 +159,28 @@ class RclonePikPakArchiveClient:
                 return PikPakArchiveResult(False, 'not_found', 'No PikPak file name was available for archive.')
             if source_path == target_path:
                 return PikPakArchiveResult(True, 'already_archived', archive_path=target_path)
-            self.moveto(source_path, target_path)
+            try:
+                self.moveto(source_path, target_path)
+            except RuntimeError as move_error:
+                if not _is_missing_source_move_error(move_error):
+                    raise
+                archived_candidates = disambiguate_archive_candidates(
+                    self._list_matching_candidates(
+                        root=target_dir,
+                        file_name=target_name,
+                        file_size=file_size,
+                        transferred_at=transferred_at,
+                    ),
+                    target_name=target_name,
+                    transferred_at=transferred_at,
+                )
+                if len(archived_candidates) == 1:
+                    archived_path = candidate_remote_path(
+                        target_dir,
+                        archived_candidates[0].get('Path') or target_name,
+                    )
+                    return PikPakArchiveResult(True, 'already_archived', archive_path=archived_path)
+                raise
             return PikPakArchiveResult(True, 'success', archive_path=target_path)
         except Exception as e:
             return PikPakArchiveResult(False, 'error', str(e))
@@ -237,12 +258,22 @@ class RclonePikPakArchiveClient:
             file_size: Optional[int],
             transferred_at: Optional[float]
     ) -> tuple[list[dict], list[dict], int]:
-        result = self._run(['lsjson', self.remote(root), '--recursive', '--files-only'])
+        items = self._lsjson_files(root)
+        return self._matching_candidate_groups(items, file_name, file_size, transferred_at)
+
+    def _lsjson_files(self, root: str) -> list[dict]:
+        """List files under remote root; fall back when ghost dirs break recursive listing."""
+        recursive_args = ['lsjson', self.remote(root), '--recursive', '--files-only']
         try:
-            items = json.loads(result.stdout or '[]')
+            result = self._run(recursive_args)
+        except RuntimeError as e:
+            if not _is_lsjson_listing_error(e):
+                raise
+            result = self._run(['lsjson', self.remote(root), '--files-only'])
+        try:
+            return json.loads(result.stdout or '[]')
         except json.JSONDecodeError as e:
             raise RuntimeError(f'Unable to parse rclone lsjson output: {e}')
-        return self._matching_candidate_groups(items, file_name, file_size, transferred_at)
 
     def _matching_candidate_groups(
             self,
@@ -612,27 +643,63 @@ def closest_candidates_by_mod_time(
     return [item for delta, item in scored if delta == best_delta]
 
 
+def prefer_shallow_candidates(candidates: list[dict]) -> list[dict]:
+    """Prefer My Telegram root files over residue nested under ghost directories."""
+    if len(candidates) <= 1:
+        return candidates
+    shallow = []
+    for item in candidates:
+        path = clean_remote_path(item.get('Path') or item.get('Name') or '')
+        if path and '/' not in path:
+            shallow.append(item)
+    return shallow if shallow else candidates
+
+
+def _is_lsjson_listing_error(exc: Exception) -> bool:
+    """Only recover from ghost-dir listing failures, not all lsjson errors."""
+    text = str(exc).casefold()
+    return 'file_not_found' in text and 'lsjson' in text
+
+
+def _is_missing_source_move_error(exc: Exception) -> bool:
+    text = str(exc).casefold()
+    return "source doesn't exist" in text or 'source does not exist' in text
+
+
 def disambiguate_archive_candidates(
         candidates: list[dict],
         *,
         target_name: Optional[str],
         transferred_at: Optional[float],
 ) -> list[dict]:
-    """Narrow size/time collisions using ingest basename, then closest ModTime.
+    """Narrow size/time collisions using archive/ingest names, shallow path, then ModTime.
 
-    When the archive target carries a ``{message_id} - `` prefix but no candidate
-    matches that ingest basename (including ``name(N).ext``), do not guess by
-    ModTime among unrelated names — leave the set ambiguous.
+    Order: full archive target name → stripped ingest basename → shallow Path →
+    closest ModTime. When a ``{message_id} -`` prefix is present but neither name
+    form matches any candidate, refuse to guess among unrelated names.
     """
     if len(candidates) <= 1:
         return candidates
     narrowed = list(candidates)
+    name_narrowed = False
+    if target_name:
+        by_full = filter_candidates_by_ingest_name(narrowed, target_name)
+        if by_full:
+            narrowed = by_full
+            name_narrowed = True
+            if len(narrowed) == 1:
+                return narrowed
     ingest_name = ingest_name_from_archive_name(target_name)
     if ingest_name:
-        by_name = filter_candidates_by_ingest_name(narrowed, ingest_name)
-        if not by_name:
-            return narrowed
-        narrowed = by_name
-        if len(narrowed) == 1:
-            return narrowed
+        by_ingest = filter_candidates_by_ingest_name(narrowed, ingest_name)
+        if by_ingest:
+            narrowed = by_ingest
+            name_narrowed = True
+            if len(narrowed) == 1:
+                return narrowed
+        elif not name_narrowed:
+            return list(candidates)
+    narrowed = prefer_shallow_candidates(narrowed)
+    if len(narrowed) == 1:
+        return narrowed
     return closest_candidates_by_mod_time(narrowed, transferred_at)
