@@ -55,6 +55,47 @@ class TransferTaskReconcileCase(unittest.TestCase):
             self.assertEqual(3, task['completed_items'])
             self.assertEqual(1, task['failed_items'])
 
+    def test_refresh_keeps_running_when_item_count_exceeds_range_expected_before_assignment_done(self):
+        """Deep-link comments can create more items than range message count mid-scan."""
+        from module.persistence.transfer_store import TransferStore, TransferStatus
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                'https://t.me/source',
+                'https://t.me/pikpak_bot',
+                start_id=1,
+                end_id=10,
+            )
+            store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+            for message_id in range(1, 12):
+                store.add_item(
+                    task_id=task_id,
+                    source_message_id=message_id,
+                    range_message_id=min(message_id, 5),
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    status=TransferStatus.SUCCESS,
+                )
+            store.add_item(
+                task_id=task_id,
+                source_message_id=99,
+                range_message_id=5,
+                source_link='https://t.me/source/99',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.FAILURE,
+                error_message='deep link failed',
+            )
+
+            store.refresh_task_counts(task_id, expected_total=10, assignment_completed=False)
+
+            task = store.get_task(task_id)
+            self.assertEqual(TransferStatus.RUNNING, task['status'])
+            self.assertIsNone(task['finished_at'])
+            self.assertFalse(bool(task['assignment_completed']))
+            self.assertEqual(1, task['failed_items'])
+            self.assertEqual(11, task['completed_items'])
+
     def test_refresh_marks_assigned_empty_task_as_failure(self):
         from module.persistence.transfer_store import TransferStore, TransferStatus
 

@@ -1372,19 +1372,10 @@ class TransferStore:
         elif task.get('status') == TransferStatus.PENDING:
             status = TransferStatus.PENDING
 
-        can_finalize = False
-        if assigned and active == 0:
-            can_finalize = True
-        elif (
-                active == 0
-                and item_count > 0
-                and expected_total is not None
-                and item_count >= expected
-                and (completed + failed) >= item_count
-        ):
-            # Backward compatible: explicit expected_total refresh after all items terminal.
-            can_finalize = True
-            assigned = True
+        # Only finalize after assignment is done. Range deep-link/comment tasks can
+        # create more items than the message-span expected_total while still scanning;
+        # finalizing on item_count >= expected would mark the whole task failed mid-run.
+        can_finalize = assigned and active == 0
 
         if can_finalize:
             if item_count == 0:

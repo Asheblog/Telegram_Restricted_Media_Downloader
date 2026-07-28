@@ -779,7 +779,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(10, payload['items'][0]['download_total'])
 
             store.update_item(item_id, status=TransferStatus.SUCCESS)
-            store.refresh_task_counts(task_id, expected_total=1)
+            store.refresh_task_counts(task_id, expected_total=1, assignment_completed=True)
             task = store.get_task(task_id)
             self.assertEqual(TransferStatus.SUCCESS, task['status'])
             self.assertEqual(1, task['completed_items'])
