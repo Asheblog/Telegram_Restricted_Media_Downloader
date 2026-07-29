@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import time
 from typing import Callable, Optional, Union
 
 import pyrogram
@@ -823,6 +824,9 @@ class LiveTransferService:
             archive_by_author=archive_by_author,
         )
 
+        fetch_started = time.time()
+        matched_deep_link_comments = 0
+        fetch_error = None
         try:
             async for comment, media_group in iter_discussion_reply_forward_units(
                     client=self.app.client,
@@ -830,9 +834,11 @@ class LiveTransferService:
                     message_id=source_message_id,
                     include_message=include_discussion_message
             ):
+                matched_deep_link_comments += 1
                 messages_to_forward = [(comment, media_group)]
                 if resolve_deep_link:
                     resolver = self.get_deep_link_resolver()
+                    comment_id = getattr(comment, 'id', None)
                     try:
                         resolved_list = normalize_resolved_messages(
                             await resolver.resolve(
@@ -846,6 +852,16 @@ class LiveTransferService:
                                 page_click_interval_seconds=(
                                     self.gc.get_deep_link_page_click_interval_seconds()
                                 ),
+                                event_logger=self._log_system_chain,
+                                event_context={
+                                    'category': 'watch',
+                                    'watch_id': watch_id,
+                                    'source_chat_id': source_chat_id,
+                                    'source_message_id': comment_id,
+                                    'target_link': target_link,
+                                    'post_message_id': int(source_message_id),
+                                    'comment_id': comment_id,
+                                },
                             )
                         )
                     except DeepLinkResolveError as e:
@@ -859,7 +875,7 @@ class LiveTransferService:
                             source_message_id=source_message_id,
                             target_link=target_link,
                             details={
-                                'comment_id': getattr(comment, 'id', None),
+                                'comment_id': comment_id,
                                 'error': str(e),
                             },
                         )
@@ -914,8 +930,39 @@ class LiveTransferService:
                         archive_by_author=archive_by_author,
                     )
                     count += 1
-        except (ValueError, AttributeError, MsgIdInvalid):
-            pass
+        except (ValueError, AttributeError, MsgIdInvalid) as e:
+            fetch_error = type(e).__name__
+        finally:
+            elapsed = time.time() - fetch_started
+            error_suffix = f'，错误={fetch_error}' if fetch_error else ''
+            slow_empty = (
+                matched_deep_link_comments == 0
+                and elapsed >= 5.0
+                and not fetch_error
+            )
+            comment_label = (
+                '白名单深链评论' if resolve_deep_link else '可转发评论'
+            )
+            self._log_system_chain(
+                category='watch',
+                stage='discussion_fetch',
+                message=(
+                    f'评论区拉取完成: {comment_label} {matched_deep_link_comments} 条'
+                    f'（{elapsed:.1f}s）{error_suffix}'
+                ),
+                level='warning' if (fetch_error or slow_empty) else 'info',
+                watch_id=watch_id,
+                source_chat_id=source_chat_id,
+                source_message_id=source_message_id,
+                target_link=target_link,
+                details={
+                    'post_message_id': int(source_message_id),
+                    'matched_comments': matched_deep_link_comments,
+                    'elapsed_seconds': round(elapsed, 3),
+                    'error': fetch_error,
+                    'resolve_deep_link': resolve_deep_link,
+                },
+            )
         return count
 
     async def listen_forward(
@@ -1050,6 +1097,14 @@ class LiveTransferService:
                                     page_click_interval_seconds=(
                                         self.gc.get_deep_link_page_click_interval_seconds()
                                     ),
+                                    event_logger=self._log_system_chain,
+                                    event_context={
+                                        'category': 'watch',
+                                        'watch_id': watch_id,
+                                        'source_chat_id': origin_chat_id,
+                                        'source_message_id': message_id,
+                                        'target_link': target_link,
+                                    },
                                 )
                             )
                         except DeepLinkResolveError as e:

@@ -7,8 +7,11 @@ import re
 import secrets
 import time
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Callable, Iterable, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
+
+# Optional system-log sink: kwargs match SystemLogTracer.log / host._log_system_chain.
+DeepLinkEventLogger = Callable[..., None]
 
 DeepLink = Tuple[str, str]  # (bot_username_lower, start_param)
 
@@ -59,6 +62,42 @@ DEEP_LINK_NO_LINK_FAILURE_MESSAGE = (
 _NON_PREVIEW_MEDIA_ATTRS = ('video', 'document', 'animation')
 
 log = logging.getLogger('deep_link')
+
+_LOCK_WAIT_LOG_SECONDS = 0.05
+_LOCK_WAIT_WARN_SECONDS = 1.0
+
+
+def emit_deep_link_system_event(
+        log_fn: Optional[DeepLinkEventLogger],
+        *,
+        stage: str,
+        message: str,
+        level: str = 'info',
+        context: Optional[dict] = None,
+        details: Optional[dict] = None,
+) -> None:
+    """Best-effort system log for deep-link diagnostics (never raises)."""
+    if not callable(log_fn):
+        return
+    ctx = dict(context or {})
+    payload_details = dict(details or {})
+    for key in ('task_id', 'watch_id', 'post_message_id', 'comment_id'):
+        if key in ctx and key not in payload_details and ctx[key] is not None:
+            payload_details[key] = ctx[key]
+    try:
+        log_fn(
+            category=str(ctx.get('category') or 'transfer'),
+            stage=stage,
+            message=message,
+            level=level,
+            watch_id=ctx.get('watch_id'),
+            source_chat_id=ctx.get('source_chat_id'),
+            source_message_id=ctx.get('source_message_id'),
+            target_link=ctx.get('target_link'),
+            details=payload_details or None,
+        )
+    except Exception:
+        log.debug('deep_link system event emit failed', exc_info=True)
 
 
 def text_has_hard_session_failure(text) -> bool:
@@ -827,13 +866,33 @@ class DeepLinkResolver:
             max_pages=None,
             page_click_interval_seconds=None,
             should_continue=None,
+            event_logger: Optional[DeepLinkEventLogger] = None,
+            event_context: Optional[dict] = None,
     ) -> Optional[List[object]]:
         """若命中白名单深链则返回 bot 媒体消息列表；无深链返回 None；失败抛 DeepLinkResolveError。"""
         picked = pick_whitelisted_deep_link(extract_deep_link_candidates(message), whitelist)
         if not picked:
             return None
         bot, param = picked
+        lock_wait_started = time.time()
         async with self._lock:
+            lock_wait_seconds = time.time() - lock_wait_started
+            if lock_wait_seconds >= _LOCK_WAIT_LOG_SECONDS:
+                emit_deep_link_system_event(
+                    event_logger,
+                    stage='deep_link_lock_wait',
+                    message=f'深链串行锁等待 {lock_wait_seconds:.1f}s',
+                    level=(
+                        'warning'
+                        if lock_wait_seconds >= _LOCK_WAIT_WARN_SECONDS
+                        else 'info'
+                    ),
+                    context=event_context,
+                    details={
+                        'wait_seconds': round(lock_wait_seconds, 3),
+                        'bot': bot,
+                    },
+                )
             if timeout_seconds is not None:
                 self.timeout_seconds = int(timeout_seconds)
             if min_interval_seconds is not None:
@@ -862,6 +921,22 @@ class DeepLinkResolver:
                 started_at = time.time()
                 deadline = started_at + self.timeout_seconds
                 attempts_used = attempt
+                emit_deep_link_system_event(
+                    event_logger,
+                    stage='deep_link_start_bot',
+                    message=(
+                        f'StartBot @{bot} '
+                        f'({attempt}/{_MAX_START_BOT_ATTEMPTS})'
+                    ),
+                    level='info',
+                    context=event_context,
+                    details={
+                        'bot': bot,
+                        'start_param': param,
+                        'attempt': attempt,
+                        'max_attempts': _MAX_START_BOT_ATTEMPTS,
+                    },
+                )
                 try:
                     await self.start_bot(client, bot, param, deadline=deadline)
                     media_msgs = await self.wait_for_media_batch(
@@ -879,6 +954,22 @@ class DeepLinkResolver:
                         _MAX_START_BOT_ATTEMPTS,
                         bot,
                         e,
+                    )
+                    emit_deep_link_system_event(
+                        event_logger,
+                        stage='deep_link_session_retry',
+                        message=(
+                            f'资源 bot 会话失败，将重试 StartBot '
+                            f'({attempt}/{_MAX_START_BOT_ATTEMPTS}): {e}'
+                        ),
+                        level='warning',
+                        context=event_context,
+                        details={
+                            'bot': bot,
+                            'start_param': param,
+                            'attempt': attempt,
+                            'error': str(e),
+                        },
                     )
                     continue
                 except asyncio.TimeoutError as e:

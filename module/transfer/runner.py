@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import random
+import time
 from typing import Optional, Protocol, Union, runtime_checkable
 
 import pyrogram
@@ -818,6 +819,22 @@ class WebTransferRunner:
                     TransferStatus.PAUSING, TransferStatus.PAUSED,
                 )
 
+            log_system = getattr(host, '_log_system_chain', None)
+            deep_link_event_context = {
+                'category': 'transfer',
+                'source_chat_id': origin_chat_id,
+                'source_message_id': message_id,
+                'target_link': task.get('target_link'),
+                'task_id': task_id_for_resolve,
+                'post_message_id': (
+                    int(range_message_id) if range_message_id is not None else message_id
+                ),
+                'comment_id': (
+                    message_id
+                    if range_message_id is not None and message_id != range_message_id
+                    else None
+                ),
+            }
             try:
                 resolved_list = normalize_resolved_messages(
                     await resolver.resolve(
@@ -830,6 +847,8 @@ class WebTransferRunner:
                         max_pages=max_pages,
                         page_click_interval_seconds=page_click_interval_seconds,
                         should_continue=_deep_link_should_continue,
+                        event_logger=log_system if callable(log_system) else None,
+                        event_context=deep_link_event_context,
                     )
                 )
             except DeepLinkResolveError as e:
@@ -1304,6 +1323,10 @@ class WebTransferRunner:
             archive_by_author=bool(task.get('archive_by_author')),
         )
 
+        log_system = getattr(host, '_log_system_chain', None)
+        fetch_started = time.time()
+        matched_deep_link_comments = 0
+        fetch_error = None
         try:
             async for comment in iter_discussion_reply_messages(
                     client=host.app.client,
@@ -1311,6 +1334,7 @@ class WebTransferRunner:
                     message_id=source_message_id,
                     include_message=include_discussion_message
             ):
+                matched_deep_link_comments += 1
                 if await self.settle_web_task_pause_request(
                     task_id,
                     before=str(getattr(comment, 'id', '')),
@@ -1388,8 +1412,40 @@ class WebTransferRunner:
                     archive_post_message=parent_message,
                 )
                 fallback_count += 1 if used_fallback else 0
-        except (ValueError, AttributeError, MsgIdInvalid):
-            pass
+        except (ValueError, AttributeError, MsgIdInvalid) as e:
+            fetch_error = type(e).__name__
+        finally:
+            elapsed = time.time() - fetch_started
+            if callable(log_system):
+                error_suffix = f'，错误={fetch_error}' if fetch_error else ''
+                slow_empty = (
+                    matched_deep_link_comments == 0
+                    and elapsed >= 5.0
+                    and not fetch_error
+                )
+                comment_label = (
+                    '白名单深链评论' if resolve_deep_link else '可转发评论'
+                )
+                log_system(
+                    category='transfer',
+                    stage='discussion_fetch',
+                    message=(
+                        f'评论区拉取完成: {comment_label} {matched_deep_link_comments} 条'
+                        f'（{elapsed:.1f}s）{error_suffix}'
+                    ),
+                    level='warning' if (fetch_error or slow_empty) else 'info',
+                    source_chat_id=source_chat_id,
+                    source_message_id=source_message_id,
+                    target_link=task.get('target_link'),
+                    details={
+                        'task_id': task_id,
+                        'post_message_id': int(source_message_id),
+                        'matched_comments': matched_deep_link_comments,
+                        'elapsed_seconds': round(elapsed, 3),
+                        'error': fetch_error,
+                        'resolve_deep_link': resolve_deep_link,
+                    },
+                )
         return reply_count, fallback_count
 
     async def get_web_transfer_single_message(self, source_link: str):

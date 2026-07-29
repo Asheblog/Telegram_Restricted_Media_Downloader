@@ -13,6 +13,7 @@ sys.argv = [_ORIGINAL_ARGV[0]]
 from module.transfer.deep_link import (
     DeepLinkResolveError,
     DeepLinkResolver,
+    emit_deep_link_system_event,
     text_has_hard_session_failure,
     text_has_permanent_business_failure,
     text_has_session_failure,
@@ -1730,6 +1731,120 @@ class DeepLinkResolverCase(unittest.TestCase):
                 )
             start_bot.assert_awaited_once()
             self.assertEqual([photo_msg], result)
+
+        asyncio.run(run_case())
+
+    def test_emit_deep_link_system_event_swallows_logger_errors(self):
+        def boom(**kwargs):
+            raise RuntimeError('logger down')
+
+        emit_deep_link_system_event(
+            boom,
+            stage='deep_link_start_bot',
+            message='should not raise',
+            context={'category': 'transfer'},
+        )
+
+    def test_resolve_emits_start_bot_system_event(self):
+        async def run_case():
+            started = time.time()
+            video_msg = SimpleNamespace(
+                video=object(),
+                document=None,
+                animation=None,
+                outgoing=False,
+                date=started,
+            )
+            client = _make_history_client([[video_msg]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.3,
+                poll_interval=0.05,
+                settle_seconds=0,
+                min_interval_seconds=0,
+            )
+            events = []
+
+            def capture(**kwargs):
+                events.append(kwargs)
+
+            with patch.object(resolver, 'start_bot', new=AsyncMock()):
+                await resolver.resolve(
+                    client,
+                    _source_message_with_deep_link('a82bot', 'v_abc'),
+                    whitelist=['a82bot'],
+                    event_logger=capture,
+                    event_context={
+                        'category': 'transfer',
+                        'source_chat_id': 'gokaidanbao',
+                        'source_message_id': 3448,
+                        'task_id': 331,
+                    },
+                )
+
+            start_events = [e for e in events if e.get('stage') == 'deep_link_start_bot']
+            self.assertEqual(1, len(start_events))
+            self.assertEqual('transfer', start_events[0]['category'])
+            self.assertIn('StartBot @a82bot', start_events[0]['message'])
+            self.assertEqual('a82bot', start_events[0]['details']['bot'])
+            self.assertEqual('v_abc', start_events[0]['details']['start_param'])
+            self.assertEqual(331, start_events[0]['details']['task_id'])
+
+        asyncio.run(run_case())
+
+    def test_resolve_emits_lock_wait_when_contended(self):
+        async def run_case():
+            started = time.time()
+            video_msg = SimpleNamespace(
+                video=object(),
+                document=None,
+                animation=None,
+                outgoing=False,
+                date=started,
+            )
+            client = _make_history_client([[video_msg], [video_msg]])
+            resolver = DeepLinkResolver(
+                timeout_seconds=0.5,
+                poll_interval=0.05,
+                settle_seconds=0,
+                min_interval_seconds=0,
+            )
+            events = []
+            release_first = asyncio.Event()
+
+            async def slow_start_bot(*args, **kwargs):
+                release_first.set()
+                await asyncio.sleep(0.15)
+
+            def capture(**kwargs):
+                events.append(kwargs)
+
+            with patch.object(resolver, 'start_bot', new=AsyncMock(side_effect=slow_start_bot)):
+                first = asyncio.create_task(
+                    resolver.resolve(
+                        client,
+                        _source_message_with_deep_link('a82bot', 'p1'),
+                        whitelist=['a82bot'],
+                        event_logger=capture,
+                        event_context={'category': 'transfer', 'source_message_id': 1},
+                    )
+                )
+                await release_first.wait()
+                second = asyncio.create_task(
+                    resolver.resolve(
+                        client,
+                        _source_message_with_deep_link('a82bot', 'p2'),
+                        whitelist=['a82bot'],
+                        event_logger=capture,
+                        event_context={'category': 'transfer', 'source_message_id': 2},
+                    )
+                )
+                await asyncio.gather(first, second)
+
+            lock_events = [e for e in events if e.get('stage') == 'deep_link_lock_wait']
+            self.assertGreaterEqual(len(lock_events), 1)
+            self.assertGreaterEqual(lock_events[0]['details']['wait_seconds'], 0.05)
+            start_events = [e for e in events if e.get('stage') == 'deep_link_start_bot']
+            self.assertEqual(2, len(start_events))
 
         asyncio.run(run_case())
 
