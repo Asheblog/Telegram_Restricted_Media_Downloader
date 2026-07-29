@@ -2216,7 +2216,7 @@
     gap: 12px 16px;
   }
   /* 覆盖 .mob-body label { width:100% }，避免两个勾各占一行 */
-  .mob-system-logs-toggle {
+  .mob-body .mob-system-logs-toggle {
     display: inline-flex;
     align-items: center;
     gap: 6px;

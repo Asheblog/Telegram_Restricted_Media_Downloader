@@ -486,9 +486,10 @@ class WebUiAssetsCase(unittest.TestCase):
             'flex-flow:wrap' in WEB_UI_MOBILE_HTML
             or 'flex-direction:row' in WEB_UI_MOBILE_HTML
         )
+        # 必须用 .mob-body .mob-system-logs-toggle，才能盖过 .mob-body label{width:100%}
         self.assertRegex(
             WEB_UI_MOBILE_HTML,
-            r'\.mob-system-logs-toggle\{[^}]*width:auto',
+            r'\.mob-body\s+\.mob-system-logs-toggle\{[^}]*width:auto',
         )
 
     def test_mobile_profile_hosts_system_logs_subpage(self):
