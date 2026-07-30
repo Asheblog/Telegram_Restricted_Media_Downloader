@@ -770,6 +770,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
               <span data-i18n="watches.archiveByAuthor">按作者归档</span>
             </label>
           </div>
+          <div class="form-group comment-delay-field hidden" data-comment-delay-field>
+            <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
+            <input class="form-input" name="comment_delay_minutes" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+            <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+          </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
@@ -898,6 +903,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <input type="checkbox" name="archive_by_author" id="edit-watch-archive-author" class="w-4 h-4">
           <span data-i18n="watches.archiveByAuthor">按作者归档</span>
         </label>
+      </div>
+      <div class="form-group comment-delay-field hidden" data-comment-delay-field>
+        <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
+        <input class="form-input" name="comment_delay_minutes" id="edit-watch-comment-delay" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+        <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
       </div>
       <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
@@ -1403,7 +1413,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <div class="form-group mt-3">
           <label class="form-label" data-i18n="settings.commentDelayMinutes">评论区延迟抓取（分钟）</label>
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
-          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
+          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
@@ -1781,6 +1791,9 @@ const i18n = {
     'watches.target': '目标频道',
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
+    'watches.commentDelayMinutes': '评论区延迟（分钟）',
+    'watches.commentDelayHint': '留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。',
+    'watches.commentDelayPlaceholder': '留空=系统默认',
     'watches.resolveDeepLink': '深链取片',
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.archiveByAuthor': '按作者归档',
@@ -2011,8 +2024,8 @@ const i18n = {
     'settings.downloadUpload': '受限转发时下载后上传',
     'settings.uploadDelete': '上传完成删除本地文件',
     'settings.pendingLimit': '下载后上传队列',
+    'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
-    'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -2265,6 +2278,9 @@ const i18n = {
     'watches.target': 'Target channel',
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
+    'watches.commentDelayMinutes': 'Comment delay (minutes)',
+    'watches.commentDelayHint': 'Leave blank to use the system default; 0 means capture immediately. Only applies when comments are included.',
+    'watches.commentDelayPlaceholder': 'Blank = system default',
     'watches.resolveDeepLink': 'Resolve deep links',
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.archiveByAuthor': 'Archive by author',
@@ -2496,7 +2512,7 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
-    'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
@@ -2927,6 +2943,48 @@ window.bindMediaTypesPicker = bindMediaTypesPicker;
 window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
 window.setMediaTypesPicker = setMediaTypesPicker;
 window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
+
+function readOptionalCommentDelayMinutes(rootOrFormData) {
+  var raw;
+  if (rootOrFormData && typeof rootOrFormData.get === 'function' && !(rootOrFormData.querySelector)) {
+    raw = rootOrFormData.get('comment_delay_minutes');
+  } else if (rootOrFormData && rootOrFormData.querySelector) {
+    var input = rootOrFormData.querySelector('[name="comment_delay_minutes"]');
+    raw = input ? input.value : null;
+  } else {
+    raw = null;
+  }
+  if (raw == null || String(raw).trim() === '') return null;
+  var n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function syncCommentDelayFieldVisibility(root) {
+  if (!root) return;
+  var scope = root.matches && root.matches('[data-comment-delay-field]')
+    ? root.parentElement || root
+    : root;
+  var checkbox = scope.querySelector('[name="include_comment"]');
+  var field = scope.querySelector('[data-comment-delay-field]');
+  if (!field) return;
+  var show = checkbox ? checkbox.checked : false;
+  field.classList.toggle('hidden', !show);
+}
+
+function bindCommentDelayField(root) {
+  if (!root) return;
+  var checkbox = root.querySelector('[name="include_comment"]');
+  if (!checkbox || checkbox.dataset.commentDelayBound) return;
+  checkbox.dataset.commentDelayBound = '1';
+  checkbox.addEventListener('change', function() {
+    syncCommentDelayFieldVisibility(root);
+  });
+  syncCommentDelayFieldVisibility(root);
+}
+
+window.readOptionalCommentDelayMinutes = readOptionalCommentDelayMinutes;
+window.syncCommentDelayFieldVisibility = syncCommentDelayFieldVisibility;
+window.bindCommentDelayField = bindCommentDelayField;
 
 function esc(str) {
   if (!str) return '';
@@ -5386,15 +5444,19 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
     this.reset();
     setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
+    syncCommentDelayFieldVisibility(this);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
+bindCommentDelayField($('#watch-forward-form'));
+bindCommentDelayField($('#watch-edit-form'));
 
 document.addEventListener('click', async function(e) {
   const menuBtn = e.target.closest('[data-watch-menu]');
@@ -5615,8 +5677,14 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   const archiveAuthor = $('#edit-watch-archive-author');
   if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
+  const delayInput = $('#edit-watch-comment-delay');
+  if (delayInput) {
+    delayInput.value = watch.comment_delay_minutes == null ? '' : String(watch.comment_delay_minutes);
+  }
   ensureOverrideMediaTypeGrids();
   setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
+  bindCommentDelayField($('#watch-edit-form'));
+  syncCommentDelayFieldVisibility($('#watch-edit-form'));
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -5735,6 +5803,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
         archive_by_author: Boolean(fd.get('archive_by_author')),
+        comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
         media_types: readMediaTypesOverride(this),
       }),
     });
@@ -7630,6 +7699,12 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
                 <span data-i18n="watches.resolveDeepLink">深链取片</span>
               </label>
             </div>
+            <div class="hidden" data-comment-delay-field style="margin-top:8px;">
+              <label><span data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</span>
+                <input type="number" name="comment_delay_minutes" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+              </label>
+              <p class="mob-form-hint" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+            </div>
             <p class="mob-form-hint mob-form-hint--warn" data-i18n="watches.resolveDeepLinkHint">
               勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
             </p>
@@ -8122,6 +8197,9 @@ const i18n = {
     'watches.target': '目标频道',
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
+    'watches.commentDelayMinutes': '评论区延迟（分钟）',
+    'watches.commentDelayHint': '留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。',
+    'watches.commentDelayPlaceholder': '留空=系统默认',
     'watches.resolveDeepLink': '深链取片',
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.archiveByAuthor': '按作者归档',
@@ -8352,8 +8430,8 @@ const i18n = {
     'settings.downloadUpload': '受限转发时下载后上传',
     'settings.uploadDelete': '上传完成删除本地文件',
     'settings.pendingLimit': '下载后上传队列',
+    'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
-    'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -8606,6 +8684,9 @@ const i18n = {
     'watches.target': 'Target channel',
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
+    'watches.commentDelayMinutes': 'Comment delay (minutes)',
+    'watches.commentDelayHint': 'Leave blank to use the system default; 0 means capture immediately. Only applies when comments are included.',
+    'watches.commentDelayPlaceholder': 'Blank = system default',
     'watches.resolveDeepLink': 'Resolve deep links',
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.archiveByAuthor': 'Archive by author',
@@ -8837,7 +8918,7 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
-    'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
@@ -9268,6 +9349,48 @@ window.bindMediaTypesPicker = bindMediaTypesPicker;
 window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
 window.setMediaTypesPicker = setMediaTypesPicker;
 window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
+
+function readOptionalCommentDelayMinutes(rootOrFormData) {
+  var raw;
+  if (rootOrFormData && typeof rootOrFormData.get === 'function' && !(rootOrFormData.querySelector)) {
+    raw = rootOrFormData.get('comment_delay_minutes');
+  } else if (rootOrFormData && rootOrFormData.querySelector) {
+    var input = rootOrFormData.querySelector('[name="comment_delay_minutes"]');
+    raw = input ? input.value : null;
+  } else {
+    raw = null;
+  }
+  if (raw == null || String(raw).trim() === '') return null;
+  var n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function syncCommentDelayFieldVisibility(root) {
+  if (!root) return;
+  var scope = root.matches && root.matches('[data-comment-delay-field]')
+    ? root.parentElement || root
+    : root;
+  var checkbox = scope.querySelector('[name="include_comment"]');
+  var field = scope.querySelector('[data-comment-delay-field]');
+  if (!field) return;
+  var show = checkbox ? checkbox.checked : false;
+  field.classList.toggle('hidden', !show);
+}
+
+function bindCommentDelayField(root) {
+  if (!root) return;
+  var checkbox = root.querySelector('[name="include_comment"]');
+  if (!checkbox || checkbox.dataset.commentDelayBound) return;
+  checkbox.dataset.commentDelayBound = '1';
+  checkbox.addEventListener('change', function() {
+    syncCommentDelayFieldVisibility(root);
+  });
+  syncCommentDelayFieldVisibility(root);
+}
+
+window.readOptionalCommentDelayMinutes = readOptionalCommentDelayMinutes;
+window.syncCommentDelayFieldVisibility = syncCommentDelayFieldVisibility;
+window.bindCommentDelayField = bindCommentDelayField;
 
 function esc(str) {
   if (!str) return '';
@@ -10944,6 +11067,14 @@ function openMobileWatchEditSheet(watchId) {
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
       '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
+      '<div' + (watch.include_comment ? '' : ' class="hidden"') + ' data-comment-delay-field>' +
+        '<label><span>' + esc(t('watches.commentDelayMinutes')) + '</span>' +
+          '<input type="number" name="comment_delay_minutes" min="0" max="1440" value="' +
+            (watch.comment_delay_minutes == null ? '' : escAttr(String(watch.comment_delay_minutes))) +
+            '" placeholder="' + escAttr(t('watches.commentDelayPlaceholder')) + '">' +
+        '</label>' +
+        '<p class="mob-form-hint">' + esc(t('watches.commentDelayHint')) + '</p>' +
+      '</div>' +
       mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
@@ -10952,6 +11083,7 @@ function openMobileWatchEditSheet(watchId) {
     '</form>';
   overlay.classList.add('open');
   bindAllMediaTypesPickers(sheet);
+  bindCommentDelayField(document.getElementById('mob-watch-edit-form'));
   document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', closeSheet);
   document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
     event.preventDefault();
@@ -10962,6 +11094,7 @@ function openMobileWatchEditSheet(watchId) {
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
       archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
+      comment_delay_minutes: readOptionalCommentDelayMinutes(form),
       media_types: readMediaTypesOverride(form)
     };
     try {
@@ -11681,7 +11814,7 @@ function renderMobSettingsForm() {
     '</div>' +
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
-    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">系统默认：任务未单独设置时生效。主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
     '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
@@ -13070,6 +13203,10 @@ async function runArchiveOrganizeMobile() {
       } else {
         if (targetGroup) targetGroup.classList.remove('hidden');
         if (commentGroup) commentGroup.classList.remove('hidden');
+        if (commentGroup) {
+          bindCommentDelayField(commentGroup);
+          syncCommentDelayFieldVisibility(commentGroup);
+        }
         if (sourceLabel) sourceLabel.querySelector('span').textContent = '来源频道';
         if (sourceTextarea) { sourceTextarea.classList.add('hidden'); sourceTextarea.required = false; }
         if (sourceInput) { sourceInput.classList.remove('hidden'); sourceInput.required = true; }
@@ -13125,6 +13262,7 @@ async function runArchiveOrganizeMobile() {
         payload.target_link = formData.get('target_link');
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
+        payload.comment_delay_minutes = readOptionalCommentDelayMinutes(watchForm);
       }
       payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(watchForm);
@@ -13134,11 +13272,13 @@ async function runArchiveOrganizeMobile() {
         showMobFormSuccess(notice, t('form.createSuccess'));
         watchForm.reset();
         setMediaTypesPicker(watchForm.querySelector('[data-media-types-picker]'), null);
+        syncCommentDelayFieldVisibility(watchForm);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
         showMobFormError(notice, e, 'form.createFailed');
       }
     });
+    bindCommentDelayField(watchForm);
   }
 
   // Channel download form

@@ -18,10 +18,26 @@ class ForwardWatchBackupCase(unittest.TestCase):
             'target_link': 'https://t.me/target',
             'include_comment': True,
             'resolve_deep_link': False,
+            'comment_delay_minutes': 90,
         })
         self.assertEqual(entry['source_link'], 'https://t.me/source')
         self.assertTrue(entry['include_comment'])
         self.assertFalse(entry['resolve_deep_link'])
+        self.assertEqual(90, entry['comment_delay_minutes'])
+
+    def test_normalize_missing_comment_delay_inherits(self):
+        entry = normalize_forward_watch_entry({
+            'source_link': 'https://t.me/source',
+            'target_link': 'https://t.me/target',
+        })
+        self.assertIsNone(entry['comment_delay_minutes'])
+
+    def test_normalize_rejects_invalid_comment_delay(self):
+        self.assertIsNone(normalize_forward_watch_entry({
+            'source_link': 'https://t.me/source',
+            'target_link': 'https://t.me/target',
+            'comment_delay_minutes': 9999,
+        }))
 
     def test_normalize_rejects_invalid_links(self):
         self.assertIsNone(normalize_forward_watch_entry({'source_link': 'http://bad', 'target_link': 'https://t.me/target'}))

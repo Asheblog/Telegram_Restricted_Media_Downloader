@@ -1677,15 +1677,19 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
     this.reset();
     setMediaTypesPicker(this.querySelector('[data-media-types-picker]'), null);
+    syncCommentDelayFieldVisibility(this);
   } catch(err) {
     alert(translateApiError(err, 'form.createFailed'));
   }
 });
+bindCommentDelayField($('#watch-forward-form'));
+bindCommentDelayField($('#watch-edit-form'));
 
 document.addEventListener('click', async function(e) {
   const menuBtn = e.target.closest('[data-watch-menu]');
@@ -1906,8 +1910,14 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   const archiveAuthor = $('#edit-watch-archive-author');
   if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
+  const delayInput = $('#edit-watch-comment-delay');
+  if (delayInput) {
+    delayInput.value = watch.comment_delay_minutes == null ? '' : String(watch.comment_delay_minutes);
+  }
   ensureOverrideMediaTypeGrids();
   setMediaTypesPicker($('#watch-edit-media-types-picker'), watch.media_types);
+  bindCommentDelayField($('#watch-edit-form'));
+  syncCommentDelayFieldVisibility($('#watch-edit-form'));
   $('#watch-edit-overlay').classList.add('open');
 }
 
@@ -2026,6 +2036,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
         archive_by_author: Boolean(fd.get('archive_by_author')),
+        comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
         media_types: readMediaTypesOverride(this),
       }),
     });

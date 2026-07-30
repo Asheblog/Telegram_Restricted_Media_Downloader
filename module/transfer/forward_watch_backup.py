@@ -26,11 +26,20 @@ def normalize_forward_watch_entry(raw: Any) -> dict[str, Any] | None:
         return None
     if not target_link.startswith('https://t.me/'):
         return None
+    from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
+
+    try:
+        comment_delay_minutes = normalize_optional_comment_delay_minutes(
+            raw.get('comment_delay_minutes')
+        )
+    except ValueError:
+        return None
     return {
         'source_link': source_link,
         'target_link': target_link,
         'include_comment': bool(raw.get('include_comment')),
         'resolve_deep_link': bool(raw.get('resolve_deep_link')),
+        'comment_delay_minutes': comment_delay_minutes,
     }
 
 

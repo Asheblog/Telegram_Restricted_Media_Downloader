@@ -85,6 +85,7 @@ class FakeWebUiOperations:
                 'target_link': target_link,
                 'include_comment': bool(payload.get('include_comment')),
                 'resolve_deep_link': bool(payload.get('resolve_deep_link')),
+                'comment_delay_minutes': payload.get('comment_delay_minutes'),
             }
             return {'watches': [self.watches[watch_id]]}
         raise ValueError('Unsupported watch type.')
@@ -1991,6 +1992,59 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.assertTrue(operations.watches['forward:https://t.me/source->https://t.me/target']['include_comment'])
             finally:
                 server.stop()
+
+    def test_webui_forward_watch_accepts_comment_delay_override(self):
+        directory = tempfile.mkdtemp()
+        store = TransferStore(directory=directory)
+        operations = FakeWebUiOperations()
+        server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
+        server.start(open_browser=False)
+        headers = self._authenticated_headers(server, content_type='application/json')
+        try:
+            conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+            conn.request(
+                'POST',
+                '/api/watches',
+                body=json.dumps({
+                    'type': 'forward',
+                    'source_link': 'https://t.me/slow',
+                    'target_link': 'https://t.me/target',
+                    'include_comment': True,
+                    'comment_delay_minutes': 120,
+                }),
+                headers=headers
+            )
+            response = conn.getresponse()
+            body = json.loads(response.read().decode('utf-8'))
+            self.assertEqual(201, response.status)
+            self.assertEqual(120, body['watches'][0]['comment_delay_minutes'])
+            self.assertEqual(
+                120,
+                operations.watches['forward:https://t.me/slow->https://t.me/target']['comment_delay_minutes'],
+            )
+
+            conn.request(
+                'POST',
+                '/api/watches',
+                body=json.dumps({
+                    'type': 'forward',
+                    'source_link': 'https://t.me/bad',
+                    'target_link': 'https://t.me/target',
+                    'include_comment': True,
+                    'comment_delay_minutes': 9999,
+                }),
+                headers=headers
+            )
+            bad = conn.getresponse()
+            bad_body = json.loads(bad.read().decode('utf-8'))
+            self.assertEqual(400, bad.status)
+            self.assertEqual('invalid_comment_delay_minutes', bad_body['error_code'])
+        finally:
+            server.stop()
+            conn = getattr(getattr(store, '_tls', None), 'conn', None)
+            if conn is not None:
+                conn.close()
+                store._tls.conn = None
 
     def test_webui_no_longer_exposes_separate_forward_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:

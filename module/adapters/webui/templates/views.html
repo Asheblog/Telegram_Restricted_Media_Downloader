@@ -258,6 +258,11 @@
               <span data-i18n="watches.archiveByAuthor">按作者归档</span>
             </label>
           </div>
+          <div class="form-group comment-delay-field hidden" data-comment-delay-field>
+            <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
+            <input class="form-input" name="comment_delay_minutes" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+            <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+          </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
@@ -386,6 +391,11 @@
           <input type="checkbox" name="archive_by_author" id="edit-watch-archive-author" class="w-4 h-4">
           <span data-i18n="watches.archiveByAuthor">按作者归档</span>
         </label>
+      </div>
+      <div class="form-group comment-delay-field hidden" data-comment-delay-field>
+        <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
+        <input class="form-input" name="comment_delay_minutes" id="edit-watch-comment-delay" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+        <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
       </div>
       <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
@@ -891,7 +901,7 @@
         <div class="form-group mt-3">
           <label class="form-label" data-i18n="settings.commentDelayMinutes">评论区延迟抓取（分钟）</label>
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
-          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
+          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>

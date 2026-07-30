@@ -894,6 +894,14 @@ function openMobileWatchEditSheet(watchId) {
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
       '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
+      '<div' + (watch.include_comment ? '' : ' class="hidden"') + ' data-comment-delay-field>' +
+        '<label><span>' + esc(t('watches.commentDelayMinutes')) + '</span>' +
+          '<input type="number" name="comment_delay_minutes" min="0" max="1440" value="' +
+            (watch.comment_delay_minutes == null ? '' : escAttr(String(watch.comment_delay_minutes))) +
+            '" placeholder="' + escAttr(t('watches.commentDelayPlaceholder')) + '">' +
+        '</label>' +
+        '<p class="mob-form-hint">' + esc(t('watches.commentDelayHint')) + '</p>' +
+      '</div>' +
       mediaTypesPickerMarkup({ compact: true, selected: watch.media_types }) +
       '<div style="display:flex;gap:8px;margin-top:6px;">' +
         '<button class="mob-btn watch-touch-btn" type="submit">' + esc(t('action.save')) + '</button>' +
@@ -902,6 +910,7 @@ function openMobileWatchEditSheet(watchId) {
     '</form>';
   overlay.classList.add('open');
   bindAllMediaTypesPickers(sheet);
+  bindCommentDelayField(document.getElementById('mob-watch-edit-form'));
   document.getElementById('mob-watch-edit-cancel')?.addEventListener('click', closeSheet);
   document.getElementById('mob-watch-edit-form')?.addEventListener('submit', async function(event) {
     event.preventDefault();
@@ -912,6 +921,7 @@ function openMobileWatchEditSheet(watchId) {
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
       archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
+      comment_delay_minutes: readOptionalCommentDelayMinutes(form),
       media_types: readMediaTypesOverride(form)
     };
     try {
@@ -1631,7 +1641,7 @@ function renderMobSettingsForm() {
     '</div>' +
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
-    '<p class="text-xs text-muted" style="margin-top:4px;">监听转发包含评论区时，主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">系统默认：任务未单独设置时生效。主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
     '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
@@ -3020,6 +3030,10 @@ async function runArchiveOrganizeMobile() {
       } else {
         if (targetGroup) targetGroup.classList.remove('hidden');
         if (commentGroup) commentGroup.classList.remove('hidden');
+        if (commentGroup) {
+          bindCommentDelayField(commentGroup);
+          syncCommentDelayFieldVisibility(commentGroup);
+        }
         if (sourceLabel) sourceLabel.querySelector('span').textContent = '来源频道';
         if (sourceTextarea) { sourceTextarea.classList.add('hidden'); sourceTextarea.required = false; }
         if (sourceInput) { sourceInput.classList.remove('hidden'); sourceInput.required = true; }
@@ -3075,6 +3089,7 @@ async function runArchiveOrganizeMobile() {
         payload.target_link = formData.get('target_link');
         payload.include_comment = watchForm.querySelector('[name="include_comment"]') ? watchForm.querySelector('[name="include_comment"]').checked : false;
         payload.resolve_deep_link = watchForm.querySelector('[name="resolve_deep_link"]') ? watchForm.querySelector('[name="resolve_deep_link"]').checked : false;
+        payload.comment_delay_minutes = readOptionalCommentDelayMinutes(watchForm);
       }
       payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
       payload.media_types = readMediaTypesOverride(watchForm);
@@ -3084,11 +3099,13 @@ async function runArchiveOrganizeMobile() {
         showMobFormSuccess(notice, t('form.createSuccess'));
         watchForm.reset();
         setMediaTypesPicker(watchForm.querySelector('[data-media-types-picker]'), null);
+        syncCommentDelayFieldVisibility(watchForm);
         setTimeout(function() { if (notice) notice.classList.add('hidden'); loadMobileWatches(); }, 1000);
       } catch (e) {
         showMobFormError(notice, e, 'form.createFailed');
       }
     });
+    bindCommentDelayField(watchForm);
   }
 
   // Channel download form

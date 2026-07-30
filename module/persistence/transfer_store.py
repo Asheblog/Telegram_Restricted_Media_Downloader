@@ -370,6 +370,7 @@ class TransferStore:
                     'error_message': 'TEXT',
                     'media_types': 'TEXT',
                     'archive_by_author': 'INTEGER NOT NULL DEFAULT 0',
+                    'comment_delay_minutes': 'INTEGER',
                 }
             )
             self._ensure_indexes(conn)
@@ -2012,6 +2013,8 @@ class TransferStore:
         watch['include_comment'] = bool(watch.get('include_comment'))
         watch['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
         watch['archive_by_author'] = bool(watch.get('archive_by_author'))
+        delay = watch.get('comment_delay_minutes')
+        watch['comment_delay_minutes'] = int(delay) if delay is not None else None
         watch['media_types'] = normalize_media_types(watch.get('media_types'))
         return watch
 
@@ -2024,19 +2027,22 @@ class TransferStore:
             include_comment: bool = False,
             resolve_deep_link: bool = False,
             archive_by_author: bool = False,
+            comment_delay_minutes: Optional[int] = None,
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None,
             media_types: Optional[dict] = None,
     ) -> Dict[str, Any]:
         now = self.utc_now()
         media_types_json = serialize_media_types(media_types)
+        delay_value = None if comment_delay_minutes is None else int(comment_delay_minutes)
         with self.connect() as conn:
             conn.execute(
                 '''
                 INSERT INTO live_transfer_watches (
                     id, type, source_link, target_link, include_comment, resolve_deep_link,
-                    archive_by_author, media_types, status, error_message, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    archive_by_author, comment_delay_minutes, media_types, status, error_message,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     type = excluded.type,
                     source_link = excluded.source_link,
@@ -2044,6 +2050,7 @@ class TransferStore:
                     include_comment = excluded.include_comment,
                     resolve_deep_link = excluded.resolve_deep_link,
                     archive_by_author = excluded.archive_by_author,
+                    comment_delay_minutes = excluded.comment_delay_minutes,
                     media_types = excluded.media_types,
                     status = excluded.status,
                     error_message = excluded.error_message,
@@ -2052,7 +2059,7 @@ class TransferStore:
                 (
                     watch_id, watch_type, source_link, target_link,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    int(bool(archive_by_author)),
+                    int(bool(archive_by_author)), delay_value,
                     media_types_json, status, error_message, now, now
                 )
             )
@@ -2064,6 +2071,7 @@ class TransferStore:
             'include_comment': bool(include_comment),
             'resolve_deep_link': bool(resolve_deep_link),
             'archive_by_author': bool(archive_by_author),
+            'comment_delay_minutes': delay_value,
             'media_types': normalize_media_types(media_types),
             'status': status,
             'error_message': error_message,

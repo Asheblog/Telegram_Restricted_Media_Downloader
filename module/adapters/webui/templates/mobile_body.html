@@ -313,6 +313,12 @@
                 <span data-i18n="watches.resolveDeepLink">深链取片</span>
               </label>
             </div>
+            <div class="hidden" data-comment-delay-field style="margin-top:8px;">
+              <label><span data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</span>
+                <input type="number" name="comment_delay_minutes" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
+              </label>
+              <p class="mob-form-hint" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+            </div>
             <p class="mob-form-hint mob-form-hint--warn" data-i18n="watches.resolveDeepLinkHint">
               勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
             </p>

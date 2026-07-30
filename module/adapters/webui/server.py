@@ -1558,6 +1558,17 @@ class WebUiServer:
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
             archive_by_author = bool(payload.get('archive_by_author'))
+            from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
+            try:
+                comment_delay_minutes = normalize_optional_comment_delay_minutes(
+                    payload.get('comment_delay_minutes')
+                )
+            except ValueError:
+                raise WebUiApiError(
+                    'invalid_comment_delay_minutes',
+                    'Comment delay must be empty (inherit) or an integer from 0 to 1440.',
+                    HTTPStatus.BAD_REQUEST,
+                )
             if not source_link:
                 raise WebUiApiError('watch_source_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
             if not target_link:
@@ -1574,6 +1585,7 @@ class WebUiServer:
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
                 'archive_by_author': archive_by_author,
+                'comment_delay_minutes': comment_delay_minutes,
                 'media_types': parse_media_types_payload(payload.get('media_types')),
             }
         create_watch = self._operation('create_watch')
@@ -1600,6 +1612,7 @@ class WebUiServer:
         if not isinstance(payload, dict):
             raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
         from module.core.media_types import parse_media_types_payload
+        from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
         resolve_deep_link = bool(payload.get('resolve_deep_link'))
         self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
         payload = {
@@ -1608,6 +1621,17 @@ class WebUiServer:
             'archive_by_author': bool(payload.get('archive_by_author')),
             'media_types': parse_media_types_payload(payload.get('media_types')),
         }
+        if 'comment_delay_minutes' in payload:
+            try:
+                payload['comment_delay_minutes'] = normalize_optional_comment_delay_minutes(
+                    payload.get('comment_delay_minutes')
+                )
+            except ValueError:
+                raise WebUiApiError(
+                    'invalid_comment_delay_minutes',
+                    'Comment delay must be empty (inherit) or an integer from 0 to 1440.',
+                    HTTPStatus.BAD_REQUEST,
+                )
         update_watch = self._operation('update_watch')
         if update_watch:
             try:

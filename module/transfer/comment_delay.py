@@ -16,6 +16,24 @@ DelayGetter = Callable[[], int]
 CancelHook = Callable[[dict], Any]
 ActiveDerivedChecker = Callable[[dict], bool]
 
+_COMMENT_DELAY_MIN = 0
+_COMMENT_DELAY_MAX = 1440
+
+
+def normalize_optional_comment_delay_minutes(value) -> Optional[int]:
+    """Parse optional per-watch delay. None/blank = inherit global; 0..1440 = override."""
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('invalid_comment_delay_minutes') from exc
+    if minutes < _COMMENT_DELAY_MIN or minutes > _COMMENT_DELAY_MAX:
+        raise ValueError('invalid_comment_delay_minutes')
+    return minutes
+
 
 class CommentDelayScheduler:
     def __init__(
@@ -85,6 +103,15 @@ class CommentDelayScheduler:
             if not inflight.done():
                 inflight.cancel()
 
+    def _resolve_delay_minutes(self, watch_id: str) -> int:
+        if watch_id:
+            watch = self.store.get_live_transfer_watch(str(watch_id))
+            if watch is not None:
+                override = watch.get('comment_delay_minutes')
+                if override is not None:
+                    return int(override)
+        return int(self.delay_minutes_getter() or 0)
+
     async def schedule(
             self,
             *,
@@ -95,7 +122,7 @@ class CommentDelayScheduler:
             target_link: str,
             client=None,
     ) -> Optional[dict]:
-        delay_minutes = int(self.delay_minutes_getter() or 0)
+        delay_minutes = self._resolve_delay_minutes(watch_id)
         if delay_minutes <= 0:
             await self.executor({
                 'watch_id': watch_id,

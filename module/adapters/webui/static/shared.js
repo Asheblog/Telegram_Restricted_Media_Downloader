@@ -62,6 +62,9 @@ const i18n = {
     'watches.target': '目标频道',
     'watches.sources': '来源频道（每行一个）',
     'watches.includeComment': '包含评论区',
+    'watches.commentDelayMinutes': '评论区延迟（分钟）',
+    'watches.commentDelayHint': '留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。',
+    'watches.commentDelayPlaceholder': '留空=系统默认',
     'watches.resolveDeepLink': '深链取片',
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.archiveByAuthor': '按作者归档',
@@ -292,8 +295,8 @@ const i18n = {
     'settings.downloadUpload': '受限转发时下载后上传',
     'settings.uploadDelete': '上传完成删除本地文件',
     'settings.pendingLimit': '下载后上传队列',
+    'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
-    'settings.commentDelayHint': '监听转发开启包含评论区时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -546,6 +549,9 @@ const i18n = {
     'watches.target': 'Target channel',
     'watches.sources': 'Source channels (one per line)',
     'watches.includeComment': 'Include comments',
+    'watches.commentDelayMinutes': 'Comment delay (minutes)',
+    'watches.commentDelayHint': 'Leave blank to use the system default; 0 means capture immediately. Only applies when comments are included.',
+    'watches.commentDelayPlaceholder': 'Blank = system default',
     'watches.resolveDeepLink': 'Resolve deep links',
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.archiveByAuthor': 'Archive by author',
@@ -777,7 +783,7 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
-    'settings.commentDelayHint': 'For live forward with comments: forward the post immediately, then capture comments once after this delay. 0 means capture immediately.',
+    'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
     'settings.deepLinkWhitelistHint': 'One bot username per line (optional @). Only t.me/<bot>?start= links for listed bots are resolved. Empty whitelist and unchecked tasks keep the feature off.',
@@ -1208,6 +1214,48 @@ window.bindMediaTypesPicker = bindMediaTypesPicker;
 window.bindAllMediaTypesPickers = bindAllMediaTypesPickers;
 window.setMediaTypesPicker = setMediaTypesPicker;
 window.syncMediaTypesPickerVisibility = syncMediaTypesPickerVisibility;
+
+function readOptionalCommentDelayMinutes(rootOrFormData) {
+  var raw;
+  if (rootOrFormData && typeof rootOrFormData.get === 'function' && !(rootOrFormData.querySelector)) {
+    raw = rootOrFormData.get('comment_delay_minutes');
+  } else if (rootOrFormData && rootOrFormData.querySelector) {
+    var input = rootOrFormData.querySelector('[name="comment_delay_minutes"]');
+    raw = input ? input.value : null;
+  } else {
+    raw = null;
+  }
+  if (raw == null || String(raw).trim() === '') return null;
+  var n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function syncCommentDelayFieldVisibility(root) {
+  if (!root) return;
+  var scope = root.matches && root.matches('[data-comment-delay-field]')
+    ? root.parentElement || root
+    : root;
+  var checkbox = scope.querySelector('[name="include_comment"]');
+  var field = scope.querySelector('[data-comment-delay-field]');
+  if (!field) return;
+  var show = checkbox ? checkbox.checked : false;
+  field.classList.toggle('hidden', !show);
+}
+
+function bindCommentDelayField(root) {
+  if (!root) return;
+  var checkbox = root.querySelector('[name="include_comment"]');
+  if (!checkbox || checkbox.dataset.commentDelayBound) return;
+  checkbox.dataset.commentDelayBound = '1';
+  checkbox.addEventListener('change', function() {
+    syncCommentDelayFieldVisibility(root);
+  });
+  syncCommentDelayFieldVisibility(root);
+}
+
+window.readOptionalCommentDelayMinutes = readOptionalCommentDelayMinutes;
+window.syncCommentDelayFieldVisibility = syncCommentDelayFieldVisibility;
+window.bindCommentDelayField = bindCommentDelayField;
 
 function esc(str) {
   if (!str) return '';
