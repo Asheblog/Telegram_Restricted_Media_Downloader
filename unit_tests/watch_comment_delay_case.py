@@ -151,6 +151,50 @@ class WatchCommentDelaySchedulerCase(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_updating_delay_does_not_cancel_pending_captures(self):
+        from module.transfer.live_watch import LiveWatchManager
+        from module.util import make_forward_watch_rule
+
+        rule = make_forward_watch_rule(
+            'https://t.me/a', 'https://t.me/b', True, False, False
+        )
+        watch_id = f'forward:{rule}'
+        self.store.upsert_live_transfer_watch(
+            watch_id=watch_id,
+            watch_type='forward',
+            source_link='https://t.me/a',
+            target_link='https://t.me/b',
+            include_comment=True,
+            comment_delay_minutes=20,
+        )
+        pending = self.store.schedule_deferred_discussion_capture(
+            watch_id=watch_id,
+            source_chat_id='-1001',
+            source_message_id=42,
+            target_chat_id='-1002',
+            target_link='https://t.me/b',
+            due_at=self.fixed_now + 1200,
+        )
+        manager = LiveWatchManager(
+            transfer_store_getter=lambda: self.store,
+            listen_download_chat={},
+            listen_forward_chat={rule: object()},
+            web_pending_watches={},
+            web_watch_handler_clients={},
+        )
+        result = manager.update_watch(watch_id, {
+            'source_link': 'https://t.me/a',
+            'target_link': 'https://t.me/b',
+            'include_comment': True,
+            'resolve_deep_link': False,
+            'archive_by_author': False,
+            'comment_delay_minutes': 120,
+        })
+        self.assertEqual(120, result['watches'][0]['comment_delay_minutes'])
+        fetched = self.store.get_deferred_discussion_capture(pending['id'])
+        self.assertEqual('pending', fetched['status'])
+        self.assertEqual(pending['due_at'], fetched['due_at'])
+
     def test_watch_override_zero_executes_immediately(self):
         self.store.upsert_live_transfer_watch(
             watch_id='forward:now',

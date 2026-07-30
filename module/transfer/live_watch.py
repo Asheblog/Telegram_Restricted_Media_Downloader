@@ -422,6 +422,38 @@ class LiveWatchManager:
                 raise ValueError('watch_source_conflict')
             if self.has_forward_watch_source(new_source):
                 raise ValueError('watch_already_exists')
+        new_rule = make_forward_watch_rule(
+            new_source,
+            new_target,
+            new_include_comment,
+            new_resolve_deep_link,
+            new_archive_by_author,
+        )
+        # Soft-field-only updates keep the same rule id: persist in place so
+        # pending deferred discussion captures (and their due_at) stay intact.
+        if new_rule == value:
+            existing = (self._transfer_store.get_live_transfer_watch(watch_id)
+                        if self._transfer_store else None) or {}
+            watch = {
+                'id': watch_id,
+                'type': 'forward',
+                'source_link': new_source,
+                'target_link': new_target,
+                'include_comment': new_include_comment,
+                'resolve_deep_link': new_resolve_deep_link,
+                'archive_by_author': new_archive_by_author,
+                'comment_delay_minutes': new_comment_delay_minutes,
+                'media_types': media_types,
+                'status': existing.get('status') or TransferStatus.RUNNING,
+                'error_message': existing.get('error_message'),
+            }
+            watch = self.persist_watch(watch)
+            if watch_id in self.web_pending_watches:
+                self.web_pending_watches[watch_id] = {
+                    **self.web_pending_watches[watch_id],
+                    **watch,
+                }
+            return {'watches': [watch]}
         self.delete_watch(watch_id)
         return self.create_watch({
             'type': 'forward',
