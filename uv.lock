@@ -197,7 +197,7 @@ wheels = [
 
 [[package]]
 name = "telegram-restricted-media-downloader"
-version = "0.2.225"
+version = "0.2.226"
 source = { editable = "." }
 dependencies = [
     { name = "kurigram" },
