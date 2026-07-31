@@ -33,6 +33,8 @@ AGENTS.md
 # include files
 !rar.exe
 !requirements.txt
+!uv.lock
+
 .venv
 .cursor/.worktrees/
 .worktrees/

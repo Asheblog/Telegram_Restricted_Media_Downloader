@@ -220,7 +220,8 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 | 依赖 | 版本 | 用途 |
 |------|------|------|
 | [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
-| rclone | — | PikPak 云盘归档（容器内安装） |
+| rclone | 1.74.4（Dockerfile `RCLONE_VERSION` 固定；checksum 校验） | PikPak 云盘归档（容器内安装） |
+| Python 基础镜像 | 3.13.14-slim（`requires-python` 仍 ≥3.13.2） | Docker 发行线运行时 |
 | SQLite | — | 转存任务状态持久化 |
 | TailwindCSS | ^4.1.18 | WebUI 前端样式（字号 token：page 20 / title 16 / body 14 / caption 12；根 16px；表格统一 caption；仅移动端输入允许 16px；行距：标题 1.25 / 正文与说明 1.5；字距：仅 uppercase 标签 0.04em） |
 | Rich | 14.2.0 | 终端格式化输出 |
@@ -253,7 +254,8 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 ## 开发约定
 
 - **版本号**: `pyproject.toml` 和 `module/__init__.py` 必须一致
-- **测试**: `unit_tests/`，pytest 运行
-- **Docker 构建**: GitHub Actions 在 `v*.*.*` tag push 时触发
+- **依赖**: `pyproject.toml` 为声明真源，`uv.lock` 入库；变更依赖后执行 `uv lock`，再 `uv export --no-dev --no-emit-project --frozen -o requirements.txt`（Docker 用 `--require-hashes` 安装，勿手改 requirements.txt）
+- **测试**: `unit_tests/`，pytest 运行（dev 组：`uv sync --group dev`）
+- **Docker 构建**: GitHub Actions 在 `v*.*.*` tag push 时触发；基础镜像与 rclone 版本见「关键外部依赖」
 - **发布流程**: bump 版本 → 提交 → `git tag -a vX.Y.Z` → push main + tag
 - **提交信息** 末尾可附 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
