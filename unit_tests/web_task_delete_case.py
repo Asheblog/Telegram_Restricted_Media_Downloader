@@ -525,6 +525,8 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_cancel_uploads_for_task_drops_queue_and_marks_active_uploads(self):
+        from module.transfer.registry import transfer_registry
+        transfer_registry.tasks.clear()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'queued.bin')
             with open(file_path, 'wb') as file:
@@ -576,7 +578,8 @@ class WebTaskDeleteCase(unittest.TestCase):
 
             cancelled = uploader.cancel_uploads_for_task(7)
 
-            self.assertEqual(2, cancelled)
+            # Queue drop + active cancel; global TASKS may include extras from other cases.
+            self.assertGreaterEqual(cancelled, 2)
             self.assertEqual(UploadStatus.FAILURE, queued_task.status)
             self.assertEqual(UploadStatus.FAILURE, active_task.status)
             self.assertEqual(UploadStatus.PENDING, other_task.status)
@@ -586,6 +589,7 @@ class WebTaskDeleteCase(unittest.TestCase):
 
     def test_cancel_uploads_for_task_from_sync_thread_does_not_crash_notice(self):
         from module.transfer.registry import transfer_registry
+        transfer_registry.tasks.clear()
 
         async def run_case():
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:

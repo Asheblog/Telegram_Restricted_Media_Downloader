@@ -326,9 +326,14 @@ class WebOperationsMixin:
     def submit_web_task(self, task_id: int) -> None:
         return _require_web_task_manager(self).submit_web_task(task_id)
 
-    def discard_web_task_submission(self, task_id: int, cancel_running: bool = True) -> None:
+    def discard_web_task_submission(
+            self,
+            task_id: int,
+            cancel_running: bool = True,
+            wait: bool = False,
+    ) -> None:
         return _require_web_task_manager(self).discard_web_task_submission(
-            task_id, cancel_running
+            task_id, cancel_running, wait=wait
         )
 
     def drop_web_task_from_queue(self, task_id: int) -> None:
@@ -338,51 +343,13 @@ class WebOperationsMixin:
         return _require_web_task_manager(self).delete_web_task(task_id)
 
     def pause_web_task(self, task_id: int) -> bool:
-        """Pause via host so tests can monkeypatch discard_web_task_submission."""
-        store = getattr(self, 'transfer_store', None)
-        if not store:
-            return False
-        task = store.get_task(task_id)
-        if not task:
-            return False
-        if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
-            return False
-        wm = _require_web_task_manager(self)
-        if wm._has_active_web_transfer_runner(task_id):
-            store.update_task(task_id, status=TransferStatus.PAUSING)
-            store.add_event(task_id, 'Transfer task pause requested.', level='warning')
-            return True
-        store.update_task(task_id, status=TransferStatus.PAUSED)
-        store.add_event(task_id, 'Transfer task paused.', level='warning')
-        self.discard_web_task_submission(task_id, cancel_running=True)
-        wm._kick_web_task_queue()
-        return True
+        return _require_web_task_manager(self).pause_web_task(task_id)
 
     def resume_web_task(self, task_id: int) -> bool:
-        """Resume via host so tests can monkeypatch submit_web_task."""
-        store = getattr(self, 'transfer_store', None)
-        if not store:
-            return False
-        task = store.get_task(task_id)
-        if not task:
-            return False
-        status = task.get('status')
-        if status == TransferStatus.PAUSING:
-            store.update_task(task_id, status=TransferStatus.RUNNING)
-            store.add_event(task_id, 'Transfer task pause cancelled.')
-            return True
-        if status != TransferStatus.PAUSED:
-            return False
-        store.update_task(task_id, status=TransferStatus.PENDING)
-        store.add_event(task_id, 'Transfer task resumed.')
-        self.submit_web_task(task_id)
-        return True
+        return _require_web_task_manager(self).resume_web_task(task_id)
 
     def retry_failed_web_task(self, task_id: int) -> int:
-        return _require_web_task_manager(self).retry_failed_web_task(
-            task_id,
-            submit_fn=self.submit_web_task,
-        )
+        return _require_web_task_manager(self).retry_failed_web_task(task_id)
 
     def list_watches(self, tz_offset_minutes: int | None = None) -> list:
         return self.watch_manager.list_watches(tz_offset_minutes=tz_offset_minutes)
