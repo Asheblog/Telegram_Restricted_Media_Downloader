@@ -220,7 +220,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 | 依赖 | 版本 | 用途 |
 |------|------|------|
 | [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
-| rclone | 1.74.4（Dockerfile `RCLONE_VERSION` 固定；checksum 校验） | PikPak 云盘归档（容器内安装） |
+| rclone | 1.74.4（Dockerfile `TRMD_RCLONE_RELEASE` 固定；checksum 校验；勿用 `RCLONE_*` 名以免与 rclone 环境变量冲突） | PikPak 云盘归档（容器内安装） |
 | Python 基础镜像 | 3.13.14-slim（`requires-python` 仍 ≥3.13.2） | Docker 发行线运行时 |
 | SQLite | — | 转存任务状态持久化 |
 | TailwindCSS | ^4.1.18 | WebUI 前端样式（字号 token：page 20 / title 16 / body 14 / caption 12；根 16px；表格统一 caption；仅移动端输入允许 16px；行距：标题 1.25 / 正文与说明 1.5；字距：仅 uppercase 标签 0.04em） |

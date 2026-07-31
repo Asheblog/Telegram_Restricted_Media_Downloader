@@ -1,6 +1,7 @@
 FROM python:3.13.14-slim
 
-ARG RCLONE_VERSION=1.74.4
+# 勿使用 RCLONE_* 名：rclone 会把该前缀环境变量映射为 CLI flag。
+ARG TRMD_RCLONE_RELEASE=1.74.4
 
 # 设置工作目录。
 WORKDIR /app
@@ -28,11 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          arm64) rclone_arch=arm64 ;; \
          *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
        esac \
-    && rclone_zip="rclone-v${RCLONE_VERSION}-linux-${rclone_arch}.zip" \
-    && rclone_dir="rclone-v${RCLONE_VERSION}-linux-${rclone_arch}" \
-    && curl -fsSL "https://github.com/rclone/rclone/releases/download/v${RCLONE_VERSION}/${rclone_zip}" \
+    && rclone_zip="rclone-v${TRMD_RCLONE_RELEASE}-linux-${rclone_arch}.zip" \
+    && rclone_dir="rclone-v${TRMD_RCLONE_RELEASE}-linux-${rclone_arch}" \
+    && curl -fsSL "https://github.com/rclone/rclone/releases/download/v${TRMD_RCLONE_RELEASE}/${rclone_zip}" \
          -o /tmp/rclone.zip \
-    && curl -fsSL "https://github.com/rclone/rclone/releases/download/v${RCLONE_VERSION}/SHA256SUMS" \
+    && curl -fsSL "https://github.com/rclone/rclone/releases/download/v${TRMD_RCLONE_RELEASE}/SHA256SUMS" \
          -o /tmp/rclone.sha256sums \
     && expected="$(awk -v f="${rclone_zip}" '$2 == f { print $1; exit }' /tmp/rclone.sha256sums)" \
     && test -n "$expected" \
