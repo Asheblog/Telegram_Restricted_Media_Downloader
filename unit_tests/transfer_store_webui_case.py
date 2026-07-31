@@ -19,6 +19,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 
 import module as trmd_module
+from module.adapters.webui.task_manager import WebUITaskManager
 from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
 from module.pikpak_integration import PikpakIntegrationManager
@@ -1598,7 +1599,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 gc_getter=lambda: downloader.__dict__.get('gc'),
                 refresh_counts=lambda tid: (s.refresh_task_counts(tid) if (s := downloader.__dict__.get('transfer_store')) else None),
             )
-            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
+            from module.web_operations import _require_web_task_manager
+            manager = _require_web_task_manager(downloader)
+            manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
 
             reset_items = downloader.retry_failed_web_task(task_id)
 
@@ -1624,11 +1627,32 @@ class TransferStoreWebUiCase(unittest.TestCase):
             task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
             downloader.transfer_store = store
             downloader.web_submitted_task_ids = set()
+            downloader.web_task_queue = asyncio.Queue()
+            downloader.web_operation_queue = asyncio.Queue()
+            downloader.web_operations = {}
+            downloader.web_running_task = None
+            downloader.web_running_task_id = None
             submitted = []
-            downloader.submit_web_task = lambda submitted_task_id: submitted.append(submitted_task_id)
-            downloader.discard_web_task_submission = lambda discarded_task_id, cancel_running=False: submitted.append(
-                f'discard:{discarded_task_id}:{cancel_running}'
+            manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: None,
+                web_task_queue=downloader.web_task_queue,
+                web_submitted_task_ids=downloader.web_submitted_task_ids,
+                web_running_task_getter=lambda: downloader.web_running_task,
+                web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+                web_running_task_id_getter=lambda: downloader.web_running_task_id,
+                web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+                web_operation_queue=downloader.web_operation_queue,
+                web_operations=downloader.web_operations,
             )
+            manager.discard_web_task_submission = (
+                lambda discarded_task_id, cancel_running=False, wait=False: submitted.append(
+                    f'discard:{discarded_task_id}:{cancel_running}'
+                )
+            )
+            manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
+            downloader.web_task_manager = manager
 
             self.assertTrue(downloader.pause_web_task(task_id))
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
@@ -2088,8 +2112,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 end_id=2
             )
             messages = [
-                SimpleNamespace(id=1, link='https://t.me/source/1'),
-                SimpleNamespace(id=2, link='https://t.me/source/2')
+                SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
+                SimpleNamespace(
+                    id=2,
+                    link='https://t.me/source/2',
+                    video=SimpleNamespace(file_size=10, file_name='2.mp4'),
+                ),
             ]
 
             class FakeClient:
@@ -2114,6 +2146,20 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             async def fake_create_download_task(**kwargs):
                 downloader.download_calls.append(kwargs)
+                # Real create_download_task records a transfer item; keep that contract here so
+                # range finalize still sees both messages.
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source-chat',
+                    source_message_id=2,
+                    range_message_id=2,
+                    source_link='https://t.me/source/2',
+                    target_link='https://t.me/pikpak_bot',
+                    media_type='video',
+                    phase='sent',
+                    status=TransferStatus.SUCCESS,
+                    source_folder=kwargs.get('with_upload', {}).get('source_folder'),
+                )
                 return {'status': 'success'}
 
             downloader.forward = fake_forward
@@ -2138,7 +2184,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual('https://t.me/pikpak_bot', fallback['with_upload']['link'])
             self.assertTrue(fallback['with_upload']['with_delete'])
             self.assertFalse(fallback['with_upload']['send_as_media_group'])
-            self.assertEqual('source', fallback['with_upload']['source_folder'])
+            self.assertEqual('source/2 - 2', fallback['with_upload']['source_folder'])
             task = store.get_task(task_id)
             self.assertEqual(2, task['total_items'])
 
@@ -2155,7 +2201,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 end_id=1,
                 include_comment=True
             )
-            source_message = SimpleNamespace(id=1, link='https://t.me/source/1')
+            source_message = SimpleNamespace(
+                id=1,
+                link='https://t.me/source/1',
+                video=SimpleNamespace(file_size=10, file_name='source.mp4'),
+            )
             reply_message = SimpleNamespace(
                 id=10,
                 link='https://t.me/discuss/10',
@@ -2275,6 +2325,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 end_id=2
             )
             store.refresh_task_counts(task_id, expected_total=2, assignment_completed=False)
+            store.update_task(task_id, status=TransferStatus.RUNNING)
             task = store.get_task(task_id)
 
             downloader.transfer_store = store
@@ -2290,7 +2341,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
-                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
                 origin_chat_id='source-chat',
                 target_chat_id='target-chat',
                 source_link='https://t.me/source/1'
@@ -2480,7 +2535,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             used_fallback = asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
-                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
                 origin_chat_id='source-chat',
                 target_chat_id='target-chat',
                 source_link='https://t.me/source/1'
@@ -2656,8 +2715,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 end_id=2
             )
             messages = [
-                SimpleNamespace(id=1, link='https://t.me/source/1'),
-                SimpleNamespace(id=2, link='https://t.me/source/2')
+                SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
+                SimpleNamespace(
+                    id=2,
+                    link='https://t.me/source/2',
+                    video=SimpleNamespace(file_size=10, file_name='2.mp4'),
+                ),
             ]
 
             class FakeClient:
@@ -2805,7 +2872,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             asyncio.run(downloader.transfer_message_to_web_target(
                 task=task,
-                message=SimpleNamespace(id=1, link='https://t.me/source/1'),
+                message=SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
                 origin_chat_id='source-chat',
                 target_chat_id='target-chat',
                 source_link='https://t.me/source/1'
@@ -3247,8 +3318,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store.refresh_task_counts(task_id, expected_total=2, assignment_completed=False)
             store.update_task(task_id, status=TransferStatus.RUNNING)
             messages = [
-                SimpleNamespace(id=1, link='https://t.me/source/1'),
-                SimpleNamespace(id=2, link='https://t.me/source/2')
+                SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
+                SimpleNamespace(
+                    id=2,
+                    link='https://t.me/source/2',
+                    video=SimpleNamespace(file_size=10, file_name='2.mp4'),
+                ),
             ]
 
             class FakeClient:
@@ -3301,8 +3380,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 end_id=3
             )
             messages = [
-                SimpleNamespace(id=1, link='https://t.me/source/1'),
-                SimpleNamespace(id=3, link='https://t.me/source/3')
+                SimpleNamespace(
+                    id=1,
+                    link='https://t.me/source/1',
+                    video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+                ),
+                SimpleNamespace(
+                    id=3,
+                    link='https://t.me/source/3',
+                    video=SimpleNamespace(file_size=10, file_name='3.mp4'),
+                ),
             ]
 
             class FakeClient:
@@ -3603,7 +3690,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     patch('module.downloader.random.uniform', return_value=0):
                 await downloader.forward(
                     client=downloader.app.client,
-                    message=SimpleNamespace(id=1),
+                    message=SimpleNamespace(
+                        id=1,
+                        video=SimpleNamespace(file_size=10, file_name='x.mp4'),
+                    ),
                     message_id=1,
                     origin_chat_id='source-chat',
                     target_chat_id='target-chat',
@@ -3738,23 +3828,37 @@ class TransferStoreWebUiCase(unittest.TestCase):
         downloader.transfer_store = None
         downloader.archive_pikpak_item = fake_archive_pikpak_item
 
-        result = asyncio.run(downloader.forward(
-            client=downloader.app.client,
-            message=video_message,
-            message_id=1,
-            origin_chat_id='source-chat',
-            target_chat_id='target-chat',
-            target_link='https://t.me/pikpak_bot',
-            media_group=[1, 2],
-            done_notice=False,
-            ignore_type_filter=True
-        ))
+        async def run_case():
+            result = await downloader.forward(
+                client=downloader.app.client,
+                message=video_message,
+                message_id=1,
+                origin_chat_id='source-chat',
+                target_chat_id='target-chat',
+                target_link='https://t.me/pikpak_bot',
+                media_group=[1, 2],
+                done_notice=False,
+                ignore_type_filter=True
+            )
+            # Drain fire-and-forget archive tasks created by _run_pikpak_archive_after_forward.
+            for _ in range(50):
+                pending = [
+                    task for task in asyncio.all_tasks()
+                    if task is not asyncio.current_task() and not task.done()
+                ]
+                if not pending:
+                    break
+                await asyncio.wait(pending, timeout=0.2)
+            return result
+
+        result = asyncio.run(run_case())
 
         self.assertEqual([101, 102], [item.id for item in result])
         self.assertEqual(2, len(archive_calls))
         self.assertEqual({1, 2}, {call['message'].id for call in archive_calls})
-        self.assertEqual('chengdudiyi8', archive_calls[0]['source_folder'])
-        self.assertEqual('chengdudiyi8', archive_calls[1]['source_folder'])
+        expected_folder = 'chengdudiyi8/1 - 共同标题'
+        self.assertEqual(expected_folder, archive_calls[0]['source_folder'])
+        self.assertEqual(expected_folder, archive_calls[1]['source_folder'])
         self.assertEqual('2 - 共同标题.jpg', PikpakIntegrationManager.get_message_media_archive_filename(photo_message))
 
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
@@ -3870,7 +3974,12 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 'https://t.me/pikpak_bot',
                 target_profile='pikpak'
             )
-            message = SimpleNamespace(id=1, link='https://t.me/source/1', caption='x' * 5000)
+            message = SimpleNamespace(
+                id=1,
+                link='https://t.me/source/1',
+                caption='x' * 5000,
+                video=SimpleNamespace(file_size=10, file_name='1.mp4'),
+            )
 
             downloader.transfer_store = store
             downloader.uploader = object()
@@ -3963,31 +4072,37 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 if chat_id == 'source-chat' and message_id == 5:
                     yield reply_message
 
-        downloader.app = SimpleNamespace(client=FakeClient())
-        downloader.gc = SimpleNamespace(forward_type={'video': True, 'photo': False, 'text': False})
-        downloader.listen_forward_chat = {
-            'https://t.me/source https://t.me/target --include-comment': object()
-        }
-        downloader.handle_media_groups = {}
-        downloader.forward_calls = []
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            downloader.app = SimpleNamespace(client=FakeClient(), temp_directory=directory)
+            downloader.transfer_store = store
+            downloader.gc = SimpleNamespace(
+                forward_type={'video': True, 'photo': False, 'text': False},
+                get_comment_delay_minutes=lambda: 0,
+            )
+            downloader.listen_forward_chat = {
+                'https://t.me/source https://t.me/target --include-comment': object()
+            }
+            downloader.handle_media_groups = {}
+            downloader.forward_calls = []
 
-        async def fake_forward(**kwargs):
-            downloader.forward_calls.append(kwargs)
+            async def fake_forward(**kwargs):
+                downloader.forward_calls.append(kwargs)
 
-        downloader.forward = fake_forward
+            downloader.forward = fake_forward
 
-        async def fake_parse_link(client, link):
-            if link in ('https://t.me/source', 'https://t.me/source/5'):
-                return {'chat_id': 'source-chat'}
-            if link == 'https://t.me/target':
-                return {'chat_id': 'target-chat'}
-            return {'chat_id': 'unknown'}
+            async def fake_parse_link(client, link):
+                if link in ('https://t.me/source', 'https://t.me/source/5'):
+                    return {'chat_id': 'source-chat'}
+                if link == 'https://t.me/target':
+                    return {'chat_id': 'target-chat'}
+                return {'chat_id': 'unknown'}
 
-        with patch('module.transfer.live_transfer.parse_link', side_effect=fake_parse_link):
-            asyncio.run(downloader.listen_forward(object(), FakeMessage()))
+            with patch('module.transfer.live_transfer.parse_link', side_effect=fake_parse_link):
+                asyncio.run(downloader.listen_forward(object(), FakeMessage()))
 
-        self.assertEqual([5, 15], [call['message_id'] for call in downloader.forward_calls])
-        self.assertEqual('discussion-chat', downloader.forward_calls[1]['origin_chat_id'])
+            self.assertEqual([5, 15], [call['message_id'] for call in downloader.forward_calls])
+            self.assertEqual('discussion-chat', downloader.forward_calls[1]['origin_chat_id'])
 
     def test_listen_forward_downloads_discussion_reply_when_direct_copy_fails(self):
         from pyrogram.errors.exceptions.bad_request_400 import MediaCaptionTooLong
