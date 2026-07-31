@@ -15,7 +15,7 @@ from module.transfer_store import TransferStatus, TransferStore
 
 class FailTransferSystemLogCase(unittest.TestCase):
     def test_fail_transfer_item_writes_system_log_error(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/swag_vip/554',

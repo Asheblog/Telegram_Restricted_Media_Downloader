@@ -47,6 +47,7 @@ class WatchCommentDelayStoreCase(unittest.TestCase):
         self.store = TransferStore(directory=self._tmpdir.name)
 
     def tearDown(self):
+        self.store.close()
         self._tmpdir.cleanup()
 
     def test_persist_null_inherits_and_override_round_trip(self):
@@ -103,6 +104,7 @@ class WatchCommentDelaySchedulerCase(unittest.TestCase):
 
     def tearDown(self):
         self.scheduler.stop()
+        self.store.close()
         self._tmpdir.cleanup()
 
     def test_schedule_inherits_global_when_watch_has_no_override(self):

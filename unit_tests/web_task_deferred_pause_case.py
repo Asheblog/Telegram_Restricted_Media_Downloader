@@ -23,26 +23,28 @@ def import_downloader_class():
 
 class WebTaskDeferredPauseCase(unittest.TestCase):
     def test_pause_without_runner_goes_paused_immediately(self):
-        TelegramRestrictedMediaDownloader = import_downloader_class()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
-            downloader.web_task_manager = None
-            downloader.web_running_task_id = None
-            downloader.web_running_task = None
             discarded = []
-            downloader.discard_web_task_submission = (
+            manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: None,
+                web_task_queue=asyncio.Queue(),
+                web_submitted_task_ids=set(),
+                web_running_task_getter=lambda: None,
+                web_running_task_setter=lambda value: None,
+                web_running_task_id_getter=lambda: None,
+                web_running_task_id_setter=lambda value: None,
+                web_operation_queue=asyncio.Queue(),
+                web_operations={},
+            )
+            manager.discard_web_task_submission = (
                 lambda tid, cancel_running=False, wait=False: discarded.append((tid, cancel_running))
             )
 
-            self.assertTrue(
-                TelegramRestrictedMediaDownloader.pause_web_task.__get__(
-                    downloader,
-                    TelegramRestrictedMediaDownloader,
-                )(task_id)
-            )
+            self.assertTrue(manager.pause_web_task(task_id))
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
             self.assertEqual([(task_id, True)], discarded)
 
@@ -162,6 +164,19 @@ class WebTaskDeferredPauseCase(unittest.TestCase):
                 store.update_task(task_id, status=TransferStatus.RUNNING)
                 downloader = object.__new__(TelegramRestrictedMediaDownloader)
                 downloader.transfer_store = store
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: None,
+                    web_task_queue=asyncio.Queue(),
+                    web_submitted_task_ids=set(),
+                    web_running_task_getter=lambda: None,
+                    web_running_task_setter=lambda value: None,
+                    web_running_task_id_getter=lambda: None,
+                    web_running_task_id_setter=lambda value: None,
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                )
                 started = []
                 messages = [SimpleNamespace(id=11), SimpleNamespace(id=12), SimpleNamespace(id=13)]
                 for message in messages:
@@ -186,7 +201,20 @@ class WebTaskDeferredPauseCase(unittest.TestCase):
                 downloader = object.__new__(TelegramRestrictedMediaDownloader)
                 downloader.transfer_store = store
                 downloader.uploader = None
-                downloader._transfer_download_tasks = {}
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: None,
+                    web_task_queue=asyncio.Queue(),
+                    web_submitted_task_ids=set(),
+                    web_running_task_getter=lambda: None,
+                    web_running_task_setter=lambda value: None,
+                    web_running_task_id_getter=lambda: None,
+                    web_running_task_id_setter=lambda value: None,
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                    uploader_getter=lambda: None,
+                )
                 keep_alive = asyncio.Event()
 
                 async def fake_download():

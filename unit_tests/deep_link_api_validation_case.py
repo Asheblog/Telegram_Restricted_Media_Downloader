@@ -17,7 +17,7 @@ sys.argv = _ORIGINAL_ARGV
 
 class DeepLinkApiValidationCase(unittest.TestCase):
     def test_create_task_requires_whitelist_when_resolve_enabled(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(
                 store=store,
@@ -34,7 +34,7 @@ class DeepLinkApiValidationCase(unittest.TestCase):
             self.assertIn('白名单', ctx.exception.message)
 
     def test_create_task_allows_resolve_false_with_empty_whitelist(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(
                 store=store,

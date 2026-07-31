@@ -291,7 +291,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             conn.close()
 
     def test_log_cleanup_removes_rotated_files_older_than_three_days(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             log_path = os.path.join(directory, 'TRMD_LOG.log')
             old_log = f'{log_path}.2026-06-20'
             fresh_log = f'{log_path}.2026-06-26'
@@ -323,7 +323,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         trmd_module._log_cleanup_thread_started = False
 
     def test_transfer_store_purges_old_event_records_without_deleting_tasks(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1')
             store.add_event(task_id, 'recent event')
@@ -353,14 +353,14 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertNotIn('recent event', messages)
 
     def test_transfer_store_skips_event_purge_until_weekly_interval(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             store.purge_old_event_records(force=True)
             skipped = store.purge_old_event_records(force=False)
             self.assertIsNone(skipped)
 
     def test_transfer_store_purges_old_live_watch_and_cleanup_log_records(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'watch-1'
             store.upsert_live_transfer_watch(watch_id, 'download', 'https://t.me/source')
@@ -391,7 +391,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertIsNotNone(store.get_live_transfer_watch(watch_id))
 
     def test_transfer_store_purges_old_system_logs(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             store.add_system_log('watch', 'message_received', 'new message')
             old_cutoff = TransferStore.retention_cutoff_iso(
@@ -413,7 +413,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertNotIn('new message', messages)
 
     def test_list_system_logs_supports_filters_and_pagination(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             store.add_system_log('watch', 'message_received', 'watch log', level='info')
             store.add_system_log('filter', 'filter_reject', 'filter log', level='warning')
@@ -430,7 +430,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_export_system_logs_text_exports_all_matching_rows(self):
         from module.persistence.system_log import build_system_logs_export_text
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             store.add_system_log(
                 'watch', 'message_received', 'watch log',
@@ -461,7 +461,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertNotIn('watch log', text)
 
     def test_transfer_store_maintenance_vacuums_and_marks_last_run(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1')
             for index in range(200):
@@ -480,7 +480,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertTrue(os.path.exists(f'{store.path}.maintenance'))
 
     def test_transfer_store_runs_maintenance_periodically_from_connections(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             marker_path = f'{store.path}.maintenance'
             old_mtime = time.time() - 7 * 60 * 60
@@ -493,7 +493,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertGreater(os.path.getmtime(marker_path), old_mtime)
 
     def test_transfer_store_read_paths_use_covering_indexes(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1')
             for message_id in range(1, 6):
@@ -568,7 +568,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertIn('IDX_TRANSFER_ITEMS_TASK_STATUS', flattened['count'])
 
     def test_download_success_record_is_reused_only_when_file_is_valid(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             media_path = os.path.join(directory, 'media.bin')
             with open(media_path, 'wb') as file:
                 file.write(b'12345')
@@ -746,7 +746,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual(300, archive['archive_retry_interval_seconds'])
 
     def test_transfer_task_persists_discussion_reply_inclusion(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -759,7 +759,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(1, store.list_tasks()[0]['include_comment'])
 
     def test_task_progress_counts_delete_and_download_records_are_public_behaviors(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             item_id = store.add_item(
@@ -789,7 +789,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertIsNone(store.get_task(task_id))
 
     def test_webui_view_model_is_the_public_task_contract(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -931,7 +931,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             store.connect().close()
 
     def test_webui_task_stats_use_task_level_counts_across_the_full_web_queue(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_ids = {}
             for status in (
@@ -1014,7 +1014,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual({'video': True, 'text': False}, model['selections']['message_filter_media_types'])
 
     def test_webui_exposes_delete_settings_and_download_records_without_secret_leaks(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             media_path = os.path.join(directory, 'media.bin')
             with open(media_path, 'wb') as file:
                 file.write(b'12345')
@@ -1088,7 +1088,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_download_records_support_pagination_and_clear(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             for index in range(3):
                 store.upsert_download_success_record(
@@ -1133,7 +1133,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_telegram_auth_status_requires_webui_session(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
@@ -1169,7 +1169,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_rejects_legacy_basic_authorization_header(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
@@ -1190,7 +1190,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_api_errors_include_stable_error_codes(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
@@ -1249,7 +1249,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_task_api_detects_transfer_range_when_chat_link_has_no_ids(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             submitted = []
             operations = FakeWebUiOperations()
@@ -1287,7 +1287,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_task_api_keeps_message_link_without_auto_range(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             operations.transfer_range = {'start_id': 1, 'end_id': 9}
@@ -1317,7 +1317,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_task_api_reports_empty_detected_transfer_range(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             operations.transfer_range = None
@@ -1345,7 +1345,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_task_retry_failed_resets_failed_items_and_resubmits_task(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -1404,7 +1404,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_downloader_retry_failed_recovers_pikpak_timeout_before_resubmitting(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/chengdudiyi8',
@@ -1476,7 +1476,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_downloader_retry_failed_recovers_pikpak_archive_failure_before_resubmitting(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/ctuxas',
@@ -1544,7 +1544,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_downloader_retry_failed_resubmits_items_that_cannot_be_recovered(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/chengdudiyi8',
@@ -1619,7 +1619,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_task_pause_blocks_scheduling_and_resume_resubmits(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
             downloader.transfer_store = store
@@ -1690,7 +1690,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             def detect_transfer_range(self, source_link: str):
                 return None
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
             operations = TaskControlOperations(store)
@@ -1717,7 +1717,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_exposes_live_transfer_watch_operations(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -1753,7 +1753,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_exports_and_imports_forward_watches(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -1822,7 +1822,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_rejects_conflicting_live_transfer_watch_sources(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -1859,7 +1859,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_exposes_statistics_and_table_export_operations(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -1891,7 +1891,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_exposes_upload_channel_download_and_forward_submission(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             media_path = os.path.join(directory, 'media.bin')
             with open(media_path, 'wb') as file:
                 file.write(b'12345')
@@ -1939,7 +1939,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_task_api_accepts_discussion_reply_inclusion(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             server = WebUiServer(store=store, username='admin', password='pass')
             server.start(open_browser=False)
@@ -1966,7 +1966,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_forward_watch_accepts_discussion_reply_inclusion(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -2047,7 +2047,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 store._tls.conn = None
 
     def test_webui_no_longer_exposes_separate_forward_endpoint(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -2078,7 +2078,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2145,7 +2145,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_transfer_includes_discussion_replies_when_enabled(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2211,7 +2211,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source/1',
@@ -2265,7 +2265,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_forward_updates_task_progress_before_assignment_completes(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2455,7 +2455,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_without_ingest_confirmation_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2497,7 +2497,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_without_target_message_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2540,7 +2540,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_transfer_skips_empty_source_message_without_forwarding(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2646,7 +2646,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_pikpak_confirmation_failure_continues_range_assignment(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2782,7 +2782,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_non_pikpak_forward_does_not_wait_for_ingest_confirmation(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -2999,7 +2999,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_pikpak_upload_archive_failure_keeps_upload_success_and_records_archive_error(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/ctuxas/1',
@@ -3083,7 +3083,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_downloader_retry_failed_recovers_pikpak_upload_archive_failure_before_resubmitting(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/ctuxas/1',
@@ -3169,7 +3169,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_pikpak_transfer_over_target_limit_skips_before_forward_or_download(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source/1',
@@ -3225,7 +3225,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_transfer_resumes_running_range_without_repeating_completed_items(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -3291,7 +3291,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_webui_transfer_skips_missing_range_messages_and_continues(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source',
@@ -3784,7 +3784,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertEqual([2, 3, 4], submitted_task_ids)
 
     def test_webui_delete_task_uses_operations_cleanup(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             operations = TaskDeletingOperations(store)
@@ -3816,7 +3816,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             started_task_ids = []
             cancelled_task_ids = []
 
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 running_task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
                 next_task_id = store.create_task('https://t.me/source/2', 'https://t.me/pikpak_bot')
@@ -3863,7 +3863,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/source/1',
@@ -4053,7 +4053,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self.assertFalse(fallback['with_upload']['send_as_media_group'])
 
     def test_webui_accepts_non_recursive_directory_upload_for_upload_command_parity(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             with open(os.path.join(directory, 'media.bin'), 'wb') as file:
                 file.write(b'12345')
             store = TransferStore(directory=directory)
@@ -4083,7 +4083,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server.stop()
 
     def test_webui_rejects_invalid_upload_path_with_stable_error_code(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             operations = FakeWebUiOperations()
             server = WebUiServer(store=store, operations=operations, username='admin', password='pass')
@@ -4185,7 +4185,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             )
             return downloader, loop
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             original, original_loop = build_downloader(store)
             restored, restored_loop = build_downloader(store)
@@ -4283,7 +4283,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             loop.close()
 
     def test_live_watch_manager_reports_total_and_today_event_counts(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'forward:https://t.me/source -> https://t.me/target'
             store.upsert_live_transfer_watch(
@@ -4336,7 +4336,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(2, all_events['total'])
 
     def test_live_watch_events_filter_by_status_and_return_status_counts(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             watch_id = 'forward:https://t.me/source -> https://t.me/target'
             store.upsert_live_transfer_watch(
@@ -4440,7 +4440,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             dt_mock.now.return_value = fixed_now
             dt_mock.UTC = datetime.UTC
             dt_mock.timedelta = datetime.timedelta
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 watch_id = 'forward:https://t.me/source -> https://t.me/target'
                 store.upsert_live_transfer_watch(
@@ -4485,7 +4485,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 self.assertEqual(1, server_watch['today_count'])
 
     def test_webui_task_model_exposes_active_transfer_progress_and_speed(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source/7',
@@ -4526,7 +4526,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(40, task['active_progress_percent'])
 
     def test_webui_item_model_exposes_upload_and_download_speed(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source/8',
@@ -4561,7 +4561,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(64, item['active_progress_percent'])
 
     def test_webui_task_list_exposes_transfer_and_disk_metrics(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source/9',
@@ -4599,7 +4599,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
     def test_transfer_speed_metrics_includes_slow_but_active_download(self):
         """1MB download chunks at ~100KB/s update only every ~10s; must still count."""
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source/12',
@@ -4638,7 +4638,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, speeds['upload_speed_bps'])
 
     def test_transfer_speed_metrics_ignores_stale_running_item_speeds(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source/10',
@@ -4907,7 +4907,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(100, done['range_progress_percent'])
 
     def test_is_range_message_complete_requires_all_comment_items_terminal(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 source_link='https://t.me/source',
@@ -4949,7 +4949,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task(
                     'https://t.me/source',

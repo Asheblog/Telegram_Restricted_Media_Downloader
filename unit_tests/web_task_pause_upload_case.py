@@ -12,6 +12,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
+from module.adapters.webui.task_manager import WebUITaskManager
 from module.enums import UploadStatus
 from module.task import UploadTask
 from module.transfer_store import TransferStore, TransferStatus
@@ -24,31 +25,33 @@ def import_downloader_class():
 
 class WebTaskPauseUploadCase(unittest.TestCase):
     def test_pause_web_task_invokes_upload_pause(self):
-        TelegramRestrictedMediaDownloader = import_downloader_class()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
-            downloader.web_task_manager = None
             discarded = []
-            downloader.discard_web_task_submission = (
+            manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: None,
+                web_task_queue=asyncio.Queue(),
+                web_submitted_task_ids=set(),
+                web_running_task_getter=lambda: None,
+                web_running_task_setter=lambda value: None,
+                web_running_task_id_getter=lambda: None,
+                web_running_task_id_setter=lambda value: None,
+                web_operation_queue=asyncio.Queue(),
+                web_operations={},
+            )
+            manager.discard_web_task_submission = (
                 lambda *args, **kwargs: discarded.append(args[0] if args else None)
             )
-            downloader.web_running_task_id = None
-            downloader.web_running_task = None
 
-            self.assertTrue(
-                TelegramRestrictedMediaDownloader.pause_web_task.__get__(
-                    downloader,
-                    TelegramRestrictedMediaDownloader
-                )(task_id)
-            )
+            self.assertTrue(manager.pause_web_task(task_id))
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
             self.assertEqual([task_id], discarded)
 
     def test_pause_uploads_for_task_drops_queue_without_failure(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'queued.bin')
             with open(file_path, 'wb') as file:
                 file.write(b'12345')
@@ -99,7 +102,7 @@ class WebTaskPauseUploadCase(unittest.TestCase):
             self.assertEqual(9, remaining_task.transfer_meta['task_id'])
 
     def test_resume_upload_stops_when_transfer_task_is_paused(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'video.mp4')
             with open(file_path, 'wb') as file:
                 file.write(b'0' * (1024 * 1024 + 1))
@@ -137,7 +140,7 @@ class WebTaskPauseUploadCase(unittest.TestCase):
             uploader.upload_file_part.assert_not_awaited()
 
     def test_pause_uploads_for_task_cancels_active_resume_upload_task(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'video.mp4')
             with open(file_path, 'wb') as file:
                 file.write(b'0' * (1024 * 1024 + 1))

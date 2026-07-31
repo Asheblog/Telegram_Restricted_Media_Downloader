@@ -1,11 +1,9 @@
 # coding=UTF-8
-import base64
 import datetime
 import hashlib
 import hmac
 import json
 import os
-import re
 import secrets
 import socket
 import threading
@@ -16,14 +14,13 @@ from copy import deepcopy
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Optional
-from urllib.parse import unquote, urlparse, parse_qs
+from urllib.parse import urlparse
 
 from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
 from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
 from module.adapters.webui.view_model import WebUiViewModel
-from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, FONTS
 
 
 SENSITIVE_SETTING_KEYS = {
@@ -362,6 +359,16 @@ class WebUiServer:
         self.auth_provider = provider
 
     def start(self, open_browser: bool = True) -> None:
+        from module.adapters.webui.handlers import (
+            auth,
+            dispatch_delete,
+            dispatch_get,
+            dispatch_patch,
+            dispatch_post,
+            dispatch_put,
+            static_pages,
+        )
+
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -435,34 +442,6 @@ class WebUiServer:
                 """Check auth silently — returns bool without sending error response."""
                 return self._try_authorize()
 
-            def _send_login_page(self):
-                data = LOGIN_PAGE_HTML.encode('utf-8')
-                self.send_response(HTTPStatus.OK)
-                self.send_header('content-type', 'text/html; charset=utf-8')
-                self.send_header('cache-control', 'no-store')
-                self.send_header('content-length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            def _send_font(self, filename: str):
-                b64_data = FONTS.get(filename)
-                if not b64_data:
-                    self._send_error('font_not_found', 'Font not found.', HTTPStatus.NOT_FOUND)
-                    return
-                font_bytes = base64.b64decode(b64_data)
-                ext = filename.rsplit('.', 1)[-1] if '.' in filename else 'woff2'
-                mime = {
-                    'woff2': 'font/woff2',
-                    'woff': 'font/woff',
-                    'ttf': 'font/truetype',
-                }.get(ext, 'font/woff2')
-                self.send_response(HTTPStatus.OK)
-                self.send_header('content-type', mime)
-                self.send_header('cache-control', 'public, max-age=31536000, immutable')
-                self.send_header('content-length', str(len(font_bytes)))
-                self.end_headers()
-                self.wfile.write(font_bytes)
-
             def _send_json(self, payload, status=HTTPStatus.OK):
                 data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
                 self.send_response(status)
@@ -524,19 +503,6 @@ class WebUiServer:
                     status
                 )
 
-            def _send_html(self):
-                ua = self.headers.get('user-agent', '')
-                is_mobile = bool(re.search(r'Mobile|Android|iPhone|iPod', ua))
-                html = WEB_UI_MOBILE_HTML if is_mobile else WEB_UI_HTML
-                data = html.encode('utf-8')
-                self.send_response(HTTPStatus.OK)
-                self._write_pending_cookie()
-                self.send_header('content-type', 'text/html; charset=utf-8')
-                self.send_header('cache-control', 'no-store')
-                self.send_header('content-length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
             def _read_json(self):
                 length = int(self.headers.get('content-length') or '0')
                 raw = self.rfile.read(length)
@@ -569,736 +535,29 @@ class WebUiServer:
                     return None
                 return int(task_id)
 
-            def _handle_login(self):
-                payload = self._read_json()
-                username = str(payload.get('username') or '').strip()
-                password = str(payload.get('password') or '')
-                remember_me = bool(payload.get('remember_me'))
-                if not username or not password:
-                    self._send_json({'error': '请输入用户名和密码。'}, HTTPStatus.BAD_REQUEST)
-                    return
-                if not server.validate_credentials(username, password):
-                    self._send_json({'error': '用户名或密码错误。'}, HTTPStatus.UNAUTHORIZED)
-                    return
-                token = server._generate_session_token()
-                cookie = server._create_session_cookie(token, remember_me=remember_me)
-                self.send_response(HTTPStatus.OK)
-                self.send_header('Set-Cookie', cookie)
-                self.send_header('content-type', 'application/json; charset=utf-8')
-                self.send_header('cache-control', 'no-store')
-                data = json.dumps({'success': True}).encode('utf-8')
-                self.send_header('content-length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            def _handle_logout(self):
-                cookie = f'{server.SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-                self.send_response(HTTPStatus.OK)
-                self.send_header('Set-Cookie', cookie)
-                self.send_header('content-type', 'application/json; charset=utf-8')
-                self.send_header('cache-control', 'no-store')
-                data = json.dumps({'success': True}).encode('utf-8')
-                self.send_header('content-length', str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
             def do_GET(self):
                 parsed = urlparse(self.path)
-
-                # Font files (public, no auth required)
-                if parsed.path.startswith('/fonts/'):
-                    filename = parsed.path[len('/fonts/'):]
-                    if filename and '/' not in filename:
-                        self._send_font(filename)
-                        return
-                    self._send_error('invalid_font_path', 'Invalid font path.', HTTPStatus.BAD_REQUEST)
+                if static_pages.handle_get(self, server, parsed):
                     return
-
-                # SPA page requests: show login page when unauthorized
-                if is_spa_page_path(parsed.path):
-                    if not self._check_page_auth():
-                        self._send_login_page()
-                        return
-                    self._send_html()
-                    return
-
-                # API / other requests require auth
                 if not self._check_auth():
                     return
                 if not self._check_setup_ready():
                     return
-                if parsed.path == '/api/auth/status':
-                    if server.auth_provider:
-                        self._send_json(server.auth_provider.get_state())
-                    else:
-                        self._send_json({'step': 'none', 'error': None, 'user': None})
-                    return
-                if parsed.path == '/api/setup/status':
-                    provider = server.setup_status_provider
-                    if not callable(provider):
-                        self._send_error('setup_unavailable', 'Setup status unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        self._send_json(provider())
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 读取初始化状态失败。')
-                        self._send_error('setup_status_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/tasks':
-                    settings = server.get_settings()
-                    user = (settings or {}).get('user') or {}
-                    payload = server.view_model.task_list()
-                    payload['metrics'] = {
-                        **server.view_model.transfer_speed_metrics(),
-                        **WebUiViewModel.disk_metrics([
-                            user.get('temp_directory'),
-                            user.get('save_directory'),
-                        ]),
-                    }
-                    self._send_json(payload)
-                    return
-                if parsed.path == '/api/settings':
-                    settings = server.get_sanitized_settings()
-                    schema = server.settings_schema()
-                    self._send_json({
-                        'settings': settings,
-                        'schema': schema,
-                        'settings_model': WebUiViewModel.settings_model(settings, schema)
-                    })
-                    return
-                if parsed.path == '/api/download-records':
-                    query = parse_qs(parsed.query)
-                    limit = self._query_int(query, 'limit', 50)
-                    offset = self._query_int(query, 'offset', 0)
-                    total = server.store.count_download_success_records()
-                    records = server.store.list_download_success_records(
-                        limit=limit,
-                        offset=offset
-                    )
-                    self._send_json({
-                        'records': records,
-                        'total': total,
-                        'limit': limit,
-                        'offset': offset
-                    })
-                    return
-                if parsed.path == '/api/statistics':
-                    query = parse_qs(parsed.query)
-                    tz_offset = self._query_optional_int(query, 'tz_offset')
-                    self._send_json(server.statistics(tz_offset_minutes=tz_offset))
-                    return
-                if parsed.path == '/api/operations':
-                    self._send_json({'operations': server.list_operations()})
-                    return
-                if parsed.path == '/api/watches/forward/export':
-                    payload = server.export_forward_watches()
-                    stamp = time.strftime('%Y%m%d-%H%M%S')
-                    self._send_json_download(payload, f'forward-watches-{stamp}.json')
-                    return
-                if parsed.path == '/api/watches':
-                    query = parse_qs(parsed.query)
-                    tz_offset = self._query_optional_int(query, 'tz_offset')
-                    self._send_json({'watches': server.list_watches(tz_offset_minutes=tz_offset)})
-                    return
-                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/events'):
-                    watch_path = parsed.path[len('/api/watches/'):][:-len('/events')]
-                    watch_id = unquote(watch_path)
-                    if not watch_id:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    query = parse_qs(parsed.query)
-                    limit = self._query_int(query, 'limit', 50)
-                    offset = self._query_int(query, 'offset', 0)
-                    today_only = str((query.get('today') or [''])[0]).lower() in ('1', 'true', 'yes')
-                    tz_offset = self._query_optional_int(query, 'tz_offset')
-                    status = str((query.get('status') or [''])[0]).strip() or None
-                    if status and status not in ('success', 'skipped', 'failure'):
-                        self._send_error('invalid_status', 'Invalid status filter.', HTTPStatus.BAD_REQUEST)
-                        return
-                    try:
-                        result = server.list_watch_events(
-                            watch_id,
-                            limit=limit,
-                            offset=offset,
-                            today_only=today_only,
-                            tz_offset_minutes=tz_offset,
-                            status=status
-                        )
-                    except ValueError as exc:
-                        if str(exc) == 'invalid_status':
-                            self._send_error('invalid_status', 'Invalid status filter.', HTTPStatus.BAD_REQUEST)
-                            return
-                        raise
-                    if not result:
-                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
-                        return
-                    self._send_json(result)
-                    return
-                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/download-tasks'):
-                    watch_path = parsed.path[len('/api/watches/'):][:-len('/download-tasks')]
-                    watch_id = unquote(watch_path)
-                    if not watch_id:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    query = parse_qs(parsed.query)
-                    limit = self._query_int(query, 'limit', 200)
-                    payload = server.view_model.watch_download_tasks(watch_id, limit=limit)
-                    if payload is None:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    self._send_json(payload)
-                    return
-                if parsed.path.startswith('/api/watches/') and parsed.path.endswith('/deferred-comments'):
-                    watch_path = parsed.path[len('/api/watches/'):][:-len('/deferred-comments')]
-                    watch_id = unquote(watch_path)
-                    if not watch_id:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    result = server.list_deferred_discussion_captures(watch_id)
-                    if result is None:
-                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
-                        return
-                    self._send_json(result)
-                    return
-                if parsed.path.startswith('/api/tasks/'):
-                    # 提取路径段: /api/tasks/123 或 /api/tasks/123/summary
-                    subpath = parsed.path[len('/api/tasks/'):]
-                    parts = [p for p in subpath.split('/') if p]
-                    if not parts or not parts[0].isdigit():
-                        self._send_error('invalid_task_id', 'Invalid task id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    task_id = int(parts[0])
-                    query = parse_qs(parsed.query)
-                    if len(parts) > 1 and parts[1] == 'summary':
-                        payload = server.view_model.task_summary(task_id)
-                    else:
-                        payload = server.view_model.task_detail(
-                            task_id,
-                            item_limit=self._query_int(query, 'items_limit', 200),
-                            item_offset=self._query_int(query, 'items_offset', 0),
-                            item_status=(query.get('item_status') or [''])[0] or None,
-                            event_limit=self._query_int(query, 'events_limit', 100),
-                            event_offset=self._query_int(query, 'events_offset', 0),
-                        )
-                    if not payload:
-                        self._send_error('task_not_found', 'Task not found.', HTTPStatus.NOT_FOUND)
-                        return
-                    self._send_json(payload)
-                    return
-                if parsed.path == '/api/media/scan':
-                    query = parse_qs(parsed.query)
-                    task_id = self._query_int(query, 'task_id', 0) or None
-                    items_limit = self._query_int(query, 'items_limit', 0) or None
-                    items_offset = self._query_int(query, 'items_offset', 0)
-                    orphans_limit = self._query_int(query, 'orphans_limit', 0) or None
-                    orphans_offset = self._query_int(query, 'orphans_offset', 0)
-                    self._send_json(server.scan_media_for_cleanup(
-                        task_id=task_id,
-                        items_limit=items_limit,
-                        items_offset=items_offset,
-                        orphans_limit=orphans_limit,
-                        orphans_offset=orphans_offset,
-                    ))
-                    return
-                if parsed.path == '/api/media/cleanup-logs':
-                    self._send_json({'logs': server.list_cleanup_logs()})
-                    return
-                if parsed.path == '/api/archive/author-channels':
-                    try:
-                        self._send_json(server.list_archive_author_channels())
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 列出归档频道失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_channels_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-job':
-                    query = parse_qs(parsed.query)
-                    job_id = (query.get('id') or [None])[0]
-                    active = (query.get('active') or ['0'])[0]
-                    channel_folder = (query.get('channel_folder') or [None])[0]
-                    try:
-                        if str(active) in ('1', 'true', 'yes'):
-                            self._send_json(server.get_active_archive_author_job(channel_folder))
-                            return
-                        if not job_id:
-                            raise ValueError('id is required')
-                        self._send_json(server.get_archive_author_job(str(job_id)))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 查询归档整理进度失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_job_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-plan-moves':
-                    query = parse_qs(parsed.query)
-                    try:
-                        self._send_json(server.list_archive_author_plan_moves({
-                            'job_id': (query.get('job_id') or [None])[0],
-                            'channel_folder': (query.get('channel_folder') or [None])[0],
-                            'bucket': (query.get('bucket') or [''])[0],
-                            'offset': self._query_int(query, 'offset', 0),
-                            'limit': self._query_int(query, 'limit', 50),
-                        }))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 查询归档迁移明细失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_plan_moves_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/system-logs':
-                    query = parse_qs(parsed.query)
-                    limit = self._query_int(query, 'limit', 50)
-                    offset = self._query_int(query, 'offset', 0)
-                    category = (query.get('category') or [None])[0]
-                    level = (query.get('level') or [None])[0]
-                    trace_id = (query.get('trace_id') or [None])[0]
-                    watch_id = (query.get('watch_id') or [None])[0]
-                    today_only = (query.get('today') or ['0'])[0] in ('1', 'true', 'yes')
-                    tz_offset = self._query_int(query, 'tz_offset', None)
-                    self._send_json(server.list_system_logs(
-                        limit=limit,
-                        offset=offset,
-                        category=category,
-                        level=level,
-                        trace_id=trace_id,
-                        watch_id=watch_id,
-                        today_only=today_only,
-                        tz_offset_minutes=tz_offset
-                    ))
-                    return
-                if parsed.path == '/api/system-logs/export':
-                    query = parse_qs(parsed.query)
-                    category = (query.get('category') or [None])[0]
-                    level = (query.get('level') or [None])[0]
-                    trace_id = (query.get('trace_id') or [None])[0]
-                    watch_id = (query.get('watch_id') or [None])[0]
-                    today_only = (query.get('today') or ['0'])[0] in ('1', 'true', 'yes')
-                    tz_offset = self._query_int(query, 'tz_offset', None)
-                    content = server.export_system_logs(
-                        category=category,
-                        level=level,
-                        trace_id=trace_id,
-                        watch_id=watch_id,
-                        today_only=today_only,
-                        tz_offset_minutes=tz_offset
-                    )
-                    stamp = time.strftime('%Y%m%d-%H%M%S')
-                    self._send_text_download(content, f'system-logs-{stamp}.txt')
+                if dispatch_get(self, server, parsed):
                     return
                 self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
             def do_POST(self):
                 parsed = urlparse(self.path)
-
-                # Public endpoints: login / logout
-                if parsed.path == '/api/auth/login':
-                    self._handle_login()
+                if auth.handle_post_public(self, server, parsed):
                     return
-                if parsed.path == '/api/auth/logout':
-                    self._handle_logout()
-                    return
-
                 if not self._check_auth():
                     return
                 if not self._check_setup_ready():
                     return
-                if parsed.path == '/api/auth/submit':
-                    payload = self._read_json()
-                    if server.auth_provider:
-                        server.auth_provider.submit(payload)
-                        self._send_json({'accepted': True})
-                    else:
-                        self._send_error('no_auth_provider', 'No auth provider configured.', HTTPStatus.SERVICE_UNAVAILABLE)
+                if dispatch_post(self, server, parsed):
                     return
-                if parsed.path == '/api/setup/api':
-                    if not callable(server.setup_api_saver):
-                        self._send_error('setup_unavailable', 'Setup API unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.setup_api_saver(payload))
-                    except ValueError as e:
-                        self._send_error('invalid_setup_api', str(e), HTTPStatus.BAD_REQUEST)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 保存 API 凭证失败。')
-                        self._send_error('setup_api_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/setup/rclone':
-                    if not callable(server.setup_rclone_configurer):
-                        self._send_error('setup_unavailable', 'Setup rclone unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.setup_rclone_configurer(payload))
-                    except ValueError as e:
-                        self._send_error('invalid_setup_rclone', str(e), HTTPStatus.BAD_REQUEST)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 配置 rclone 失败。')
-                        self._send_error('setup_rclone_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/setup/rclone/skip':
-                    if not callable(server.setup_rclone_skipper):
-                        self._send_error('setup_unavailable', 'Setup rclone skip unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.setup_rclone_skipper(payload))
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 跳过 rclone 失败。')
-                        self._send_error('setup_rclone_skip_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/setup/rclone/test':
-                    if not callable(server.setup_rclone_tester):
-                        self._send_error('setup_unavailable', 'Setup rclone test unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.setup_rclone_tester(payload))
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 探测 rclone 失败。')
-                        self._send_error('setup_rclone_test_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/setup/bot':
-                    if not callable(server.setup_bot_saver):
-                        self._send_error('setup_unavailable', 'Setup bot unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        from module.adapters.webui.setup import BotTokenInvalidError, BotTokenNetworkError
-                        payload = self._read_json()
-                        self._send_json(server.setup_bot_saver(payload))
-                    except BotTokenInvalidError as e:
-                        self._send_error('invalid_setup_bot', str(e), HTTPStatus.BAD_REQUEST)
-                    except BotTokenNetworkError as e:
-                        self._send_error('setup_bot_network_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    except ValueError as e:
-                        self._send_error('invalid_setup_bot', str(e), HTTPStatus.BAD_REQUEST)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 保存 Bot Token 失败。')
-                        self._send_error('setup_bot_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/setup/bot/skip':
-                    if not callable(server.setup_bot_skipper):
-                        self._send_error('setup_unavailable', 'Setup bot skip unavailable.', HTTPStatus.NOT_FOUND)
-                        return
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.setup_bot_skipper(payload))
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 跳过 Bot Token 失败。')
-                        self._send_error('setup_bot_skip_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                task_action = server.parse_task_action_path(parsed.path)
-                if task_action:
-                    task_id, action = task_action
-                    try:
-                        self._send_json(server.apply_task_action(task_id, action), HTTPStatus.ACCEPTED)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 执行任务操作失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'task_action_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/diagnostics/export':
-                    try:
-                        payload = self._read_json()
-                        result = server.export_diagnostic_bundle(payload)
-                        path = str((result or {}).get('path') or '')
-                        filename = str((result or {}).get('filename') or 'trmd-diagnostic.zip')
-                        if not path:
-                            raise WebUiApiError(
-                                'diagnostic_export_failed',
-                                '诊断包路径为空。',
-                                HTTPStatus.BAD_REQUEST,
-                            )
-                        with open(path, 'rb') as handle:
-                            data = handle.read()
-                        try:
-                            os.remove(path)
-                        except OSError:
-                            pass
-                        self._send_bytes_download(
-                            data,
-                            filename,
-                            'application/zip',
-                        )
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except ValueError as e:
-                        code = str(e)
-                        if code == 'acknowledge_secrets_required':
-                            self._send_error(
-                                code,
-                                '请先确认诊断包含登录态与密钥，仅私密传输。',
-                                HTTPStatus.BAD_REQUEST,
-                            )
-                        elif code == 'transfer_store_unavailable':
-                            self._send_error(code, '转存数据库不可用。', HTTPStatus.BAD_REQUEST)
-                        else:
-                            self._send_error('diagnostic_export_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 导出诊断包失败。')
-                        self._send_error('diagnostic_export_failed', str(e), HTTPStatus.BAD_REQUEST)
-                    return
-                if parsed.path == '/api/watches/forward/import':
-                    try:
-                        payload = self._read_json()
-                        result = server.import_forward_watches(payload)
-                        self._send_json(result)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 导入监听转发失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'import_forward_watches_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/watches':
-                    try:
-                        payload = self._read_json()
-                        result = server.create_watch(payload)
-                        self._send_json(result, HTTPStatus.CREATED)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 创建实时监听失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'create_watch_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path.startswith('/api/watches/') and (
-                        parsed.path.endswith('/cancel')
-                        or parsed.path.endswith('/run-now')
-                        or parsed.path.endswith('/retry')
-                ):
-                    # /api/watches/{watch_id}/deferred-comments/{id}/cancel|run-now|retry
-                    body_path = parsed.path[len('/api/watches/'):]
-                    if body_path.endswith('/cancel'):
-                        action = 'cancel'
-                        suffix = '/cancel'
-                    elif body_path.endswith('/run-now'):
-                        action = 'run-now'
-                        suffix = '/run-now'
-                    else:
-                        action = 'retry'
-                        suffix = '/retry'
-                    remainder = body_path[:-len(suffix)]
-                    marker = '/deferred-comments/'
-                    if marker not in remainder:
-                        self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
-                        return
-                    watch_part, capture_part = remainder.split(marker, 1)
-                    watch_id = unquote(watch_part)
-                    if not watch_id or not capture_part.isdigit():
-                        self._send_error('invalid_watch_id', 'Invalid deferred comment id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    capture_id = int(capture_part)
-                    try:
-                        if action == 'cancel':
-                            ok = server.cancel_deferred_discussion_capture(watch_id, capture_id)
-                        elif action == 'run-now':
-                            ok = server.run_deferred_discussion_capture_now(watch_id, capture_id)
-                        else:
-                            ok = server.retry_deferred_discussion_capture(watch_id, capture_id)
-                        if not ok:
-                            self._send_error('deferred_comment_not_found', 'Deferred comment job not found.', HTTPStatus.NOT_FOUND)
-                            return
-                        self._send_json({'ok': True, 'action': action, 'id': capture_id})
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 操作延迟评论区任务失败。')
-                        self._send_json(
-                            {'error_code': 'deferred_comment_action_failed', 'error': str(e)},
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/tables/export':
-                    try:
-                        payload = self._read_json()
-                        table_type = str(payload.get('table_type') or '').strip()
-                        result = server.export_table(table_type)
-                        self._send_json(result)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 导出统计表失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'export_table_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/uploads':
-                    try:
-                        payload = self._read_json()
-                        result = server.create_upload(payload)
-                        self._send_json(result, HTTPStatus.ACCEPTED)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 创建上传任务失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'create_upload_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/channel-downloads':
-                    try:
-                        payload = self._read_json()
-                        result = server.create_channel_download(payload)
-                        self._send_json(result, HTTPStatus.ACCEPTED)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 创建频道下载失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'create_channel_download_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/media/cleanup':
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.cleanup_media_files(payload))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 媒体清理失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'media_cleanup_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-scan':
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.scan_archive_author_reorganize(payload))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 作者归档扫描失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_scan_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-resolve':
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.resolve_archive_author_reorganize(payload))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 作者归档重新解析失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_resolve_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-reorganize':
-                    try:
-                        payload = self._read_json()
-                        self._send_json(server.execute_archive_author_reorganize(payload))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 作者归档整理失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_reorganize_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path == '/api/archive/author-job/stop':
-                    try:
-                        payload = self._read_json()
-                        job_id = str(
-                            (payload or {}).get('id')
-                            or (payload or {}).get('job_id')
-                            or ''
-                        ).strip()
-                        self._send_json(server.stop_archive_author_job(job_id))
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 停止归档整理失败。')
-                        self._send_json(
-                            {
-                                'error_code': 'archive_author_stop_failed',
-                                'error': str(e)
-                            },
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    return
-                if parsed.path != '/api/tasks':
-                    self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
-                    return
-                try:
-                    payload = self._read_json()
-                    self._send_json(server.create_task(payload), HTTPStatus.CREATED)
-                except WebUiApiError as e:
-                    self._send_error(e.error_code, e.message, e.status)
-                except Exception as e:
-                    server.diagnostic.exception('[WebUI] 创建任务失败。')
-                    self._send_json(
-                        {
-                            'error_code': 'create_task_failed',
-                            'error': str(e)
-                        },
-                        HTTPStatus.BAD_REQUEST
-                    )
+                self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
             def do_PATCH(self):
                 if not self._check_auth():
@@ -1306,28 +565,9 @@ class WebUiServer:
                 if not self._check_setup_ready():
                     return
                 parsed = urlparse(self.path)
-                if parsed.path != '/api/settings':
-                    self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
+                if dispatch_patch(self, server, parsed):
                     return
-                try:
-                    payload = self._read_json()
-                    settings = server.update_settings(payload)
-                    sanitized = sanitize_settings(settings)
-                    schema = server.settings_schema()
-                    self._send_json({
-                        'settings': sanitized,
-                        'schema': schema,
-                        'settings_model': WebUiViewModel.settings_model(sanitized, schema)
-                    })
-                except Exception as e:
-                    server.diagnostic.exception('[WebUI] 更新设置失败。')
-                    self._send_json(
-                        {
-                            'error_code': 'update_settings_failed',
-                            'error': str(e)
-                        },
-                        HTTPStatus.BAD_REQUEST
-                    )
+                self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
             def do_PUT(self):
                 if not self._check_auth():
@@ -1335,28 +575,7 @@ class WebUiServer:
                 if not self._check_setup_ready():
                     return
                 parsed = urlparse(self.path)
-                if parsed.path.startswith('/api/watches/'):
-                    watch_id = unquote(parsed.path[len('/api/watches/'):])
-                    if not watch_id:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    try:
-                        payload = self._read_json()
-                        result = server.update_watch(watch_id, payload)
-                        self._send_json(result)
-                    except WebUiApiError as e:
-                        self._send_error(e.error_code, e.message, e.status)
-                    except ValueError as e:
-                        self._send_json(
-                            {'error_code': 'update_watch_failed', 'error': str(e)},
-                            HTTPStatus.BAD_REQUEST
-                        )
-                    except Exception as e:
-                        server.diagnostic.exception('[WebUI] 更新实时监听失败。')
-                        self._send_json(
-                            {'error_code': 'update_watch_failed', 'error': str(e)},
-                            HTTPStatus.BAD_REQUEST
-                        )
+                if dispatch_put(self, server, parsed):
                     return
                 self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
@@ -1366,48 +585,9 @@ class WebUiServer:
                 if not self._check_setup_ready():
                     return
                 parsed = urlparse(self.path)
-                if parsed.path == '/api/download-records':
-                    cleared_count = server.store.clear_download_success_records()
-                    self._send_json({'cleared': True, 'count': cleared_count})
+                if dispatch_delete(self, server, parsed):
                     return
-                if parsed.path.startswith('/api/watches/'):
-                    watch_id = unquote(parsed.path[len('/api/watches/'):])
-                    if not watch_id:
-                        self._send_error('invalid_watch_id', 'Invalid watch id.', HTTPStatus.BAD_REQUEST)
-                        return
-                    deleted = server.delete_watch(watch_id)
-                    if not deleted:
-                        self._send_error('watch_not_found', 'Watch not found.', HTTPStatus.NOT_FOUND)
-                        return
-                    self._send_json({'deleted': True, 'watch_id': watch_id})
-                    return
-                if not parsed.path.startswith('/api/tasks/'):
-                    self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
-                    return
-                task_id = self._task_id_from_path()
-                if task_id is None:
-                    return
-                try:
-                    deleted = server.delete_task(task_id)
-                except Exception as e:
-                    server.diagnostic.exception('[WebUI] 删除任务失败。')
-                    self._send_json(
-                        {
-                            'error_code': 'delete_task_failed',
-                            'error': str(e),
-                            'detail': '删除失败',
-                        },
-                        HTTPStatus.BAD_REQUEST,
-                    )
-                    return
-                if not deleted:
-                    self._send_error(
-                        'delete_task_failed',
-                        'Task delete failed. Stop running transfers or retry after files are released.',
-                        HTTPStatus.BAD_REQUEST,
-                    )
-                    return
-                self._send_json({'deleted': True, 'task_id': task_id})
+                self._send_error('not_found', 'Not found.', HTTPStatus.NOT_FOUND)
 
         self.httpd = ThreadingHTTPServer((self.host, self.port), Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)

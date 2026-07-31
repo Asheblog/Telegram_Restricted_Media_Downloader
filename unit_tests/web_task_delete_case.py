@@ -35,32 +35,63 @@ def import_downloader_class():
 
 
 class WebTaskDeleteCase(unittest.TestCase):
+    def _attach_task_manager(self, downloader, store, **kwargs):
+        from module.adapters.webui.task_manager import WebUITaskManager
+
+        loop = kwargs.pop('loop', getattr(downloader, 'loop', None))
+        queue = kwargs.pop('web_task_queue', getattr(downloader, 'web_task_queue', None) or asyncio.Queue())
+        submitted = kwargs.pop(
+            'web_submitted_task_ids',
+            getattr(downloader, 'web_submitted_task_ids', None),
+        )
+        if submitted is None:
+            submitted = set()
+        manager = WebUITaskManager(
+            transfer_store_getter=lambda: store,
+            diagnostic=SimpleNamespace(),
+            loop_getter=lambda: loop,
+            web_task_queue=queue,
+            web_submitted_task_ids=submitted,
+            web_running_task_getter=lambda: getattr(downloader, 'web_running_task', None),
+            web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+            web_running_task_id_getter=lambda: getattr(downloader, 'web_running_task_id', None),
+            web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+            web_operation_queue=kwargs.pop('web_operation_queue', asyncio.Queue()),
+            web_operations=kwargs.pop('web_operations', {}),
+            uploader_getter=lambda: getattr(downloader, 'uploader', None),
+            **kwargs,
+        )
+        downloader.web_task_manager = manager
+        return manager
+
     def test_should_continue_web_transfer_task_false_when_task_deleted(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             downloader = object.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = store
+            self._attach_task_manager(downloader, store)
             self.assertTrue(downloader.should_continue_web_transfer_task(task_id))
             store.delete_task(task_id)
             self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
 
     def test_should_continue_web_transfer_task_false_when_paused(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             store.update_task(task_id, status=TransferStatus.PAUSED)
             downloader = object.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = store
+            self._attach_task_manager(downloader, store)
             self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
 
     def test_process_web_transfer_task_stops_when_task_deleted_mid_run(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task(
                     'https://t.me/source/1',
@@ -74,6 +105,7 @@ class WebTaskDeleteCase(unittest.TestCase):
                 downloader.loop = asyncio.get_running_loop()
                 downloader.app = SimpleNamespace(client=SimpleNamespace(name='test'))
                 downloader.uploader = SimpleNamespace()
+                self._attach_task_manager(downloader, store, loop=downloader.loop)
                 processed_message_ids = []
 
                 async def fake_transfer_message_to_web_target(**kwargs):
@@ -99,6 +131,8 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_delete_web_task_cancels_running_worker_before_file_cleanup(self):
+        from module.adapters.webui.task_manager import WebUITaskManager
+
         MediaManager = import_with_clean_argv(
             lambda: __import__('module.media_manager', fromlist=['MediaManager']).MediaManager
         )
@@ -106,7 +140,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 final_path = os.path.join(directory, 'delete-me.bin')
                 with open(final_path, 'wb') as file:
                     file.write(b'12345')
@@ -145,9 +179,23 @@ class WebTaskDeleteCase(unittest.TestCase):
                         raise
 
                 downloader.process_web_transfer_task = fake_process_web_transfer_task
-                downloader.web_task_manager = None
                 downloader.web_running_task = asyncio.create_task(fake_process_web_transfer_task(task_id))
                 downloader.web_running_task_id = task_id
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: downloader.loop,
+                    web_task_queue=downloader.web_task_queue,
+                    web_submitted_task_ids=downloader.web_submitted_task_ids,
+                    web_running_task_getter=lambda: downloader.web_running_task,
+                    web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
+                    web_running_task_id_getter=lambda: downloader.web_running_task_id,
+                    web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                    cleanup_task_files_getter=lambda tid: downloader.media_manager.cleanup_task_files(tid),
+                    uploader_getter=lambda: None,
+                )
 
                 cleanup_started = False
                 original_cleanup = downloader.media_manager.cleanup_task_files
@@ -160,6 +208,10 @@ class WebTaskDeleteCase(unittest.TestCase):
 
                 with patch.object(downloader, '_ensure_media_manager', return_value=downloader.media_manager):
                     with patch.object(downloader.media_manager, 'cleanup_task_files', side_effect=fake_cleanup) as cleanup_mock:
+                        # Keep manager cleanup getter pointing at the patched method.
+                        downloader.web_task_manager._cleanup_task_files = (
+                            lambda tid: downloader.media_manager.cleanup_task_files(tid)
+                        )
                         deleted = await asyncio.get_running_loop().run_in_executor(
                             None,
                             downloader.delete_web_task,
@@ -183,7 +235,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         from module.web_task_manager import WebUITaskManager
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             downloader = object.__new__(TelegramRestrictedMediaDownloader)
@@ -212,7 +264,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
 
@@ -282,7 +334,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
 
@@ -364,7 +416,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
 
@@ -424,7 +476,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
 
@@ -473,7 +525,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_cancel_uploads_for_task_drops_queue_and_marks_active_uploads(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'queued.bin')
             with open(file_path, 'wb') as file:
                 file.write(b'12345')
@@ -536,7 +588,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         from module.transfer.registry import transfer_registry
 
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 file_path = os.path.join(directory, 'queued.bin')
                 with open(file_path, 'wb') as file:
                     file.write(b'12345')

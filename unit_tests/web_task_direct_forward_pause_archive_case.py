@@ -14,6 +14,7 @@ install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
 from module.adapters.pikpak.integration import PikpakIntegrationManager
+from module.adapters.webui.task_manager import WebUITaskManager
 from module.transfer_store import TransferStore, TransferStatus
 
 
@@ -139,6 +140,20 @@ class WebTaskDirectForwardPauseArchiveCase(unittest.TestCase):
                     return True
 
                 downloader.wait_for_pikpak_ingest_confirmation = fake_ingest
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: None,
+                    web_task_queue=asyncio.Queue(),
+                    web_submitted_task_ids=set(),
+                    web_running_task_getter=lambda: None,
+                    web_running_task_setter=lambda value: None,
+                    web_running_task_id_getter=lambda: None,
+                    web_running_task_id_setter=lambda value: None,
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                    uploader_getter=lambda: None,
+                )
                 downloader.pikpak_manager = PikpakIntegrationManager(
                     transfer_store_getter=lambda: store,
                     pikpak_archive_client_getter=lambda: BlockingArchiveClient(),

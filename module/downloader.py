@@ -150,15 +150,19 @@ from module.transfer.runner import WebTransferRunner
 from module.live_watch_applicator import LiveWatchApplicator
 from module.transfer.live_transfer import LiveTransferService
 
-
-
-
 from module.composition_root import TrmdCompositionRoot
 from module.web_operations import WebOperationsMixin
 from module.bot_host import BotHostMixin
 
 
 class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin, BotHostMixin):
+    """Public facade: composition root + WebOps/BotHost mixins.
+
+    Transfer/listen/forward/PikPak paths mostly delegate to existing services
+    (LiveTransferService, TransferEngine, WebTransferRunner, PikpakIntegrationManager).
+    Remaining body is download-task orchestration and Bot UX glue — not relocated
+    in the deepen round (no pure package moves / no line-count hard caps).
+    """
 
     @property
     def is_bot_running(self) -> bool:
@@ -574,10 +578,16 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             message,
             source_link: str,
             origin_chat_id,
-            limit_error: dict
+            limit_error: dict,
+            range_message_id=None,
     ) -> int:
         return self.transfer_engine.skip_transfer_item_for_target_limit(
-            task, message, source_link, origin_chat_id, limit_error
+            task,
+            message,
+            source_link,
+            origin_chat_id,
+            limit_error,
+            range_message_id=range_message_id,
         )
 
     @staticmethod

@@ -1,4 +1,5 @@
 # coding=UTF-8
+import asyncio
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ sys.argv = [sys.argv[0]]
 
 class TransferItemContinueCase(unittest.TestCase):
     def test_should_continue_web_transfer_item_false_after_failure(self):
+        from module.adapters.webui.task_manager import WebUITaskManager
         from module.persistence.transfer_store import TransferStore, TransferStatus
         from module.web_operations import WebOperationsMixin
 
@@ -26,7 +28,20 @@ class TransferItemContinueCase(unittest.TestCase):
                 status=TransferStatus.RUNNING,
                 phase='downloading',
             )
-            host = SimpleNamespace(transfer_store=store, web_task_manager=None)
+            manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: None,
+                web_task_queue=asyncio.Queue(),
+                web_submitted_task_ids=set(),
+                web_running_task_getter=lambda: None,
+                web_running_task_setter=lambda _value: None,
+                web_running_task_id_getter=lambda: None,
+                web_running_task_id_setter=lambda _value: None,
+                web_operation_queue=asyncio.Queue(),
+                web_operations={},
+            )
+            host = SimpleNamespace(transfer_store=store, web_task_manager=manager)
             self.assertTrue(WebOperationsMixin.should_continue_web_transfer_item(host, item_id))
 
             store.update_item(

@@ -8,11 +8,12 @@ from module.persistence.transfer_store import TransferStatus, TransferStore
 
 class TransferStoreChannelStatsCase(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
+        self._tmpdir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.store = TransferStore(directory=self._tmpdir.name)
         self.task_id = self.store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
 
     def tearDown(self):
+        self.store.close()
         self._tmpdir.cleanup()
 
     def _add(

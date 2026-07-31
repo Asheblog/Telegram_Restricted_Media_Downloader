@@ -14,13 +14,14 @@ TRMD 是一个长期运行的 Telegram 媒体转存工具，通过 WebUI 操作�
 
 ## 核心架构
 
-Phase 0–3 架构解耦已完成：业务实现落在子包，顶层 `module/*.py` 多为兼容 shim；装配集中在 composition root；对外仍以 `TelegramRestrictedMediaDownloader` 为门面。
+Phase 0–3 目录迁移与 Protocol seam 已完成；本轮 **deepen（P1–P4）** 在不改公开门面签名、不做纯搬包、不以行数硬顶为完成标准的前提下，加深了厨房水槽模块。对外仍以 `TelegramRestrictedMediaDownloader` 为门面；装配集中在 composition root。
 
 ```
 main.py
   └── TelegramRestrictedMediaDownloader          # module/downloader.py（门面）
         ├── TrmdCompositionRoot                  # module/composition_root.py（接线）
         ├── WebOperationsMixin                   # module/web_operations.py
+        │     └── ArchiveAuthorOps               # adapters/webui/archive_author_ops.py
         └── BotHostMixin                         # module/bot_host.py
 
 装配出的主要模块：
@@ -32,9 +33,9 @@ main.py
   transfer/progress.py     TransferProgressTracker
   transfer/live_watch.py   LiveWatchManager
   transfer/live_transfer.py LiveTransferService（listen/forward）
-  persistence/transfer_store.py   TransferStore（SQLite）
+  persistence/transfer_store.py   TransferStore 门面（实现见 persistence/store/*）
   adapters/pikpak/         PikPak 集成 + rclone 归档
-  adapters/webui/          HTTP 服务 / ViewModel / 任务调度 / 前端资源
+  adapters/webui/          HTTP 壳 + handlers/* / ViewModel / 任务调度 / 前端资源
   persistence/             LocalStorageGuard / MediaManager / SystemLog
   infra/                   DynamicAsyncWindow / TelegramUploader
   core/config.py           UserConfig + GlobalConfig
@@ -56,17 +57,17 @@ module/
   adapters/
     bot/          # Bot 命令与回调（bot.py, callback_handler.py）
     pikpak/       # PikPak 集成与 rclone 归档
-    webui/        # HTTP 服务、ViewModel、任务调度、内嵌前端
+    webui/        # HTTP 壳、handlers/*、ArchiveAuthorOps、ViewModel、任务调度、内嵌前端
   core/           # Application、Config、Enums、Filter、TargetProfiles
   infra/          # Client、Uploader、AsyncWindow
-  persistence/    # TransferStore、MediaManager、LocalStorageGuard、SystemLog
+  persistence/    # TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
   transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
   utils/          # util、stdio、path_tool、parser、language、diagnostics
 ```
 
 顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）；零引用的 `client.py` shim 已删除，请直接用 `module.infra.client`。
 
-**架构立场**：大规模搬包 / 再拆 God Object 已暂停；后续仅在具体痛点出现时做局部深化（listen/forward 已抽出；TransferPorts 已分簇）。
+**架构立场**：deepen 轮（P1–P4）已完成——Archive Author / Web 任务控制委托、`TransferStore` 按聚合拆 mixin、`WebUiServer` 按 API 域拆 handler、Downloader 门面以委托既有服务为主（残留为下载编排与 Bot UX 胶水）。**不做纯包搬家、不以单文件行数硬顶为完成标准**；后续仅在具体痛点出现时做局部深化。
 
 ---
 

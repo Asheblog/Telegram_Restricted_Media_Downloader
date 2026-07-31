@@ -12,6 +12,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
+from module.adapters.webui.task_manager import WebUITaskManager
 from module.transfer_store import TransferStore, TransferStatus
 
 
@@ -30,6 +31,19 @@ class WebTaskPauseDownloadCase(unittest.TestCase):
                 store.update_task(task_id, status=TransferStatus.RUNNING)
                 downloader = object.__new__(TelegramRestrictedMediaDownloader)
                 downloader.transfer_store = store
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: None,
+                    web_task_queue=asyncio.Queue(),
+                    web_submitted_task_ids=set(),
+                    web_running_task_getter=lambda: None,
+                    web_running_task_setter=lambda value: None,
+                    web_running_task_id_getter=lambda: None,
+                    web_running_task_id_setter=lambda value: None,
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                )
                 download_cancelled = asyncio.Event()
                 keep_running = asyncio.Event()
 
@@ -57,26 +71,28 @@ class WebTaskPauseDownloadCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_pause_web_task_invokes_download_cancellation(self):
-        TelegramRestrictedMediaDownloader = import_downloader_class()
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
-            downloader.web_task_manager = None
             discarded = []
-            downloader.discard_web_task_submission = (
+            manager = WebUITaskManager(
+                transfer_store_getter=lambda: store,
+                diagnostic=SimpleNamespace(),
+                loop_getter=lambda: None,
+                web_task_queue=asyncio.Queue(),
+                web_submitted_task_ids=set(),
+                web_running_task_getter=lambda: None,
+                web_running_task_setter=lambda value: None,
+                web_running_task_id_getter=lambda: None,
+                web_running_task_id_setter=lambda value: None,
+                web_operation_queue=asyncio.Queue(),
+                web_operations={},
+            )
+            manager.discard_web_task_submission = (
                 lambda *args, **kwargs: discarded.append(args[0] if args else None)
             )
-            downloader.web_running_task_id = None
-            downloader.web_running_task = None
 
-            self.assertTrue(
-                TelegramRestrictedMediaDownloader.pause_web_task.__get__(
-                    downloader,
-                    TelegramRestrictedMediaDownloader
-                )(task_id)
-            )
+            self.assertTrue(manager.pause_web_task(task_id))
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)['status'])
             self.assertEqual([task_id], discarded)
 
@@ -154,6 +170,20 @@ class WebTaskPauseDownloadCase(unittest.TestCase):
                 downloader.gc = SimpleNamespace(download_upload=True)
                 downloader.forward_calls = []
                 downloader.fallback_calls = []
+                downloader.web_task_manager = WebUITaskManager(
+                    transfer_store_getter=lambda: store,
+                    diagnostic=SimpleNamespace(),
+                    loop_getter=lambda: None,
+                    web_task_queue=asyncio.Queue(),
+                    web_submitted_task_ids=set(),
+                    web_running_task_getter=lambda: None,
+                    web_running_task_setter=lambda value: None,
+                    web_running_task_id_getter=lambda: None,
+                    web_running_task_id_setter=lambda value: None,
+                    web_operation_queue=asyncio.Queue(),
+                    web_operations={},
+                    uploader_getter=lambda: downloader.uploader,
+                )
 
                 async def fake_forward(**kwargs):
                     downloader.forward_calls.append(kwargs)

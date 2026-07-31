@@ -41,6 +41,7 @@ class WebUITaskManager:
         pause_task_uploads_getter=None,
         cancel_task_downloads_getter=None,
         should_continue_web_transfer_task_getter=None,
+        uploader_getter=None,
     ):
         self._transfer_store = transfer_store_getter
         self.diagnostic = diagnostic
@@ -72,9 +73,26 @@ class WebUITaskManager:
         self._pause_task_uploads = pause_task_uploads_getter
         self._cancel_task_downloads = cancel_task_downloads_getter
         self._should_continue_web_transfer_task = should_continue_web_transfer_task_getter
+        self._uploader = uploader_getter
+        self._transfer_download_tasks: dict = {}
         self.web_operation_counter: int = 0
         self._delete_wait_timeout_seconds: float = 10.0
         self._loop_callback_timeout_seconds: float = 15.0
+
+    def _invoke_on_loop(self, callback: Callable[[], None]) -> None:
+        """Schedule ``callback`` on the WebUI event loop, or run inline if unavailable."""
+        loop = self.loop
+        if loop and hasattr(loop, 'call_soon_threadsafe'):
+            try:
+                if asyncio.get_running_loop() is loop:
+                    callback()
+                    return
+            except RuntimeError:
+                pass
+            if loop.is_running():
+                loop.call_soon_threadsafe(callback)
+                return
+        callback()
 
     def _run_on_web_loop(
             self,
@@ -82,13 +100,14 @@ class WebUITaskManager:
             timeout: Optional[float] = None,
             raise_on_timeout: bool = True,
     ) -> bool:
+        loop = self.loop
         try:
-            if asyncio.get_running_loop() is self.loop:
+            if loop and asyncio.get_running_loop() is loop:
                 callback()
                 return True
         except RuntimeError:
             pass
-        if not self.loop or not self.loop.is_running():
+        if not loop or not loop.is_running():
             callback()
             return True
         done = threading.Event()
@@ -99,7 +118,7 @@ class WebUITaskManager:
             finally:
                 done.set()
 
-        self.loop.call_soon_threadsafe(wrapper)
+        loop.call_soon_threadsafe(wrapper)
         if not done.wait(timeout=timeout or self._loop_callback_timeout_seconds):
             if raise_on_timeout:
                 raise TimeoutError('Timed out waiting for WebUI task queue callback.')
@@ -131,16 +150,7 @@ class WebUITaskManager:
                 self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
             self.start_next_web_transfer_task()
 
-        if self.loop and self.loop.is_running():
-            try:
-                if asyncio.get_running_loop() is self.loop:
-                    kick()
-                    return
-            except RuntimeError:
-                pass
-            self.loop.call_soon_threadsafe(kick)
-            return
-        kick()
+        self._invoke_on_loop(kick)
 
     @property
     def transfer_store(self):
@@ -202,13 +212,7 @@ class WebUITaskManager:
             self.web_task_queue.put_nowait(task_id)
             self.start_next_web_transfer_task()
 
-        try:
-            if asyncio.get_running_loop() is self.loop:
-                enqueue_and_start()
-                return
-        except RuntimeError:
-            pass
-        self.loop.call_soon_threadsafe(enqueue_and_start)
+        self._invoke_on_loop(enqueue_and_start)
 
     def _enqueue_and_process_web_task(self, task_id: int) -> None:
         self.web_submitted_task_ids.discard(task_id)
@@ -241,21 +245,20 @@ class WebUITaskManager:
             if not cancelled_running:
                 self.start_next_web_transfer_task()
 
+        loop = self.loop
         try:
-            if asyncio.get_running_loop() is self.loop:
+            if loop and asyncio.get_running_loop() is loop:
                 cleanup()
                 return
         except RuntimeError:
             pass
-        if wait and self.loop and self.loop.is_running():
+        if wait and loop and loop.is_running():
             synced = self._run_on_web_loop(cleanup, raise_on_timeout=False)
-            if not synced:
-                self.loop.call_soon_threadsafe(cleanup)
+            if not synced and hasattr(loop, 'call_soon_threadsafe'):
+                loop.call_soon_threadsafe(cleanup)
             return
-        if self.loop.is_running():
-            self.loop.call_soon_threadsafe(cleanup)
-        else:
-            cleanup()
+        self._invoke_on_loop(cleanup)
+
     def drop_web_task_from_queue(self, task_id: int) -> None:
         kept_task_ids = []
         while True:
@@ -278,6 +281,123 @@ class WebUITaskManager:
         task = self.transfer_store.get_task(int(task_id))
         # PAUSING keeps in-flight work; only PAUSED aborts mid-item.
         return bool(task and task.get('status') != TransferStatus.PAUSED)
+
+    def should_continue_web_transfer_item(self, item_id: int) -> bool:
+        """False once reconcile/UI marked the item failed — abort in-flight IO cooperatively."""
+        if not self.transfer_store or not item_id:
+            return False
+        item = self.transfer_store.get_item(int(item_id)) or {}
+        return item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
+
+    def should_start_next_web_transfer_item(self, task_id: int) -> bool:
+        """Whether a new Transfer Item may start. False while pausing/paused."""
+        if not self.transfer_store or not task_id:
+            return False
+        task = self.transfer_store.get_task(int(task_id))
+        if not task:
+            return False
+        return task.get('status') not in (TransferStatus.PAUSING, TransferStatus.PAUSED)
+
+    def _transfer_download_registry(self) -> dict:
+        return self._transfer_download_tasks
+
+    def _register_transfer_download_task(
+            self,
+            with_upload: Optional[dict],
+            download_task: asyncio.Task,
+    ) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        raw_task_id = with_upload.get('task_id')
+        if raw_task_id is None or download_task is None:
+            return
+        task_id = int(raw_task_id)
+        self._transfer_download_registry().setdefault(task_id, set()).add(download_task)
+
+    def _unregister_transfer_download_task(
+            self,
+            with_upload: Optional[dict],
+            download_task: asyncio.Task,
+    ) -> None:
+        if not isinstance(with_upload, dict):
+            return
+        raw_task_id = with_upload.get('task_id')
+        if raw_task_id is None:
+            return
+        task_id = int(raw_task_id)
+        registry = self._transfer_download_registry()
+        tasks = registry.get(task_id)
+        if not tasks:
+            return
+        tasks.discard(download_task)
+        if not tasks:
+            registry.pop(task_id, None)
+
+    def cancel_task_downloads(self, task_id: int) -> int:
+        override = self._cancel_task_downloads
+        if callable(override):
+            return int(override(task_id) or 0)
+        registry = self._transfer_download_registry()
+        tasks = list(registry.pop(int(task_id), set()))
+        cancelled = 0
+        for download_task in tasks:
+            if download_task and not download_task.done():
+                download_task.cancel()
+                cancelled += 1
+        return cancelled
+
+    def cancel_task_uploads(self, task_id: int) -> int:
+        override = self._cancel_task_uploads
+        if callable(override):
+            return int(override(task_id) or 0)
+        uploader = self._uploader() if callable(self._uploader) else None
+        if uploader and hasattr(uploader, 'cancel_uploads_for_task'):
+            return int(uploader.cancel_uploads_for_task(task_id) or 0)
+        return 0
+
+    def pause_task_uploads(self, task_id: int) -> int:
+        override = self._pause_task_uploads
+        if callable(override):
+            return int(override(task_id) or 0)
+        uploader = self._uploader() if callable(self._uploader) else None
+        if uploader and hasattr(uploader, 'pause_uploads_for_task'):
+            return int(uploader.pause_uploads_for_task(task_id) or 0)
+        return 0
+
+    def has_active_transfer_io(self, task_id: int) -> bool:
+        for download_task in self._transfer_download_registry().get(int(task_id), set()):
+            if download_task is not None and not download_task.done():
+                return True
+        uploader = self._uploader() if callable(self._uploader) else None
+        registry_getter = getattr(uploader, '_transfer_upload_registry', None) if uploader else None
+        if callable(registry_getter):
+            for upload_task in registry_getter().get(int(task_id), set()):
+                if upload_task is not None and not upload_task.done():
+                    return True
+        return False
+
+    async def settle_web_task_pause_request(self, task_id: int, *, before: str | None = None) -> bool:
+        """Wait out in-flight IO while pausing, then finalize to paused. Return True to stop."""
+        if not self.transfer_store or not task_id:
+            return True
+        while True:
+            task = self.transfer_store.get_task(int(task_id))
+            if not task:
+                return True
+            status = task.get('status')
+            if status == TransferStatus.PAUSED:
+                return True
+            if status != TransferStatus.PAUSING:
+                return False
+            if self.has_active_transfer_io(int(task_id)):
+                await asyncio.sleep(0.2)
+                continue
+            self.transfer_store.update_task(int(task_id), status=TransferStatus.PAUSED)
+            message = 'Transfer task paused.'
+            if before:
+                message = f'Transfer task paused before item: {before}.'
+            self.transfer_store.add_event(int(task_id), message, level='warning')
+            return True
 
     def _has_active_web_transfer_runner(self, task_id: int) -> bool:
         return (
@@ -312,10 +432,8 @@ class WebUITaskManager:
         if not self.transfer_store.get_task(task_id):
             return False
         self.discard_web_task_submission(task_id, cancel_running=True, wait=True)
-        if self._cancel_task_uploads:
-            self._cancel_task_uploads(task_id)
-        if self._cancel_task_downloads:
-            self._cancel_task_downloads(task_id)
+        self.cancel_task_uploads(task_id)
+        self.cancel_task_downloads(task_id)
         self._wait_for_running_transfer_task_stop(task_id)
         self._clear_running_transfer_task(task_id)
         if self._cleanup_task_files:
@@ -365,16 +483,10 @@ class WebUITaskManager:
         def enqueue() -> None:
             self._enqueue_and_process_web_task(task_id)
 
-        try:
-            if asyncio.get_running_loop() is self.loop:
-                enqueue()
-                return True
-        except RuntimeError:
-            pass
-        self.loop.call_soon_threadsafe(enqueue)
+        self._invoke_on_loop(enqueue)
         return True
 
-    def retry_failed_web_task(self, task_id: int) -> int:
+    def retry_failed_web_task(self, task_id: int, submit_fn=None) -> int:
         if not self.transfer_store:
             return 0
         task = self.transfer_store.get_task(task_id)
@@ -413,9 +525,12 @@ class WebUITaskManager:
                 self._schedule_watch_inline_retry(task_id)
             return reset_items
         if reset_items:
-            self.loop.call_soon_threadsafe(
-                lambda tid=task_id: self._enqueue_and_process_web_task(tid)
-            )
+            if callable(submit_fn):
+                submit_fn(task_id)
+            else:
+                self._invoke_on_loop(
+                    lambda tid=task_id: self._enqueue_and_process_web_task(tid)
+                )
         return reset_items
 
     def _schedule_watch_inline_retry(self, task_id: int) -> None:
@@ -424,15 +539,12 @@ class WebUITaskManager:
             return
 
         def launch() -> None:
-            self.loop.create_task(retry_runner(task_id))
-
-        try:
-            if asyncio.get_running_loop() is self.loop:
-                launch()
+            loop = self.loop
+            if loop is None:
                 return
-        except RuntimeError:
-            pass
-        self.loop.call_soon_threadsafe(launch)
+            loop.create_task(retry_runner(task_id))
+
+        self._invoke_on_loop(launch)
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
         if not PikpakIntegrationManager.is_pikpak_target(item.get('target_link') or task.get('target_link'), task.get('target_profile')):
@@ -506,7 +618,9 @@ class WebUITaskManager:
             'updated_at': TransferStore.utc_now()
         }
         self.web_operations[operation_id] = operation
-        self.loop.call_soon_threadsafe(self.web_operation_queue.put_nowait, operation_id)
+        self._invoke_on_loop(
+            lambda: self.web_operation_queue.put_nowait(operation_id)
+        )
         return operation
 
     def skip_missing_web_transfer_range_message(
@@ -561,7 +675,11 @@ class WebUITaskManager:
                 if not self.is_web_transfer_task_schedulable(task_id):
                     self.web_submitted_task_ids.discard(task_id)
                     continue
-                runner = self.loop.create_task(self._process_web_transfer_task(task_id))
+                loop = self.loop
+                if loop is None:
+                    self.web_task_queue.put_nowait(task_id)
+                    return
+                runner = loop.create_task(self._process_web_transfer_task(task_id))
                 self.web_running_task = runner
                 self.web_running_task_id = task_id
                 runner.add_done_callback(
@@ -619,4 +737,6 @@ class WebUITaskManager:
                     exc_info=(type(error), error, error.__traceback__)
                 )
         if not self.web_task_queue.empty():
-            self.loop.create_task(self._process_web_task_queue())
+            loop = self.loop
+            if loop is not None:
+                loop.create_task(self._process_web_task_queue())

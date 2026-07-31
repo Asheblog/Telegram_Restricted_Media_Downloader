@@ -24,7 +24,7 @@ class WebTaskQueueSerialCase(unittest.TestCase):
             started = []
             hold = asyncio.Event()
 
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 first_id = store.create_task('https://t.me/a/1', 'https://t.me/pikpak_bot')
                 second_id = store.create_task('https://t.me/b/1', 'https://t.me/pikpak_bot')

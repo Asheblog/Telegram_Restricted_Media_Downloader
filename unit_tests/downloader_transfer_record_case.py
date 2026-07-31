@@ -22,7 +22,7 @@ from module.task import DownloadTask
 class DownloaderTransferRecordCase(unittest.TestCase):
     def test_download_upload_waits_for_local_storage_capacity_before_download(self):
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 calls = []
                 releases = {}
                 free_space = {'value': 200}
@@ -113,7 +113,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_reuse_download_success_record_only_when_record_is_valid(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             media_path = os.path.join(directory, 'media.bin')
             with open(media_path, 'wb') as file:
                 file.write(b'12345')
@@ -168,7 +168,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             )
 
     def test_transfer_item_uses_message_chat_id_for_download_success_scope(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = TransferStore(directory=directory)
             downloader.refresh_transfer_task_counts = lambda task_id: None
@@ -221,7 +221,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertEqual('video', meta['media_type'])
 
     def test_transfer_download_meta_includes_source_folder_and_final_path(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             downloader = TelegramRestrictedMediaDownloader.__new__(TelegramRestrictedMediaDownloader)
             downloader.transfer_store = TransferStore(directory=directory)
             downloader.app = SimpleNamespace(save_directory=directory)
@@ -356,7 +356,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertIn('target rejected file', downloader._scheduled_bot_progress_updates[-1])
 
     def test_download_complete_initializes_uploader_for_download_upload_task(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             temp_directory = os.path.join(directory, 'temp')
             save_directory = os.path.join(directory, 'downloads')
             os.makedirs(temp_directory, exist_ok=True)
@@ -429,7 +429,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             self.assertEqual(7, uploaded[0][0]['message_id'])
 
     def test_start_download_upload_creates_missing_uploader(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'media.bin')
             with open(file_path, 'wb') as file:
                 file.write(b'12345')
@@ -497,7 +497,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         """即使 message 键对不上，也应按 item_id 复用，避免 watch_inline 留下僵尸 running item。"""
         from module.transfer.progress import TransferProgressTracker
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             file_path = os.path.join(directory, 'ctuxas', 'media.bin')
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, 'wb') as file:
@@ -636,7 +636,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
             calls = []
             releases = []
 
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 store = TransferStore(directory=directory)
                 task_id = store.create_task(
                     source_link='https://t.me/source/1',
@@ -720,7 +720,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
     def test_resume_download_truncates_partial_chunk_before_resuming(self):
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 final_path = os.path.join(directory, 'video.mp4')
                 cache_path = f'{final_path}.temp'
                 chunk_size = 4
@@ -760,7 +760,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
     def test_resume_download_reopens_stream_after_stall(self):
         async def run_case():
-            with tempfile.TemporaryDirectory() as directory:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                 final_path = os.path.join(directory, 'video.mp4')
                 offsets = []
                 progress_values = []
@@ -822,7 +822,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         from module.media_manager import MediaManager
         from module.transfer_progress import TransferProgressTracker
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'media.bin')
             temp_path = os.path.join(directory, 'media.bin.temp')
             active_cache_path = f'{temp_path}.temp'
@@ -889,7 +889,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
     def test_delete_web_task_cleans_final_and_temp_files_before_deleting_record(self):
         from module.media_manager import MediaManager
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'delete-me.bin')
             temp_path = os.path.join(directory, 'delete-me.bin.cache')
             active_cache_path = f'{temp_path}.temp'
@@ -932,7 +932,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         from module.media_manager import MediaManager
         from module.pikpak_integration import PikpakIntegrationManager
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'archive-failed.bin')
             temp_path = os.path.join(directory, 'archive-failed.bin.cache')
             active_cache_path = f'{temp_path}.temp'

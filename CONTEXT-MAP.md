@@ -11,10 +11,10 @@
 |------|------|--------|
 | `main.py` | 入口：检查环境 → 创建 TRMD → `run()` | 12 |
 | `module/__init__.py` | 全局常量、版本号、日志初始化、banner | ~210 |
-| `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；listen/forward 委托 `transfer/live_transfer` | ~1900 |
-| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~350 |
-| `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade` | ~1190 |
-| `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~350 |
+| `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；listen/forward/runner/PikPak 多已委托；残留下载编排与 Bot UX | ~1920 |
+| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~365 |
+| `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
+| `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~370 |
 | `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotHost`、`IPikPakTarget` 等） | ~160 |
 | `module/live_watch_applicator.py` | 将 watch payload 应用到运行时监听 | ~85 |
 | `module/source_folders.py` | 来源频道 / 帖级归档路径命名 | ~200 |
@@ -31,7 +31,16 @@
 | `infra/client.py` | —（已删零引用 shim） | Pyrogram 客户端扩展 | ~830 |
 | `infra/uploader.py` | `uploader.py` | Telegram 上传器 | ~970 |
 | `infra/async_window.py` | `async_window.py` | 动态并发窗口 | ~50 |
-| `persistence/transfer_store.py` | `transfer_store.py` | SQLite：任务 / Item / 事件 / Watch CRUD | ~2090 |
+| `persistence/transfer_store.py` | `transfer_store.py` | `TransferStore` 门面（组合 `store/*` mixins） | ~80 |
+| `persistence/store/tasks.py` | — | 任务 CRUD / 状态 | ~860 |
+| `persistence/store/items.py` | — | Transfer Item CRUD | ~570 |
+| `persistence/store/watches.py` | — | Live watch CRUD / 事件 | ~270 |
+| `persistence/store/deferred.py` | — | 讨论区延迟抓取持久化 | ~300 |
+| `persistence/store/archive_jobs.py` | — | Archive Author 作业 | ~160 |
+| `persistence/store/schema.py` | — | SQLite schema / 迁移 | ~270 |
+| `persistence/store/maintenance.py` | — | 维护 / reconcile / purge | ~140 |
+| `persistence/store/connection.py` | — | 连接 / TLS | ~100 |
+| `persistence/store/*`（其余） | — | events / status / constants / system_logs / cleanup_logs | 小文件合计 ~190 |
 | `persistence/media_manager.py` | `media_manager.py` | 媒体文件清理 | ~480 |
 | `persistence/local_storage_guard.py` | `local_storage_guard.py` | 本地磁盘预算守护 | ~100 |
 | `persistence/system_log.py` | — | 系统日志追踪 | ~140 |
@@ -51,10 +60,12 @@
 | `adapters/bot/callback_handler.py` | `callback_handler.py` | Bot 回调路由 | ~740 |
 | `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
 | `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
-| `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP + REST API | ~1670 |
+| `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP 壳（路由调度进 handlers） | ~1500 |
+| `adapters/webui/handlers/` | — | 按 API 域拆分的 HTTP handlers（auth/tasks/watches/…） | ~1140 |
+| `adapters/webui/archive_author_ops.py` | — | Archive Author 作业编排（WebOps 委托） | ~550 |
 | `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone / 可选 Bot Token | ~350 |
 | `adapters/webui/view_model.py` | `webui_view_model.py` | 桌面/移动统一 ViewModel | ~550 |
-| `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~500 |
+| `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~740 |
 | `adapters/webui/statistics_payload.py` | `statistics_payload.py` | 统计面板 payload | ~80 |
 | `adapters/webui/assets.py` | `web_ui_assets.py` | 内嵌 HTML/CSS/JS/字体 | 大文件 |
 | `adapters/webui/build_frontend.py` | — | Tailwind 前端构建 | ~100 |
@@ -69,16 +80,16 @@
 
 | 子包 | 内容 | 状态 |
 |------|------|------|
-| `adapters/webui/` | server / view_model / task_manager / assets / build | ✅ 已填充 |
+| `adapters/webui/` | server / handlers / archive_author_ops / view_model / task_manager / assets / build | ✅ 已填充（P3 handlers 拆分） |
 | `adapters/bot/` | bot.py / callback_handler.py | ✅ 已填充 |
 | `adapters/pikpak/` | integration.py / archive.py | ✅ 已填充 |
 | `core/` | app / config / enums / filter / target_profiles | ✅ 已填充 |
 | `infra/` | client / uploader / async_window | ✅ 已填充 |
-| `persistence/` | transfer_store / media_manager / local_storage_guard / system_log | ✅ 已填充 |
+| `persistence/` | transfer_store 门面 + store/* / media_manager / local_storage_guard / system_log | ✅ 已填充（P2 拆 mixin） |
 | `transfer/` | engine / runner / progress / live_watch / deep_link / comment_delay 等 | ✅ 已填充 |
 | `utils/` | util / stdio / path_tool / parser / language / diagnostics | ✅ 已填充 |
 
-> Phase 0–3 目录迁移与 seam 引入已完成。不再以「搬包」为目标；见 `CONTEXT.md` 架构立场。
+> Phase 0–3 目录迁移与 seam 引入已完成；deepen 轮 P1–P4 已完成。不做纯搬包、不以行数硬顶为目标；见 `CONTEXT.md` 架构立场与 ADR 0014。
 
 ## 配置项 → 位置
 
@@ -109,6 +120,8 @@
 | `deep_link.page_click_interval_seconds` | GlobalConfig | 翻页点击间隔秒数 |
 
 ## WebUI API → handler
+
+路由仍由 `adapters/webui/server.py` 承接；具体 GET/POST/… 分发在 `adapters/webui/handlers/`（`auth` / `setup_api` / `tasks` / `watches` / `stats` / `media` / `archive_author` / `settings` / `misc` / `static_pages`）。契约未改。
 
 | 路由 | 方法 | 作用 |
 |------|------|------|
@@ -141,18 +154,19 @@
 
 | 术语 | 代码实体 |
 |------|----------|
-| Transfer Task | `persistence/transfer_store.py` → `transfer_tasks` 表 |
-| Transfer Item | `persistence/transfer_store.py` → `transfer_items` 表 |
-| Transfer Progress | `persistence/transfer_store.py` → completed source_message_ids |
+| Transfer Task | `persistence/store/tasks.py`（门面 `transfer_store.py`）→ `transfer_tasks` 表 |
+| Transfer Item | `persistence/store/items.py` → `transfer_items` 表 |
+| Transfer Progress | `persistence/store/*` → completed source_message_ids |
 | PikPak Archive | `adapters/pikpak/integration.py` → `archive_pikpak_item()` |
 | Source Channel Folder / Source Post Archive Path | `module/source_folders.py` → `archive_source_folder()` |
 | PikPak Ingest Confirmation | `adapters/pikpak/integration.py` / downloader 转发等待路径 |
 | Target Profile | `core/target_profiles.py` → `DEFAULT_TARGET_PROFILES` |
 | Live Transfer Watch | `transfer/live_watch.py` → `LiveWatchManager` |
 | Message Filter | `core/filter.py` → `MessageFilter` |
-| Download Success Record | `persistence/transfer_store.py` → `download_success` 表 |
+| Download Success Record | `persistence/store/tasks.py` 等 → `download_success` 表 |
 | WebUI ViewModel Contract | `adapters/webui/view_model.py` → `WebUiViewModel` |
 | First-run Setup Wizard / Setup Ready | `adapters/webui/setup.py` → `SetupCoordinator` |
+| Archive Author Ops | `adapters/webui/archive_author_ops.py` → `ArchiveAuthorOps` |
 | Execution Mode / watch_inline | `transfer/watch_inline.py` + TransferStore `execution_mode` |
 | Deep Link Resolve | `transfer/deep_link.py` |
 | Deferred Discussion Reply Capture | `transfer/comment_delay.py` |

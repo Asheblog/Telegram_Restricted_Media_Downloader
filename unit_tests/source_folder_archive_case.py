@@ -1845,7 +1845,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
     def test_transfer_items_persist_archive_fields(self):
         from module.transfer_store import TransferStatus, TransferStore
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/ctuxas/1', 'https://t.me/pikpak_bot')
             item_id = store.add_item(
@@ -2150,7 +2150,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
     def test_create_task_persists_watch_inline_execution_mode(self):
         from module.transfer_store import TransferStore, ExecutionMode
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/c/4209310295/5433',
@@ -2164,7 +2164,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         from module.transfer_store import TransferStore, TransferStatus, ExecutionMode
         from module.adapters.webui.task_manager import WebUITaskManager
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 'https://t.me/c/4209310295/5433',
@@ -2181,7 +2181,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
         from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
         from module.transfer.watch_inline import ensure_download_fallback_transfer_task
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = ensure_download_fallback_transfer_task(
                 store=store,

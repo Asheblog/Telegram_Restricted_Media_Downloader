@@ -14,7 +14,7 @@ from module.transfer_store import TransferStatus, TransferStore
 
 class MediaManagerCase(unittest.TestCase):
     def test_scan_transfer_items_counts_final_and_temp_files(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'movie.mp4')
             temp_path = os.path.join(directory, 'movie.mp4.cache')
             active_cache_path = f'{temp_path}.temp'
@@ -50,7 +50,7 @@ class MediaManagerCase(unittest.TestCase):
             self.assertEqual(4, len(result['items'][0]['paths']))
 
     def test_scan_orphan_files_includes_temp_directory_but_keeps_paused_cache(self):
-        with tempfile.TemporaryDirectory() as save_directory, tempfile.TemporaryDirectory() as temp_directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_directory, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_directory:
             orphan_path = os.path.join(temp_directory, 'orphan.bin.temp')
             paused_path = os.path.join(temp_directory, 'paused.bin.temp')
             for path in (orphan_path, paused_path):
@@ -88,7 +88,7 @@ class MediaManagerCase(unittest.TestCase):
 
     def test_scan_orphan_files_does_not_protect_terminal_item_paths_on_running_task(self):
         """同一任务下已终结 item 的残留不应再被活跃任务整表保护。"""
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             leftover_path = os.path.join(directory, 'done.bin')
             active_path = os.path.join(directory, 'active.bin')
             for path in (leftover_path, active_path):
@@ -136,7 +136,7 @@ class MediaManagerCase(unittest.TestCase):
             self.assertNotIn(active_path, paths)
 
     def test_cleanup_task_files_deletes_item_paths_before_task_delete(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'media.bin')
             temp_path = os.path.join(directory, 'media.bin.cache')
             active_cache_path = f'{temp_path}.temp'
@@ -168,7 +168,7 @@ class MediaManagerCase(unittest.TestCase):
             self.assertFalse(os.path.exists(active_cache_path))
 
     def test_scan_transfer_items_includes_ghost_files_marked_deleted(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             final_path = os.path.join(directory, 'ghost.mp4')
             with open(final_path, 'wb') as file:
                 file.write(b'12345')
@@ -197,7 +197,7 @@ class MediaManagerCase(unittest.TestCase):
 
     def test_scan_transfer_items_includes_zombie_running_item_on_terminal_task(self):
         """任务已终结但 item 仍 running 时，媒体管理应能扫到并清理其本地文件。"""
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             leftover_path = os.path.join(directory, 'zombie.bin')
             with open(leftover_path, 'wb') as file:
                 file.write(b'12345')
@@ -233,7 +233,7 @@ class MediaManagerCase(unittest.TestCase):
             self.assertEqual(TransferStatus.RUNNING, result['items'][0]['status'])
 
     def test_scan_orphan_files_includes_store_directory_when_temp_directory_changed(self):
-        with tempfile.TemporaryDirectory() as save_directory, tempfile.TemporaryDirectory() as old_temp_directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_directory, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as old_temp_directory:
             orphan_path = os.path.join(old_temp_directory, 'leftover.bin')
             with open(orphan_path, 'wb') as file:
                 file.write(b'12345')
@@ -254,7 +254,7 @@ class MediaManagerCase(unittest.TestCase):
             self.assertIn(orphan_path, paths)
 
     def test_auto_cleanup_orphan_files_deletes_stale_orphans(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             orphan_path = os.path.join(directory, 'stale.bin')
             with open(orphan_path, 'wb') as file:
                 file.write(b'data')
@@ -277,7 +277,7 @@ class MediaManagerCase(unittest.TestCase):
 
     def test_scan_transfer_items_allows_expanded_placeholder_save_paths(self):
         """save_directory 含 %CHAT_ID% 时，展开后的实际文件仍应可被扫描清理。"""
-        with tempfile.TemporaryDirectory() as save_root, tempfile.TemporaryDirectory() as store_root:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_root, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as store_root:
             save_template = os.path.join(save_root, 'media', '%CHAT_ID%')
             expanded_dir = os.path.join(save_root, 'media', '-100123')
             os.makedirs(expanded_dir, exist_ok=True)
