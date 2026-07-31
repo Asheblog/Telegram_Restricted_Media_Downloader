@@ -351,6 +351,7 @@ class PikpakIntegrationManager:
             task_id=task_id,
             source_chat_id=origin_chat_id,
             source_message_id=message_id,
+            range_message_id=message_id,
             source_link=source_link,
             target_link=task.get('target_link'),
             media_type='empty',

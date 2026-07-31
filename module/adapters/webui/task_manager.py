@@ -636,6 +636,7 @@ class WebUITaskManager:
             task_id=task_id,
             source_chat_id=origin_chat_id,
             source_message_id=message_id,
+            range_message_id=message_id,
             source_link=message_link,
             target_link=task.get('target_link'),
             phase='skipped',

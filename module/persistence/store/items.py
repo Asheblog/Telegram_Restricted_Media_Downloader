@@ -420,6 +420,73 @@ class ItemsMixin:
                 return True
         return False
 
+    def ensure_range_message_accounted(
+            self,
+            task_id: int,
+            range_message_id: int,
+            *,
+            origin_chat_id,
+            task: dict,
+            reason: str = '范围内消息无可转存内容，已跳过',
+    ) -> Optional[int]:
+        """Create a skipped placeholder when a range message produced no transfer items.
+
+        Channel ID ranges often include bot posts or plain text that never enter the
+        transfer pipeline; without a terminal item the range progress bar stalls below
+        100% even after assignment completes.
+        """
+        items = self.list_items_for_range_message(task_id, int(range_message_id))
+        if items:
+            active_statuses = {TransferStatus.RUNNING, TransferStatus.PENDING}
+            if any(str(item.get('status') or '') in active_statuses for item in items):
+                return None
+            if self.is_range_message_complete(task_id, int(range_message_id)):
+                return None
+            return None
+        source_prefix = str(task.get('source_link') or '').rstrip('/')
+        message_link = f'{source_prefix}/{int(range_message_id)}'
+        item_id = self.add_item(
+            task_id=int(task_id),
+            source_chat_id=origin_chat_id,
+            source_message_id=int(range_message_id),
+            range_message_id=int(range_message_id),
+            source_link=message_link,
+            target_link=task.get('target_link'),
+            media_type='empty',
+            phase='skipped',
+            status=TransferStatus.SKIPPED,
+            error_message=reason,
+        )
+        self.add_event(
+            int(task_id),
+            reason,
+            level='warning',
+            item_id=item_id,
+        )
+        self.refresh_task_counts(int(task_id))
+        return item_id
+
+    def finalize_range_message_assignment(
+            self,
+            task_id: int,
+            start_id: int,
+            end_id: int,
+            *,
+            origin_chat_id,
+            task: dict,
+    ) -> int:
+        """Ensure every ID in [start_id, end_id] has a terminal item before range finalize."""
+        ensured = 0
+        for message_id in range(int(start_id), int(end_id) + 1):
+            if self.ensure_range_message_accounted(
+                    task_id,
+                    message_id,
+                    origin_chat_id=origin_chat_id,
+                    task=task,
+            ) is not None:
+                ensured += 1
+        return ensured
+
     def list_resumable_items_for_range_message(
             self,
             task_id: int,

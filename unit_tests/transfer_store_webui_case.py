@@ -5060,6 +5060,87 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 len(store.list_resumable_items_for_range_message(task_id, 10))
             )
 
+    def test_ensure_range_message_accounted_skips_empty_range_ids(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source',
+                target_link='https://t.me/pikpak_bot',
+                start_id=10,
+                end_id=12,
+            )
+            task = store.get_task(task_id)
+            store.add_item(
+                task_id=task_id,
+                source_chat_id='source-chat',
+                source_message_id=10,
+                range_message_id=10,
+                source_link='https://t.me/source/10',
+                target_link='https://t.me/pikpak_bot',
+                phase='forwarded',
+                status=TransferStatus.SUCCESS,
+            )
+            item_id = store.ensure_range_message_accounted(
+                task_id,
+                11,
+                origin_chat_id='source-chat',
+                task=task,
+            )
+            self.assertIsNotNone(item_id)
+            skipped = store.get_item(int(item_id))
+            self.assertEqual(TransferStatus.SKIPPED, skipped['status'])
+            self.assertEqual(11, skipped['range_message_id'])
+            self.assertIsNone(
+                store.ensure_range_message_accounted(
+                    task_id,
+                    10,
+                    origin_chat_id='source-chat',
+                    task=task,
+                )
+            )
+
+            store.finalize_range_message_assignment(
+                task_id,
+                10,
+                12,
+                origin_chat_id='source-chat',
+                task=task,
+            )
+            progress = store.range_transfer_progress(store.get_task(task_id))
+            self.assertEqual(3, progress['range_completed_ids'])
+            self.assertEqual(100, progress['range_progress_percent'])
+
+    def test_finished_range_progress_counts_legacy_empty_holes(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                source_link='https://t.me/source',
+                target_link='https://t.me/pikpak_bot',
+                start_id=100,
+                end_id=102,
+            )
+            for message_id in (100, 102):
+                store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source-chat',
+                    source_message_id=message_id,
+                    range_message_id=message_id,
+                    source_link=f'https://t.me/source/{message_id}',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='forwarded',
+                    status=TransferStatus.SUCCESS,
+                )
+            store.update_task(
+                task_id,
+                status=TransferStatus.SUCCESS,
+                assignment_completed=True,
+                finished=True,
+            )
+            progress = store.range_transfer_progress(store.get_task(task_id))
+            self.assertEqual(3, progress['range_completed_ids'])
+            self.assertEqual(100, progress['range_progress_percent'])
+            self.assertIsNone(progress['current_range_message_id'])
+
     def test_runner_resumes_comment_item_before_advancing_range_message(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 

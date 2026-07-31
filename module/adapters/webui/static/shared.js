@@ -1633,6 +1633,12 @@ function taskCompletedLabel(task) {
 
 function taskRangeDetailSummary(task) {
   if (!task || !taskUsesRangeProgress(task)) return '';
+  const status = String(task.status || '');
+  const terminal = status === 'success' || status === 'failure' || status === 'skipped';
+  const activeItems = Number(task.running_items || 0) + Number(task.pending_items || 0);
+  if (terminal && activeItems === 0 && Number(task.range_progress_percent || 0) >= 100) {
+    return '';
+  }
   const parts = [];
   const currentId = task.current_range_message_id;
   if (currentId) {

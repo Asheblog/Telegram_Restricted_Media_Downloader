@@ -244,6 +244,9 @@ class WebTransferRunner:
                         )
                         expected_total += reply_count
                         fallback_count += reply_fallback_count
+                        self._ensure_range_message_accounted(
+                            host, task, task_id, message_id, origin_chat_id
+                        )
                         continue
                     if main_post_done:
                         continue
@@ -308,6 +311,7 @@ class WebTransferRunner:
                             ),
                             message,
                         )
+                        started_fallback = False
                         for member in members:
                             mid = getattr(member, 'id', None)
                             if mid is None:
@@ -364,6 +368,8 @@ class WebTransferRunner:
                                 source_folder=shared_folder,
                                 archive_post_message=anchor if len(members) > 1 else None,
                             )
+                            if used_fallback:
+                                started_fallback = True
                             fallback_count += 1 if used_fallback else 0
                         if include_comment:
                             reply_count, reply_fallback_count = await self._resolve_method(
@@ -378,6 +384,10 @@ class WebTransferRunner:
                             )
                             expected_total += reply_count
                             fallback_count += reply_fallback_count
+                        if not started_fallback:
+                            self._ensure_range_message_accounted(
+                                host, task, task_id, message_id, origin_chat_id
+                            )
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
@@ -390,10 +400,20 @@ class WebTransferRunner:
                             f'Transfer message failed: {message_id}: {e}',
                             level='error'
                         )
+                        self._ensure_range_message_accounted(
+                            host, task, task_id, message_id, origin_chat_id
+                        )
                         continue
                 host.transfer_store.add_event(
                     task_id,
                     f'Range transfer assigned: {start_id}-{end_id}. Fallback downloads: {fallback_count}.'
+                )
+                host.transfer_store.finalize_range_message_assignment(
+                    task_id,
+                    int(start_id),
+                    int(end_id),
+                    origin_chat_id=origin_chat_id,
+                    task=task,
                 )
                 host.transfer_store.refresh_task_counts(
                     task_id,
@@ -1510,3 +1530,21 @@ class WebTransferRunner:
     def transfer_single_link(source_link: str) -> str:
         from module.transfer_engine import TransferEngine
         return TransferEngine.transfer_single_link(source_link)
+
+    @staticmethod
+    def _ensure_range_message_accounted(
+            host,
+            task: dict,
+            task_id: int,
+            message_id: int,
+            origin_chat_id,
+    ) -> None:
+        store = host.transfer_store
+        if not store or message_id is None:
+            return
+        store.ensure_range_message_accounted(
+            int(task_id),
+            int(message_id),
+            origin_chat_id=origin_chat_id,
+            task=task,
+        )

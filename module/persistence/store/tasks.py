@@ -700,6 +700,27 @@ class TasksMixin:
                 video_index = runtime_index
 
         progress_percent = min(100, round((completed_ids / total_ids) * 100)) if total_ids else 0
+
+        assignment_done = bool(task.get('assignment_completed'))
+        task_status = str(task.get('status') or '')
+        task_finished = bool(task.get('finished_at'))
+        if (
+                assignment_done
+                and task_finished
+                and task_status in (TransferStatus.SUCCESS, TransferStatus.SKIPPED)
+        ):
+            # Legacy tasks may finish assignment before every non-transferable ID received
+            # an explicit skipped placeholder; treat empty holes as done for display.
+            for message_id in range(start_id, end_id + 1):
+                if message_id not in counts_by_range:
+                    completed_ids += 1
+            progress_percent = min(100, round((completed_ids / total_ids) * 100)) if total_ids else 0
+            if completed_ids >= total_ids:
+                current_id = None
+                video_total = 0
+                video_done = 0
+                video_index = 0
+
         return {
             'range_total_ids': total_ids,
             'range_completed_ids': completed_ids,
