@@ -478,6 +478,16 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn('function scrollPaginationContentToTop', WEB_UI_MOBILE_HTML)
         self.assertIn('scrollPaginationContentToTop(list || subpage)', WEB_UI_MOBILE_HTML)
 
+    def test_system_logs_manual_archive_retry_controls(self):
+        """系统日志 archive_not_found 提供手动重试入口（桌面 + 移动）。"""
+        self.assertIn('data-i18n="systemLogs.actions"', WEB_UI_HTML)
+        self.assertIn("'/api/system-logs/' + encodeURIComponent(logId) + '/retry-archive'", WEB_UI_HTML)
+        self.assertIn('data-system-log-retry', WEB_UI_HTML)
+        self.assertIn('systemLogs.retryArchive', WEB_UI_HTML)
+        self.assertIn("'/api/system-logs/' + encodeURIComponent(logId) + '/retry-archive'", WEB_UI_MOBILE_HTML)
+        self.assertIn('data-system-log-retry', WEB_UI_MOBILE_HTML)
+        self.assertIn('retryArchiveFromSystemLogMobile', WEB_UI_MOBILE_HTML)
+
     def test_mobile_system_logs_toggles_sit_side_by_side(self):
         """移动端「仅今天 / 自动刷新」应并排，不被 .mob-body label 拉满整行。"""
         self.assertIn('.mob-system-logs-toggles{', WEB_UI_MOBILE_HTML)

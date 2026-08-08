@@ -72,6 +72,29 @@ def handle_get(handler, server, parsed) -> bool:
 
 
 def handle_post(handler, server, parsed) -> bool:
+    if parsed.path.startswith('/api/system-logs/') and parsed.path.endswith('/retry-archive'):
+        suffix = parsed.path[len('/api/system-logs/'):-len('/retry-archive')]
+        try:
+            log_id = int(suffix)
+        except (TypeError, ValueError):
+            handler._send_error('invalid_log_id', 'Invalid system log id.', HTTPStatus.BAD_REQUEST)
+            return True
+        try:
+            result = server.retry_archive_from_system_log(log_id)
+            handler._send_json(result)
+        except WebUiApiError as e:
+            handler._send_error(e.error_code, e.message, e.status)
+        except Exception as e:
+            server.diagnostic.exception('[WebUI] 手动重试归档失败。')
+            handler._send_json(
+                {
+                    'error_code': 'archive_retry_failed',
+                    'error': str(e),
+                },
+                HTTPStatus.BAD_REQUEST,
+            )
+        return True
+
     if parsed.path == '/api/uploads':
         try:
             payload = handler._read_json()

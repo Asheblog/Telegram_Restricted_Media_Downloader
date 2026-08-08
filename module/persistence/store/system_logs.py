@@ -36,6 +36,14 @@ class SystemLogsMixin:
             )
             return int(cursor.lastrowid)
 
+    def get_system_log(self, log_id: int) -> Optional[Dict[str, Any]]:
+        with self.connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM system_logs WHERE id = ?',
+                (int(log_id),),
+            ).fetchone()
+            return dict(row) if row else None
+
     def list_system_logs(
             self,
             limit: int = 50,

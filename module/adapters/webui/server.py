@@ -1240,14 +1240,56 @@ class WebUiServer:
                 today_only=today_only,
                 tz_offset_minutes=tz_offset_minutes
             )
+            from module.persistence.system_log import annotate_system_logs_can_retry
             return {
-                'logs': logs,
+                'logs': annotate_system_logs_can_retry(logs),
                 'total': total,
                 'limit': limit,
                 'offset': offset,
                 'retention_days': self.store.SYSTEM_LOGS_RETENTION_DAYS
             }
         return {'logs': [], 'total': 0, 'limit': limit, 'offset': offset}
+
+    def retry_archive_from_system_log(self, log_id: int) -> dict:
+        retry_fn = self._operation('retry_archive_from_system_log')
+        if not retry_fn:
+            raise WebUiApiError(
+                'archive_retry_unavailable',
+                'Archive retry is unavailable.',
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        try:
+            return retry_fn(int(log_id))
+        except LookupError:
+            raise WebUiApiError(
+                'log_not_found',
+                'System log not found.',
+                HTTPStatus.NOT_FOUND,
+            ) from None
+        except ValueError as exc:
+            code = str(exc) or 'not_retryable'
+            messages = {
+                'not_retryable': 'This system log cannot be retried.',
+                'missing_metadata': 'Archive retry metadata is incomplete.',
+            }
+            raise WebUiApiError(
+                code if code in messages else 'not_retryable',
+                messages.get(code, 'This system log cannot be retried.'),
+                HTTPStatus.BAD_REQUEST,
+            ) from None
+        except RuntimeError as exc:
+            text = str(exc) or 'archive_failed'
+            if text == 'retry_in_progress':
+                raise WebUiApiError(
+                    'retry_in_progress',
+                    'Archive retry is already in progress.',
+                    HTTPStatus.CONFLICT,
+                ) from None
+            raise WebUiApiError(
+                'archive_failed',
+                text,
+                HTTPStatus.BAD_REQUEST,
+            ) from None
 
     def export_system_logs(
             self,

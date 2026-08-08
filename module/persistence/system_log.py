@@ -3,8 +3,122 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, Optional
+
+ARCHIVE_NOT_FOUND_STAGE = 'archive_not_found'
+_NOT_FOUND_FILE_NAME_RE = re.compile(
+    r'No PikPak file matched\s+(.+?)\.?\s*$',
+    re.IGNORECASE,
+)
+_TITLE_STYLE_FILE_NAME_RE = re.compile(r'^\d+\s+-\s+')
+
+
+def parse_system_log_details(entry: dict[str, Any] | None) -> dict[str, Any]:
+    if not entry:
+        return {}
+    details = entry.get('details')
+    if details is None or details == '':
+        return {}
+    if isinstance(details, dict):
+        return dict(details)
+    if isinstance(details, str):
+        try:
+            parsed = json.loads(details)
+        except Exception:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def extract_archive_file_name_from_message(message: str | None) -> Optional[str]:
+    text = str(message or '').strip()
+    if not text:
+        return None
+    match = _NOT_FOUND_FILE_NAME_RE.search(text)
+    if not match:
+        return None
+    name = (match.group(1) or '').strip().rstrip('.')
+    return name or None
+
+
+def infer_archive_match_original_name(
+        file_name: Optional[str],
+        explicit: Any = None,
+) -> Optional[bool]:
+    if explicit is not None:
+        return bool(explicit)
+    if not file_name:
+        return None
+    if _TITLE_STYLE_FILE_NAME_RE.match(str(file_name)):
+        return False
+    return True
+
+
+def resolve_archive_retry_meta(entry: dict[str, Any] | None) -> Optional[dict[str, Any]]:
+    """Return archive retry payload for an archive_not_found log, else None."""
+    if not entry:
+        return None
+    if entry.get('category') != 'archive' or entry.get('stage') != ARCHIVE_NOT_FOUND_STAGE:
+        return None
+    details = parse_system_log_details(entry)
+    task_id = details.get('task_id')
+    item_id = details.get('item_id')
+    source_folder = details.get('source_folder')
+    file_name = details.get('file_name') or extract_archive_file_name_from_message(entry.get('message'))
+    match_original_name = infer_archive_match_original_name(
+        file_name,
+        details.get('match_original_name'),
+    )
+    source_link = entry.get('target_link') or details.get('source_link')
+    meta: dict[str, Any] = {
+        'source_folder': source_folder,
+        'file_name': file_name,
+        'source_link': source_link,
+        'source_chat_id': entry.get('source_chat_id'),
+        'source_message_id': entry.get('source_message_id'),
+        'match_original_name': match_original_name,
+        'file_size': details.get('file_size'),
+    }
+    if task_id not in (None, '') and item_id not in (None, ''):
+        meta['task_id'] = int(task_id)
+        meta['item_id'] = int(item_id)
+        return meta
+    if source_folder and file_name:
+        return meta
+    return None
+
+
+def system_log_can_retry_archive(entry: dict[str, Any] | None) -> bool:
+    return resolve_archive_retry_meta(entry) is not None
+
+
+def archive_retry_inflight_key(meta: dict[str, Any] | None) -> Optional[str]:
+    if not meta:
+        return None
+    task_id = meta.get('task_id')
+    item_id = meta.get('item_id')
+    if task_id not in (None, '') and item_id not in (None, ''):
+        return f'item:{int(task_id)}:{int(item_id)}'
+    chat_id = meta.get('source_chat_id')
+    message_id = meta.get('source_message_id')
+    if chat_id not in (None, '') and message_id not in (None, ''):
+        return f'msg:{chat_id}:{int(message_id)}'
+    folder = meta.get('source_folder')
+    file_name = meta.get('file_name')
+    if folder and file_name:
+        return f'file:{folder}:{file_name}'
+    return None
+
+
+def annotate_system_logs_can_retry(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    annotated = []
+    for entry in logs or []:
+        row = dict(entry)
+        row['can_retry'] = system_log_can_retry_archive(row)
+        annotated.append(row)
+    return annotated
 
 
 def format_system_log_export_line(entry: dict[str, Any]) -> str:

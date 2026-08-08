@@ -857,13 +857,23 @@ class WebOperationsMixin:
             today_only=today_only,
             tz_offset_minutes=tz_offset_minutes
         )
+        from module.persistence.system_log import annotate_system_logs_can_retry
         return {
-            'logs': logs,
+            'logs': annotate_system_logs_can_retry(logs),
             'total': total,
             'limit': limit,
             'offset': offset,
             'retention_days': self.transfer_store.SYSTEM_LOGS_RETENTION_DAYS
         }
+
+    def retry_archive_from_system_log(self, log_id: int) -> dict:
+        """Manually re-run PikPak archive for an archive_not_found system log."""
+        ops = self.__dict__.get('_system_log_archive_retry_ops_impl')
+        if ops is None:
+            from module.adapters.webui.system_log_archive_retry_ops import SystemLogArchiveRetryOps
+            ops = SystemLogArchiveRetryOps(self)
+            self._system_log_archive_retry_ops_impl = ops
+        return ops.retry_archive_from_system_log(log_id)
 
     def export_diagnostic_bundle(self, payload: dict | None = None) -> dict:
         """Build a secret-containing zip for local repro; returns path + filename."""
@@ -1610,7 +1620,7 @@ _WEB_UI_DELEGATE_METHODS = (
     'retry_deferred_discussion_capture',
     'detect_transfer_range', 'statistics', 'export_table', 'create_upload',
     'create_channel_download', 'list_operations', 'scan_media_for_cleanup',
-    'cleanup_media_files', 'list_cleanup_logs', 'list_system_logs', 'export_system_logs',
+    'cleanup_media_files', 'list_cleanup_logs',     'list_system_logs', 'export_system_logs', 'retry_archive_from_system_log',
     'export_diagnostic_bundle',
     'list_archive_author_channels', 'scan_archive_author_reorganize',
     'resolve_archive_author_reorganize', 'execute_archive_author_reorganize',

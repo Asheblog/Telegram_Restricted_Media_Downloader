@@ -919,12 +919,44 @@ function openSystemLogDetailModal(entry) {
       '<pre class="system-log-detail-json">' + esc(detailsText) + '</pre>'
     );
   }
+  if (entry.can_retry) {
+    html += '<div class="system-log-detail-actions mt-3">' +
+      '<button type="button" class="btn btn-sm btn-primary" data-system-log-retry="' +
+      esc(String(entry.id || '')) + '">' + esc(t('systemLogs.retryArchive')) +
+      '</button></div>';
+  }
   body.innerHTML = html;
   overlay.classList.add('open');
 }
 
 function closeSystemLogDetailModal() {
   $('#system-log-detail-overlay')?.classList.remove('open');
+}
+
+async function retryArchiveFromSystemLog(logId, buttonEl) {
+  if (!logId) return;
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    const resp = await fetch('/api/system-logs/' + encodeURIComponent(logId) + '/retry-archive', {
+      method: 'POST'
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (err) {}
+    if (!resp.ok) {
+      const code = data.error_code || data.error || '';
+      const msg = data.detail || data.error || data.message
+        || (code === 'retry_in_progress' ? t('systemLogs.retryInProgress') : t('systemLogs.retryFailed'));
+      alert(msg);
+      return;
+    }
+    alert(t('systemLogs.retrySuccess'));
+    closeSystemLogDetailModal();
+    await loadSystemLogs(state.systemLogsPage || 1);
+  } catch (err) {
+    alert(t('systemLogs.retryFailed'));
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
 }
 
 async function loadSystemLogs(page) {
@@ -966,6 +998,10 @@ async function loadSystemLogs(page) {
     tbody.innerHTML = logs.map(function(entry) {
       const timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
       const context = formatSystemLogContext(entry);
+      const retryCell = entry.can_retry
+        ? '<button type="button" class="btn btn-sm" data-system-log-retry="' +
+          esc(String(entry.id || '')) + '">' + esc(t('systemLogs.retryArchive')) + '</button>'
+        : '<span class="text-muted">-</span>';
       return '<tr class="system-log-row" data-log-id="' + esc(String(entry.id || '')) + '">' +
         '<td class="whitespace-nowrap">' + esc(timeText) + '</td>' +
         '<td><span class="system-log-level ' + systemLogLevelClass(entry.level) + '">' + esc((entry.level || 'info').toUpperCase()) + '</span></td>' +
@@ -973,6 +1009,7 @@ async function loadSystemLogs(page) {
         '<td class="font-mono">' + esc(entry.stage || '-') + '</td>' +
         '<td>' + esc(entry.message || '') + '</td>' +
         '<td class="text-muted font-mono system-log-context" title="' + esc(context) + '">' + esc(context) + '</td>' +
+        '<td class="system-log-actions">' + retryCell + '</td>' +
       '</tr>';
     }).join('');
     if (pagEl) {
@@ -1085,6 +1122,13 @@ $('#system-logs-auto-refresh')?.addEventListener('change', function() {
   else stopSystemLogsAutoRefresh();
 });
 $('#system-logs-tbody')?.addEventListener('click', function(e) {
+  const retryBtn = e.target.closest('[data-system-log-retry]');
+  if (retryBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    retryArchiveFromSystemLog(retryBtn.getAttribute('data-system-log-retry'), retryBtn);
+    return;
+  }
   const row = e.target.closest('.system-log-row');
   if (!row) return;
   const logId = row.dataset.logId;
@@ -1096,6 +1140,13 @@ $('#system-logs-tbody')?.addEventListener('click', function(e) {
 $('#system-log-detail-close')?.addEventListener('click', closeSystemLogDetailModal);
 $('#system-log-detail-overlay')?.addEventListener('click', function(e) {
   if (e.target === this) closeSystemLogDetailModal();
+});
+$('#system-log-detail-body')?.addEventListener('click', function(e) {
+  const retryBtn = e.target.closest('[data-system-log-retry]');
+  if (!retryBtn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  retryArchiveFromSystemLog(retryBtn.getAttribute('data-system-log-retry'), retryBtn);
 });
 
 /* ====== Watches ====== */

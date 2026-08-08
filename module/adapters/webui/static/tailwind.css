@@ -2245,6 +2245,24 @@
     font: inherit;
     color: inherit;
   }
+  .mob-system-log-card__main {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    appearance: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .mob-system-log-card__actions {
+    display: flex;
+    justify-content: flex-end;
+  }
   .mob-system-log-card .mob-card__head {
     display: flex;
     align-items: center;

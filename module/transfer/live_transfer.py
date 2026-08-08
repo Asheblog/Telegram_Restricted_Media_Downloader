@@ -173,6 +173,15 @@ class LiveTransferService:
                 if archive_result is not None:
                     archive_status = getattr(archive_result, 'status', 'unknown')
                     archive_ok = bool(getattr(archive_result, 'ok', False))
+                    title_file_name = self.get_message_media_archive_filename(
+                        group_message,
+                        post_message_id=shared_post_id,
+                    )
+                    media_meta = self.get_message_media_target_limit_meta(
+                        group_message,
+                        post_message_id=shared_post_id,
+                    )
+                    archive_file_name = title_file_name or (media_meta or {}).get('file_name')
                     self._log_system_chain(
                         category='archive',
                         stage='archive_success' if archive_ok else f'archive_{archive_status}',
@@ -188,7 +197,10 @@ class LiveTransferService:
                         details={
                             'archive_path': getattr(archive_result, 'archive_path', None),
                             'source_folder': archive_folder,
-                            'file_name': getattr(archive_result, 'file_name', None),
+                            'file_name': archive_file_name,
+                            'match_original_name': not bool(
+                                title_file_name and archive_file_name == title_file_name
+                            ),
                         }
                     )
 

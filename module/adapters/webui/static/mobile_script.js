@@ -2108,13 +2108,49 @@ function openMobileSystemLogDetail(entry) {
   }
   html += '</div>' +
     '<div class="mob-sheet__footer">' +
+      (entry.can_retry
+        ? '<button type="button" class="mob-btn mob-btn-primary" id="mob-system-log-detail-retry" data-system-log-retry="' +
+          esc(String(entry.id || '')) + '">' + esc(t('systemLogs.retryArchive')) + '</button>'
+        : '') +
       '<button type="button" class="mob-btn mob-btn-muted" id="mob-system-log-detail-close">' + esc(t('action.cancel')) + '</button>' +
     '</div>';
   sheet.className = 'mob-sheet mob-sheet--system-log';
   sheet.innerHTML = html;
   var closeBtn = document.getElementById('mob-system-log-detail-close');
   if (closeBtn) closeBtn.addEventListener('click', closeSheet);
+  var retryBtn = document.getElementById('mob-system-log-detail-retry');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', function() {
+      retryArchiveFromSystemLogMobile(retryBtn.getAttribute('data-system-log-retry'), retryBtn);
+    });
+  }
   overlay.classList.add('open');
+}
+
+async function retryArchiveFromSystemLogMobile(logId, buttonEl) {
+  if (!logId) return;
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    var resp = await fetch('/api/system-logs/' + encodeURIComponent(logId) + '/retry-archive', {
+      method: 'POST'
+    });
+    var data = {};
+    try { data = await resp.json(); } catch (err) {}
+    if (!resp.ok) {
+      var code = data.error_code || data.error || '';
+      var msg = data.detail || data.error || data.message
+        || (code === 'retry_in_progress' ? t('systemLogs.retryInProgress') : t('systemLogs.retryFailed'));
+      showToast(msg, 4500);
+      return;
+    }
+    showToast(t('systemLogs.retrySuccess'), 2500);
+    closeSheet();
+    await loadMobileSystemLogs(state.systemLogsPage || 1);
+  } catch (err) {
+    showToast(t('systemLogs.retryFailed'), 4500);
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
 }
 
 async function loadMobileSystemLogs(page) {
@@ -2160,26 +2196,41 @@ async function loadMobileSystemLogs(page) {
       var timeText = entry.created_at ? new Date(entry.created_at).toLocaleString() : '-';
       var context = formatMobileSystemLogContext(entry);
       var summary = [entry.stage || '-', context].filter(Boolean).join(' · ');
-      html += '<button type="button" class="mob-card mob-system-log-card" data-log-id="' + esc(String(entry.id || '')) + '">' +
-        '<div class="mob-card__head">' +
-          '<span class="system-log-level ' + mobSystemLogLevelClass(entry.level) + '">' +
-            esc((entry.level || 'info').toUpperCase()) +
-          '</span>' +
-          '<span class="mob-system-log-card__category">' + esc(mobSystemLogCategoryLabel(entry.category)) + '</span>' +
-          '<span class="mob-system-log-card__time">' + esc(timeText) + '</span>' +
-        '</div>' +
-        '<div class="mob-system-log-card__message">' + esc(entry.message || '-') + '</div>' +
-        (summary ? '<div class="mob-system-log-card__meta">' + esc(summary) + '</div>' : '') +
-      '</button>';
+      html += '<div class="mob-card mob-system-log-card" data-log-id="' + esc(String(entry.id || '')) + '">' +
+        '<button type="button" class="mob-system-log-card__main" data-log-open="' + esc(String(entry.id || '')) + '">' +
+          '<div class="mob-card__head">' +
+            '<span class="system-log-level ' + mobSystemLogLevelClass(entry.level) + '">' +
+              esc((entry.level || 'info').toUpperCase()) +
+            '</span>' +
+            '<span class="mob-system-log-card__category">' + esc(mobSystemLogCategoryLabel(entry.category)) + '</span>' +
+            '<span class="mob-system-log-card__time">' + esc(timeText) + '</span>' +
+          '</div>' +
+          '<div class="mob-system-log-card__message">' + esc(entry.message || '-') + '</div>' +
+          (summary ? '<div class="mob-system-log-card__meta">' + esc(summary) + '</div>' : '') +
+        '</button>' +
+        (entry.can_retry
+          ? '<div class="mob-system-log-card__actions">' +
+              '<button type="button" class="mob-btn mob-btn-sm" data-system-log-retry="' +
+              esc(String(entry.id || '')) + '">' + esc(t('systemLogs.retryArchive')) + '</button>' +
+            '</div>'
+          : '') +
+      '</div>';
     });
     container.innerHTML = html;
-    container.querySelectorAll('.mob-system-log-card').forEach(function(card) {
-      card.addEventListener('click', function() {
-        var logId = card.dataset.logId;
+    container.querySelectorAll('[data-log-open]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var logId = btn.getAttribute('data-log-open');
         var entry = (state.systemLogs || []).find(function(item) {
           return String(item.id) === String(logId);
         });
         if (entry) openMobileSystemLogDetail(entry);
+      });
+    });
+    container.querySelectorAll('[data-system-log-retry]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        retryArchiveFromSystemLogMobile(btn.getAttribute('data-system-log-retry'), btn);
       });
     });
     if (pagEl) {
