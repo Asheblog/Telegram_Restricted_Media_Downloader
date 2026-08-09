@@ -168,6 +168,12 @@ class RclonePikPakArchiveClient:
                     self._list_dir_file_names(target_dir),
                     desired_name,
                 )
+                if not final_name:
+                    return PikPakArchiveResult(
+                        False,
+                        'error',
+                        f'No free archive name for {desired_name} (too many duplicates).',
+                    )
                 target_path = join_remote_path(target_dir, final_name)
                 if source_path == target_path:
                     return PikPakArchiveResult(True, 'already_archived', archive_path=target_path)
@@ -302,7 +308,7 @@ class RclonePikPakArchiveClient:
             return []
         try:
             result = self._run(['lsjson', self.remote(remote_dir), '--files-only'])
-        except RuntimeError:
+        except Exception:
             return []
         try:
             items = json.loads(result.stdout or '[]')
@@ -604,7 +610,16 @@ def candidate_name_matches(candidate_name: Optional[str], target_name: str, has_
         return True
     if not has_disambiguator:
         return False
-    return normalized_archive_name_key(candidate_name) == normalized_archive_name_key(target_name)
+    if normalized_archive_name_key(candidate_name) == normalized_archive_name_key(target_name):
+        return True
+    # PikPak-style duplicate suffixes ``name (N).ext`` must match the bare name so
+    # retries can re-find files our own dedup already landed under a suffix.
+    candidate_stem, candidate_ext = posixpath.splitext(candidate_name)
+    target_ext = posixpath.splitext(target_name)[1]
+    if candidate_ext.casefold() != target_ext.casefold():
+        return False
+    stripped_candidate = f'{stem_without_duplicate_suffix(candidate_stem).rstrip()}{candidate_ext}'
+    return normalized_archive_name_key(stripped_candidate) == normalized_archive_name_key(target_name)
 
 
 def normalized_archive_name_key(file_name: str) -> tuple[str, str]:
@@ -666,7 +681,8 @@ def unique_archive_target_name(
         candidate = f'{base_stem} ({n}){extension}'
         if candidate.casefold() not in occupied_exact:
             return candidate
-    return desired
+    # Never return the occupied bare name — moveto would overwrite an existing file.
+    return None
 
 
 def candidate_matches_ingest_name(candidate_name: Optional[str], ingest_name: str) -> bool:

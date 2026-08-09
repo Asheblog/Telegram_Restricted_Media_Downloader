@@ -58,20 +58,17 @@ class _FakeArchiveRunner:
         command = list(args)
         if len(command) >= 2 and command[1] == 'lsjson':
             remote = command[2]
-            flags = command[3:]
-            if '--recursive' in flags:
-                # My Telegram ingest listing (recursive).
-                return _FakeCompleted(
-                    stdout=json.dumps(_lsjson_items(self.ingest_files)),
-                )
-            if remote == self.target_dir_remote:
-                # Non-recursive target dir listing (dedup probe).
+            if remote.startswith('pikpak:Telegram'):
+                # Target-dir listings (dedup probe + recursive fallback).
                 return _FakeCompleted(
                     stdout=json.dumps(_lsjson_items(
                         [(name, 1) for name in sorted(self.target_names)]
                     )),
                 )
-            return _FakeCompleted(stdout='[]')
+            # My Telegram ingest listing.
+            return _FakeCompleted(
+                stdout=json.dumps(_lsjson_items(self.ingest_files)),
+            )
         if len(command) >= 2 and command[1] == 'mkdir':
             return _FakeCompleted()
         if len(command) >= 2 and command[1] == 'moveto':
@@ -96,8 +93,11 @@ def _make_client(runner):
             'source_directory': 'My Telegram',
             'root_directory': 'Telegram',
             'poll_seconds': 0,
+            'poll_cap_seconds': 0,
             'poll_interval_seconds': 0,
-            'match_window_seconds': 3600,
+            # 0 keeps the poll deadline at now() (frozen clock must not spin forever);
+            # transferred_at == ModTime - 60 still matches exactly at window 0.
+            'match_window_seconds': 0,
         },
         runner=runner,
         now=lambda: NOW,
@@ -189,6 +189,13 @@ class UniqueArchiveTargetNameCase(unittest.TestCase):
             unique_archive_target_name(existing, 'clip (1).mp4'),
         )
 
+    def test_exhaustion_returns_none_instead_of_occupied_name(self):
+        """Never return the occupied bare name (that would overwrite on moveto)."""
+        from module.pikpak_archive import unique_archive_target_name
+
+        existing = ['clip.mp4'] + [f'clip ({i}).mp4' for i in range(1, 1000)]
+        self.assertIsNone(unique_archive_target_name(existing, 'clip.mp4'))
+
 
 class ArchiveFileDedupCase(unittest.TestCase):
     def test_two_same_target_files_get_distinct_moveto_paths(self):
@@ -228,6 +235,32 @@ class ArchiveFileDedupCase(unittest.TestCase):
             'pikpak:Telegram/chan/2509 - title/2509 - title (1).mp4',
             targets,
         )
+
+    def test_bare_name_retry_matches_suffixed_archived_file(self):
+        """Red on the bug: retry of a bare deterministic name must match the
+        deduped ``(N)`` file already in the target dir, not report not_found."""
+        runner = _FakeArchiveRunner(
+            ingest_files=[],
+            target_dir_remote='pikpak:Telegram/chan/2509 - title',
+            initial_target=('2509 - title (1).mp4',),
+        )
+        client = _make_client(runner)
+
+        result = client.archive_file(
+            source_folder='chan/2509 - title',
+            file_name='2509 - title.mp4',
+            file_size=200,
+            transferred_at=TRANSFERRED_AT,
+            match_original_name=False,
+        )
+
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual('already_archived', result.status)
+        self.assertEqual(
+            'Telegram/chan/2509 - title/2509 - title (1).mp4',
+            result.archive_path,
+        )
+        self.assertEqual([], runner.moveto_calls)
 
     def test_concurrent_same_target_archives_do_not_overwrite(self):
         """Both runs see the other's landed file via the target-dir listing."""
@@ -299,6 +332,7 @@ class ArchiveFileDedupCase(unittest.TestCase):
         self.assertTrue(lock_checks)
         for stage, held in lock_checks:
             self.assertTrue(held, f'{stage} ran outside the dedup lock')
+        self.assertFalse(client._dedup_lock.locked())
 
     def test_bare_name_ignores_unrelated_existing_files(self):
         runner = _FakeArchiveRunner(
