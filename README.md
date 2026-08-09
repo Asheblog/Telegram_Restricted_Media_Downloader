@@ -1,44 +1,29 @@
-# Telegram Restricted Media Downloader WebUI Fork
+# Telegram Restricted Media Downloader (WebUI Fork)
 
-面向**长期运行**的 Telegram 媒体转存工具：用 WebUI 管理批量转存、实时监听和任务恢复，默认转存到 PikPak bot，并可用 rclone 按**来源频道 / 帖子**自动归档。
+TRMD 是面向**长期运行**的 Telegram 受限媒体转存工具：WebUI 管理批量转存、实时监听与任务恢复，默认转存到 PikPak，并按来源频道 / 帖子自动归档。
 
-请只用于你有权访问、保存和转存的内容。使用者需要自行承担使用行为及其后果。
+> 请只用于你有权访问、保存和转存的内容。使用者需自行承担使用行为及其后果。
 
-## 本 Fork 做什么
+## 功能优势
 
-继承上游 [Gentlesprite/TRMD](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) 的受限内容下载→上传链路，在此基础上把**运维和任务管理**搬到 WebUI，并补齐一批频道搬运场景里常见、但多数同类项目没做好的能力：
+- **WebUI 任务中心** —— 浏览器完成 Telegram 登录与 PikPak rclone 初始化；转存 / 监听任务的进度、暂停继续、失败重试、历史记录与导入导出全部可视化。
+- **深链取片** —— 帖子只有 `t.me/<bot>?start=...` 按钮、正片在资源 bot 私聊，或资源藏在评论区时，自动用已登录账号取回媒体再转存。
+- **断点续传** —— SQLite 持久化任务状态，进程重启、镜像升级后未完成任务自动续跑。
+- **PikPak 按帖归档** —— rclone 将文件整理为 `Telegram/来源频道/帖子路径`，评论区与深链内容仍归属原帖。
+- **TG Bot 辅助** —— `/download`、`/forward`、`/listen_*` 等命令仍可用，适合临时操作。
+- **一键 Docker 部署** —— 单容器 Compose 启动，提供 linux/amd64 与 linux/arm64 镜像。
 
-| 能力 | 说明 |
-| --- | --- |
-| **深链取片** | 频道帖只有 `t.me/<bot>?start=...` 按钮、正片在资源 bot 私聊里时，用已登录账号 `startBot` 取回媒体再转存；支持评论区深链、连发收齐、白名单与超时控制 |
-| **WebUI 任务中心** | 转存 / 监听、进度与失败原因、暂停继续、重试、监听历史与导出导入；浏览器完成 API / 登录 / rclone 初始化 |
-| **PikPak 归档** | 转存到 PikPak 后，rclone 按 `Telegram/频道名/帖子路径` 整理，评论区与深链内容仍归属原帖 |
-| **TG Bot 辅助** | `/download`、`/forward`、`/listen_*` 等命令仍可用，适合临时操作；长期任务推荐 WebUI |
+## 快速开始（Docker 部署）
 
-## 与同类项目怎么选
+准备：
 
-| 项目 | 更适合 | 优势 | 局限 |
-| --- | --- | --- | --- |
-| **本 Fork** | PikPak 长期归档、资源 bot 深链频道、需要 WebUI 管任务 | 深链取片 + 评论区、按帖归档、监听可恢复、失败可观测 | 部署比纯 Bot 重；存储侧偏 PikPak / rclone，不如多后端工具灵活 |
-| [Gentlesprite 上游](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) | 轻量 CLI / Bot、熟悉原版工作流 | 成熟、断点续传、命令齐全 | 无 WebUI；初始化多依赖 TTY / `docker exec` |
-| [SaveAny-Bot](https://github.com/krau/saveany-bot) | 多存储（Alist / S3 / WebDAV 等）统一搬运 | 后端生态广、监听与规则丰富 | AGPL；工作流与 PikPak 按帖归档不同；无资源 bot 深链取片 |
-| [TeleFlow](https://github.com/AvishkarPatil/TeleFlow) 等链接 Bot | 偶尔单条 / 小批量取片 | 上手快、双客户端架构清晰 | 缺长期任务、监听历史、深链与按帖归档 |
-| [telegram-media-downloader](https://github.com/botnick/telegram-media-downloader) | 本地媒体库与图库浏览 | PWA 图库、监控与去重很强 | 重心在本地下载库，不是 PikPak 转存流水线 |
+1. 一台能运行 Docker / Docker Compose 的机器。
+2. Telegram `api_id` / `api_hash`：登录 [my.telegram.org](https://my.telegram.org/auth) → `API development tools` 创建应用获取。
+3. 一个可登录的 Telegram 账号（读取来源频道用）和一个 PikPak 账号。
 
-若你的来源帖**只有深链按钮、没有可直接转发的正片**，或需要**评论区才能拿到资源**，本 Fork 的深链取片通常是更省心的选择。
+推荐部署目录为 `/opt/trmd`。Windows + Docker Desktop 使用同一份 Compose，只需把挂载路径改为 Windows 路径（如 `D:/trmd/config:/app/TRMD`）。
 
-## 快速开始
-
-准备好这些东西：
-
-- 一台能运行 Docker / Docker Compose 的机器。
-- Telegram `api_id` 和 `api_hash`：到 `https://my.telegram.org/auth` 登录后，在 `API development tools` 创建应用获取。
-- 一个可登录的 Telegram 账号，用来读取来源频道并发送给 PikPak bot。
-- 一个 PikPak 账号，用来给 rclone 配置 PikPak remote。
-
-推荐部署目录为 `/opt/trmd`。Windows + Docker Desktop 也可以使用同一份 Compose，只需要把左侧宿主机挂载路径改成 Windows 路径，例如 `D:/trmd/config:/app/TRMD`。
-
-## 1. 创建 docker-compose.yml
+**1. 创建 `docker-compose.yml`：**
 
 ```yaml
 services:
@@ -62,7 +47,7 @@ services:
       - RCLONE_CONFIG=/app/rclone/rclone.conf
       - TRMD_WEB_HOST=0.0.0.0
       - TRMD_WEB_USERNAME=admin
-      - TRMD_WEB_PASSWORD=replace-with-a-strong-password
+      - TRMD_WEB_PASSWORD=replace-with-a-strong-password  # 改成强密码
     command:
       - python
       - main.py
@@ -79,172 +64,65 @@ services:
         max-file: "5"
 ```
 
-把 `TRMD_WEB_PASSWORD` 改成强密码，然后启动：
+> `TRMD_WEB_HOST=0.0.0.0` 时必须设置 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD`，否则程序会拒绝启动，避免 WebUI 无密码暴露。
+
+**2. 启动：**
 
 ```bash
 docker compose up -d
-docker logs -f trmd
 ```
 
-打开 WebUI：
+**3. 浏览器完成初始化（推荐）：**
 
-```text
-http://服务器IP:2921
-```
+打开 `http://服务器IP:2921`，账号密码为 Compose 中设置的 `admin / 你的密码`。首次登录进入初始化向导，按页面提示依次：
 
-登录账号密码就是 Compose 里的：
+1. 填写 Telegram `api_id` / `api_hash`（可选代理）。
+2. 完成 Telegram 登录（手机号、验证码、二步验证；手机号用国际格式，如 `+86…`）。
+3. 配置 PikPak rclone（不可跳过，下载回退依赖它）。
 
-```text
-admin / replace-with-a-strong-password
-```
+登录会话保存在 `/opt/trmd/sessions`，升级或重启请勿删除。已有部署升级时，只要 `api_id` / `api_hash` 与 sessions 仍有效，不会强弹向导。
 
-如果 `TRMD_WEB_HOST=0.0.0.0`，必须设置 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD`，否则程序会拒绝启动，避免 WebUI 无密码暴露。
+## 开始使用
 
-## 2. 浏览器完成初始化（推荐）
-
-启动容器并登录 WebUI 后，会进入**首次初始化向导**（桌面端与手机浏览器均可）：
-
-1. 填写 Telegram `api_id` / `api_hash`（可选代理）
-2. 在页面完成 Telegram 登录（手机号、验证码、二步验证；手机号用国际格式，如 `+44…` / `+1…` / `+86…`）
-3. **必须**配置 PikPak rclone（下载回退会直传 `My Telegram`，不可跳过）
-
-路径、媒体类型等会按 Docker 默认值自动生成，一般不必先手改配置文件。  
-登录会话保存在 `/opt/trmd/sessions`，后续升级或重启请勿删除。
-
-**已有部署升级**：只要原来的 `api_id`/`api_hash` 与 sessions 仍有效，不会强弹全屏向导。
-
-若仍想手写 `config.yaml`，至少保证：
-
-```yaml
-api_id: "123456"
-api_hash: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-save_directory: /app/downloads
-session_directory: /app/sessions
-temp_directory: /app/temp
-```
-
-PikPak 归档等全局项写在 `/opt/trmd/config/.CONFIG.yaml`（或 WebUI「系统设置」），不要写进 `config.yaml`。
-
-也可以在「系统设置 → PikPak 归档」里随时「配置 / 更换 rclone」或「验证 remote」。
-
-## 3. rclone 排障（可选）
-
-正常情况用 WebUI 向导即可。若需命令行排查：
-
-```bash
-docker exec -it trmd rclone listremotes --config /app/rclone/rclone.conf
-docker exec -it trmd rclone lsd pikpak: --config /app/rclone/rclone.conf
-```
-
-官方说明见 [rclone PikPak 文档](https://rclone.org/pikpak/)。
-
-## 4. 开始使用
-
-在 WebUI 里创建转存任务：
+在 WebUI 创建转存任务：
 
 1. 来源链接填 Telegram 消息或频道链接。
-2. 目标保持默认 `https://t.me/pikpak_bot`。
-3. 目标配置选择 `PikPak 文档转存`。
-4. 单条消息直接提交；频道范围任务填写起始 ID 和结束 ID。
+2. 目标保持默认 `https://t.me/pikpak_bot`，目标配置选 `PikPak 文档转存`。
+3. 单条消息直接提交；频道范围任务填写起始 / 结束 ID。
 
-### 深链取片
-
-部分频道帖只有封面/`t.me/<bot>?start=...` 按钮（或评论区里才有深链），正片在资源 bot 私聊里。用法：
-
-1. **系统设置 → 深链取片**：填写资源 bot 白名单（每行一个用户名，如 `123456`），可改超时、最小间隔、收齐静默秒数。
-2. 新建转存或监听转发时勾选 **深链取片**（白名单为空时无法勾选创建）。若深链在评论区，再勾选 **包含评论区**。
-3. 命中白名单深链时，会用已登录账号向该 bot 取 `video`/`document`/`animation`/`photo`（连发会按静默窗口收齐），再转存到目标；失败不会用频道预览顶替。
-
-不勾选则行为与原来完全相同。
-
-默认流程是：
+默认流程：
 
 ```text
 Telegram 来源消息 -> PikPak bot -> PikPak 的 My Telegram -> rclone 移动到 Telegram/来源频道
 ```
 
-其中：
-
-- `source_directory: My Telegram` 是 PikPak bot 入库后的默认目录。
-- `root_directory: Telegram` 是最终归档根目录。
-- 文件会按来源频道放到 `Telegram/来源频道`。
-- 单个 PikPak 目标文件默认限制为 4 GiB，超过会提前失败。
+**深链取片**：先在「系统设置 → 深链取片」配置资源 bot 白名单，新建转存 / 监听任务时勾选「深链取片」（资源在评论区则再勾选「包含评论区」）即可。
 
 ## 常用命令
 
 ```bash
-# 查看日志
-docker logs -f trmd
+docker logs -f trmd                                     # 查看日志
+docker compose restart                                  # 重启
+docker compose pull && docker compose up -d             # 升级镜像
+docker compose down                                     # 停止
+```
 
-# 重启
-docker compose restart
+备份：保留 `config`、`sessions`、`temp`、`form`、`rclone` 目录即可完整保留配置、登录态、任务历史、统计表与 PikPak rclone 登录信息：
 
-# 升级镜像
-docker compose pull
-docker compose up -d
-
-# 停止
-docker compose down
-
-# 备份关键数据
+```bash
 tar -C /opt/trmd -czf trmd-backup.tar.gz config sessions temp form rclone
 ```
 
-Windows PowerShell 下备份可以直接复制部署目录，例如 `D:\trmd`。
-
-## 目录说明
-
-| 宿主机目录 | 容器目录 | 用途 |
-| --- | --- | --- |
-| `/opt/trmd/config` | `/app/TRMD` | `config.yaml` 用户配置 |
-| `/opt/trmd/sessions` | `/app/sessions` | Telegram 登录会话 |
-| `/opt/trmd/downloads` | `/app/downloads` | 下载后的媒体文件 |
-| `/opt/trmd/temp` | `/app/temp` | 临时文件和 WebUI 任务状态 |
-| `/opt/trmd/form` | `/app/form` | 统计表导出目录 |
-| `/opt/trmd/rclone` | `/app/rclone` | rclone 配置，默认读取 `rclone.conf` |
-
-保留 `config`、`sessions`、`temp`、`form`、`rclone` 这些目录，就能保留配置、登录状态、任务历史、统计表和 PikPak rclone 登录信息。
-
-## 诊断包导出
-
-WebUI「系统设置 → 诊断包导出」可一键下载 ZIP，便于本机复现直转等问题。
-
-- 内容：`config.yaml`、`.CONFIG.yaml`、Telegram `*.session`、转存库、系统日志，以及对失败直转项最多 5 条的 `copy`/`forward` 实测结果（`probes/forward_probe.json`）
-- **含登录态与密钥**：仅私密传输，勿公开分享或提交仓库
-- 导出前需勾选确认；可选填写 `task_id`（默认自动挑含 `Direct forward did not produce a target message` 的失败项）
-
 ## 常见问题
 
-**WebUI 打不开**
+**WebUI 打不开**：先 `docker ps` 和 `docker logs -f trmd` 查看容器状态；若提示认证缺失，检查 `TRMD_WEB_USERNAME` / `TRMD_WEB_PASSWORD`。
 
-先看容器是否在运行：
+**Telegram 登录失败或下载不动**：检查 `api_id`、`api_hash`、代理与账号权限；遇到 FloodWait 时程序会等待后继续，不建议频繁重启。
 
-```bash
-docker ps
-docker logs -f trmd
-```
+**PikPak 已收到文件但未归档**：在「系统设置 → PikPak 归档」点「验证 remote」，确认 rclone 可用且归档开关已打开。
 
-如果日志提示 WebUI 认证缺失，检查 `TRMD_WEB_USERNAME` 和 `TRMD_WEB_PASSWORD`。
-
-**Telegram 登录失败或下载不动**
-
-检查 `api_id`、`api_hash`、代理配置和账号是否能访问来源频道。遇到 FloodWait 时程序会等待后继续，不建议频繁重启。
-
-**PikPak 已收到文件，但没有归档**
-
-优先在 WebUI「系统设置 → PikPak 归档」点「验证 remote」。命令排障：
-
-```bash
-docker exec -it trmd rclone listremotes --config /app/rclone/rclone.conf
-docker exec -it trmd rclone lsd pikpak: --config /app/rclone/rclone.conf
-```
-
-确认 remote 可用，且归档开关已打开（向导配置成功后会自动打开）。
-
-**不想自动归档到频道目录**
-
-在设置里关闭「PikPak按来源频道归档」。下载回退仍会 rclone 传到 `My Telegram`；直接转发仍可走 PikPak bot。关闭归档后文件会留在入库目录，需自行整理。
+排障时可从「系统设置 → 诊断包导出」下载 ZIP（含日志与失败项实测结果）。注意该包**含登录态与密钥**，请仅私密传输，勿公开分享。
 
 ## License
 
-本项目继承上游 MIT License。上游作者为 [Gentlesprite](https://github.com/Gentlesprite)。
+本项目继承上游 [Gentlesprite/Telegram_Restricted_Media_Downloader](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) 的 MIT License。
