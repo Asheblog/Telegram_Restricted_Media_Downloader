@@ -4,6 +4,7 @@ import os
 import posixpath
 import re
 import subprocess
+import threading
 import time
 import unicodedata
 
@@ -67,6 +68,9 @@ class RclonePikPakArchiveClient:
         self.config = normalize_archive_config(config)
         self.runner = runner or subprocess.run
         self.now = now or time.time
+        # Serializes the target-name dedup probe + moveto so concurrent archives of
+        # the same deterministic name never overwrite each other.
+        self._dedup_lock = threading.Lock()
 
     @property
     def enabled(self) -> bool:
@@ -151,37 +155,48 @@ class RclonePikPakArchiveClient:
             if len(candidates) > 1:
                 return PikPakArchiveResult(False, 'ambiguous', f'Multiple PikPak files matched {target_name}.')
             source_path = candidate_remote_path(source_root, candidates[0].get('Path') or candidates[0].get('Name'))
-            target_name = target_name or clean_remote_segment(candidates[0].get('Name'))
-            target_path = join_remote_path(target_dir, target_name)
             if not source_path:
                 return PikPakArchiveResult(False, 'not_found', f'No PikPak file path matched {target_name}.')
-            if not target_name:
-                return PikPakArchiveResult(False, 'not_found', 'No PikPak file name was available for archive.')
-            if source_path == target_path:
-                return PikPakArchiveResult(True, 'already_archived', archive_path=target_path)
-            try:
-                self.moveto(source_path, target_path)
-            except RuntimeError as move_error:
-                if not _is_missing_source_move_error(move_error):
-                    raise
-                archived_candidates = disambiguate_archive_candidates(
-                    self._list_matching_candidates(
-                        root=target_dir,
-                        file_name=target_name,
-                        file_size=file_size,
-                        transferred_at=transferred_at,
-                    ),
-                    target_name=target_name,
-                    transferred_at=transferred_at,
+            # Name dedup + moveto are one critical section: concurrent archives of the
+            # same deterministic name (e.g. album members sharing {message_id} - {title})
+            # must observe each other's landed files and pick distinct suffixes.
+            with self._dedup_lock:
+                desired_name = target_name or clean_remote_segment(candidates[0].get('Name'))
+                if not desired_name:
+                    return PikPakArchiveResult(False, 'not_found', 'No PikPak file name was available for archive.')
+                final_name = unique_archive_target_name(
+                    self._list_dir_file_names(target_dir),
+                    desired_name,
                 )
-                if len(archived_candidates) == 1:
-                    archived_path = candidate_remote_path(
-                        target_dir,
-                        archived_candidates[0].get('Path') or target_name,
-                    )
-                    return PikPakArchiveResult(True, 'already_archived', archive_path=archived_path)
-                raise
-            return PikPakArchiveResult(True, 'success', archive_path=target_path)
+                target_path = join_remote_path(target_dir, final_name)
+                if source_path == target_path:
+                    return PikPakArchiveResult(True, 'already_archived', archive_path=target_path)
+                try:
+                    self.moveto(source_path, target_path)
+                except RuntimeError as move_error:
+                    if not _is_missing_source_move_error(move_error):
+                        raise
+                    # A concurrent/retry run may have landed the file under the deduped
+                    # name or the original desired name; accept either.
+                    for candidate_name in (final_name, desired_name):
+                        archived_candidates = disambiguate_archive_candidates(
+                            self._list_matching_candidates(
+                                root=target_dir,
+                                file_name=candidate_name,
+                                file_size=file_size,
+                                transferred_at=transferred_at,
+                            ),
+                            target_name=candidate_name,
+                            transferred_at=transferred_at,
+                        )
+                        if len(archived_candidates) == 1:
+                            archived_path = candidate_remote_path(
+                                target_dir,
+                                archived_candidates[0].get('Path') or candidate_name,
+                            )
+                            return PikPakArchiveResult(True, 'already_archived', archive_path=archived_path)
+                    raise
+                return PikPakArchiveResult(True, 'success', archive_path=target_path)
         except Exception as e:
             return PikPakArchiveResult(False, 'error', str(e))
 
@@ -274,6 +289,30 @@ class RclonePikPakArchiveClient:
             return json.loads(result.stdout or '[]')
         except json.JSONDecodeError as e:
             raise RuntimeError(f'Unable to parse rclone lsjson output: {e}')
+
+    def _list_dir_file_names(self, remote_dir: str) -> list[str]:
+        """Non-recursive file names directly under ``remote_dir``.
+
+        Cheap target-dir probe for archive name dedup (one small directory, not
+        the whole ingest tree). Listing failure degrades to an empty list so the
+        archive still proceeds; the dedup lock still serializes the moveto.
+        """
+        remote_dir = clean_remote_path(remote_dir or '')
+        if not remote_dir:
+            return []
+        try:
+            result = self._run(['lsjson', self.remote(remote_dir), '--files-only'])
+        except RuntimeError:
+            return []
+        try:
+            items = json.loads(result.stdout or '[]')
+        except json.JSONDecodeError:
+            return []
+        return [
+            clean_remote_segment(item.get('Name') or '')
+            for item in items
+            if not item.get('IsDir')
+        ]
 
     def _matching_candidate_groups(
             self,
@@ -590,6 +629,44 @@ def ingest_name_from_archive_name(archive_name: Optional[str]) -> Optional[str]:
 
 def stem_without_duplicate_suffix(stem: str) -> str:
     return _PIKPAK_DUPLICATE_SUFFIX.sub('', str(stem or '')).rstrip()
+
+
+def unique_archive_target_name(
+        existing_names,
+        desired_name: Optional[str],
+) -> str:
+    """Pick a free archive target name when ``desired_name`` is already taken.
+
+    Media from one source post shares one ``{message_id} - {title}.{ext}`` name;
+    later files must not overwrite the earlier one. Existing ``{stem}.{ext}``
+    forces ``{stem} (1).{ext}``, ``{stem} (2).{ext}``… Comparison is
+    extension-aware and case-insensitive; an explicit ``(N)`` in ``desired_name``
+    (PikPak-style) is kept when free, otherwise rebased to the next free slot.
+    ``existing_names`` may be any iterable of remote file names.
+    """
+    desired = clean_remote_segment(str(desired_name or ''))
+    if not desired:
+        return desired
+    stem, extension = posixpath.splitext(desired)
+    if not stem:
+        return desired
+    occupied_exact: set[str] = set()
+    for name in existing_names or []:
+        name = clean_remote_segment(str(name or ''))
+        if not name:
+            continue
+        n_stem, n_ext = posixpath.splitext(name)
+        if n_ext.casefold() != extension.casefold():
+            continue
+        occupied_exact.add(name.casefold())
+    if desired.casefold() not in occupied_exact:
+        return desired
+    base_stem = stem_without_duplicate_suffix(stem).rstrip()
+    for n in range(1, 1000):
+        candidate = f'{base_stem} ({n}){extension}'
+        if candidate.casefold() not in occupied_exact:
+            return candidate
+    return desired
 
 
 def candidate_matches_ingest_name(candidate_name: Optional[str], ingest_name: str) -> bool:

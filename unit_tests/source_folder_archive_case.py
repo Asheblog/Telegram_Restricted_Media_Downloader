@@ -784,6 +784,13 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         def fake_runner(args, **kwargs):
             calls.append(args)
+            if (
+                    args[:2] == ['rclone', 'lsjson']
+                    and '--recursive' not in args
+                    and args[2].startswith('pikpak:Telegram')
+            ):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
@@ -832,6 +839,13 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         def fake_runner(args, **kwargs):
             calls.append(args)
+            if (
+                    args[:2] == ['rclone', 'lsjson']
+                    and '--recursive' not in args
+                    and args[2].startswith('pikpak:Telegram')
+            ):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
@@ -1287,6 +1301,13 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         def fake_runner(args, **kwargs):
             calls.append(args)
+            if (
+                    args[:2] == ['rclone', 'lsjson']
+                    and '--recursive' not in args
+                    and args[2].startswith('pikpak:Telegram')
+            ):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
@@ -1357,6 +1378,9 @@ class SourceFolderArchiveCase(unittest.TestCase):
                         'error in ListJSON: couldn\'t list files: Error "file_not_found" (5)'
                     ),
                 )
+            if args[:2] == ['rclone', 'lsjson'] and args[2].startswith('pikpak:Telegram'):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
@@ -1411,6 +1435,13 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         def fake_runner(args, **kwargs):
             calls.append(args)
+            if (
+                    args[:2] == ['rclone', 'lsjson']
+                    and '--recursive' not in args
+                    and args[2].startswith('pikpak:Telegram')
+            ):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
@@ -1512,6 +1543,13 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
         def fake_runner(args, **kwargs):
             calls.append(args)
+            if (
+                    args[:2] == ['rclone', 'lsjson']
+                    and '--recursive' not in args
+                    and args[2].startswith('pikpak:Telegram')
+            ):
+                # Archive target-dir dedup probe: nothing archived there yet.
+                return SimpleNamespace(returncode=0, stdout='[]', stderr='')
             if args[:2] == ['rclone', 'lsjson']:
                 return SimpleNamespace(
                     returncode=0,
