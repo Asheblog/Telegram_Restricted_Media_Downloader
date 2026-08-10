@@ -406,6 +406,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
     archive_by_author: Boolean(fd.get('archive_by_author')),
+    archive_title_source: String(fd.get('archive_title_source') || 'auto'),
     media_types: readMediaTypesOverride(this),
   };
 
@@ -1707,6 +1708,7 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
       type: 'download',
       source_links: links,
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      archive_title_source: String(fd.get('archive_title_source') || 'auto'),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -1728,6 +1730,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      archive_title_source: String(fd.get('archive_title_source') || 'auto'),
       comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
       media_types: readMediaTypesOverride(this),
     });
@@ -1961,6 +1964,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   const archiveAuthor = $('#edit-watch-archive-author');
   if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
+  const archiveTitleSource = $('#edit-watch-archive-title-source');
+  if (archiveTitleSource) archiveTitleSource.value = watch.archive_title_source || 'auto';
   const delayInput = $('#edit-watch-comment-delay');
   if (delayInput) {
     delayInput.value = watch.comment_delay_minutes == null ? '' : String(watch.comment_delay_minutes);
@@ -2087,6 +2092,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
         archive_by_author: Boolean(fd.get('archive_by_author')),
+        archive_title_source: String(fd.get('archive_title_source') || 'auto'),
         comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
         media_types: readMediaTypesOverride(this),
       }),

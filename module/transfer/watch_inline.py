@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from module.source_folders import ARCHIVE_TITLE_SOURCE_AUTO, normalize_archive_title_source
 from module.transfer_store import ExecutionMode, TransferStatus
 
 
@@ -29,14 +30,20 @@ def ensure_download_fallback_transfer_task(
         target_profile: str = 'pikpak',
         watch_id: Optional[str] = None,
         archive_by_author: bool = False,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
 ) -> Optional[int]:
     """为监听/转发下载回退创建可见的 watch_inline Transfer Task，不入 web 队列。"""
     if store is None or not source_link or not target_link:
         return None
-    if watch_id and not archive_by_author:
+    if watch_id:
         watch = store.get_live_transfer_watch(watch_id) if hasattr(store, 'get_live_transfer_watch') else None
         if isinstance(watch, dict):
-            archive_by_author = bool(watch.get('archive_by_author'))
+            if not archive_by_author:
+                archive_by_author = bool(watch.get('archive_by_author'))
+            if normalize_archive_title_source(archive_title_source) == ARCHIVE_TITLE_SOURCE_AUTO:
+                archive_title_source = normalize_archive_title_source(
+                    watch.get('archive_title_source')
+                )
     task_id = store.create_task(
         source_link=source_link,
         target_link=target_link,
@@ -44,6 +51,7 @@ def ensure_download_fallback_transfer_task(
         execution_mode=ExecutionMode.WATCH_INLINE,
         watch_id=watch_id,
         archive_by_author=archive_by_author,
+        archive_title_source=archive_title_source,
     )
     store.update_task(
         task_id,

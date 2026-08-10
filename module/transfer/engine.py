@@ -28,7 +28,7 @@ from module.path_tool import (
 )
 from module.stdio import MetaData
 from module.util import is_allow_upload, parse_link
-from module.source_folders import archive_source_folder, join_local_source_folder
+from module.source_folders import archive_source_folder, join_local_source_folder, normalize_archive_title_source
 from module.local_storage_guard import LocalStorageGuard
 from module.filter import MessageFilter
 
@@ -191,6 +191,9 @@ class TransferEngine:
             fallback_link=link,
             post_message_id=task_with_upload.get('range_message_id'),
             archive_by_author=bool(task_with_upload.get('archive_by_author')),
+            archive_title_source=normalize_archive_title_source(
+                task_with_upload.get('archive_title_source')
+            ),
         )
         file_base_name = os.path.basename(final_path)
         final_path = os.path.join(
@@ -312,8 +315,10 @@ class TransferEngine:
         send_as_media_group: Optional[bool] = None,
         range_message_id: Optional[int] = None,
         archive_by_author: bool = False,
+        archive_title_source: str = 'auto',
     ) -> dict:
         profile = self.infer_target_profile(target_link, target_profile)
+        title_source = normalize_archive_title_source(archive_title_source)
         return {
             'link': target_link,
             'file_name': None,
@@ -325,11 +330,13 @@ class TransferEngine:
                 fallback_link=source_link,
                 post_message_id=range_message_id,
                 archive_by_author=archive_by_author,
+                archive_title_source=title_source,
             ),
             'target_profile': profile,
             'media_type': media_type,
             'range_message_id': range_message_id,
             'archive_by_author': bool(archive_by_author),
+            'archive_title_source': title_source,
             'on_file_ready': self.ports.progress.on_transfer_file_ready,
             'status_callback': self.ports.progress.on_transfer_upload_status,
             'progress_callback': self.ports.progress.on_transfer_upload_progress,

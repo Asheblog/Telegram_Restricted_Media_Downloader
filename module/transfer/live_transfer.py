@@ -43,6 +43,7 @@ from module.source_folders import (
     archive_source_folder,
     archive_source_folder_for_messages,
     media_group_post_message_id,
+    normalize_archive_title_source,
     resolve_forward_archive_source_folder,
 )
 from module.util import (
@@ -109,7 +110,9 @@ class LiveTransferService:
             source_folder: Optional[str] = None,
             source_link: Optional[str] = None,
             archive_by_author: bool = False,
+            archive_title_source: str = 'auto',
     ) -> None:
+        title_source = normalize_archive_title_source(archive_title_source)
         transferred_at = transferred_at or datetime.datetime.now(datetime.UTC).timestamp()
         messages = [message]
         if media_group:
@@ -132,6 +135,7 @@ class LiveTransferService:
             fallback_chat_id=origin_chat_id,
             fallback_link=shared_source_link,
             archive_by_author=archive_by_author,
+            archive_title_source=title_source,
         )
         for group_message in messages:
             group_source_link = (
@@ -148,6 +152,7 @@ class LiveTransferService:
                     origin_chat_id=origin_chat_id,
                     message_id=message_id,
                     archive_by_author=archive_by_author,
+                    archive_title_source=title_source,
             ):
                 archive_result = self.archive_pikpak_item(
                     target_profile='pikpak',
@@ -158,6 +163,7 @@ class LiveTransferService:
                     source_folder=archive_folder,
                     transferred_at=transferred_at,
                     archive_by_author=archive_by_author,
+                    archive_title_source=title_source,
                 )
                 if (
                         archive_result is not None
@@ -226,7 +232,9 @@ class LiveTransferService:
             archive_source_link: Optional[str] = None,
             media_types_override=None,
             archive_by_author: bool = False,
+            archive_title_source: str = 'auto',
     ):
+        title_source = normalize_archive_title_source(archive_title_source)
         try:
             if trace_id is None:
                 trace_id, _, _ = self._message_chain_context(message, watch_id)
@@ -253,6 +261,7 @@ class LiveTransferService:
                         fallback_chat_id=origin_chat_id,
                         fallback_link=archive_source_link or getattr(message, 'link', None),
                         archive_by_author=archive_by_author,
+                        archive_title_source=title_source,
                     )
                 else:
                     channel_source_folder = archive_source_folder(
@@ -260,6 +269,7 @@ class LiveTransferService:
                         fallback_chat_id=origin_chat_id,
                         fallback_link=archive_source_link or getattr(message, 'link', None),
                         archive_by_author=archive_by_author,
+                        archive_title_source=title_source,
                     )
             channel_source_link = archive_source_link or getattr(message, 'link', None)
             if not ignore_type_filter:
@@ -473,6 +483,7 @@ class LiveTransferService:
                     source_folder=channel_source_folder,
                     source_link=channel_source_link,
                     archive_by_author=archive_by_author,
+                    archive_title_source=title_source,
                 )
             return forwarded_message
         except (ChatForwardsRestricted_400, ChatForwardsRestricted_406, MediaCaptionTooLong_400) as e:
@@ -516,7 +527,9 @@ class LiveTransferService:
             upload_meta = self.build_download_upload_meta(
                 target_link=target_link,
                 source_link=link,
-                source_folder=channel_source_folder
+                source_folder=channel_source_folder,
+                archive_by_author=archive_by_author,
+                archive_title_source=title_source,
             )
             if self.transfer_store and link and target_link:
                 from module.transfer.watch_inline import ensure_download_fallback_transfer_task
@@ -526,6 +539,8 @@ class LiveTransferService:
                     target_link=target_link,
                     target_profile=upload_meta.get('target_profile') or 'pikpak',
                     watch_id=watch_id,
+                    archive_by_author=archive_by_author,
+                    archive_title_source=title_source,
                 )
                 if fallback_task_id:
                     upload_meta['task_id'] = fallback_task_id
@@ -777,6 +792,10 @@ class LiveTransferService:
                 details={'source_link': getattr(message, 'link', None)}
             )
             await self.create_download_task(message_ids=message.link, single_link=True)
+            # Archive Title Source / Archive By Author are persisted on download
+            # watches for parity with forward watches, but this local-download path
+            # does not nest under Source Post Archive Path (same as archive_by_author).
+            # watch_inline fallback and transfer tasks read the field when archiving.
         except Exception as e:
             log.exception(f'监听下载出现错误,{_t(KeyWord.REASON)}:"{e}"')
             self._log_system_chain(
@@ -799,7 +818,9 @@ class LiveTransferService:
             watch_id: Optional[str] = None,
             resolve_deep_link: bool = False,
             archive_by_author: bool = False,
+            archive_title_source: str = 'auto',
     ) -> int:
+        title_source = normalize_archive_title_source(archive_title_source)
         from module.transfer.deep_link import (
             DeepLinkResolveError,
             message_has_whitelisted_deep_link,
@@ -834,6 +855,7 @@ class LiveTransferService:
             fallback_chat_id=source_chat_id,
             post_message_id=source_message_id,
             archive_by_author=archive_by_author,
+            archive_title_source=title_source,
         )
 
         fetch_started = time.time()
@@ -940,6 +962,7 @@ class LiveTransferService:
                         archive_source_link=getattr(parent_message, 'link', None) if parent_message else None,
                         media_types_override=media_types_override,
                         archive_by_author=archive_by_author,
+                        archive_title_source=title_source,
                     )
                     count += 1
         except (ValueError, AttributeError, MsgIdInvalid) as e:
@@ -1007,6 +1030,9 @@ class LiveTransferService:
                 target_link = rule.get('target_link')
                 include_comment = bool(rule.get('include_comment'))
                 archive_by_author = bool(rule.get('archive_by_author'))
+                archive_title_source = normalize_archive_title_source(
+                    rule.get('archive_title_source')
+                )
                 _listen_link_meta = await parse_link(
                     client=self.app.client,
                     link=listen_link
@@ -1035,6 +1061,7 @@ class LiveTransferService:
                             'include_comment': include_comment,
                             'resolve_deep_link': resolve_deep_link,
                             'archive_by_author': archive_by_author,
+                            'archive_title_source': archive_title_source,
                         }
                     )
                     forward_origin_chat_id = _listen_chat_id
@@ -1053,6 +1080,7 @@ class LiveTransferService:
                             fallback_chat_id=_listen_chat_id,
                             fallback_link=link,
                             archive_by_author=archive_by_author,
+                            archive_title_source=archive_title_source,
                         )
                     else:
                         channel_source_folder = archive_source_folder(
@@ -1060,6 +1088,7 @@ class LiveTransferService:
                             fallback_chat_id=_listen_chat_id,
                             fallback_link=link,
                             archive_by_author=archive_by_author,
+                            archive_title_source=archive_title_source,
                         )
                     media_types_override = self._watch_media_types_override(watch_id)
                     runtime_filter = self.runtime_message_filter(media_types_override)
@@ -1251,6 +1280,7 @@ class LiveTransferService:
                                     archive_source_link=channel_source_link,
                                     media_types_override=media_types_override,
                                     archive_by_author=archive_by_author,
+                                    archive_title_source=archive_title_source,
                                 )
                                 continue
                             continue
@@ -1279,6 +1309,7 @@ class LiveTransferService:
                             archive_source_link=channel_source_link,
                             media_types_override=media_types_override,
                             archive_by_author=archive_by_author,
+                            archive_title_source=archive_title_source,
                         )
                     if include_comment:
                         await self.schedule_or_forward_discussion_replies(

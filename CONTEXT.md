@@ -145,6 +145,9 @@ _Avoid_: Telegram from_user, channel signature, uploader account
 **Archive By Author** — 转存任务 / 监听规则上的可选开关（默认关）。关：扁平 Source Post Archive Path；开：嵌套 Post Author 层。字段名 `archive_by_author`；监听转发规则串可带 `--archive-by-author`。
 _Avoid_: global channel preference, automatic opt-in
 
+**Archive Title Source** — 转存任务 / 监听转发规则上的可选字段（默认 `auto`），控制 Source Post Archive Path 叶子摘要优先取自哪类主贴正文信号；与 **Archive By Author** 正交。取值：`auto`（既有硬标题 → 导引标签 → 正文 → 文末标签）、`title`（优先硬标题/标题行，再 fallback）、`hashtag`（优先可用 `#` 标签，再 fallback）、`body`（优先普通正文行，再 fallback）。无效或缺失归 `auto`。已冻结的叶子描述不因改字段回溯。监听转发规则串在非 `auto` 时可带 `--archive-title-source=<value>`（亦接受 `--archive_title_source=`）。**监听下载**表单可持久化同名字段（与按作者归档一致），但纯本地 `listen_download` 仍只按 save_directory 模板落盘、不嵌套 Source Post Archive Path；该字段在下载监听驱动的受限回退归档（watch_inline）等归档链路中生效。
+_Avoid_: global default config, coupling to author nesting, hard-cut without fallback, rewriting frozen leaves
+
 **Author Archive Reorganize** — WebUI 工具：按 Source Channel Folder 扫描 PikPak 归档中**频道顶层、数字 ID 开头**的扁平主贴目录（`{message_id} - …`）；已归档作者目录 / `更新` / 站点杂项目录等非数字 ID 顶层项只取其名称作已知作者种子（若可作作者），**不进入列子目录**。回查 Telegram 主贴解析 Post Author（署名 → 标签回连已知作者 / 唯一标签候选 → 未识别），生成迁移一览（汇总可点开分页明细）；「全部迁移」一键执行高置信 + 待确认，未识别默认不搬。「仅解析未识别」保留上次已识别结果，只回查未识别、`_未知作者` 与站点名误标主贴（含相册兄弟 hashtag），不必为此全量。整理串行移动并写 checkpoint；进程重启后自动续跑剩余项（幂等跳过已就位），可「停止」后再次迁移续跑。与实时链路的 `archive_by_author` 解耦，仅用于显式历史整理。
 _Avoid_: media cleanup, full-disk rename, manual rclone script
 

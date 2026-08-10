@@ -894,6 +894,12 @@ function openMobileWatchEditSheet(watchId) {
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
       '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
+      '<label><span>' + esc(t('watches.archiveTitleSource')) + '</span><select name="archive_title_source">' +
+        '<option value="auto"' + ((watch.archive_title_source || 'auto') === 'auto' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceAuto')) + '</option>' +
+        '<option value="title"' + (watch.archive_title_source === 'title' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceTitle')) + '</option>' +
+        '<option value="hashtag"' + (watch.archive_title_source === 'hashtag' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceHashtag')) + '</option>' +
+        '<option value="body"' + (watch.archive_title_source === 'body' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceBody')) + '</option>' +
+      '</select></label>' +
       '<div' + (watch.include_comment ? '' : ' class="hidden"') + ' data-comment-delay-field>' +
         '<label><span>' + esc(t('watches.commentDelayMinutes')) + '</span>' +
           '<input type="number" name="comment_delay_minutes" min="0" max="1440" value="' +
@@ -921,6 +927,7 @@ function openMobileWatchEditSheet(watchId) {
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
       archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
+      archive_title_source: form.querySelector('[name="archive_title_source"]') ? String(form.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto',
       comment_delay_minutes: readOptionalCommentDelayMinutes(form),
       media_types: readMediaTypesOverride(form)
     };
@@ -3108,6 +3115,7 @@ async function runArchiveOrganizeMobile() {
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
       payload.archive_by_author = transferForm.querySelector('[name="archive_by_author"]') ? transferForm.querySelector('[name="archive_by_author"]').checked : false;
+      payload.archive_title_source = transferForm.querySelector('[name="archive_title_source"]') ? String(transferForm.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto';
       payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
@@ -3143,6 +3151,7 @@ async function runArchiveOrganizeMobile() {
         payload.comment_delay_minutes = readOptionalCommentDelayMinutes(watchForm);
       }
       payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
+      payload.archive_title_source = watchForm.querySelector('[name="archive_title_source"]') ? String(watchForm.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto';
       payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {

@@ -253,6 +253,15 @@
             </label>
           </div>
           <p class="mob-form-hint" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <label><span data-i18n="new.archiveTitleSource">归档标题来源</span>
+            <select name="archive_title_source">
+              <option value="auto" selected data-i18n="new.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="new.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="new.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </label>
+          <p class="mob-form-hint" data-i18n="new.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="mob-form-hint mob-form-hint--warn" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -330,6 +339,15 @@
             </label>
           </div>
           <p class="mob-form-hint" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <label><span data-i18n="watches.archiveTitleSource">归档标题来源</span>
+            <select name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </label>
+          <p class="mob-form-hint" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <div class="media-types-picker" data-media-types-picker>
             <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">

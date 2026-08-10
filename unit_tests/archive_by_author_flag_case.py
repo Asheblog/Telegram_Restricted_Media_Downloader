@@ -11,6 +11,32 @@ sys.argv = [sys.argv[0]]
 
 
 class ArchiveByAuthorFlagCase(unittest.TestCase):
+    def test_forward_rule_round_trip_archive_title_source(self):
+        from module.util import make_forward_watch_rule, parse_forward_watch_rule
+
+        rule = make_forward_watch_rule(
+            'https://t.me/a',
+            'https://t.me/b',
+            archive_title_source='hashtag',
+        )
+        self.assertIn('--archive-title-source=hashtag', rule)
+        parsed = parse_forward_watch_rule(rule)
+        self.assertEqual('hashtag', parsed['archive_title_source'])
+        self.assertFalse(parsed['archive_by_author'])
+
+        rule_alt = make_forward_watch_rule(
+            'https://t.me/a',
+            'https://t.me/b',
+            archive_title_source='auto',
+        )
+        self.assertNotIn('--archive-title-source', rule_alt)
+        self.assertEqual('auto', parse_forward_watch_rule(rule_alt)['archive_title_source'])
+
+        parsed_underscore = parse_forward_watch_rule(
+            'https://t.me/a https://t.me/b --archive_title_source=body'
+        )
+        self.assertEqual('body', parsed_underscore['archive_title_source'])
+
     def test_forward_rule_round_trip_archive_by_author(self):
         from module.util import make_forward_watch_rule, parse_forward_watch_rule
 
@@ -132,13 +158,23 @@ class ArchiveByAuthorFlagCase(unittest.TestCase):
                 source_link='https://t.me/a',
                 target_link='https://t.me/b',
                 archive_by_author=True,
+                archive_title_source='title',
             )
             loaded = store.get_live_transfer_watch(watch['id'])
             self.assertTrue(loaded['archive_by_author'])
+            self.assertEqual('title', loaded['archive_title_source'])
 
             plain_id = store.create_task(source_link='https://t.me/other')
             plain = store.get_task(plain_id)
             self.assertFalse(plain['archive_by_author'])
+            self.assertEqual('auto', plain['archive_title_source'])
+
+            titled_id = store.create_task(
+                source_link='https://t.me/hashtagchan',
+                archive_title_source='hashtag',
+            )
+            titled = store.get_task(titled_id)
+            self.assertEqual('hashtag', titled['archive_title_source'])
         finally:
             conn = getattr(getattr(store, '_tls', None), 'conn', None)
             if conn is not None:

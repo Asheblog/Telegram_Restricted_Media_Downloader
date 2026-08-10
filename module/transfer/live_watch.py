@@ -2,6 +2,7 @@
 from typing import Optional
 
 from module.diagnostics import default_diagnostic
+from module.source_folders import normalize_archive_title_source
 from module.language import _t
 from module.transfer_store import TransferStatus
 from module.util import make_forward_watch_rule, parse_forward_watch_rule
@@ -73,9 +74,15 @@ class LiveWatchManager:
             payload['include_comment'] = bool(watch.get('include_comment'))
             payload['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
             payload['archive_by_author'] = bool(watch.get('archive_by_author'))
+            payload['archive_title_source'] = normalize_archive_title_source(
+                watch.get('archive_title_source')
+            )
             payload['comment_delay_minutes'] = watch.get('comment_delay_minutes')
         elif watch.get('type') == 'download':
             payload['archive_by_author'] = bool(watch.get('archive_by_author'))
+            payload['archive_title_source'] = normalize_archive_title_source(
+                watch.get('archive_title_source')
+            )
         if watch.get('media_types') is not None:
             payload['media_types'] = watch.get('media_types')
         return payload
@@ -98,6 +105,9 @@ class LiveWatchManager:
             include_comment=bool(watch.get('include_comment')),
             resolve_deep_link=bool(watch.get('resolve_deep_link')),
             archive_by_author=bool(watch.get('archive_by_author')),
+            archive_title_source=normalize_archive_title_source(
+                watch.get('archive_title_source')
+            ),
             comment_delay_minutes=watch.get('comment_delay_minutes'),
             status=watch.get('status') or TransferStatus.PENDING,
             error_message=watch.get('error_message'),
@@ -134,6 +144,9 @@ class LiveWatchManager:
                 'include_comment': False,
                 'resolve_deep_link': False,
                 'archive_by_author': bool(previous.get('archive_by_author')),
+                'archive_title_source': normalize_archive_title_source(
+                    previous.get('archive_title_source')
+                ),
                 'status': TransferStatus.RUNNING
             }
         for rule in sorted(self.listen_forward_chat):
@@ -148,6 +161,9 @@ class LiveWatchManager:
                 'include_comment': bool(parsed.get('include_comment')),
                 'resolve_deep_link': bool(parsed.get('resolve_deep_link')),
                 'archive_by_author': bool(parsed.get('archive_by_author')),
+                'archive_title_source': normalize_archive_title_source(
+                    parsed.get('archive_title_source')
+                ),
                 'status': TransferStatus.RUNNING
             }
         running_ids = set(watches_by_id)
@@ -223,6 +239,7 @@ class LiveWatchManager:
                 bool(payload.get('include_comment')),
                 bool(payload.get('resolve_deep_link')),
                 bool(payload.get('archive_by_author')),
+                normalize_archive_title_source(payload.get('archive_title_source')),
             )
             watch_id = f'forward:{rule}'
         else:
@@ -251,6 +268,9 @@ class LiveWatchManager:
                     'target_link': None,
                     'include_comment': False,
                     'archive_by_author': bool(payload.get('archive_by_author')),
+                    'archive_title_source': normalize_archive_title_source(
+                        payload.get('archive_title_source')
+                    ),
                     'media_types': payload.get('media_types'),
                     'status': TransferStatus.PENDING
                 }
@@ -262,6 +282,9 @@ class LiveWatchManager:
                         'source_link': link,
                         'media_types': payload.get('media_types'),
                         'archive_by_author': bool(payload.get('archive_by_author')),
+                        'archive_title_source': normalize_archive_title_source(
+                            payload.get('archive_title_source')
+                        ),
                     },
                 )
                 created.append(watch)
@@ -272,11 +295,15 @@ class LiveWatchManager:
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
             archive_by_author = bool(payload.get('archive_by_author'))
+            archive_title_source = normalize_archive_title_source(
+                payload.get('archive_title_source')
+            )
             comment_delay_minutes = payload.get('comment_delay_minutes')
             if self.has_download_watch_source(source_link):
                 raise ValueError('watch_source_conflict')
             rule = make_forward_watch_rule(
-                source_link, target_link, include_comment, resolve_deep_link, archive_by_author
+                source_link, target_link, include_comment, resolve_deep_link,
+                archive_by_author, archive_title_source,
             )
             same_target_exists = any(
                 parse_forward_watch_rule(existing).get('source_link') == source_link and
@@ -305,6 +332,7 @@ class LiveWatchManager:
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
                 'archive_by_author': archive_by_author,
+                'archive_title_source': archive_title_source,
                 'comment_delay_minutes': comment_delay_minutes,
                 'media_types': payload.get('media_types'),
                 'status': TransferStatus.PENDING
@@ -319,6 +347,7 @@ class LiveWatchManager:
                     'include_comment': include_comment,
                     'resolve_deep_link': resolve_deep_link,
                     'archive_by_author': archive_by_author,
+                    'archive_title_source': archive_title_source,
                     'comment_delay_minutes': comment_delay_minutes,
                     'media_types': payload.get('media_types'),
                 }
@@ -390,6 +419,9 @@ class LiveWatchManager:
         new_include_comment = bool(payload.get('include_comment'))
         new_resolve_deep_link = bool(payload.get('resolve_deep_link'))
         new_archive_by_author = bool(payload.get('archive_by_author'))
+        new_archive_title_source = normalize_archive_title_source(
+            payload.get('archive_title_source')
+        )
         if 'comment_delay_minutes' in payload:
             new_comment_delay_minutes = payload.get('comment_delay_minutes')
         else:
@@ -428,6 +460,7 @@ class LiveWatchManager:
             new_include_comment,
             new_resolve_deep_link,
             new_archive_by_author,
+            new_archive_title_source,
         )
         # Soft-field-only updates keep the same rule id: persist in place so
         # pending deferred discussion captures (and their due_at) stay intact.
@@ -442,6 +475,7 @@ class LiveWatchManager:
                 'include_comment': new_include_comment,
                 'resolve_deep_link': new_resolve_deep_link,
                 'archive_by_author': new_archive_by_author,
+                'archive_title_source': new_archive_title_source,
                 'comment_delay_minutes': new_comment_delay_minutes,
                 'media_types': media_types,
                 'status': existing.get('status') or TransferStatus.RUNNING,
@@ -462,6 +496,7 @@ class LiveWatchManager:
             'include_comment': new_include_comment,
             'resolve_deep_link': new_resolve_deep_link,
             'archive_by_author': new_archive_by_author,
+            'archive_title_source': new_archive_title_source,
             'comment_delay_minutes': new_comment_delay_minutes,
             'media_types': media_types,
         })

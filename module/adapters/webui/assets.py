@@ -628,6 +628,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             </label>
           </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="new.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="new.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="new.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="new.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="text-xs text-warning leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -725,6 +735,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <span data-i18n="watches.archiveByAuthor">按作者归档</span>
           </label>
           <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -776,6 +796,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
           </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -910,6 +940,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
       </div>
       <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+      <div class="form-group">
+        <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+        <select class="form-input" name="archive_title_source" id="edit-watch-archive-title-source">
+          <option value="auto" data-i18n="watches.archiveTitleSourceAuto">自动</option>
+          <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+          <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+          <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+        </select>
+      </div>
+      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
       </p>
@@ -1775,6 +1815,12 @@ const i18n = {
     'new.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'new.archiveByAuthor': '按作者归档',
     'new.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
+    'new.archiveTitleSource': '归档标题来源',
+    'new.archiveTitleSourceAuto': '自动',
+    'new.archiveTitleSourceTitle': '优先标题',
+    'new.archiveTitleSourceHashtag': '优先标签',
+    'new.archiveTitleSourceBody': '优先正文',
+    'new.archiveTitleSourceHint': '控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'mediaOverride.label': '媒体类型',
@@ -1799,6 +1845,12 @@ const i18n = {
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.archiveByAuthor': '按作者归档',
     'watches.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
+    'watches.archiveTitleSource': '归档标题来源',
+    'watches.archiveTitleSourceAuto': '自动',
+    'watches.archiveTitleSourceTitle': '优先标题',
+    'watches.archiveTitleSourceHashtag': '优先标签',
+    'watches.archiveTitleSourceBody': '优先正文',
+    'watches.archiveTitleSourceHint': '控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -2267,6 +2319,12 @@ const i18n = {
     'new.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'new.archiveByAuthor': 'Archive by author',
     'new.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
+    'new.archiveTitleSource': 'Archive title source',
+    'new.archiveTitleSourceAuto': 'Auto',
+    'new.archiveTitleSourceTitle': 'Prefer title',
+    'new.archiveTitleSourceHashtag': 'Prefer hashtag',
+    'new.archiveTitleSourceBody': 'Prefer body',
+    'new.archiveTitleSourceHint': 'Prefer title, hashtag, or body for the post leaf summary; orthogonal to archive by author; default auto.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'mediaOverride.label': 'Media types',
@@ -2291,6 +2349,12 @@ const i18n = {
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.archiveByAuthor': 'Archive by author',
     'watches.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
+    'watches.archiveTitleSource': 'Archive title source',
+    'watches.archiveTitleSourceAuto': 'Auto',
+    'watches.archiveTitleSourceTitle': 'Prefer title',
+    'watches.archiveTitleSourceHashtag': 'Prefer hashtag',
+    'watches.archiveTitleSourceBody': 'Prefer body',
+    'watches.archiveTitleSourceHint': 'Prefer title, hashtag, or body for the post leaf summary; orthogonal to archive by author; default auto.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -4190,6 +4254,7 @@ $('#transfer-form').addEventListener('submit', async function(e) {
     include_comment: Boolean(fd.get('include_comment')),
     resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
     archive_by_author: Boolean(fd.get('archive_by_author')),
+    archive_title_source: String(fd.get('archive_title_source') || 'auto'),
     media_types: readMediaTypesOverride(this),
   };
 
@@ -5491,6 +5556,7 @@ $('#watch-download-form')?.addEventListener('submit', async function(e) {
       type: 'download',
       source_links: links,
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      archive_title_source: String(fd.get('archive_title_source') || 'auto'),
       media_types: readMediaTypesOverride(this),
     });
     await loadWatches();
@@ -5512,6 +5578,7 @@ $('#watch-forward-form')?.addEventListener('submit', async function(e) {
       include_comment: Boolean(fd.get('include_comment')),
       resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
       archive_by_author: Boolean(fd.get('archive_by_author')),
+      archive_title_source: String(fd.get('archive_title_source') || 'auto'),
       comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
       media_types: readMediaTypesOverride(this),
     });
@@ -5745,6 +5812,8 @@ function openEditWatchModal(watchId) {
   $('#edit-watch-deep-link').checked = watch.resolve_deep_link || false;
   const archiveAuthor = $('#edit-watch-archive-author');
   if (archiveAuthor) archiveAuthor.checked = watch.archive_by_author || false;
+  const archiveTitleSource = $('#edit-watch-archive-title-source');
+  if (archiveTitleSource) archiveTitleSource.value = watch.archive_title_source || 'auto';
   const delayInput = $('#edit-watch-comment-delay');
   if (delayInput) {
     delayInput.value = watch.comment_delay_minutes == null ? '' : String(watch.comment_delay_minutes);
@@ -5871,6 +5940,7 @@ $('#watch-edit-form')?.addEventListener('submit', async function(e) {
         include_comment: Boolean(fd.get('include_comment')),
         resolve_deep_link: Boolean(fd.get('resolve_deep_link')),
         archive_by_author: Boolean(fd.get('archive_by_author')),
+        archive_title_source: String(fd.get('archive_title_source') || 'auto'),
         comment_delay_minutes: readOptionalCommentDelayMinutes(fd),
         media_types: readMediaTypesOverride(this),
       }),
@@ -7707,6 +7777,15 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             </label>
           </div>
           <p class="mob-form-hint" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <label><span data-i18n="new.archiveTitleSource">归档标题来源</span>
+            <select name="archive_title_source">
+              <option value="auto" selected data-i18n="new.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="new.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="new.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </label>
+          <p class="mob-form-hint" data-i18n="new.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="mob-form-hint mob-form-hint--warn" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -7784,6 +7863,15 @@ WEB_UI_MOBILE_HTML = r"""<!doctype html>
             </label>
           </div>
           <p class="mob-form-hint" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <label><span data-i18n="watches.archiveTitleSource">归档标题来源</span>
+            <select name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </label>
+          <p class="mob-form-hint" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <div class="media-types-picker" data-media-types-picker>
             <label><span data-i18n="mediaOverride.label">媒体类型</span></label>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;margin:4px 0;">
@@ -8248,6 +8336,12 @@ const i18n = {
     'new.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'new.archiveByAuthor': '按作者归档',
     'new.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
+    'new.archiveTitleSource': '归档标题来源',
+    'new.archiveTitleSourceAuto': '自动',
+    'new.archiveTitleSourceTitle': '优先标题',
+    'new.archiveTitleSourceHashtag': '优先标签',
+    'new.archiveTitleSourceBody': '优先正文',
+    'new.archiveTitleSourceHint': '控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。',
     'new.hint': '单条消息链接可留空。频道或群链接不填 ID 时会自动探测可访问范围，也可手动指定起止 ID。',
     'new.create': '创建任务',
     'mediaOverride.label': '媒体类型',
@@ -8272,6 +8366,12 @@ const i18n = {
     'watches.resolveDeepLinkHint': '勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。',
     'watches.archiveByAuthor': '按作者归档',
     'watches.archiveByAuthorHint': '勾选后按正文署名行嵌套作者目录；默认扁平归档。',
+    'watches.archiveTitleSource': '归档标题来源',
+    'watches.archiveTitleSourceAuto': '自动',
+    'watches.archiveTitleSourceTitle': '优先标题',
+    'watches.archiveTitleSourceHashtag': '优先标签',
+    'watches.archiveTitleSourceBody': '优先正文',
+    'watches.archiveTitleSourceHint': '控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。',
     'watches.createDownload': '新增监听下载',
     'watches.createForward': '新增监听转发',
     'watches.empty': '还没有实时监听。',
@@ -8740,6 +8840,12 @@ const i18n = {
     'new.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'new.archiveByAuthor': 'Archive by author',
     'new.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
+    'new.archiveTitleSource': 'Archive title source',
+    'new.archiveTitleSourceAuto': 'Auto',
+    'new.archiveTitleSourceTitle': 'Prefer title',
+    'new.archiveTitleSourceHashtag': 'Prefer hashtag',
+    'new.archiveTitleSourceBody': 'Prefer body',
+    'new.archiveTitleSourceHint': 'Prefer title, hashtag, or body for the post leaf summary; orthogonal to archive by author; default auto.',
     'new.hint': 'Leave IDs empty for message links. Channel links auto-detect range if IDs omitted.',
     'new.create': 'Create task',
     'mediaOverride.label': 'Media types',
@@ -8764,6 +8870,12 @@ const i18n = {
     'watches.resolveDeepLinkHint': 'Requires a resource bot whitelist in Settings first; create will fail without it.',
     'watches.archiveByAuthor': 'Archive by author',
     'watches.archiveByAuthorHint': 'Nest under author folders from caption markers; off keeps a flat channel path.',
+    'watches.archiveTitleSource': 'Archive title source',
+    'watches.archiveTitleSourceAuto': 'Auto',
+    'watches.archiveTitleSourceTitle': 'Prefer title',
+    'watches.archiveTitleSourceHashtag': 'Prefer hashtag',
+    'watches.archiveTitleSourceBody': 'Prefer body',
+    'watches.archiveTitleSourceHint': 'Prefer title, hashtag, or body for the post leaf summary; orthogonal to archive by author; default auto.',
     'watches.createDownload': 'Add download watch',
     'watches.createForward': 'Add forward watch',
     'watches.empty': 'No live watches yet.',
@@ -11151,6 +11263,12 @@ function openMobileWatchEditSheet(watchId) {
       '<label><input type="checkbox" name="include_comment"' + (watch.include_comment ? ' checked' : '') + '><span>' + esc(t('watches.includeComment')) + '</span></label>' +
       '<label><input type="checkbox" name="resolve_deep_link"' + (watch.resolve_deep_link ? ' checked' : '') + '><span>' + esc(t('watches.resolveDeepLink')) + '</span></label>' +
       '<label><input type="checkbox" name="archive_by_author"' + (watch.archive_by_author ? ' checked' : '') + '><span>' + esc(t('watches.archiveByAuthor')) + '</span></label>' +
+      '<label><span>' + esc(t('watches.archiveTitleSource')) + '</span><select name="archive_title_source">' +
+        '<option value="auto"' + ((watch.archive_title_source || 'auto') === 'auto' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceAuto')) + '</option>' +
+        '<option value="title"' + (watch.archive_title_source === 'title' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceTitle')) + '</option>' +
+        '<option value="hashtag"' + (watch.archive_title_source === 'hashtag' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceHashtag')) + '</option>' +
+        '<option value="body"' + (watch.archive_title_source === 'body' ? ' selected' : '') + '>' + esc(t('watches.archiveTitleSourceBody')) + '</option>' +
+      '</select></label>' +
       '<div' + (watch.include_comment ? '' : ' class="hidden"') + ' data-comment-delay-field>' +
         '<label><span>' + esc(t('watches.commentDelayMinutes')) + '</span>' +
           '<input type="number" name="comment_delay_minutes" min="0" max="1440" value="' +
@@ -11178,6 +11296,7 @@ function openMobileWatchEditSheet(watchId) {
       include_comment: form.querySelector('[name="include_comment"]').checked,
       resolve_deep_link: form.querySelector('[name="resolve_deep_link"]').checked,
       archive_by_author: form.querySelector('[name="archive_by_author"]') ? form.querySelector('[name="archive_by_author"]').checked : false,
+      archive_title_source: form.querySelector('[name="archive_title_source"]') ? String(form.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto',
       comment_delay_minutes: readOptionalCommentDelayMinutes(form),
       media_types: readMediaTypesOverride(form)
     };
@@ -13365,6 +13484,7 @@ async function runArchiveOrganizeMobile() {
       payload.include_comment = transferForm.querySelector('[name="include_comment"]').checked;
       payload.resolve_deep_link = transferForm.querySelector('[name="resolve_deep_link"]').checked;
       payload.archive_by_author = transferForm.querySelector('[name="archive_by_author"]') ? transferForm.querySelector('[name="archive_by_author"]').checked : false;
+      payload.archive_title_source = transferForm.querySelector('[name="archive_title_source"]') ? String(transferForm.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto';
       payload.media_types = readMediaTypesOverride(transferForm);
       var notice = document.getElementById('mob-form-notice');
       try {
@@ -13400,6 +13520,7 @@ async function runArchiveOrganizeMobile() {
         payload.comment_delay_minutes = readOptionalCommentDelayMinutes(watchForm);
       }
       payload.archive_by_author = watchForm.querySelector('[name="archive_by_author"]') ? watchForm.querySelector('[name="archive_by_author"]').checked : false;
+      payload.archive_title_source = watchForm.querySelector('[name="archive_title_source"]') ? String(watchForm.querySelector('[name="archive_title_source"]').value || 'auto') : 'auto';
       payload.media_types = readMediaTypesOverride(watchForm);
       var notice = document.getElementById('mob-watch-notice');
       try {

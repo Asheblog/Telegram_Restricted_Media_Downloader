@@ -20,6 +20,7 @@ from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
 from module.ports import IWebUiOperations, IDiagnosticPort
 from module.transfer_store import TransferStore
+from module.source_folders import normalize_archive_title_source
 from module.adapters.webui.view_model import WebUiViewModel
 
 
@@ -623,6 +624,9 @@ class WebUiServer:
         include_comment = bool(payload.get('include_comment'))
         resolve_deep_link = bool(payload.get('resolve_deep_link'))
         archive_by_author = bool(payload.get('archive_by_author'))
+        archive_title_source = normalize_archive_title_source(
+            payload.get('archive_title_source')
+        )
         if not source_link:
             raise WebUiApiError('source_link_required', 'Source link is required.', HTTPStatus.BAD_REQUEST)
         if not target_link:
@@ -663,6 +667,7 @@ class WebUiServer:
             include_comment=include_comment,
             resolve_deep_link=resolve_deep_link,
             archive_by_author=archive_by_author,
+            archive_title_source=archive_title_source,
             media_types=media_types,
         )
         if self.task_submitter:
@@ -729,6 +734,9 @@ class WebUiServer:
                 **payload,
                 'source_links': source_links,
                 'archive_by_author': bool(payload.get('archive_by_author')),
+                'archive_title_source': normalize_archive_title_source(
+                    payload.get('archive_title_source')
+                ),
                 'media_types': parse_media_types_payload(payload.get('media_types')),
             }
         else:
@@ -738,6 +746,9 @@ class WebUiServer:
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
             archive_by_author = bool(payload.get('archive_by_author'))
+            archive_title_source = normalize_archive_title_source(
+                payload.get('archive_title_source')
+            )
             from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
             try:
                 comment_delay_minutes = normalize_optional_comment_delay_minutes(
@@ -765,6 +776,7 @@ class WebUiServer:
                 'include_comment': include_comment,
                 'resolve_deep_link': resolve_deep_link,
                 'archive_by_author': archive_by_author,
+                'archive_title_source': archive_title_source,
                 'comment_delay_minutes': comment_delay_minutes,
                 'media_types': parse_media_types_payload(payload.get('media_types')),
             }
@@ -799,6 +811,9 @@ class WebUiServer:
             **payload,
             'resolve_deep_link': resolve_deep_link,
             'archive_by_author': bool(payload.get('archive_by_author')),
+            'archive_title_source': normalize_archive_title_source(
+                payload.get('archive_title_source')
+            ),
             'media_types': parse_media_types_payload(payload.get('media_types')),
         }
         if 'comment_delay_minutes' in payload:

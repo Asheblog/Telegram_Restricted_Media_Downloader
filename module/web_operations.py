@@ -35,7 +35,7 @@ from module.web_ui import (
 )
 from module.util import is_docker, make_forward_watch_rule, iter_discussion_reply_messages
 from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import archive_source_folder
+from module.source_folders import archive_source_folder, normalize_archive_title_source
 
 
 def _downloader():
@@ -150,12 +150,16 @@ class WebOperationsMixin:
                 )
                 resolve_deep_link = False
                 archive_by_author = False
+                archive_title_source = 'auto'
                 watch_id = capture.get('watch_id')
                 if watch_id and store is not None:
                     watch = store.get_live_transfer_watch(str(watch_id))
                     if watch:
                         resolve_deep_link = bool(watch.get('resolve_deep_link'))
                         archive_by_author = bool(watch.get('archive_by_author'))
+                        archive_title_source = normalize_archive_title_source(
+                            watch.get('archive_title_source')
+                        )
                 count = await self.forward_discussion_replies(
                     client=client,
                     source_chat_id=capture.get('source_chat_id'),
@@ -165,6 +169,7 @@ class WebOperationsMixin:
                     watch_id=capture.get('watch_id'),
                     resolve_deep_link=resolve_deep_link,
                     archive_by_author=archive_by_author,
+                    archive_title_source=archive_title_source,
                 )
                 watch_id = capture.get('watch_id')
                 if watch_id:
@@ -414,6 +419,9 @@ class WebOperationsMixin:
                     fallback_link=item.get('source_link') or task.get('source_link'),
                     post_message_id=item.get('range_message_id') or item.get('source_message_id'),
                     archive_by_author=bool(task.get('archive_by_author')),
+                    archive_title_source=normalize_archive_title_source(
+                        task.get('archive_title_source')
+                    ),
                 )
             ),
             file_name=item.get('file_name'),

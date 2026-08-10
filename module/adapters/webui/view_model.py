@@ -4,6 +4,7 @@ import os
 from typing import Any, Optional
 
 from module.local_storage_guard import LocalStorageGuard
+from module.source_folders import normalize_archive_title_source
 from module.transfer_store import TransferStatus, TransferStore
 
 # Progress callbacks stop updating download/upload_speed_bps when transfer stalls.
@@ -362,6 +363,9 @@ class WebUiViewModel:
             'include_comment': bool(task.get('include_comment')),
             'resolve_deep_link': bool(task.get('resolve_deep_link')),
             'archive_by_author': bool(task.get('archive_by_author')),
+            'archive_title_source': normalize_archive_title_source(
+                task.get('archive_title_source')
+            ),
             'execution_mode': task.get('execution_mode') or 'web_queue',
             'watch_id': task.get('watch_id') or None,
             'status': status,

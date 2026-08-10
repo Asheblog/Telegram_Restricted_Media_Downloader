@@ -39,6 +39,7 @@ def safe_index(lst: list, index: int, default=None):
 INCLUDE_COMMENT_FLAGS = {'--include-comment', '--include-comments', '--comment'}
 RESOLVE_DEEP_LINK_FLAGS = {'--resolve-deep-link', '--resolve_deep_link'}
 ARCHIVE_BY_AUTHOR_FLAGS = {'--archive-by-author', '--archive_by_author'}
+ARCHIVE_TITLE_SOURCE_PREFIXES = ('--archive-title-source=', '--archive_title_source=')
 
 
 def split_include_comment_flag(args: list) -> Tuple[list, bool]:
@@ -74,13 +75,34 @@ def split_archive_by_author_flag(args: list) -> Tuple[list, bool]:
     return clean_args, archive_by_author
 
 
+def split_archive_title_source_flag(args: list) -> Tuple[list, str]:
+    from module.source_folders import normalize_archive_title_source, ARCHIVE_TITLE_SOURCE_AUTO
+
+    archive_title_source = ARCHIVE_TITLE_SOURCE_AUTO
+    clean_args = []
+    for arg in args:
+        lowered = str(arg).strip().lower()
+        matched = False
+        for prefix in ARCHIVE_TITLE_SOURCE_PREFIXES:
+            if lowered.startswith(prefix):
+                archive_title_source = normalize_archive_title_source(lowered[len(prefix):])
+                matched = True
+                break
+        if not matched:
+            clean_args.append(arg)
+    return clean_args, archive_title_source
+
+
 def make_forward_watch_rule(
         source_link: str,
         target_link: str,
         include_comment: bool = False,
         resolve_deep_link: bool = False,
         archive_by_author: bool = False,
+        archive_title_source: str = 'auto',
 ) -> str:
+    from module.source_folders import normalize_archive_title_source, ARCHIVE_TITLE_SOURCE_AUTO
+
     rule = f'{source_link} {target_link}'
     if include_comment:
         rule += ' --include-comment'
@@ -88,6 +110,9 @@ def make_forward_watch_rule(
         rule += ' --resolve-deep-link'
     if archive_by_author:
         rule += ' --archive-by-author'
+    title_source = normalize_archive_title_source(archive_title_source)
+    if title_source != ARCHIVE_TITLE_SOURCE_AUTO:
+        rule += f' --archive-title-source={title_source}'
     return rule
 
 
@@ -95,12 +120,14 @@ def parse_forward_watch_rule(rule: str) -> dict:
     args, include_comment = split_include_comment_flag(str(rule).split())
     args, resolve_deep_link = split_resolve_deep_link_flag(args)
     args, archive_by_author = split_archive_by_author_flag(args)
+    args, archive_title_source = split_archive_title_source_flag(args)
     return {
         'source_link': safe_index(args, 0, ''),
         'target_link': safe_index(args, 1, ''),
         'include_comment': include_comment,
         'resolve_deep_link': resolve_deep_link,
         'archive_by_author': archive_by_author,
+        'archive_title_source': archive_title_source,
     }
 
 

@@ -344,6 +344,146 @@ class SourceFolderArchiveCase(unittest.TestCase):
             archive_source_folder(message, archive_by_author=True),
         )
 
+    def test_archive_title_source_prefers_hashtag_over_hard_title(self):
+        from module.source_folders import archive_source_folder, extract_message_body_title
+
+        caption = (
+            '#情侣日记\n'
+            '\n'
+            '【60分原创】正文硬标题不应压过标签偏好\n'
+            '进入评论区置顶查看资源\n'
+        )
+        message = SimpleNamespace(
+            id=5001,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+            chat=SimpleNamespace(username='demochan'),
+            link='https://t.me/demochan/5001',
+        )
+        self.assertEqual(
+            '【60分原创】正文硬标题不应压过标签偏好',
+            extract_message_body_title(message),
+        )
+        self.assertEqual(
+            '#情侣日记',
+            extract_message_body_title(message, archive_title_source='hashtag'),
+        )
+        self.assertEqual(
+            'demochan/5001 - #情侣日记',
+            archive_source_folder(message, archive_title_source='hashtag'),
+        )
+        self.assertEqual(
+            'demochan/示例作者/5001 - #情侣日记',
+            archive_source_folder(
+                SimpleNamespace(
+                    **{
+                        **message.__dict__,
+                        'caption': caption + '作者：#示例作者\n',
+                    }
+                ),
+                archive_by_author=True,
+                archive_title_source='hashtag',
+            ),
+        )
+
+    def test_archive_title_source_prefers_body_over_leading_hashtag(self):
+        from module.source_folders import archive_source_folder, extract_message_body_title
+
+        caption = '#标签优先行\n继父出差了妈妈自己在家\n#文末标签\n'
+        message = SimpleNamespace(
+            id=5002,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+            chat=SimpleNamespace(username='demochan'),
+            link='https://t.me/demochan/5002',
+        )
+        self.assertEqual('#标签优先行', extract_message_body_title(message))
+        self.assertEqual(
+            '继父出差了妈妈自己在家',
+            extract_message_body_title(message, archive_title_source='body'),
+        )
+        self.assertEqual(
+            'demochan/5002 - 继父出差了妈妈自己在家',
+            archive_source_folder(message, archive_title_source='body'),
+        )
+
+    def test_archive_title_source_title_skips_leading_hashtag_for_hard_title(self):
+        from module.source_folders import extract_message_body_title
+
+        caption = (
+            '#标签\n'
+            '【硬标题】应被 title 偏好选中\n'
+            '普通正文行\n'
+        )
+        message = SimpleNamespace(
+            id=5003,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+        )
+        self.assertEqual(
+            '【硬标题】应被 title 偏好选中',
+            extract_message_body_title(message, archive_title_source='title'),
+        )
+
+    def test_archive_title_source_falls_back_when_preferred_bucket_empty(self):
+        from module.source_folders import extract_message_body_title
+
+        caption = '#唯可用标签\n进入评论区置顶查看资源\n'
+        message = SimpleNamespace(
+            id=5004,
+            caption=caption,
+            text=None,
+            web_page=None,
+            video=None,
+            document=None,
+            audio=None,
+            animation=None,
+            voice=None,
+            video_note=None,
+            photo=None,
+        )
+        self.assertEqual(
+            '#唯可用标签',
+            extract_message_body_title(message, archive_title_source='body'),
+        )
+        self.assertEqual(
+            '#唯可用标签',
+            extract_message_body_title(message, archive_title_source='title'),
+        )
+
+    def test_normalize_archive_title_source_defaults_invalid_to_auto(self):
+        from module.source_folders import normalize_archive_title_source
+
+        self.assertEqual('auto', normalize_archive_title_source(None))
+        self.assertEqual('auto', normalize_archive_title_source(''))
+        self.assertEqual('auto', normalize_archive_title_source('nope'))
+        self.assertEqual('hashtag', normalize_archive_title_source('HASHTAG'))
+        self.assertEqual('title', normalize_archive_title_source(' title '))
+
     def test_archive_skips_date_only_and_post_content_label(self):
         from module.source_folders import extract_message_body_title
 

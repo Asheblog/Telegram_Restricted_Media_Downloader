@@ -19,6 +19,28 @@ POST_TITLE_BYTE_LIMIT = 360
 # Keep every local/archive path component below common Linux NAME_MAX (255 bytes).
 POST_FOLDER_SEGMENT_BYTE_LIMIT = 230
 
+# Per-task preference for the descriptive leaf of Source Post Archive Path.
+ARCHIVE_TITLE_SOURCE_AUTO = 'auto'
+ARCHIVE_TITLE_SOURCE_TITLE = 'title'
+ARCHIVE_TITLE_SOURCE_HASHTAG = 'hashtag'
+ARCHIVE_TITLE_SOURCE_BODY = 'body'
+ARCHIVE_TITLE_SOURCES = frozenset({
+    ARCHIVE_TITLE_SOURCE_AUTO,
+    ARCHIVE_TITLE_SOURCE_TITLE,
+    ARCHIVE_TITLE_SOURCE_HASHTAG,
+    ARCHIVE_TITLE_SOURCE_BODY,
+})
+
+
+def normalize_archive_title_source(value) -> str:
+    """Return a valid archive title source; unknown/empty → ``auto``."""
+    if not isinstance(value, str):
+        return ARCHIVE_TITLE_SOURCE_AUTO
+    key = value.strip().casefold()
+    if key in ARCHIVE_TITLE_SOURCES:
+        return key
+    return ARCHIVE_TITLE_SOURCE_AUTO
+
 MEDIA_FILE_NAME_ATTRS = (
     'video', 'document', 'animation', 'audio', 'voice', 'video_note', 'photo'
 )
@@ -465,13 +487,68 @@ def score_title_line(line: Optional[str]) -> float:
     return score
 
 
-def pick_best_title_line(text: Optional[str]) -> Optional[str]:
+def _pick_from_title_buckets(
+        *,
+        hard_titles: list[tuple[float, str]],
+        body_titles: list[tuple[float, str]],
+        hashtag_titles: list[tuple[float, str]],
+        leading_hashtag: Optional[str],
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
+) -> Optional[str]:
+    """Choose among scored buckets using preferred-then-fallback order."""
+    source = normalize_archive_title_source(archive_title_source)
+
+    def _best(items: list[tuple[float, str]]) -> Optional[str]:
+        return max(items, key=lambda item: item[0])[1] if items else None
+
+    def _best_hashtag() -> Optional[str]:
+        if leading_hashtag:
+            return leading_hashtag
+        return _best(hashtag_titles)
+
+    # ``auto`` preserves historical order: hard → leading tag → body → trailing tags.
+    if source == ARCHIVE_TITLE_SOURCE_AUTO:
+        if hard_titles:
+            return _best(hard_titles)
+        if leading_hashtag:
+            return leading_hashtag
+        if body_titles:
+            return _best(body_titles)
+        return _best(hashtag_titles)
+
+    # Explicit preferences reorder the first bucket, then fall back through the rest.
+    if source == ARCHIVE_TITLE_SOURCE_HASHTAG:
+        preferred_order = ('hashtag', 'hard', 'body')
+    elif source == ARCHIVE_TITLE_SOURCE_BODY:
+        preferred_order = ('body', 'hard', 'hashtag')
+    else:  # title
+        preferred_order = ('hard', 'body', 'hashtag')
+
+    for bucket in preferred_order:
+        if bucket == 'hard':
+            picked = _best(hard_titles)
+        elif bucket == 'body':
+            picked = _best(body_titles)
+        else:
+            picked = _best_hashtag()
+        if picked:
+            return picked
+    return None
+
+
+def pick_best_title_line(
+        text: Optional[str],
+        *,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
+) -> Optional[str]:
     """Pick leaf title from caption/text.
 
-    Order: ``【】`` / numbered hard titles → leading usable ``#tag`` (first
-    scored content line) → ordinary body lines → trailing hashtags. Author
-    signature lines, CTAs, dates, emoji-only, and denied topic tags are skipped
-    and never become the leaf title.
+    Default (``auto``) order: ``【】`` / numbered hard titles → leading usable
+    ``#tag`` (first scored content line) → ordinary body lines → trailing
+    hashtags. ``title`` / ``hashtag`` / ``body`` reorder the preferred bucket
+    and fall back through the remaining auto chain. Author signature lines,
+    CTAs, dates, emoji-only, and denied topic tags are skipped and never become
+    the leaf title.
     """
     if not isinstance(text, str):
         return None
@@ -503,22 +580,29 @@ def pick_best_title_line(text: Optional[str]) -> Optional[str]:
         else:
             body_titles.append(item)
 
-    if hard_titles:
-        return max(hard_titles, key=lambda item: item[0])[1]
-    if leading_hashtag:
-        return leading_hashtag
-    if body_titles:
-        return max(body_titles, key=lambda item: item[0])[1]
-    if hashtag_titles:
-        return max(hashtag_titles, key=lambda item: item[0])[1]
-    return None
+    return _pick_from_title_buckets(
+        hard_titles=hard_titles,
+        body_titles=body_titles,
+        hashtag_titles=hashtag_titles,
+        leading_hashtag=leading_hashtag,
+        archive_title_source=archive_title_source,
+    )
 
 
-def pick_best_message_title(messages) -> Optional[str]:
+def pick_best_message_title(
+        messages,
+        *,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
+) -> Optional[str]:
     best_title = None
     best_score = 0.0
+    source = normalize_archive_title_source(archive_title_source)
     for message in messages or []:
-        title = extract_message_body_title(message, allow_inherited=True)
+        title = extract_message_body_title(
+            message,
+            allow_inherited=True,
+            archive_title_source=source,
+        )
         if not title:
             continue
         score = score_title_line(title)
@@ -570,15 +654,20 @@ def title_from_media_file_name(message) -> Optional[str]:
     return None
 
 
-def extract_message_body_title(message, *, allow_inherited: bool = True) -> Optional[str]:
+def extract_message_body_title(
+        message,
+        *,
+        allow_inherited: bool = True,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
+) -> Optional[str]:
     """Raw body title: inherited/caption/text/web_page, else media file_name stem.
 
-    Caption/text selection: hard ``【...】`` / ``27. ...`` titles win; else a
-    leading usable ``#tag`` (first scored content line) wins over later body
-    lines; trailing tags never override a real body title. Comment CTAs, dates,
-    author signatures, denied topic tags, and emoji-only lines lose. Hashtag
-    winners shrink to the first usable ``#tag``.
+    Caption/text selection follows ``pick_best_title_line`` for the given
+    ``archive_title_source``. Comment CTAs, dates, author signatures, denied
+    topic tags, and emoji-only lines lose. Hashtag winners shrink to the first
+    usable ``#tag``.
     """
+    source = normalize_archive_title_source(archive_title_source)
     if message is None:
         return None
     if allow_inherited:
@@ -587,8 +676,14 @@ def extract_message_body_title(message, *, allow_inherited: bool = True) -> Opti
             inherited = normalize_title_candidate(inherited_title) or inherited_title.strip()
             # Weak inherited titles (tags/dates) must not block a better caption on this message.
             if score_title_line(inherited) > 0:
-                caption_title = pick_best_title_line(getattr(message, 'caption', None))
-                text_title = pick_best_title_line(getattr(message, 'text', None))
+                caption_title = pick_best_title_line(
+                    getattr(message, 'caption', None),
+                    archive_title_source=source,
+                )
+                text_title = pick_best_title_line(
+                    getattr(message, 'text', None),
+                    archive_title_source=source,
+                )
                 best_local = None
                 best_score = score_title_line(inherited)
                 for candidate in (caption_title, text_title):
@@ -601,7 +696,10 @@ def extract_message_body_title(message, *, allow_inherited: bool = True) -> Opti
                 return best_local or inherited
     candidates = []
     for attr in ('caption', 'text'):
-        title = pick_best_title_line(getattr(message, attr, None))
+        title = pick_best_title_line(
+            getattr(message, attr, None),
+            archive_title_source=source,
+        )
         if title and score_title_line(title) > 0:
             candidates.append(title)
     web_page = getattr(message, 'web_page', None)
@@ -615,11 +713,43 @@ def extract_message_body_title(message, *, allow_inherited: bool = True) -> Opti
         candidates.append(file_title)
     if not candidates:
         return None
-    return max(candidates, key=score_title_line)
+    if source == ARCHIVE_TITLE_SOURCE_AUTO:
+        return max(candidates, key=score_title_line)
+    hard_titles: list[tuple[float, str]] = []
+    body_titles: list[tuple[float, str]] = []
+    hashtag_titles: list[tuple[float, str]] = []
+    leading_hashtag: Optional[str] = None
+    for candidate in candidates:
+        score = score_title_line(candidate)
+        if score <= 0:
+            continue
+        item = (score, candidate)
+        if _is_normalized_hashtag_title(candidate):
+            hashtag_titles.append(item)
+            if leading_hashtag is None:
+                leading_hashtag = candidate
+        elif _is_hard_title_line(candidate):
+            hard_titles.append(item)
+        else:
+            body_titles.append(item)
+    return _pick_from_title_buckets(
+        hard_titles=hard_titles,
+        body_titles=body_titles,
+        hashtag_titles=hashtag_titles,
+        leading_hashtag=leading_hashtag,
+        archive_title_source=source,
+    ) or max(candidates, key=score_title_line)
 
 
-def post_title_from_message(message) -> Optional[str]:
-    title = extract_message_body_title(message)
+def post_title_from_message(
+        message,
+        *,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
+) -> Optional[str]:
+    title = extract_message_body_title(
+        message,
+        archive_title_source=archive_title_source,
+    )
     if not title:
         return None
     return sanitize_source_folder(title[:POST_TITLE_CHAR_LIMIT], limit=POST_TITLE_BYTE_LIMIT)
@@ -681,12 +811,16 @@ def archive_source_folder(
         post_title: Optional[str] = None,
         post_author: Optional[str] = None,
         archive_by_author: bool = False,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
 ) -> str:
     """Build relative archive path.
 
     Default (archive_by_author=False): ``{channel}/{postId - title}``.
     Opt-in author nesting: ``{channel}/{author}/{postId - title}``.
+    ``archive_title_source`` controls how the descriptive leaf is chosen from
+    the main post caption/text (``auto`` / ``title`` / ``hashtag`` / ``body``).
     """
+    title_source = normalize_archive_title_source(archive_title_source)
     folder_message = post_message if post_message is not None else message
     channel = source_folder_from_message(
         folder_message,
@@ -704,7 +838,10 @@ def archive_source_folder(
         )
     title = post_title
     if title is None:
-        title = post_title_from_message(folder_message if folder_message is not None else message)
+        title = post_title_from_message(
+            folder_message if folder_message is not None else message,
+            archive_title_source=title_source,
+        )
     post_segment = post_folder_segment(msg_id, title)
     if not archive_by_author:
         if not post_segment:
@@ -738,8 +875,10 @@ def archive_source_folder_for_messages(
         fallback_link: Optional[str] = None,
         post_message_id: Optional[Union[int, str]] = None,
         archive_by_author: bool = False,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
 ) -> str:
     """Build one Source Post Archive Path shared by all media-group members."""
+    title_source = normalize_archive_title_source(archive_title_source)
     message_list = [message for message in (messages or []) if message is not None]
     if not message_list:
         return archive_source_folder(
@@ -747,6 +886,7 @@ def archive_source_folder_for_messages(
             fallback_link=fallback_link,
             post_message_id=post_message_id,
             archive_by_author=archive_by_author,
+            archive_title_source=title_source,
         )
     folder_message = message_list[0]
     for message in message_list:
@@ -763,9 +903,13 @@ def archive_source_folder_for_messages(
             if post_message_id is not None
             else media_group_post_message_id(message_list)
         ),
-        post_title=pick_best_message_title(message_list),
+        post_title=pick_best_message_title(
+            message_list,
+            archive_title_source=title_source,
+        ),
         post_author=post_author_from_messages(message_list) if archive_by_author else None,
         archive_by_author=archive_by_author,
+        archive_title_source=title_source,
     )
 
 
@@ -786,6 +930,7 @@ def resolve_forward_archive_source_folder(
         fallback_chat_id=None,
         fallback_link: Optional[str] = None,
         archive_by_author: bool = False,
+        archive_title_source: str = ARCHIVE_TITLE_SOURCE_AUTO,
 ) -> str:
     """Prefer an explicit Source Post Archive Path; stabilize the post leaf name.
 
@@ -799,8 +944,9 @@ def resolve_forward_archive_source_folder(
     - An already-nested author segment (including ``_未知作者``) is not flattened
       away just because a later re-resolve lost the flag.
     """
+    title_source = normalize_archive_title_source(archive_title_source)
     message_list = list(messages or [])
-    title = pick_best_message_title(message_list)
+    title = pick_best_message_title(message_list, archive_title_source=title_source)
     group_post_id = (
         post_message_id
         if post_message_id is not None
@@ -823,6 +969,7 @@ def resolve_forward_archive_source_folder(
         post_title=title,
         post_author=author,
         archive_by_author=archive_by_author,
+        archive_title_source=title_source,
     )
     if not source_folder:
         return built

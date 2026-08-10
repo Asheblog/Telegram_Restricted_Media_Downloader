@@ -111,6 +111,7 @@ class SchemaMixin:
                     'watch_id': 'TEXT',
                     'media_types': 'TEXT',
                     'archive_by_author': 'INTEGER NOT NULL DEFAULT 0',
+                    'archive_title_source': "TEXT NOT NULL DEFAULT 'auto'",
                 }
             )
             self._ensure_columns(
@@ -219,6 +220,7 @@ class SchemaMixin:
                     'error_message': 'TEXT',
                     'media_types': 'TEXT',
                     'archive_by_author': 'INTEGER NOT NULL DEFAULT 0',
+                    'archive_title_source': "TEXT NOT NULL DEFAULT 'auto'",
                     'comment_delay_minutes': 'INTEGER',
                 }
             )

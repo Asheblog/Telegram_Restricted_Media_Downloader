@@ -3,6 +3,7 @@ import sqlite3
 from typing import Optional, List, Dict, Any
 
 from module.core.media_types import normalize_media_types, serialize_media_types
+from module.source_folders import normalize_archive_title_source
 from module.persistence.store.status import TransferStatus
 
 
@@ -19,6 +20,9 @@ class WatchesMixin:
         watch['include_comment'] = bool(watch.get('include_comment'))
         watch['resolve_deep_link'] = bool(watch.get('resolve_deep_link'))
         watch['archive_by_author'] = bool(watch.get('archive_by_author'))
+        watch['archive_title_source'] = normalize_archive_title_source(
+            watch.get('archive_title_source')
+        )
         delay = watch.get('comment_delay_minutes')
         watch['comment_delay_minutes'] = int(delay) if delay is not None else None
         watch['media_types'] = normalize_media_types(watch.get('media_types'))
@@ -33,6 +37,7 @@ class WatchesMixin:
             include_comment: bool = False,
             resolve_deep_link: bool = False,
             archive_by_author: bool = False,
+            archive_title_source: str = 'auto',
             comment_delay_minutes: Optional[int] = None,
             status: str = TransferStatus.PENDING,
             error_message: Optional[str] = None,
@@ -46,9 +51,9 @@ class WatchesMixin:
                 '''
                 INSERT INTO live_transfer_watches (
                     id, type, source_link, target_link, include_comment, resolve_deep_link,
-                    archive_by_author, comment_delay_minutes, media_types, status, error_message,
+                    archive_by_author, archive_title_source, comment_delay_minutes, media_types, status, error_message,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     type = excluded.type,
                     source_link = excluded.source_link,
@@ -56,6 +61,7 @@ class WatchesMixin:
                     include_comment = excluded.include_comment,
                     resolve_deep_link = excluded.resolve_deep_link,
                     archive_by_author = excluded.archive_by_author,
+                    archive_title_source = excluded.archive_title_source,
                     comment_delay_minutes = excluded.comment_delay_minutes,
                     media_types = excluded.media_types,
                     status = excluded.status,
@@ -65,7 +71,9 @@ class WatchesMixin:
                 (
                     watch_id, watch_type, source_link, target_link,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
-                    int(bool(archive_by_author)), delay_value,
+                    int(bool(archive_by_author)),
+                    normalize_archive_title_source(archive_title_source),
+                    delay_value,
                     media_types_json, status, error_message, now, now
                 )
             )
@@ -77,6 +85,7 @@ class WatchesMixin:
             'include_comment': bool(include_comment),
             'resolve_deep_link': bool(resolve_deep_link),
             'archive_by_author': bool(archive_by_author),
+            'archive_title_source': normalize_archive_title_source(archive_title_source),
             'comment_delay_minutes': delay_value,
             'media_types': normalize_media_types(media_types),
             'status': status,

@@ -116,6 +116,16 @@
             </label>
           </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="new.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="new.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="new.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="new.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="text-xs text-warning leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -213,6 +223,16 @@
             <span data-i18n="watches.archiveByAuthor">按作者归档</span>
           </label>
           <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <button type="submit" class="form-submit">
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
@@ -264,6 +284,16 @@
             <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
           </div>
           <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <div class="form-group">
+            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <select class="form-input" name="archive_title_source">
+              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+            </select>
+          </div>
+          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
           <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
@@ -398,6 +428,16 @@
         <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
       </div>
       <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+      <div class="form-group">
+        <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+        <select class="form-input" name="archive_title_source" id="edit-watch-archive-title-source">
+          <option value="auto" data-i18n="watches.archiveTitleSourceAuto">自动</option>
+          <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
+          <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
+          <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+        </select>
+      </div>
+      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
       <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
         勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
       </p>

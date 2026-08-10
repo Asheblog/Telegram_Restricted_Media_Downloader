@@ -4,7 +4,7 @@ import threading
 from typing import Callable, Optional, Set
 
 from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import archive_source_folder
+from module.source_folders import archive_source_folder, normalize_archive_title_source
 from module.transfer_store import TransferStore, TransferStatus
 
 
@@ -567,6 +567,9 @@ class WebUITaskManager:
                     fallback_link=item.get('source_link') or task.get('source_link'),
                     post_message_id=item.get('range_message_id') or item.get('source_message_id'),
                     archive_by_author=bool(task.get('archive_by_author')),
+                    archive_title_source=normalize_archive_title_source(
+                        task.get('archive_title_source')
+                    ),
                 )
             ),
             file_name=item.get('file_name'),

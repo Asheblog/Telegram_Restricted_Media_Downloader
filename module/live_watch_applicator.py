@@ -6,6 +6,7 @@ from pyrogram.errors.exceptions.bad_request_400 import PeerIdInvalid
 from pyrogram.handlers import MessageHandler
 
 from module import log
+from module.source_folders import normalize_archive_title_source
 from module.transfer_store import TransferStatus
 from module.util import make_forward_watch_rule, parse_link
 
@@ -62,8 +63,12 @@ class LiveWatchApplicator:
             include_comment = bool(payload.get('include_comment'))
             resolve_deep_link = bool(payload.get('resolve_deep_link'))
             archive_by_author = bool(payload.get('archive_by_author'))
+            archive_title_source = normalize_archive_title_source(
+                payload.get('archive_title_source')
+            )
             rule = make_forward_watch_rule(
-                source_link, target_link, include_comment, resolve_deep_link, archive_by_author
+                source_link, target_link, include_comment, resolve_deep_link,
+                archive_by_author, archive_title_source,
             )
             watch_id = host.forward_watch_id(rule)
             if rule in host.listen_forward_chat:

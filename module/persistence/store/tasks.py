@@ -5,6 +5,7 @@ import sqlite3
 from typing import Optional, List, Dict, Any
 
 from module.core.media_types import normalize_media_types, serialize_media_types
+from module.source_folders import normalize_archive_title_source
 from module.persistence.store.constants import (
     DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS,
     STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS,
@@ -22,6 +23,7 @@ class TasksMixin:
             include_comment: bool = False,
             resolve_deep_link: bool = False,
             archive_by_author: bool = False,
+            archive_title_source: str = 'auto',
             execution_mode: str = ExecutionMode.WEB_QUEUE,
             watch_id: Optional[str] = None,
             media_types: Optional[dict] = None,
@@ -37,14 +39,15 @@ class TasksMixin:
                 INSERT INTO transfer_tasks (
                     source_link, target_link, target_profile, start_id, end_id,
                     include_comment, resolve_deep_link, archive_by_author,
-                    execution_mode, watch_id,
+                    archive_title_source, execution_mode, watch_id,
                     media_types, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''',
                 (
                     source_link, target_link, target_profile, start_id, end_id,
                     int(bool(include_comment)), int(bool(resolve_deep_link)),
                     int(bool(archive_by_author)),
+                    normalize_archive_title_source(archive_title_source),
                     mode, watch_id or None, media_types_json,
                     TransferStatus.PENDING, now, now
                 )
@@ -64,6 +67,9 @@ class TasksMixin:
         task = dict(row)
         task['resolve_deep_link'] = bool(task.get('resolve_deep_link'))
         task['archive_by_author'] = bool(task.get('archive_by_author'))
+        task['archive_title_source'] = normalize_archive_title_source(
+            task.get('archive_title_source')
+        )
         task['assignment_completed'] = bool(task.get('assignment_completed'))
         task['execution_mode'] = task.get('execution_mode') or ExecutionMode.WEB_QUEUE
         task['watch_id'] = task.get('watch_id') or None

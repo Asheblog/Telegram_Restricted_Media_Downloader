@@ -9,7 +9,7 @@ from module.persistence.system_log import (
     archive_retry_inflight_key,
     resolve_archive_retry_meta,
 )
-from module.source_folders import archive_source_folder
+from module.source_folders import archive_source_folder, normalize_archive_title_source
 from module.transfer_store import TransferStatus
 
 
@@ -71,6 +71,9 @@ class SystemLogArchiveRetryOps:
                         fallback_link=item.get('source_link') or task.get('source_link') or source_link,
                         post_message_id=item.get('range_message_id') or item.get('source_message_id'),
                         archive_by_author=bool(task.get('archive_by_author')),
+                        archive_title_source=normalize_archive_title_source(
+                            task.get('archive_title_source')
+                        ),
                     )
                 )
                 file_name = item.get('file_name') or file_name

@@ -113,6 +113,7 @@ from module.source_folders import (
     archive_source_folder_for_messages,
     join_local_source_folder,
     media_group_post_message_id,
+    normalize_archive_title_source,
     resolve_forward_archive_source_folder,
 )
 from module.task import DownloadTask, UploadTask
@@ -461,11 +462,17 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 fallback_link=source_link,
                 post_message_id=range_message_id,
                 archive_by_author=bool(task.get('archive_by_author')),
+                archive_title_source=normalize_archive_title_source(
+                    task.get('archive_title_source')
+                ),
             ),
             task_id=task.get('id'),
             media_type=media_type,
             range_message_id=range_message_id,
             archive_by_author=bool(task.get('archive_by_author')),
+            archive_title_source=normalize_archive_title_source(
+                task.get('archive_title_source')
+            ),
         )
 
 
@@ -686,8 +693,14 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             source_folder=archive_source_folder(
                 fallback_link=source_link,
                 archive_by_author=bool(task.get('archive_by_author')),
+                archive_title_source=normalize_archive_title_source(
+                    task.get('archive_title_source')
+                ),
             ),
             archive_by_author=bool(task.get('archive_by_author')),
+            archive_title_source=normalize_archive_title_source(
+                task.get('archive_title_source')
+            ),
         )
         upload_meta['task_id'] = int(task_id)
         await self.create_download_task(
@@ -1048,6 +1061,21 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             return False
         return bool(watch.get('archive_by_author'))
 
+    def _watch_archive_title_source(self, watch_id):
+        from module.source_folders import ARCHIVE_TITLE_SOURCE_AUTO
+        if not watch_id:
+            return ARCHIVE_TITLE_SOURCE_AUTO
+        store = getattr(self, 'transfer_store', None)
+        if store is None:
+            return ARCHIVE_TITLE_SOURCE_AUTO
+        getter = getattr(store, 'get_live_transfer_watch', None)
+        if not callable(getter):
+            return ARCHIVE_TITLE_SOURCE_AUTO
+        watch = getter(watch_id)
+        if not isinstance(watch, dict):
+            return ARCHIVE_TITLE_SOURCE_AUTO
+        return normalize_archive_title_source(watch.get('archive_title_source'))
+
     async def forward_discussion_replies(self, *args, **kwargs):
         return await self._ensure_live_transfer().forward_discussion_replies(*args, **kwargs)
 
@@ -1256,6 +1284,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             messages: Union[list, None],
             *,
             propagate_to=None,
+            archive_title_source: str = 'auto',
     ) -> None:
         """Copy the best album title onto every group member.
 
@@ -1267,7 +1296,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             return
         from module.source_folders import pick_best_message_title
 
-        title = pick_best_message_title(messages)
+        title = pick_best_message_title(
+            messages,
+            archive_title_source=archive_title_source,
+        )
         if not title:
             return
         targets = list(messages)
@@ -1303,13 +1335,20 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         retry_count = retry.get('count')
         retry_id = retry.get('id')
         if isinstance(message, list):
-            self.inherit_media_group_title(message)
+            album_title_source = normalize_archive_title_source(
+                with_upload.get('archive_title_source') if isinstance(with_upload, dict) else None
+            )
+            self.inherit_media_group_title(
+                message,
+                archive_title_source=album_title_source,
+            )
             if isinstance(with_upload, dict):
                 shared_folder = with_upload.get('source_folder') or archive_source_folder_for_messages(
                     message,
                     fallback_chat_id=chat_id,
                     fallback_link=link,
                     archive_by_author=bool(with_upload.get('archive_by_author')),
+                    archive_title_source=album_title_source,
                 )
                 with_upload = dict(with_upload)
                 with_upload['source_folder'] = shared_folder
