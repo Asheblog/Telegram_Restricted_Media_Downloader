@@ -26,6 +26,7 @@ test*.py
 Pipfile
 # opencode / superpowers
 .superpowers/
+.zcode/
 AGENTS.md
 # playwright artifacts
 .playwright-cli/
