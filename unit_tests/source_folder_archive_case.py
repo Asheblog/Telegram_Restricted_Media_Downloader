@@ -1051,7 +1051,14 @@ class SourceFolderArchiveCase(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual('folder_ready', result.status)
         self.assertEqual('Telegram/ctuxas', result.archive_path)
-        self.assertEqual([['rclone', 'mkdir', 'pikpak:Telegram/ctuxas']], calls)
+        # Existence probe first: PikPak mkdir is not idempotent for same-name folders.
+        self.assertEqual(
+            [
+                ['rclone', 'lsjson', 'pikpak:Telegram', '--dirs-only'],
+                ['rclone', 'mkdir', 'pikpak:Telegram/ctuxas'],
+            ],
+            calls,
+        )
 
     def test_rclone_archive_does_not_move_ambiguous_candidates(self):
         from module.pikpak_archive import RclonePikPakArchiveClient

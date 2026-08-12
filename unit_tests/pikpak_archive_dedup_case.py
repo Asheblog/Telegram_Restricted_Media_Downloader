@@ -52,12 +52,20 @@ class _FakeArchiveRunner:
         self.target_names = set(initial_target or ())
         self.calls = []
         self.moveto_calls = []
+        # parent -> leaf names; PikPak-style duplicates allowed (append on every mkdir).
+        self.dirs_by_parent = {}
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
         command = list(args)
         if len(command) >= 2 and command[1] == 'lsjson':
             remote = command[2]
+            if '--dirs-only' in command:
+                path = remote.split(':', 1)[1] if ':' in remote else remote
+                path = path.strip('/')
+                leaves = self.dirs_by_parent.get(path, [])
+                items = [{'Name': name, 'Path': name, 'IsDir': True} for name in leaves]
+                return _FakeCompleted(stdout=json.dumps(items))
             if remote.startswith('pikpak:Telegram'):
                 # Target-dir listings (dedup probe + recursive fallback).
                 return _FakeCompleted(
@@ -70,6 +78,11 @@ class _FakeArchiveRunner:
                 stdout=json.dumps(_lsjson_items(self.ingest_files)),
             )
         if len(command) >= 2 and command[1] == 'mkdir':
+            remote = command[2]
+            path = remote.split(':', 1)[1] if ':' in remote else remote
+            path = path.strip('/')
+            parent, leaf = path.rsplit('/', 1) if '/' in path else ('', path)
+            self.dirs_by_parent.setdefault(parent, []).append(leaf)
             return _FakeCompleted()
         if len(command) >= 2 and command[1] == 'moveto':
             source = command[2]
@@ -356,6 +369,125 @@ class ArchiveFileDedupCase(unittest.TestCase):
             runner.moveto_calls[0][1],
         )
 
+
+class _PikPakDuplicateDirRunner:
+    """Simulates PikPak: each mkdir of an existing leaf name creates another folder.
+
+    Real PikPak allows multiple directories with the identical display name under the
+    same parent; rclone ``mkdir`` is therefore not idempotent. This runner counts
+    every mkdir and surfaces duplicates via dirs-only lsjson so ``directory_exists``
+    can observe them.
+    """
+
+    def __init__(self):
+        # parent_path -> list of leaf names (duplicates allowed)
+        self.dirs_by_parent = {}
+        self.mkdir_paths = []
+        self.calls = []
+
+    def __call__(self, args, **kwargs):
+        self.calls.append(list(args))
+        command = list(args)
+        if len(command) >= 2 and command[1] == 'mkdir':
+            remote = command[2]
+            path = remote.split(':', 1)[1] if ':' in remote else remote
+            path = path.strip('/')
+            parent, leaf = path.rsplit('/', 1) if '/' in path else ('', path)
+            self.dirs_by_parent.setdefault(parent, []).append(leaf)
+            self.mkdir_paths.append(path)
+            return _FakeCompleted()
+        if len(command) >= 2 and command[1] == 'lsjson' and '--dirs-only' in command:
+            remote = command[2]
+            path = remote.split(':', 1)[1] if ':' in remote else remote
+            path = path.strip('/')
+            leaves = self.dirs_by_parent.get(path, [])
+            items = [{'Name': name, 'Path': name, 'IsDir': True} for name in leaves]
+            return _FakeCompleted(stdout=json.dumps(items))
+        if len(command) >= 2 and command[1] == 'lsjson':
+            return _FakeCompleted(stdout='[]')
+        raise AssertionError(f'unexpected rclone command: {command}')
+
+
+class EnsureDirectoryIdempotentCase(unittest.TestCase):
+    """Regression: concurrent same-post archives must not create duplicate folders.
+
+    Symptom (user screenshot): under the Source Channel Folder, several folders with the
+    exact same ``{postId} - {title}`` name appear with the same mtime — one per
+    concurrent ``rclone mkdir`` of the shared Source Post Archive Path.
+    """
+
+    def test_ensure_directory_skips_mkdir_when_leaf_already_exists(self):
+        runner = _PikPakDuplicateDirRunner()
+        client = _make_client(runner)
+        target = 'Telegram/jibahenyanga/5962 - shared title'
+
+        client.ensure_directory(target)
+        client.ensure_directory(target)
+
+        self.assertEqual([target], runner.mkdir_paths)
+        self.assertEqual(
+            1,
+            runner.dirs_by_parent.get('Telegram/jibahenyanga', []).count('5962 - shared title'),
+        )
+
+    def test_concurrent_ensure_directory_creates_leaf_once(self):
+        import threading
+
+        runner = _PikPakDuplicateDirRunner()
+        client = _make_client(runner)
+        target = 'Telegram/jibahenyanga/5955 - shared title'
+        barrier = threading.Barrier(4)
+        errors = []
+
+        def worker():
+            try:
+                barrier.wait(timeout=5)
+                client.ensure_directory(target)
+            except Exception as exc:  # pragma: no cover - surfaced below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertEqual([], errors)
+        self.assertEqual([target], runner.mkdir_paths)
+        self.assertEqual(
+            1,
+            runner.dirs_by_parent.get('Telegram/jibahenyanga', []).count('5955 - shared title'),
+        )
+
+    def test_archive_file_reuses_existing_post_folder_without_second_mkdir(self):
+        """Same album path archived twice must not mkdir the leaf a second time."""
+        runner = _FakeArchiveRunner(
+            ingest_files=[('bot_media_0.mp4', 100), ('bot_media_1.mp4', 200)],
+            target_dir_remote='pikpak:Telegram/jibahenyanga/5962 - title',
+        )
+        client = _make_client(runner)
+        shared_folder = 'jibahenyanga/5962 - title'
+        shared_name = '5962 - title.mp4'
+
+        first = client.archive_file(
+            source_folder=shared_folder,
+            file_name=shared_name,
+            file_size=100,
+            transferred_at=TRANSFERRED_AT,
+            match_original_name=False,
+        )
+        second = client.archive_file(
+            source_folder=shared_folder,
+            file_name=shared_name,
+            file_size=200,
+            transferred_at=TRANSFERRED_AT,
+            match_original_name=False,
+        )
+
+        self.assertTrue(first.ok)
+        self.assertTrue(second.ok)
+        leaves = runner.dirs_by_parent.get('Telegram/jibahenyanga', [])
+        self.assertEqual(1, leaves.count('5962 - title'), leaves)
 
 if __name__ == '__main__':
     unittest.main()

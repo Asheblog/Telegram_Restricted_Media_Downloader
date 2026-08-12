@@ -71,6 +71,11 @@ class RclonePikPakArchiveClient:
         # Serializes the target-name dedup probe + moveto so concurrent archives of
         # the same deterministic name never overwrite each other.
         self._dedup_lock = threading.Lock()
+        # PikPak allows multiple directories with the same display name; rclone mkdir
+        # is not idempotent. Serialize check+create and skip mkdir when the leaf
+        # already exists so concurrent same-post archives reuse one folder.
+        self._mkdir_lock = threading.Lock()
+        self._ensured_dirs: set[str] = set()
 
     @property
     def enabled(self) -> bool:
@@ -221,7 +226,17 @@ class RclonePikPakArchiveClient:
             return PikPakArchiveResult(False, 'error', str(e))
 
     def ensure_directory(self, remote_path: str) -> None:
-        self._run(['mkdir', self.remote(remote_path)])
+        path = clean_remote_path(remote_path)
+        if not path:
+            return
+        with self._mkdir_lock:
+            if path in self._ensured_dirs:
+                return
+            if self.directory_exists(path):
+                self._ensured_dirs.add(path)
+                return
+            self._run(['mkdir', self.remote(path)])
+            self._ensured_dirs.add(path)
 
     def find_candidates(
             self,
