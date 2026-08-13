@@ -251,6 +251,13 @@ class SetupCoordinator:
             raise RuntimeError(probe.get('message') or f'remote「{remote}」探测失败。')
         return probe
 
+    def delete_remote(self, remote: str) -> None:
+        """Delete an rclone remote entry (used when removing a bound PikPak account)."""
+        remote = (remote or '').strip().rstrip(':')
+        if not remote:
+            raise ValueError('remote 不能为空。')
+        self._run_rclone(['config', 'delete', remote])
+
     def _run_rclone(self, args: list[str]):
         config_path = self.rclone_config_path()
         command = [self.rclone_bin, *args, '--config', config_path]

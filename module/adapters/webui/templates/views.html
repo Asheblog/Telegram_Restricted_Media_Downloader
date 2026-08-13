@@ -944,6 +944,11 @@
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
           <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
+        <div class="form-group mt-3">
+          <label class="form-label" data-i18n="settings.itemStaleTimeoutMinutes">任务项超时（分钟）</label>
+          <input class="form-input" name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180">
+          <p class="text-xs text-muted mt-1" data-i18n="settings.itemStaleTimeoutHint">转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。</p>
+        </div>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
         <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
@@ -982,6 +987,24 @@
           <button type="button" class="btn" id="settings-btn-setup-rclone">配置 / 更换 rclone</button>
           <button type="button" class="btn" id="settings-btn-test-rclone">验证 remote</button>
           <button type="button" class="btn" id="settings-btn-relogin-telegram">重新登录 Telegram</button>
+        </div>
+        <div class="mb-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-semibold" data-i18n="settings.pikpakAccounts">PikPak 账号</span>
+            <span class="text-xs text-muted" data-i18n="settings.pikpakAccountLimit" data-pikpak-account-limit>最多可绑定 5 个 PikPak 账号。</span>
+          </div>
+          <div id="pikpak-accounts-list" class="mb-2"></div>
+          <div class="flex flex-wrap gap-2" style="align-items:flex-end;">
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.pikpakAccountUsername">PikPak 账号</label>
+              <input class="form-input" id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.pikpakAccountPassword">PikPak 密码</label>
+              <input class="form-input" id="pikpak-account-pass" type="password" autocomplete="current-password" placeholder="密码">
+            </div>
+            <button type="button" class="btn" id="pikpak-account-add-btn" data-i18n="settings.pikpakAccountAdd">添加账号</button>
+          </div>
         </div>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">

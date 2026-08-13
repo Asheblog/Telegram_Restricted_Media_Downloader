@@ -2403,6 +2403,10 @@ function renderSettings() {
   setCheckboxVal('global.export_table.link', sg.export_table?.link);
   setCheckboxVal('global.export_table.count', sg.export_table?.count);
   setCheckboxVal('global.export_table.upload', sg.export_table?.upload);
+
+  /* PikPak 账号列表 */
+  if (typeof loadPikpakAccounts === 'function') loadPikpakAccounts();
+  if (typeof bindPikpakAccountActions === 'function') bindPikpakAccountActions();
 }
 
 function setFieldVal(name, val) {

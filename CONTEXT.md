@@ -133,6 +133,9 @@ _Avoid_: Forward success, copy success
 **Target Profile** — 目标特定的配置预设（如 `pikpak`），控制：是否以文档发送、发送后是否删除本地文件、文件大小上限。
 _Avoid_: Preset, mode
 
+**PikPak Account** — 绑定的 PikPak 账号，一个账号对应一个 rclone remote（`rclone config` 中的 `[<name>]`）。`target_profiles.pikpak.accounts` 持久化已绑定 remote 名列表（上限 5，见 ADR-0016），`target_profiles.pikpak.archive.remote` 指针指向当前激活账号；切换/删除账号只改该指针并失效 `PikpakIntegrationManager` 缓存的 archive client（下次访问按新 remote 懒重建）。所有账号共享同一套 `source_directory` / `root_directory` 及轮询参数；账号凭据仅经 `rclone obscure` 写入 rclone.conf，绝不进入应用配置。添加账号只重定向激活指针、不翻转归档开关；rclone 不可读时禁止切换/删除（避免误删绑定或残留凭据）。
+_Avoid_: Preset, mode, Telegram account
+
 **Source Channel Folder** — 来源频道对应的顶层文件夹名（归档路径第一段）；频道统计与来源身份按此聚合。
 _Avoid_: Target folder, chat title cache, full archive path
 

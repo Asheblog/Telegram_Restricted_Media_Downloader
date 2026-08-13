@@ -104,6 +104,7 @@
 | max_retries | UserConfig | `config.max_retries.*` |
 | upload (download_upload, delete, pending_limit) | GlobalConfig | `gc.upload.*` |
 | target_profiles (pikpak archive 等) | GlobalConfig | `gc.target_profiles.pikpak.*` |
+| PikPak 账号列表 / 当前激活账号 | GlobalConfig | `gc.target_profiles.pikpak.accounts` / `.archive.remote` |
 | Media Type Allowlist（唯一真源） | GlobalConfig | `gc.message_filter.media_types` |
 | Keyword Blacklist（与归档标题面一致） | GlobalConfig | `gc.message_filter.keywords` |
 | forward_type（兼容双写） | GlobalConfig | `gc.forward_type.*` |
@@ -147,6 +148,10 @@
 | `/api/setup/rclone` | POST | 非交互创建/覆盖 PikPak rclone remote 并探测 |
 | `/api/setup/rclone/skip` | POST | 跳过 rclone；关闭归档 |
 | `/api/setup/rclone/test` | POST | 探测已有 remote |
+| `/api/setup/rclone/accounts` | GET | 列出绑定的 PikPak 账号（remote 名、激活态、缺失态） |
+| `/api/setup/rclone/account` | POST | 添加 PikPak 账号（自动命名 remote，上限 5） |
+| `/api/setup/rclone/switch` | POST | 切换到指定 PikPak 账号（改 `archive.remote` 并失效缓存） |
+| `/api/setup/rclone/account/remove` | POST | 删除非激活 PikPak 账号（含 `rclone config delete`） |
 | `/api/setup/bot` | POST | 校验（getMe）并保存可选 `bot_token` |
 | `/api/setup/bot/skip` | POST | 跳过可选 Bot Token 步 |
 

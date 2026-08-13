@@ -301,6 +301,23 @@ const i18n = {
     'settings.pikpakArchivePoll': '入库轮询秒数',
     'settings.pikpakArchiveInterval': '轮询间隔秒数',
     'settings.pikpakArchiveWindow': '匹配时间窗口秒数',
+    'settings.pikpakAccounts': 'PikPak 账号',
+    'settings.pikpakAccountActive': '当前',
+    'settings.pikpakAccountMissing': '已失效',
+    'settings.pikpakAccountEmpty': '尚未绑定账号，请先添加。',
+    'settings.pikpakAccountAdd': '添加账号',
+    'settings.pikpakAccountSwitch': '切换',
+    'settings.pikpakAccountRemove': '删除',
+    'settings.pikpakAccountLimit': '最多可绑定 {limit} 个 PikPak 账号。',
+    'settings.pikpakAccountAddPrompt': '请填写 PikPak 账号与密码。',
+    'settings.pikpakAccountUsername': 'PikPak 账号',
+    'settings.pikpakAccountPassword': 'PikPak 密码',
+    'settings.pikpakAccountRemoveConfirm': '确定删除该 PikPak 账号？',
+    'settings.pikpakAccountLoadFailed': '读取 PikPak 账号失败',
+    'settings.pikpakAccountAddError': '添加 PikPak 账号失败',
+    'settings.pikpakAccountSwitchError': '切换 PikPak 账号失败',
+    'settings.pikpakAccountRemoveError': '删除 PikPak 账号失败',
+    'settings.pikpakAccountRcloneError': '无法读取 rclone 配置，操作可能不可用。',
     'settings.behavior': '行为',
     'settings.notice': '机器人通知',
     'settings.shutdown': '退出后关机',
@@ -309,6 +326,8 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
+    'settings.itemStaleTimeoutMinutes': '任务项超时（分钟）',
+    'settings.itemStaleTimeoutHint': '转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -805,6 +824,23 @@ const i18n = {
     'settings.pikpakArchivePoll': 'Poll seconds',
     'settings.pikpakArchiveInterval': 'Poll interval',
     'settings.pikpakArchiveWindow': 'Match window seconds',
+    'settings.pikpakAccounts': 'PikPak Accounts',
+    'settings.pikpakAccountActive': 'Active',
+    'settings.pikpakAccountMissing': 'Missing',
+    'settings.pikpakAccountEmpty': 'No account bound yet.',
+    'settings.pikpakAccountAdd': 'Add account',
+    'settings.pikpakAccountSwitch': 'Switch',
+    'settings.pikpakAccountRemove': 'Remove',
+    'settings.pikpakAccountLimit': 'Up to {limit} PikPak accounts.',
+    'settings.pikpakAccountAddPrompt': 'Please fill in PikPak username and password.',
+    'settings.pikpakAccountUsername': 'PikPak username',
+    'settings.pikpakAccountPassword': 'PikPak password',
+    'settings.pikpakAccountRemoveConfirm': 'Remove this PikPak account?',
+    'settings.pikpakAccountLoadFailed': 'Failed to load PikPak accounts',
+    'settings.pikpakAccountAddError': 'Failed to add PikPak account',
+    'settings.pikpakAccountSwitchError': 'Failed to switch PikPak account',
+    'settings.pikpakAccountRemoveError': 'Failed to remove PikPak account',
+    'settings.pikpakAccountRcloneError': 'Cannot read rclone config; operations may be unavailable.',
     'settings.behavior': 'Behavior',
     'settings.notice': 'Bot notifications',
     'settings.shutdown': 'Shutdown on exit',
@@ -812,6 +848,8 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
+    'settings.itemStaleTimeoutMinutes': 'Item stale timeout (minutes)',
+    'settings.itemStaleTimeoutHint': 'Transfer items with no new progress beyond this many minutes are flagged as stalled (used for stall alerts).',
     'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
@@ -2074,4 +2112,114 @@ function startSetupPolling() {
   setupPollTimer = setInterval(function() {
     checkSetupStatus();
   }, 2000);
+}
+
+/* --- PikPak 多账号绑定/切换（shared：桌面 + 移动复用） --- */
+
+function pikpakAccountsMarkup(data) {
+  var accounts = (data && data.accounts) || [];
+  var rcloneError = (data && data.rclone_error) || '';
+  var warning = rcloneError ? '<p class="text-xs text-danger" style="margin-bottom:6px;">' + esc(t('settings.pikpakAccountRcloneError')) + '</p>' : '';
+  if (!accounts.length) {
+    return warning + '<p class="text-xs text-muted" style="margin-bottom:8px;">' + esc(t('settings.pikpakAccountEmpty')) + '</p>';
+  }
+  return warning + accounts.map(function(a) {
+    var badges = '';
+    if (a.active) badges += '<span class="badge" style="margin-left:6px;">' + esc(t('settings.pikpakAccountActive')) + '</span>';
+    if (a.missing) badges += '<span class="badge badge-failed" style="margin-left:6px;">' + esc(t('settings.pikpakAccountMissing')) + '</span>';
+    var actions = '';
+    if (a.active) {
+      actions = '';
+    } else {
+      actions = '<button type="button" class="btn btn-sm" data-pikpak-switch="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountSwitch')) + '</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" data-pikpak-remove="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountRemove')) + '</button>';
+    }
+    return '<div class="flex items-center gap-2" style="margin-bottom:6px;">' +
+      '<span class="text-sm" style="font-weight:600;">' + esc(a.remote) + '</span>' + badges +
+      '<span class="flex-1"></span>' + actions +
+      '</div>';
+  }).join('');
+}
+
+async function loadPikpakAccounts() {
+  var container = document.getElementById('pikpak-accounts-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/setup/rclone/accounts');
+    container.innerHTML = pikpakAccountsMarkup(data);
+    var limitEl = document.querySelector('[data-pikpak-account-limit]');
+    if (limitEl) limitEl.textContent = t('settings.pikpakAccountLimit', { limit: (data && data.limit) || 5 });
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    container.innerHTML = '<p class="text-xs text-danger">' + esc(translateApiError(e, 'settings.pikpakAccountLoadFailed')) + '</p>';
+  }
+}
+
+function bindPikpakAccountActions() {
+  var list = document.getElementById('pikpak-accounts-list');
+  if (list && !list.dataset.bound) {
+    list.dataset.bound = '1';
+    list.addEventListener('click', function(ev) {
+      var remote = ev.target.getAttribute('data-pikpak-switch');
+      if (remote) { switchPikpakAccount(remote); return; }
+      remote = ev.target.getAttribute('data-pikpak-remove');
+      if (remote) { removePikpakAccount(remote); return; }
+    });
+  }
+  var addBtn = document.getElementById('pikpak-account-add-btn');
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', addPikpakAccount);
+  }
+}
+
+async function refreshPikpakAccountsAndSettings() {
+  await loadPikpakAccounts();
+  if (typeof loadMobileSettings === 'function') {
+    await loadMobileSettings();
+  } else if (typeof loadSettings === 'function') {
+    await loadSettings();
+  }
+}
+
+async function switchPikpakAccount(remote) {
+  try {
+    await postJson('/api/setup/rclone/switch', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountSwitchError'));
+  }
+}
+
+async function removePikpakAccount(remote) {
+  if (!confirm(t('settings.pikpakAccountRemoveConfirm'))) return;
+  try {
+    await postJson('/api/setup/rclone/account/remove', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountRemoveError'));
+  }
+}
+
+async function addPikpakAccount() {
+  var userEl = document.getElementById('pikpak-account-user');
+  var passEl = document.getElementById('pikpak-account-pass');
+  var username = (userEl && userEl.value || '').trim();
+  var password = (passEl && passEl.value) || '';
+  if (!username || !password) { alert(t('settings.pikpakAccountAddPrompt')); return; }
+  var btn = document.getElementById('pikpak-account-add-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await postJson('/api/setup/rclone/account', { username: username, password: password });
+    if (userEl) userEl.value = '';
+    if (passEl) passEl.value = '';
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountAddError'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }

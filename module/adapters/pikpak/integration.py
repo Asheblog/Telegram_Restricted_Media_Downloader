@@ -51,6 +51,11 @@ class PikpakIntegrationManager:
         self._pikpak_archive_client = self._pikpak_archive_client_getter()
         return self._pikpak_archive_client
 
+    def invalidate_archive_client(self) -> None:
+        """Drop the cached archive client so the next access rebuilds it from the
+        current archive config (e.g. after switching the active PikPak remote)."""
+        self._pikpak_archive_client = None
+
     def archive_pikpak_item(
             self,
             target_profile: Optional[str],

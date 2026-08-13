@@ -201,6 +201,10 @@ class WebUiServer:
             setup_bot_saver: Optional[Callable[[dict], dict]] = None,
             setup_bot_skipper: Optional[Callable[[Optional[dict]], dict]] = None,
             setup_ready_checker: Optional[Callable[[], bool]] = None,
+            pikpak_accounts_provider: Optional[Callable[[], dict]] = None,
+            pikpak_account_adder: Optional[Callable[[dict], dict]] = None,
+            pikpak_account_switcher: Optional[Callable[[dict], dict]] = None,
+            pikpak_account_remover: Optional[Callable[[dict], dict]] = None,
     ):
         self.store = store
         self.view_model = WebUiViewModel(store)
@@ -222,6 +226,10 @@ class WebUiServer:
         self.setup_bot_saver = setup_bot_saver
         self.setup_bot_skipper = setup_bot_skipper
         self.setup_ready_checker = setup_ready_checker
+        self.pikpak_accounts_provider = pikpak_accounts_provider
+        self.pikpak_account_adder = pikpak_account_adder
+        self.pikpak_account_switcher = pikpak_account_switcher
+        self.pikpak_account_remover = pikpak_account_remover
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self.auth_provider: Optional[AuthProvider] = None

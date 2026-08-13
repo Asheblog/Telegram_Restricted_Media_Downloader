@@ -4,10 +4,15 @@ from typing import Optional
 
 PIKPAK_TARGET_PROFILE = 'pikpak'
 PIKPAK_DEFAULT_MAX_FILE_SIZE = 4 * 1024 ** 3
+PIKPAK_MAX_ACCOUNTS = 5
 
 DEFAULT_TARGET_PROFILES = {
     PIKPAK_TARGET_PROFILE: {
         'max_file_size': PIKPAK_DEFAULT_MAX_FILE_SIZE,
+        # Bound PikPak accounts (one rclone remote per account). ``archive.remote``
+        # points at the currently active remote; switching only rewrites that
+        # pointer. Credentials live exclusively in rclone.conf (never here).
+        'accounts': [],
         'archive': {
             # New installs keep archive off until First-run Setup Wizard
             # successfully probes rclone (ADR-0012). Existing configs keep

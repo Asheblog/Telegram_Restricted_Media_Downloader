@@ -1456,6 +1456,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
           <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
         </div>
+        <div class="form-group mt-3">
+          <label class="form-label" data-i18n="settings.itemStaleTimeoutMinutes">任务项超时（分钟）</label>
+          <input class="form-input" name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180">
+          <p class="text-xs text-muted mt-1" data-i18n="settings.itemStaleTimeoutHint">转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。</p>
+        </div>
         <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
         <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
         <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
@@ -1494,6 +1499,24 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <button type="button" class="btn" id="settings-btn-setup-rclone">配置 / 更换 rclone</button>
           <button type="button" class="btn" id="settings-btn-test-rclone">验证 remote</button>
           <button type="button" class="btn" id="settings-btn-relogin-telegram">重新登录 Telegram</button>
+        </div>
+        <div class="mb-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-sm font-semibold" data-i18n="settings.pikpakAccounts">PikPak 账号</span>
+            <span class="text-xs text-muted" data-i18n="settings.pikpakAccountLimit" data-pikpak-account-limit>最多可绑定 5 个 PikPak 账号。</span>
+          </div>
+          <div id="pikpak-accounts-list" class="mb-2"></div>
+          <div class="flex flex-wrap gap-2" style="align-items:flex-end;">
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.pikpakAccountUsername">PikPak 账号</label>
+              <input class="form-input" id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号">
+            </div>
+            <div class="form-group">
+              <label class="form-label" data-i18n="settings.pikpakAccountPassword">PikPak 密码</label>
+              <input class="form-input" id="pikpak-account-pass" type="password" autocomplete="current-password" placeholder="密码">
+            </div>
+            <button type="button" class="btn" id="pikpak-account-add-btn" data-i18n="settings.pikpakAccountAdd">添加账号</button>
+          </div>
         </div>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
           <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">
@@ -2071,6 +2094,23 @@ const i18n = {
     'settings.pikpakArchivePoll': '入库轮询秒数',
     'settings.pikpakArchiveInterval': '轮询间隔秒数',
     'settings.pikpakArchiveWindow': '匹配时间窗口秒数',
+    'settings.pikpakAccounts': 'PikPak 账号',
+    'settings.pikpakAccountActive': '当前',
+    'settings.pikpakAccountMissing': '已失效',
+    'settings.pikpakAccountEmpty': '尚未绑定账号，请先添加。',
+    'settings.pikpakAccountAdd': '添加账号',
+    'settings.pikpakAccountSwitch': '切换',
+    'settings.pikpakAccountRemove': '删除',
+    'settings.pikpakAccountLimit': '最多可绑定 {limit} 个 PikPak 账号。',
+    'settings.pikpakAccountAddPrompt': '请填写 PikPak 账号与密码。',
+    'settings.pikpakAccountUsername': 'PikPak 账号',
+    'settings.pikpakAccountPassword': 'PikPak 密码',
+    'settings.pikpakAccountRemoveConfirm': '确定删除该 PikPak 账号？',
+    'settings.pikpakAccountLoadFailed': '读取 PikPak 账号失败',
+    'settings.pikpakAccountAddError': '添加 PikPak 账号失败',
+    'settings.pikpakAccountSwitchError': '切换 PikPak 账号失败',
+    'settings.pikpakAccountRemoveError': '删除 PikPak 账号失败',
+    'settings.pikpakAccountRcloneError': '无法读取 rclone 配置，操作可能不可用。',
     'settings.behavior': '行为',
     'settings.notice': '机器人通知',
     'settings.shutdown': '退出后关机',
@@ -2079,6 +2119,8 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
+    'settings.itemStaleTimeoutMinutes': '任务项超时（分钟）',
+    'settings.itemStaleTimeoutHint': '转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -2575,6 +2617,23 @@ const i18n = {
     'settings.pikpakArchivePoll': 'Poll seconds',
     'settings.pikpakArchiveInterval': 'Poll interval',
     'settings.pikpakArchiveWindow': 'Match window seconds',
+    'settings.pikpakAccounts': 'PikPak Accounts',
+    'settings.pikpakAccountActive': 'Active',
+    'settings.pikpakAccountMissing': 'Missing',
+    'settings.pikpakAccountEmpty': 'No account bound yet.',
+    'settings.pikpakAccountAdd': 'Add account',
+    'settings.pikpakAccountSwitch': 'Switch',
+    'settings.pikpakAccountRemove': 'Remove',
+    'settings.pikpakAccountLimit': 'Up to {limit} PikPak accounts.',
+    'settings.pikpakAccountAddPrompt': 'Please fill in PikPak username and password.',
+    'settings.pikpakAccountUsername': 'PikPak username',
+    'settings.pikpakAccountPassword': 'PikPak password',
+    'settings.pikpakAccountRemoveConfirm': 'Remove this PikPak account?',
+    'settings.pikpakAccountLoadFailed': 'Failed to load PikPak accounts',
+    'settings.pikpakAccountAddError': 'Failed to add PikPak account',
+    'settings.pikpakAccountSwitchError': 'Failed to switch PikPak account',
+    'settings.pikpakAccountRemoveError': 'Failed to remove PikPak account',
+    'settings.pikpakAccountRcloneError': 'Cannot read rclone config; operations may be unavailable.',
     'settings.behavior': 'Behavior',
     'settings.notice': 'Bot notifications',
     'settings.shutdown': 'Shutdown on exit',
@@ -2582,6 +2641,8 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
+    'settings.itemStaleTimeoutMinutes': 'Item stale timeout (minutes)',
+    'settings.itemStaleTimeoutHint': 'Transfer items with no new progress beyond this many minutes are flagged as stalled (used for stall alerts).',
     'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
@@ -3844,6 +3905,116 @@ function startSetupPolling() {
   setupPollTimer = setInterval(function() {
     checkSetupStatus();
   }, 2000);
+}
+
+/* --- PikPak 多账号绑定/切换（shared：桌面 + 移动复用） --- */
+
+function pikpakAccountsMarkup(data) {
+  var accounts = (data && data.accounts) || [];
+  var rcloneError = (data && data.rclone_error) || '';
+  var warning = rcloneError ? '<p class="text-xs text-danger" style="margin-bottom:6px;">' + esc(t('settings.pikpakAccountRcloneError')) + '</p>' : '';
+  if (!accounts.length) {
+    return warning + '<p class="text-xs text-muted" style="margin-bottom:8px;">' + esc(t('settings.pikpakAccountEmpty')) + '</p>';
+  }
+  return warning + accounts.map(function(a) {
+    var badges = '';
+    if (a.active) badges += '<span class="badge" style="margin-left:6px;">' + esc(t('settings.pikpakAccountActive')) + '</span>';
+    if (a.missing) badges += '<span class="badge badge-failed" style="margin-left:6px;">' + esc(t('settings.pikpakAccountMissing')) + '</span>';
+    var actions = '';
+    if (a.active) {
+      actions = '';
+    } else {
+      actions = '<button type="button" class="btn btn-sm" data-pikpak-switch="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountSwitch')) + '</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" data-pikpak-remove="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountRemove')) + '</button>';
+    }
+    return '<div class="flex items-center gap-2" style="margin-bottom:6px;">' +
+      '<span class="text-sm" style="font-weight:600;">' + esc(a.remote) + '</span>' + badges +
+      '<span class="flex-1"></span>' + actions +
+      '</div>';
+  }).join('');
+}
+
+async function loadPikpakAccounts() {
+  var container = document.getElementById('pikpak-accounts-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/setup/rclone/accounts');
+    container.innerHTML = pikpakAccountsMarkup(data);
+    var limitEl = document.querySelector('[data-pikpak-account-limit]');
+    if (limitEl) limitEl.textContent = t('settings.pikpakAccountLimit', { limit: (data && data.limit) || 5 });
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    container.innerHTML = '<p class="text-xs text-danger">' + esc(translateApiError(e, 'settings.pikpakAccountLoadFailed')) + '</p>';
+  }
+}
+
+function bindPikpakAccountActions() {
+  var list = document.getElementById('pikpak-accounts-list');
+  if (list && !list.dataset.bound) {
+    list.dataset.bound = '1';
+    list.addEventListener('click', function(ev) {
+      var remote = ev.target.getAttribute('data-pikpak-switch');
+      if (remote) { switchPikpakAccount(remote); return; }
+      remote = ev.target.getAttribute('data-pikpak-remove');
+      if (remote) { removePikpakAccount(remote); return; }
+    });
+  }
+  var addBtn = document.getElementById('pikpak-account-add-btn');
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', addPikpakAccount);
+  }
+}
+
+async function refreshPikpakAccountsAndSettings() {
+  await loadPikpakAccounts();
+  if (typeof loadMobileSettings === 'function') {
+    await loadMobileSettings();
+  } else if (typeof loadSettings === 'function') {
+    await loadSettings();
+  }
+}
+
+async function switchPikpakAccount(remote) {
+  try {
+    await postJson('/api/setup/rclone/switch', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountSwitchError'));
+  }
+}
+
+async function removePikpakAccount(remote) {
+  if (!confirm(t('settings.pikpakAccountRemoveConfirm'))) return;
+  try {
+    await postJson('/api/setup/rclone/account/remove', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountRemoveError'));
+  }
+}
+
+async function addPikpakAccount() {
+  var userEl = document.getElementById('pikpak-account-user');
+  var passEl = document.getElementById('pikpak-account-pass');
+  var username = (userEl && userEl.value || '').trim();
+  var password = (passEl && passEl.value) || '';
+  if (!username || !password) { alert(t('settings.pikpakAccountAddPrompt')); return; }
+  var btn = document.getElementById('pikpak-account-add-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await postJson('/api/setup/rclone/account', { username: username, password: password });
+    if (userEl) userEl.value = '';
+    if (passEl) passEl.value = '';
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountAddError'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 </script>
 <script>/* TRMD WebUI - Desktop SPA Logic */
@@ -6251,6 +6422,10 @@ function renderSettings() {
   setCheckboxVal('global.export_table.link', sg.export_table?.link);
   setCheckboxVal('global.export_table.count', sg.export_table?.count);
   setCheckboxVal('global.export_table.upload', sg.export_table?.upload);
+
+  /* PikPak 账号列表 */
+  if (typeof loadPikpakAccounts === 'function') loadPikpakAccounts();
+  if (typeof bindPikpakAccountActions === 'function') bindPikpakAccountActions();
 }
 
 function setFieldVal(name, val) {
@@ -8592,6 +8767,23 @@ const i18n = {
     'settings.pikpakArchivePoll': '入库轮询秒数',
     'settings.pikpakArchiveInterval': '轮询间隔秒数',
     'settings.pikpakArchiveWindow': '匹配时间窗口秒数',
+    'settings.pikpakAccounts': 'PikPak 账号',
+    'settings.pikpakAccountActive': '当前',
+    'settings.pikpakAccountMissing': '已失效',
+    'settings.pikpakAccountEmpty': '尚未绑定账号，请先添加。',
+    'settings.pikpakAccountAdd': '添加账号',
+    'settings.pikpakAccountSwitch': '切换',
+    'settings.pikpakAccountRemove': '删除',
+    'settings.pikpakAccountLimit': '最多可绑定 {limit} 个 PikPak 账号。',
+    'settings.pikpakAccountAddPrompt': '请填写 PikPak 账号与密码。',
+    'settings.pikpakAccountUsername': 'PikPak 账号',
+    'settings.pikpakAccountPassword': 'PikPak 密码',
+    'settings.pikpakAccountRemoveConfirm': '确定删除该 PikPak 账号？',
+    'settings.pikpakAccountLoadFailed': '读取 PikPak 账号失败',
+    'settings.pikpakAccountAddError': '添加 PikPak 账号失败',
+    'settings.pikpakAccountSwitchError': '切换 PikPak 账号失败',
+    'settings.pikpakAccountRemoveError': '删除 PikPak 账号失败',
+    'settings.pikpakAccountRcloneError': '无法读取 rclone 配置，操作可能不可用。',
     'settings.behavior': '行为',
     'settings.notice': '机器人通知',
     'settings.shutdown': '退出后关机',
@@ -8600,6 +8792,8 @@ const i18n = {
     'settings.pendingLimit': '下载后上传队列',
     'settings.commentDelayHint': '系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。',
     'settings.commentDelayMinutes': '评论区延迟抓取（分钟）',
+    'settings.itemStaleTimeoutMinutes': '任务项超时（分钟）',
+    'settings.itemStaleTimeoutHint': '转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。',
     'settings.deepLinkTitle': '深链取片',
     'settings.deepLinkWhitelist': '资源 bot 白名单',
     'settings.deepLinkWhitelistHint': '每行一个 bot 用户名（可带 @）。仅名单内的 t.me/<bot>?start= 会触发取片。留空且任务未勾选时功能关闭。',
@@ -9096,6 +9290,23 @@ const i18n = {
     'settings.pikpakArchivePoll': 'Poll seconds',
     'settings.pikpakArchiveInterval': 'Poll interval',
     'settings.pikpakArchiveWindow': 'Match window seconds',
+    'settings.pikpakAccounts': 'PikPak Accounts',
+    'settings.pikpakAccountActive': 'Active',
+    'settings.pikpakAccountMissing': 'Missing',
+    'settings.pikpakAccountEmpty': 'No account bound yet.',
+    'settings.pikpakAccountAdd': 'Add account',
+    'settings.pikpakAccountSwitch': 'Switch',
+    'settings.pikpakAccountRemove': 'Remove',
+    'settings.pikpakAccountLimit': 'Up to {limit} PikPak accounts.',
+    'settings.pikpakAccountAddPrompt': 'Please fill in PikPak username and password.',
+    'settings.pikpakAccountUsername': 'PikPak username',
+    'settings.pikpakAccountPassword': 'PikPak password',
+    'settings.pikpakAccountRemoveConfirm': 'Remove this PikPak account?',
+    'settings.pikpakAccountLoadFailed': 'Failed to load PikPak accounts',
+    'settings.pikpakAccountAddError': 'Failed to add PikPak account',
+    'settings.pikpakAccountSwitchError': 'Failed to switch PikPak account',
+    'settings.pikpakAccountRemoveError': 'Failed to remove PikPak account',
+    'settings.pikpakAccountRcloneError': 'Cannot read rclone config; operations may be unavailable.',
     'settings.behavior': 'Behavior',
     'settings.notice': 'Bot notifications',
     'settings.shutdown': 'Shutdown on exit',
@@ -9103,6 +9314,8 @@ const i18n = {
     'settings.uploadDelete': 'Delete local after upload',
     'settings.pendingLimit': 'Upload queue limit',
     'settings.commentDelayMinutes': 'Comment capture delay (minutes)',
+    'settings.itemStaleTimeoutMinutes': 'Item stale timeout (minutes)',
+    'settings.itemStaleTimeoutHint': 'Transfer items with no new progress beyond this many minutes are flagged as stalled (used for stall alerts).',
     'settings.commentDelayHint': 'System default: for live forward with comments, when a watch has no override, forward the post immediately then capture comments once after this delay. 0 means capture immediately.',
     'settings.deepLinkTitle': 'Deep link resolve',
     'settings.deepLinkWhitelist': 'Resource bot whitelist',
@@ -10365,6 +10578,116 @@ function startSetupPolling() {
   setupPollTimer = setInterval(function() {
     checkSetupStatus();
   }, 2000);
+}
+
+/* --- PikPak 多账号绑定/切换（shared：桌面 + 移动复用） --- */
+
+function pikpakAccountsMarkup(data) {
+  var accounts = (data && data.accounts) || [];
+  var rcloneError = (data && data.rclone_error) || '';
+  var warning = rcloneError ? '<p class="text-xs text-danger" style="margin-bottom:6px;">' + esc(t('settings.pikpakAccountRcloneError')) + '</p>' : '';
+  if (!accounts.length) {
+    return warning + '<p class="text-xs text-muted" style="margin-bottom:8px;">' + esc(t('settings.pikpakAccountEmpty')) + '</p>';
+  }
+  return warning + accounts.map(function(a) {
+    var badges = '';
+    if (a.active) badges += '<span class="badge" style="margin-left:6px;">' + esc(t('settings.pikpakAccountActive')) + '</span>';
+    if (a.missing) badges += '<span class="badge badge-failed" style="margin-left:6px;">' + esc(t('settings.pikpakAccountMissing')) + '</span>';
+    var actions = '';
+    if (a.active) {
+      actions = '';
+    } else {
+      actions = '<button type="button" class="btn btn-sm" data-pikpak-switch="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountSwitch')) + '</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" data-pikpak-remove="' + esc(a.remote) + '">' + esc(t('settings.pikpakAccountRemove')) + '</button>';
+    }
+    return '<div class="flex items-center gap-2" style="margin-bottom:6px;">' +
+      '<span class="text-sm" style="font-weight:600;">' + esc(a.remote) + '</span>' + badges +
+      '<span class="flex-1"></span>' + actions +
+      '</div>';
+  }).join('');
+}
+
+async function loadPikpakAccounts() {
+  var container = document.getElementById('pikpak-accounts-list');
+  if (!container) return;
+  try {
+    var data = await fetchJson('/api/setup/rclone/accounts');
+    container.innerHTML = pikpakAccountsMarkup(data);
+    var limitEl = document.querySelector('[data-pikpak-account-limit]');
+    if (limitEl) limitEl.textContent = t('settings.pikpakAccountLimit', { limit: (data && data.limit) || 5 });
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    container.innerHTML = '<p class="text-xs text-danger">' + esc(translateApiError(e, 'settings.pikpakAccountLoadFailed')) + '</p>';
+  }
+}
+
+function bindPikpakAccountActions() {
+  var list = document.getElementById('pikpak-accounts-list');
+  if (list && !list.dataset.bound) {
+    list.dataset.bound = '1';
+    list.addEventListener('click', function(ev) {
+      var remote = ev.target.getAttribute('data-pikpak-switch');
+      if (remote) { switchPikpakAccount(remote); return; }
+      remote = ev.target.getAttribute('data-pikpak-remove');
+      if (remote) { removePikpakAccount(remote); return; }
+    });
+  }
+  var addBtn = document.getElementById('pikpak-account-add-btn');
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', addPikpakAccount);
+  }
+}
+
+async function refreshPikpakAccountsAndSettings() {
+  await loadPikpakAccounts();
+  if (typeof loadMobileSettings === 'function') {
+    await loadMobileSettings();
+  } else if (typeof loadSettings === 'function') {
+    await loadSettings();
+  }
+}
+
+async function switchPikpakAccount(remote) {
+  try {
+    await postJson('/api/setup/rclone/switch', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountSwitchError'));
+  }
+}
+
+async function removePikpakAccount(remote) {
+  if (!confirm(t('settings.pikpakAccountRemoveConfirm'))) return;
+  try {
+    await postJson('/api/setup/rclone/account/remove', { remote: remote });
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountRemoveError'));
+  }
+}
+
+async function addPikpakAccount() {
+  var userEl = document.getElementById('pikpak-account-user');
+  var passEl = document.getElementById('pikpak-account-pass');
+  var username = (userEl && userEl.value || '').trim();
+  var password = (passEl && passEl.value) || '';
+  if (!username || !password) { alert(t('settings.pikpakAccountAddPrompt')); return; }
+  var btn = document.getElementById('pikpak-account-add-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await postJson('/api/setup/rclone/account', { username: username, password: password });
+    if (userEl) userEl.value = '';
+    if (passEl) passEl.value = '';
+    await refreshPikpakAccountsAndSettings();
+  } catch (e) {
+    if (e && e.error_code === 'auth_required') return;
+    alert(translateApiError(e, 'settings.pikpakAccountAddError'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 </script>
 <script>// ================================================================
@@ -12018,6 +12341,8 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">系统默认：任务未单独设置时生效。主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<label style="margin-top:10px;"><span>' + esc(t('settings.itemStaleTimeoutMinutes')) + '</span><input name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180" value="' + (getSettingLeafKey(glob, 'transfer.item_stale_timeout_minutes') ?? 5) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">' + esc(t('settings.itemStaleTimeoutHint')) + '</p>' +
     '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
@@ -12051,8 +12376,19 @@ function renderMobSettingsForm() {
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
         '<label><span>轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0" value="' + (arch.poll_interval_seconds || '') + '"></label>' +
         '<label><span>匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0" value="' + (arch.match_window_seconds || '') + '"></label>' +
+      '</div>' +
+      '<div style="margin-top:14px;">' +
+        '<span style="font-weight:600;">' + esc(t('settings.pikpakAccounts')) + '</span>' +
+        '<div id="pikpak-accounts-list" style="margin:8px 0;"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr;gap:8px;">' +
+          '<label><span>' + esc(t('settings.pikpakAccountUsername')) + '</span><input id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号"></label>' +
+          '<label><span>' + esc(t('settings.pikpakAccountPassword')) + '</span><input id="pikpak-account-pass" type="password" autocomplete="current-password"></label>' +
+        '</div>' +
+        '<button type="button" class="mob-btn" id="pikpak-account-add-btn" style="margin-top:8px;">' + esc(t('settings.pikpakAccountAdd')) + '</button>' +
       '</div>';
     if (typeof bindSetupWizardHandlers === 'function') bindSetupWizardHandlers();
+    if (typeof loadPikpakAccounts === 'function') loadPikpakAccounts();
+    if (typeof bindPikpakAccountActions === 'function') bindPikpakAccountActions();
   }
 
   // Sensitive

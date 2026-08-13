@@ -1649,6 +1649,8 @@ function renderMobSettingsForm() {
     '<label style="margin-top:10px;"><span>下载后上传队列</span><input name="global.upload.pending_limit" type="number" min="1" max="5" value="' + (getSettingLeafKey(glob, 'upload.pending_limit') || '') + '"></label>' +
     '<label style="margin-top:10px;"><span>评论区延迟抓取（分钟）</span><input name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440" value="' + (getSettingLeafKey(glob, 'live_watch.comment_delay_minutes') ?? 20) + '"></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">系统默认：任务未单独设置时生效。主贴立刻转发，评论区延迟后再抓一次。0=立刻。</p>' +
+    '<label style="margin-top:10px;"><span>' + esc(t('settings.itemStaleTimeoutMinutes')) + '</span><input name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180" value="' + (getSettingLeafKey(glob, 'transfer.item_stale_timeout_minutes') ?? 5) + '"></label>' +
+    '<p class="text-xs text-muted" style="margin-top:4px;">' + esc(t('settings.itemStaleTimeoutHint')) + '</p>' +
     '<h4 class="type-title" style="margin-top:16px;">深链取片</h4>' +
     '<label><span>资源 bot 白名单</span><textarea name="global.deep_link.bot_whitelist" rows="3" placeholder="每行一个，例如：&#10;123456">' + escAttr(Array.isArray(getSettingLeafKey(glob, 'deep_link.bot_whitelist')) ? getSettingLeafKey(glob, 'deep_link.bot_whitelist').join('\n') : (getSettingLeafKey(glob, 'deep_link.bot_whitelist') || '')) + '</textarea></label>' +
     '<p class="text-xs text-muted" style="margin-top:4px;">每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。</p>' +
@@ -1682,8 +1684,19 @@ function renderMobSettingsForm() {
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
         '<label><span>轮询间隔秒数</span><input name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0" value="' + (arch.poll_interval_seconds || '') + '"></label>' +
         '<label><span>匹配时间窗口秒数</span><input name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0" value="' + (arch.match_window_seconds || '') + '"></label>' +
+      '</div>' +
+      '<div style="margin-top:14px;">' +
+        '<span style="font-weight:600;">' + esc(t('settings.pikpakAccounts')) + '</span>' +
+        '<div id="pikpak-accounts-list" style="margin:8px 0;"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr;gap:8px;">' +
+          '<label><span>' + esc(t('settings.pikpakAccountUsername')) + '</span><input id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号"></label>' +
+          '<label><span>' + esc(t('settings.pikpakAccountPassword')) + '</span><input id="pikpak-account-pass" type="password" autocomplete="current-password"></label>' +
+        '</div>' +
+        '<button type="button" class="mob-btn" id="pikpak-account-add-btn" style="margin-top:8px;">' + esc(t('settings.pikpakAccountAdd')) + '</button>' +
       '</div>';
     if (typeof bindSetupWizardHandlers === 'function') bindSetupWizardHandlers();
+    if (typeof loadPikpakAccounts === 'function') loadPikpakAccounts();
+    if (typeof bindPikpakAccountActions === 'function') bindPikpakAccountActions();
   }
 
   // Sensitive
