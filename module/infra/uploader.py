@@ -775,7 +775,7 @@ class TelegramUploader:
             if all(meta.values()):
                 return meta
         except Exception as e:
-            self.diagnostic.error(f'获取视频元数据失败,{_t(KeyWord.REASON)}:"{e}"')
+            default_diagnostic.error(f'获取视频元数据失败,{_t(KeyWord.REASON)}:"{e}"')
 
     async def get_input_media_document(
             self,
