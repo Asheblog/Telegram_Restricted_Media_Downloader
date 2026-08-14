@@ -46,7 +46,7 @@ main.py
 ### 配置系统（双层）
 
 | 配置层 | 类 | 文件名 | 位置 | 用途 |
-|--------|-----|--------|------|------|
+| -------- | ----- | -------- | ------ | ------ |
 | 用户层 | `UserConfig` | `config.yaml` | 工作目录 | Telegram API 凭证、下载类型（由统一白名单派生兼容）、代理 |
 | 全局层 | `GlobalConfig` | `.CONFIG.yaml` | `~/.config/TRMD/` | 上传行为、目标配置、消息过滤；媒体类型唯一真源为 `message_filter.media_types` |
 
@@ -65,7 +65,7 @@ module/
   utils/          # util、stdio、path_tool、parser、language、diagnostics
 ```
 
-顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）；零引用的 `client.py` shim 已删除，请直接用 `module.infra.client`。
+顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）；零引用的 `client.py` shim 已删除，请直接用 `module.infra.client`。`constants.py`（纯常量，零副作用）与 `bootstrap.py`（幂等 `initialize()`）承载原 `__init__.py` 的常量与运行时副作用；`module/__init__.py` 仅 re-export，**import 任何子模块均零副作用**（不建目录、不写日志、不起线程），运行时副作用由 `main.py` 与组合根显式调用 `bootstrap.initialize()` 触发。
 
 **架构立场**：deepen 轮（P1–P4）已完成——Archive Author / Web 任务控制委托、`TransferStore` 按聚合拆 mixin、`WebUiServer` 按 API 域拆 handler、Downloader 门面以委托既有服务为主（残留为下载编排与 Bot UX 胶水）。**不做纯包搬家、不以单文件行数硬顶为完成标准**；后续仅在具体痛点出现时做局部深化。
 
@@ -121,7 +121,7 @@ _Avoid_: Chapter cursor, runtime offset
 **PikPak Target** — 与 PikPak 官方 bot 的 Telegram 会话，作为接收转存媒体的目标。
 _Avoid_: PikPak API, cloud drive target
 
-**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，下载回退与直接转发均在入库确认后**延迟归档**（`archive_status=pending`）；Transfer Item 可先标 SUCCESS，归档失败记 archive 状态并可重试，不回滚转存成功。监听转发路径的归档在后台线程执行，不阻塞转发循环。Bot 直转入库名常为原始 basename，归档目标为 `{message_id} - {stem}.ext`；同 size 多候选时按「完整归档名 → 原始 basename（含 `name(N).ext`）→ 浅层 Path（优先 My Telegram 根下）→ 最近 ModTime」消歧；有 `{message_id} -` 前缀却无名命中、或仍并列时保持 ambiguous。递归 `lsjson` 若因幽灵子目录 `file_not_found` 失败，回退为非递归列表；`moveto` 源已不存在时若目标侧已有唯一匹配则记 `already_archived`。**归档目标名去重（ADR-0015）**：同一来源帖多媒体共享 `{message_id} - {标题}.{ext}` 时，目标帖目录列名 + 命名 + `moveto` 在实例级 `threading.Lock` 临界区内执行，已占用时按 PikPak 风格追加 ` (1)`/` (2)`…（扩展名+去 `(N)` 后缀的 stem 做 casefold 比对），同帖文件最终落为 `标题.mp4`、`标题 (1).mp4`…… 不再互相覆盖；重试/手动重试按 bare 或带后缀名均可匹配。**归档目录确保**：`ensure_directory` 在实例级锁内先 `lsjson --dirs-only` 探测父目录是否已有同名叶子，已存在则跳过 `rclone mkdir`（PikPak 允许同显示名目录，裸 mkdir 非幂等）；同帖多媒体并发归档只建一个 Source Post Archive Path 叶子目录。
+**PikPak Archive** — 目标侧组织步骤：确认 Source Post Archive Path 存在，将 PikPak Target 接收的媒体从 PikPak Ingest Folder 移动到该路径。启用时，下载回退与直接转发均在入库确认后**延迟归档**（`archive_status=pending`）；Transfer Item 可先标 SUCCESS，归档失败记 archive 状态并可重试，不回滚转存成功。监听转发路径的归档在后台线程执行，不阻塞转发循环。Bot 直转入库名常为原始 basename，归档目标为 `{message_id} - {stem}.ext`；同 size 多候选时按「完整归档名 → 原始 basename（含 `name(N).ext`）→ 浅层 Path（优先 My Telegram 根下）→ 最近 ModTime」消歧；有 `{message_id} -` 前缀却无名命中、或仍并列时保持 ambiguous。递归 `lsjson` 若因幽灵子目录 `file_not_found` 失败，回退为非递归列表；`moveto` 源已不存在时若目标侧已有唯一匹配则记 `already_archived`。**归档目标名去重（ADR-0015）**：同一来源帖多媒体共享 `{message_id} - {标题}.{ext}` 时，目标帖目录列名 + 命名 + `moveto` 在实例级 `threading.Lock` 临界区内执行，已占用时按 PikPak 风格追加 `(1)`/`(2)`…（扩展名+去 `(N)` 后缀的 stem 做 casefold 比对），同帖文件最终落为 `标题.mp4`、`标题 (1).mp4`…… 不再互相覆盖；重试/手动重试按 bare 或带后缀名均可匹配。**归档目录确保**：`ensure_directory` 在实例级锁内先 `lsjson --dirs-only` 探测父目录是否已有同名叶子，已存在则跳过 `rclone mkdir`（PikPak 允许同显示名目录，裸 mkdir 非幂等）；同帖多媒体并发归档只建一个 Source Post Archive Path 叶子目录。
 _Avoid_: Local download folder, bot chat folder
 
 **PikPak Ingest Folder** — PikPak bot 入库后的默认目录（"My Telegram"），PikPak Archive 执行前文件暂存于此。
@@ -228,7 +228,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 ## 关键外部依赖
 
 | 依赖 | 版本 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
 | rclone | 1.74.4（Dockerfile `TRMD_RCLONE_RELEASE` 固定；checksum 校验；勿用 `RCLONE_*` 名以免与 rclone 环境变量冲突） | PikPak 云盘归档（容器内安装） |
 | Python 基础镜像 | 3.13.14-slim（`requires-python` 仍 ≥3.13.2） | Docker 发行线运行时 |
@@ -264,7 +264,8 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 
 ## 开发约定
 
-- **版本号**: `pyproject.toml` 和 `module/__init__.py` 必须一致
+- **版本号**: `pyproject.toml` 和 `module/constants.py` 必须一致（`__init__.py` re-export）
+- **import 副作用**: `module` 包 import 必须零副作用；新增运行期副作用统一收进 `module.bootstrap.initialize()`（幂等）
 - **依赖**: `pyproject.toml` 为声明真源，`uv.lock` 入库；变更依赖后执行 `uv lock`，再 `uv export --no-dev --no-emit-project --frozen -o requirements.txt`（Docker 用 `--require-hashes` 安装，勿手改 requirements.txt）
 - **测试**: `unit_tests/`，pytest 运行（dev 组：`uv sync --group dev`）
 - **Docker 构建**: GitHub Actions 在 `v*.*.*` tag push 时触发；基础镜像与 rclone 版本见「关键外部依赖」

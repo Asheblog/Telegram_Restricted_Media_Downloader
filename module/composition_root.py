@@ -1,34 +1,35 @@
 # coding=UTF-8
 """Composition root — wires app, bot, stores, managers, and transfer engine."""
 import asyncio
-from typing import Union, Optional, Set
+from typing import Optional, Set, Union
 
 from module import console, log
-from module.filter import MessageFilter
 from module.app import Application
-from module.config import GlobalConfig
 from module.async_window import DynamicAsyncWindow
-from module.diagnostics import RichDiagnosticAdapter
-from module.persistence.system_log import SystemLogTracer
-from module.local_storage_guard import LocalStorageGuard
-from module.media_manager import MediaManager
-from module.web_task_manager import WebUITaskManager
-from module.live_watch_manager import LiveWatchManager
+from module.bootstrap import initialize
 from module.bot import Bot, CallbackData
 from module.callback_handler import CallbackHandler
+from module.comp import TransferContext, TransferPorts
+from module.config import GlobalConfig
+from module.diagnostics import RichDiagnosticAdapter
+from module.filter import MessageFilter
+from module.live_watch_applicator import LiveWatchApplicator
+from module.live_watch_manager import LiveWatchManager
+from module.local_storage_guard import LocalStorageGuard
+from module.media_manager import MediaManager
+from module.persistence.system_log import SystemLogTracer
 from module.pikpak_archive import build_pikpak_archive_client
 from module.pikpak_integration import PikpakIntegrationManager
-from module.transfer_progress import TransferProgressTracker
-from module.transfer_store import TransferStore, TransferStatus
 from module.stdio import ProgressBar
-from module.transfer_engine import TransferEngine
-from module.comp import TransferContext, TransferPorts
-from module.transfer.runner import WebTransferRunner
-from module.web_operations import WebOperationsFacade
-from module.uploader import TelegramUploader
-from module.web_ui import WebUiServer
-from module.live_watch_applicator import LiveWatchApplicator
 from module.transfer.live_transfer import LiveTransferService
+from module.transfer.runner import WebTransferRunner
+from module.transfer_engine import TransferEngine
+from module.transfer_progress import TransferProgressTracker
+from module.transfer_store import TransferStatus, TransferStore
+from module.uploader import TelegramUploader
+from module.web_operations import WebOperationsFacade
+from module.web_task_manager import WebUITaskManager
+from module.web_ui import WebUiServer
 
 
 class TrmdCompositionRoot:
@@ -69,6 +70,7 @@ class TrmdCompositionRoot:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         return getattr(bot, name)
     def __init__(self):
+        initialize()
         self.gc = GlobalConfig()
         self.diagnostic = RichDiagnosticAdapter(console, log)
         self.system_log = SystemLogTracer(diagnostic=self.diagnostic)

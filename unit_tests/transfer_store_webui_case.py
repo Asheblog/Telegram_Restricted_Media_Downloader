@@ -315,13 +315,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertTrue(os.path.exists(active_log))
 
     def test_start_periodic_log_cleanup_starts_only_once(self):
-        trmd_module._log_cleanup_thread_started = False
-        with patch.object(trmd_module.threading, 'Thread') as mock_thread:
+        trmd_module.bootstrap._log_cleanup_thread_started = False
+        with patch.object(trmd_module.bootstrap.threading, 'Thread') as mock_thread:
             mock_thread.return_value.start = lambda: None
             trmd_module.start_periodic_log_cleanup(interval_seconds=3600)
             trmd_module.start_periodic_log_cleanup(interval_seconds=3600)
             mock_thread.assert_called_once()
-        trmd_module._log_cleanup_thread_started = False
+        trmd_module.bootstrap._log_cleanup_thread_started = False
 
     def test_transfer_store_purges_old_event_records_without_deleting_tasks(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:

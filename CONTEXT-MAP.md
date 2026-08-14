@@ -8,9 +8,11 @@
 ### 入口与装配（顶层）
 
 | 文件 | 职责 | 行数(≈) |
-|------|------|--------|
-| `main.py` | 入口：检查环境 → 创建 TRMD → `run()` | 12 |
-| `module/__init__.py` | 全局常量、版本号、日志初始化、banner | ~210 |
+| ------ | ------ | -------- |
+| `main.py` | 入口：`initialize()` → 检查环境 → 创建 TRMD → `run()` | 12 |
+| `module/__init__.py` | re-export constants + bootstrap（import 零副作用） | ~70 |
+| `module/constants.py` | 纯常量、`console`/`log`/`CustomDumper`/`README`（零副作用） | ~130 |
+| `module/bootstrap.py` | 幂等 `initialize()`：日志 handler、readline、清理线程、`.CONFIG.yaml` | ~210 |
 | `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；listen/forward/runner/PikPak 多已委托；残留下载编排与 Bot UX | ~1920 |
 | `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~365 |
 | `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
@@ -22,7 +24,7 @@
 ### 实现路径（子包）
 
 | 实现路径 | 顶层 shim（若有） | 职责 | 行数(≈) |
-|----------|-------------------|------|--------|
+| ---------- | ------------------- | ------ | -------- |
 | `core/app.py` | `app.py` | Telegram 应用、下载文件名、关机 | ~340 |
 | `core/config.py` | `config.py` | 双层配置（UserConfig + GlobalConfig） | ~920 |
 | `core/enums.py` | `enums.py` | 枚举/常量：类型、状态、按钮文案等 | ~1440 |
@@ -79,7 +81,7 @@
 ## 子包 → 状态
 
 | 子包 | 内容 | 状态 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `adapters/webui/` | server / handlers / archive_author_ops / view_model / task_manager / assets / build | ✅ 已填充（P3 handlers 拆分） |
 | `adapters/bot/` | bot.py / callback_handler.py | ✅ 已填充 |
 | `adapters/pikpak/` | integration.py / archive.py | ✅ 已填充 |
@@ -94,7 +96,7 @@
 ## 配置项 → 位置
 
 | 配置项 | 所属配置层 | 字段路径 |
-|--------|-----------|----------|
+| -------- | ----------- | ---------- |
 | api_id, api_hash | UserConfig | `config.api_id` / `config.api_hash` |
 | bot_token | UserConfig | `config.bot_token` |
 | download_type | UserConfig | `config.download_type` |
@@ -125,7 +127,7 @@
 路由仍由 `adapters/webui/server.py` 承接；具体 GET/POST/… 分发在 `adapters/webui/handlers/`（`auth` / `setup_api` / `tasks` / `watches` / `stats` / `media` / `archive_author` / `settings` / `misc` / `static_pages`）。契约未改。
 
 | 路由 | 方法 | 作用 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `/api/settings` | GET/PATCH | 读写配置 |
 | `/api/tasks` | GET/POST | 列出/创建转存任务；GET 返回 WebUI ViewModel task 列表 |
 | `/api/tasks/<id>` | GET/DELETE | 获取任务详情 ViewModel / 删除任务 |
@@ -158,7 +160,7 @@
 ## 术语 → 代码实体
 
 | 术语 | 代码实体 |
-|------|----------|
+| ------ | ---------- |
 | Transfer Task | `persistence/store/tasks.py`（门面 `transfer_store.py`）→ `transfer_tasks` 表 |
 | Transfer Item | `persistence/store/items.py` → `transfer_items` 表 |
 | Transfer Progress | `persistence/store/*` → completed source_message_ids |
