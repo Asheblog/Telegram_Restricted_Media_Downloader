@@ -7,7 +7,6 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Callable, Optional, Union
-from urllib.parse import urlparse
 
 import pyrogram
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,10 +14,14 @@ from pyrogram.types.messages_and_media import ReplyParameters
 
 from module import LINK_PREVIEW_OPTIONS
 from module.core.enums import BotButton, BotCallbackText
-from module.util import extract_info_from_link
+from module.utils.telegram_links import (
+    channels_match,  # noqa: F401  (re-exported for back-compat)
+    extract_post_id,  # noqa: F401  (re-exported for back-compat)
+    normalize_telegram_link,  # noqa: F401  (re-exported for back-compat)
+    to_channel_root,
+)
 
 WIZARD_TIMEOUT_SECONDS = 600
-_TELEGRAM_HOSTS = frozenset({'t.me', 'telegram.me', 'telegram.dog'})
 
 
 class WizardCommand(StrEnum):
@@ -53,60 +56,6 @@ class GuideWizardSession:
     include_comment: bool = False
     listen_links: list[str] = field(default_factory=list)
     updated_at: float = field(default_factory=time.time)
-
-
-def normalize_telegram_link(text: str) -> Optional[str]:
-    raw = (text or '').strip()
-    if not raw:
-        return None
-    if raw.startswith('http://'):
-        raw = 'https://' + raw[7:]
-    elif not raw.startswith('https://'):
-        if raw.startswith(('t.me/', 'telegram.me/', 'telegram.dog/')):
-            raw = 'https://' + raw
-        elif raw.startswith('www.'):
-            raw = 'https://' + raw
-        else:
-            return None
-    if '?' in raw:
-        raw = raw.split('?', 1)[0]
-    parsed = urlparse(raw)
-    host = parsed.netloc.lower().removeprefix('www.')
-    if host not in _TELEGRAM_HOSTS:
-        return None
-    path = parsed.path.rstrip('/')
-    if not path or path == '/':
-        return None
-    return f'https://{host}{path}'
-
-
-def to_channel_root(link: str) -> Optional[str]:
-    normalized = normalize_telegram_link(link)
-    if not normalized:
-        return None
-    info = extract_info_from_link(normalized)
-    if info.group_id is None:
-        return None
-    if isinstance(info.group_id, int):
-        internal = str(info.group_id)
-        if internal.startswith('-100'):
-            internal = internal[4:]
-        return f'https://t.me/c/{internal}'
-    return f'https://t.me/{info.group_id}'
-
-
-def extract_post_id(link: str) -> Optional[int]:
-    normalized = normalize_telegram_link(link)
-    if not normalized:
-        return None
-    info = extract_info_from_link(normalized)
-    return info.post_id
-
-
-def channels_match(channel_link: str, message_link: str) -> bool:
-    left = to_channel_root(channel_link)
-    right = to_channel_root(message_link)
-    return bool(left and right and left.rstrip('/') == right.rstrip('/'))
 
 
 def build_range_download_command(source_link: str, start_id: int, end_id: int) -> str:

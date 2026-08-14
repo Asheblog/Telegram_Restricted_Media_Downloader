@@ -3,9 +3,12 @@ import os
 import re
 
 from typing import Optional, Union
-from urllib.parse import urlparse
 
 from module.path_tool import extract_full_extension, validate_title
+from module.utils.telegram_links import (
+    channel_username_from_link,
+    message_id_from_telegram_link,  # noqa: F401  (re-exported for back-compat)
+)
 
 
 WINDOWS_RESERVED_NAMES = {
@@ -177,46 +180,10 @@ def extract_post_author_from_text(text: Optional[str]) -> Optional[str]:
 
 
 def source_folder_from_link(link: Optional[str]) -> Optional[str]:
-    if not link:
+    username = channel_username_from_link(link)
+    if not username:
         return None
-    try:
-        parsed = urlparse(str(link))
-    except ValueError:
-        return None
-    if parsed.netloc and parsed.netloc.lower() not in ('t.me', 'telegram.me', 'telegram.dog'):
-        return None
-    parts = [part for part in parsed.path.split('/') if part]
-    if not parts or parts[0] == 'c':
-        return None
-    return sanitize_source_folder(parts[0])
-
-
-def message_id_from_telegram_link(link: Optional[str]) -> Optional[int]:
-    if not link:
-        return None
-    try:
-        parsed = urlparse(str(link))
-    except ValueError:
-        return None
-    if parsed.netloc and parsed.netloc.lower() not in ('t.me', 'telegram.me', 'telegram.dog'):
-        return None
-    parts = [part for part in parsed.path.split('/') if part]
-    if not parts:
-        return None
-    try:
-        if parts[0] == 'c':
-            if len(parts) >= 4 and parts[3].isdigit():
-                return int(parts[3])
-            if len(parts) >= 3 and parts[2].isdigit():
-                return int(parts[2])
-            return None
-        if len(parts) >= 3 and parts[2].isdigit():
-            return int(parts[2])
-        if len(parts) >= 2 and parts[1].isdigit():
-            return int(parts[1])
-    except (TypeError, ValueError):
-        return None
-    return None
+    return sanitize_source_folder(username)
 
 
 def source_folder_from_message(message, fallback_chat_id=None, fallback_link: Optional[str] = None) -> str:

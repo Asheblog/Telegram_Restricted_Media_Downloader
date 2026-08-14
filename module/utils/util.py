@@ -16,13 +16,12 @@ import pyrogram
 from pyrogram import utils
 from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid
 from pyrogram.types.messages_and_media import ReplyParameters
-from urllib.parse import parse_qs, urlparse
 from rich.text import Text
 
 from module import log
 from module.utils.parser import PARSE_ARGS
+from module.utils.telegram_links import extract_info_from_link  # noqa: F401  (re-exported for back-compat)
 from module.enums import (
-    Link,
     LinkType,
     DownloadType,
     ENVIRON
@@ -188,47 +187,6 @@ async def parse_link(client: pyrogram.Client, link: str) -> dict:
         }
     except Exception:
         raise ValueError('Invalid message link.')
-
-
-def extract_info_from_link(link: str) -> Link:
-    # https://github.com/tangyoha/telegram_media_downloader/blob/master/utils/format.py#L220
-    if link in ('me', 'self'):
-        return Link(group_id=link)
-
-    try:
-        u = urlparse(link)
-        paths = [p for p in u.path.split('/') if p]
-        query = parse_qs(u.query)
-    except ValueError:
-        return Link()
-
-    result = Link()
-
-    if 'comment' in query:
-        result.group_id = paths[0]
-        result.comment_id = int(query['comment'][0])
-    elif len(paths) == 1 and paths[0] != 'c':
-        result.group_id = paths[0]
-    elif len(paths) == 2:
-        if paths[0] == 'c':
-            result.group_id = int(f'-100{paths[1]}')
-        else:
-            result.group_id = paths[0]
-            result.post_id = int(paths[1])
-    elif len(paths) == 3:
-        if paths[0] == 'c':
-            result.group_id = int(f'-100{paths[1]}')
-            result.post_id = int(paths[2])
-        else:
-            result.group_id = paths[0]
-            result.topic_id = int(paths[1])
-            result.post_id = int(paths[2])
-    elif len(paths) == 4 and paths[0] == 'c':
-        result.group_id = int(f'-100{paths[1]}')
-        result.topic_id = int(paths[2])
-        result.post_id = int(paths[3])
-
-    return result
 
 
 async def _resolve_discussion_thread(
