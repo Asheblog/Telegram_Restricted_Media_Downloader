@@ -11,7 +11,7 @@
 - 每次需要推送仓库并触发构建时，必须先在原版本基础上递增一个版本号，默认递增 patch 版本。例如：`0.2.13` -> `0.2.14`。
 - 必须同步更新：
   - `pyproject.toml` 的 `version`
-  - `module/__init__.py` 的 `__version__`
+  - `module/constants.py` 的 `__version__`（`module/__init__.py` 仅 re-export）
 - 提交版本号后，创建并推送同名 annotated tag：
 
 ```bash
