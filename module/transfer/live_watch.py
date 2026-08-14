@@ -2,8 +2,8 @@
 from typing import Optional
 
 from module.diagnostics import default_diagnostic
-from module.source_folders import normalize_archive_title_source
 from module.language import _t
+from module.source_folders import normalize_archive_title_source
 from module.transfer_store import TransferStatus
 from module.util import make_forward_watch_rule, parse_forward_watch_rule
 
@@ -191,9 +191,6 @@ class LiveWatchManager:
             watches_by_id[watch_id]['today_count'] = today_count
             watches_by_id[watch_id]['deferred_comment_count'] = deferred_count
         watches = sorted(watches_by_id.values(), key=lambda watch: str(watch.get('id') or ''))
-        if store:
-            from module.adapters.webui.view_model import WebUiViewModel
-            WebUiViewModel(store).attach_download_counts_to_watches(watches)
         return watches
 
     def pending_watch_sources(self, watch_type: str) -> set:
@@ -502,7 +499,9 @@ class LiveWatchManager:
         })
 
     def export_forward_watches(self) -> dict:
-        from module.transfer.forward_watch_backup import build_forward_watch_export_payload
+        from module.transfer.forward_watch_backup import (
+            build_forward_watch_export_payload,
+        )
 
         watches = [
             watch for watch in self.list_watches()

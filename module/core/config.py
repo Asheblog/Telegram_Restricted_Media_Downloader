@@ -3,38 +3,30 @@
 # Software:PyCharm
 # Time:2025/2/25 1:32
 # File:config.py
-import os
-import sys
-import logging
 import datetime
+import logging
+import os
 import subprocess
+import sys
 from copy import deepcopy
-
 from typing import Union
 
 from module import (
-    yaml,
-    CustomDumper,
+    CONSOLE_LOG_LEVEL,
+    FILE_LOG_LEVEL,
     GLOBAL_CONFIG_NAME,
     GLOBAL_CONFIG_PATH,
-    FILE_LOG_LEVEL,
-    CONSOLE_LOG_LEVEL,
-    log,
+    PLATFORM,
+    CustomDumper,
     console,
-    PLATFORM
-)
-from module.language import _t
-from module.parser import PARSE_ARGS
-from module.path_tool import (
-    gen_backup_config,
-    safe_scan_directory_file
+    log,
+    yaml,
 )
 from module.core.target_profiles import DEFAULT_TARGET_PROFILES
-from module.enums import (
-    KeyWord,
-    GetStdioParams,
-    ProcessConfig
-)
+from module.enums import GetStdioParams, KeyWord, ProcessConfig
+from module.language import _t
+from module.parser import PARSE_ARGS
+from module.path_tool import gen_backup_config, safe_scan_directory_file
 
 
 class BaseConfig:
@@ -393,7 +385,7 @@ class UserConfig(BaseConfig):
         """引导用户以交互式的方式修改、保存配置文件。"""
         # --web: never block on stdin; First-run Setup Wizard fills API later (ADR-0012).
         if PARSE_ARGS.web is not None:
-            from module.adapters.webui.setup import apply_web_safe_user_defaults
+            from module.core.setup_defaults import apply_web_safe_user_defaults
             pre_load_config: dict = apply_web_safe_user_defaults(self.load_config())
             if PARSE_ARGS.session:
                 pre_load_config['session_directory'] = PARSE_ARGS.session

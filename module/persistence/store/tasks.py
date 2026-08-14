@@ -2,15 +2,16 @@
 import datetime
 import os
 import sqlite3
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
+from module.core.archive_title_source import normalize_archive_title_source
 from module.core.media_types import normalize_media_types, serialize_media_types
-from module.source_folders import normalize_archive_title_source
 from module.persistence.store.constants import (
     DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS,
     STALE_EMPTY_WATCH_INLINE_TIMEOUT_SECONDS,
 )
 from module.persistence.store.status import ExecutionMode, TransferStatus
+
 
 class TasksMixin:
     def create_task(

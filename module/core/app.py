@@ -3,39 +3,28 @@
 # Software:PyCharm
 # Time:2024/7/25 12:32
 # File:app.py
-import os
-import time
 import datetime
+import os
 import subprocess
-
+import time
 from functools import wraps
 from typing import Union
 
 import pyrogram
 
-from module import (
-    SLEEP_THRESHOLD,
-    console,
-    log,
-    SOFTWARE_FULL_NAME
-)
-from module.language import _t
+from module import SLEEP_THRESHOLD, SOFTWARE_FULL_NAME, console, log
 from module.core.config import UserConfig
-from module.parser import PARSE_ARGS
-from module.stdio import StatisticalTable
+from module.enums import DownloadStatus, DownloadType, KeyWord
 from module.infra.client import TelegramRestrictedMediaDownloaderClient
-
-from module.enums import (
-    DownloadType,
-    DownloadStatus,
-    KeyWord
-)
+from module.language import _t
+from module.parser import PARSE_ARGS
 from module.path_tool import (
-    validate_title,
-    truncate_filename,
     extract_full_extension,
-    is_compressed_file
+    is_compressed_file,
+    truncate_filename,
+    validate_title,
 )
+from module.stdio import StatisticalTable
 
 
 def get_extension(*args, **kwargs):
@@ -54,7 +43,7 @@ class Application(UserConfig, StatisticalTable):
         self.current_task_num: int = 0
 
     def has_telegram_api_credentials(self) -> bool:
-        from module.adapters.webui.setup import has_telegram_api_credentials
+        from module.core.setup_defaults import has_telegram_api_credentials
         return has_telegram_api_credentials(self.config)
 
     def refresh_runtime_fields(self) -> None:

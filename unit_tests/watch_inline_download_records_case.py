@@ -12,7 +12,7 @@ sys.argv = [sys.argv[0]]
 
 class WatchInlineDownloadRecordsCase(unittest.TestCase):
     def test_create_task_persists_watch_id(self):
-        from module.transfer_store import TransferStore, ExecutionMode
+        from module.transfer_store import ExecutionMode, TransferStore
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
@@ -29,8 +29,8 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             )
 
     def test_ensure_download_fallback_persists_watch_id(self):
-        from module.transfer_store import TransferStore, ExecutionMode
         from module.transfer.watch_inline import ensure_download_fallback_transfer_task
+        from module.transfer_store import ExecutionMode, TransferStore
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
@@ -47,8 +47,8 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             self.assertEqual(watch_id, task['watch_id'])
 
     def test_task_list_excludes_watch_inline_tasks(self):
-        from module.transfer_store import TransferStore, ExecutionMode
         from module.adapters.webui.view_model import WebUiViewModel
+        from module.transfer_store import ExecutionMode, TransferStore
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
@@ -68,8 +68,8 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             self.assertEqual(['https://t.me/web/1'], ids_links)
 
     def test_watch_download_tasks_matches_watch_id_and_legacy_heuristic(self):
-        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
         from module.adapters.webui.view_model import WebUiViewModel
+        from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
@@ -110,8 +110,9 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
             self.assertEqual(0, payload['counts']['failed'])
 
     def test_attach_download_counts_to_watches(self):
-        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
+        from module.adapters.webui.view_model import WebUiViewModel
         from module.transfer.live_watch import LiveWatchManager
+        from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
         from module.util import make_forward_watch_rule
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
@@ -151,14 +152,15 @@ class WatchInlineDownloadRecordsCase(unittest.TestCase):
                 listen_forward_chat={rule: object()},
             )
             watches = manager.list_watches()
+            WebUiViewModel(store).attach_download_counts_to_watches(watches)
             self.assertEqual(1, len(watches))
             watch = watches[0]
             self.assertEqual(1, watch['download_queue_count'])
             self.assertEqual(2, watch['download_completed_count'])
 
     def test_watch_download_tasks_expose_display_file_name_and_active_progress(self):
-        from module.transfer_store import TransferStore, ExecutionMode, TransferStatus
         from module.adapters.webui.view_model import WebUiViewModel
+        from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)

@@ -9,20 +9,18 @@ import socket
 import threading
 import time
 import webbrowser
-
 from copy import deepcopy
 from http import HTTPStatus
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+from module.adapters.webui.view_model import WebUiViewModel
 from module.diagnostics import default_diagnostic
 from module.enums import ENVIRON
-from module.ports import IWebUiOperations, IDiagnosticPort
-from module.transfer_store import TransferStore
+from module.ports import IDiagnosticPort, IWebUiOperations
 from module.source_folders import normalize_archive_title_source
-from module.adapters.webui.view_model import WebUiViewModel
-
+from module.transfer_store import TransferStore
 
 SENSITIVE_SETTING_KEYS = {
     'api_hash',
@@ -717,9 +715,11 @@ class WebUiServer:
 
     def list_watches(self, tz_offset_minutes: int | None = None) -> list:
         list_watches = self._operation('list_watches')
-        if list_watches:
-            return list_watches(tz_offset_minutes=tz_offset_minutes)
-        return []
+        if not list_watches:
+            return []
+        watches = list_watches(tz_offset_minutes=tz_offset_minutes)
+        self.view_model.attach_download_counts_to_watches(watches)
+        return watches
 
     def create_watch(self, payload: dict) -> dict:
         if not isinstance(payload, dict):
@@ -757,7 +757,9 @@ class WebUiServer:
             archive_title_source = normalize_archive_title_source(
                 payload.get('archive_title_source')
             )
-            from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
+            from module.transfer.comment_delay import (
+                normalize_optional_comment_delay_minutes,
+            )
             try:
                 comment_delay_minutes = normalize_optional_comment_delay_minutes(
                     payload.get('comment_delay_minutes')
@@ -812,7 +814,9 @@ class WebUiServer:
         if not isinstance(payload, dict):
             raise WebUiApiError('invalid_payload', 'Invalid payload.', HTTPStatus.BAD_REQUEST)
         from module.core.media_types import parse_media_types_payload
-        from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
+        from module.transfer.comment_delay import (
+            normalize_optional_comment_delay_minutes,
+        )
         resolve_deep_link = bool(payload.get('resolve_deep_link'))
         self._require_deep_link_whitelist_if_enabled(resolve_deep_link)
         payload = {

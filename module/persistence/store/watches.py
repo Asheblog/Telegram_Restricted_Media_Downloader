@@ -1,9 +1,9 @@
 # coding=UTF-8
 import sqlite3
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
+from module.core.archive_title_source import normalize_archive_title_source
 from module.core.media_types import normalize_media_types, serialize_media_types
-from module.source_folders import normalize_archive_title_source
 from module.persistence.store.status import TransferStatus
 
 

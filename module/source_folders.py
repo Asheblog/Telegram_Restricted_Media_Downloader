@@ -1,15 +1,21 @@
 # coding=UTF-8
 import os
 import re
-
 from typing import Optional, Union
 
+from module.core.archive_title_source import (  # noqa: F401  (re-exported for back-compat)
+    ARCHIVE_TITLE_SOURCE_AUTO,
+    ARCHIVE_TITLE_SOURCE_BODY,
+    ARCHIVE_TITLE_SOURCE_HASHTAG,
+    ARCHIVE_TITLE_SOURCE_TITLE,
+    ARCHIVE_TITLE_SOURCES,
+    normalize_archive_title_source,
+)
 from module.path_tool import extract_full_extension, validate_title
 from module.utils.telegram_links import (
     channel_username_from_link,
     message_id_from_telegram_link,  # noqa: F401  (re-exported for back-compat)
 )
-
 
 WINDOWS_RESERVED_NAMES = {
     "CON",
@@ -24,31 +30,6 @@ POST_TITLE_CHAR_LIMIT = 120
 POST_TITLE_BYTE_LIMIT = 360
 # Keep every local/archive path component below common Linux NAME_MAX (255 bytes).
 POST_FOLDER_SEGMENT_BYTE_LIMIT = 230
-
-# Per-task preference for the descriptive leaf of Source Post Archive Path.
-ARCHIVE_TITLE_SOURCE_AUTO = "auto"
-ARCHIVE_TITLE_SOURCE_TITLE = "title"
-ARCHIVE_TITLE_SOURCE_HASHTAG = "hashtag"
-ARCHIVE_TITLE_SOURCE_BODY = "body"
-ARCHIVE_TITLE_SOURCES = frozenset(
-    {
-        ARCHIVE_TITLE_SOURCE_AUTO,
-        ARCHIVE_TITLE_SOURCE_TITLE,
-        ARCHIVE_TITLE_SOURCE_HASHTAG,
-        ARCHIVE_TITLE_SOURCE_BODY,
-    }
-)
-
-
-def normalize_archive_title_source(value) -> str:
-    """Return a valid archive title source; unknown/empty → ``auto``."""
-    if not isinstance(value, str):
-        return ARCHIVE_TITLE_SOURCE_AUTO
-    key = value.strip().casefold()
-    if key in ARCHIVE_TITLE_SOURCES:
-        return key
-    return ARCHIVE_TITLE_SOURCE_AUTO
-
 
 MEDIA_FILE_NAME_ATTRS = (
     "video",

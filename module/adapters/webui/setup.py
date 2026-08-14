@@ -11,6 +11,11 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional, Tuple
 
+from module.core.setup_defaults import (  # noqa: F401  (re-exported for back-compat)
+    apply_web_safe_user_defaults,
+    has_telegram_api_credentials,
+)
+
 
 class BotTokenInvalidError(ValueError):
     """Bot token rejected by Telegram getMe / format check."""
@@ -269,20 +274,6 @@ class SetupCoordinator:
         return result
 
 
-def has_telegram_api_credentials(config: Optional[dict]) -> bool:
-    if not isinstance(config, dict):
-        return False
-    api_id = config.get('api_id')
-    api_hash = config.get('api_hash')
-    if api_id in (None, '', 0, '0') or api_hash in (None, ''):
-        return False
-    try:
-        int(api_id)
-    except (TypeError, ValueError):
-        return False
-    return len(str(api_hash).strip()) >= 16
-
-
 def has_configured_bot_token(config: Optional[dict]) -> bool:
     if not isinstance(config, dict):
         return False
@@ -433,61 +424,6 @@ def _http_proxy_url(proxy: Optional[dict]) -> Optional[str]:
     password = str(proxy.get('password') or '')
     auth = f'{user}:{password}@' if user else ''
     return f'{scheme}://{auth}{hostname}:{port_int}'
-
-
-def apply_web_safe_user_defaults(config: dict) -> dict:
-    """Fill non-interactive defaults for --web first run. Never prompts stdin."""
-    if not isinstance(config, dict):
-        return config
-    dirs = _default_directories()
-    if not config.get('save_directory'):
-        config['save_directory'] = dirs['save_directory']
-    if not config.get('session_directory'):
-        config['session_directory'] = dirs['session_directory']
-    if not config.get('temp_directory'):
-        config['temp_directory'] = dirs['temp_directory']
-    if not config.get('download_type'):
-        config['download_type'] = [
-            'video', 'photo', 'document', 'audio', 'voice', 'animation', 'video_note'
-        ]
-    if config.get('is_shutdown') is None:
-        config['is_shutdown'] = False
-    proxy = config.get('proxy')
-    if not isinstance(proxy, dict):
-        proxy = {}
-        config['proxy'] = proxy
-    if proxy.get('enable_proxy') is None:
-        proxy['enable_proxy'] = False
-    max_tasks = config.get('max_tasks')
-    if not isinstance(max_tasks, dict):
-        max_tasks = {}
-        config['max_tasks'] = max_tasks
-    max_tasks.setdefault('download', 1)
-    max_tasks.setdefault('upload', 1)
-    max_retries = config.get('max_retries')
-    if not isinstance(max_retries, dict):
-        max_retries = {}
-        config['max_retries'] = max_retries
-    if max_retries.get('download') is None:
-        max_retries['download'] = 5
-    if max_retries.get('upload') is None:
-        max_retries['upload'] = 3
-    return config
-
-
-def _default_directories() -> dict:
-    if os.path.isdir('/app'):
-        return {
-            'save_directory': '/app/downloads',
-            'session_directory': '/app/sessions',
-            'temp_directory': '/app/temp',
-        }
-    cwd = os.getcwd()
-    return {
-        'save_directory': os.path.join(cwd, 'downloads'),
-        'session_directory': os.path.join(cwd, 'sessions'),
-        'temp_directory': os.path.join(cwd, 'temp'),
-    }
 
 
 def _sanitize_rclone_error(message: str) -> str:
