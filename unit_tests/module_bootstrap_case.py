@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 
+from module.constants import __version__
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -41,7 +43,7 @@ class ModuleBootstrapCase(unittest.TestCase):
         self.assertIn("DIR_EXISTS False", result.stdout)
         self.assertIn("LOG_EXISTS False", result.stdout)
         self.assertIn("THREADS []", result.stdout)
-        self.assertIn("VERSION 0.2.240", result.stdout)
+        self.assertIn(f"VERSION {__version__}", result.stdout)
 
     def test_initialize_is_idempotent(self):
         """重复调用 initialize 不应重复配置日志 handler 或线程。"""
@@ -78,7 +80,7 @@ class ModuleBootstrapCase(unittest.TestCase):
         self.assertIn("DIR_EXISTS False", result.stdout)
         self.assertIn("AUTHOR Gentlesprite", result.stdout)
         self.assertIn("NAME TRMD", result.stdout)
-        self.assertIn("VERSION 0.2.240", result.stdout)
+        self.assertIn(f"VERSION {__version__}", result.stdout)
 
 
 if __name__ == "__main__":

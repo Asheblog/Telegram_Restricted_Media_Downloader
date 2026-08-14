@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "Telegram_Restricted_Media_Downloader"
 authors = [{ name = "Gentlesprite", email = "Gentlesprites@outlook.com" }]
-version = "0.2.240"
+version = "0.2.241"
 description = "Telegram downloader (TRMD): Supports resumable downloads and uploads. Bot supports commands/links for downloading, forwarding, listening, uploading, and upload-after-download of non-downloadable Telegram content via API."
 readme = "README.md"
 requires-python = ">=3.13.2"
