@@ -516,7 +516,14 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <div class="stat-grid">
     <div class="stat-card">
       <div class="stat-card-icon blue">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M7 7h10M7 12h10M7 17h6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-total">0</div>
@@ -525,7 +532,15 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon green">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M5 12l4 4L19 6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-success">0</div>
@@ -534,7 +549,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon orange">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+          <path
+            d="M12 6v6l4 2"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-running">0</div>
@@ -543,7 +572,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon red">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+          <path
+            d="M15 9l-6 6M9 9l6 6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-failed">0</div>
@@ -552,29 +595,67 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon purple">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M7 10l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 19V5M7 10l5-5 5 5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-upload-speed">0 B/s</div>
-        <div class="stat-card-label" data-i18n="stats.uploadSpeed">实时上传网速</div>
+        <div class="stat-card-label" data-i18n="stats.uploadSpeed">
+          实时上传网速
+        </div>
       </div>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon cyan">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M7 14l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 5v14M7 14l5 5 5-5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-download-speed">0 B/s</div>
-        <div class="stat-card-label" data-i18n="stats.downloadSpeed">实时下载网速</div>
+        <div class="stat-card-label" data-i18n="stats.downloadSpeed">
+          实时下载网速
+        </div>
       </div>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon slate">
-        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect
+            x="4"
+            y="6"
+            width="16"
+            height="12"
+            rx="2"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+          <path
+            d="M8 10h8M8 14h5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stat-disk-free">-</div>
-        <div class="stat-card-label" data-i18n="stats.diskFree">硬盘剩余空间</div>
+        <div class="stat-card-label" data-i18n="stats.diskFree">
+          硬盘剩余空间
+        </div>
       </div>
     </div>
   </div>
@@ -590,78 +671,177 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <form id="transfer-form">
           <div class="form-group">
             <label class="form-label" data-i18n="new.source">来源链接</label>
-            <input class="form-input" name="source_link" type="text" placeholder="https://t.me/channel/123" required>
+            <input
+              class="form-input"
+              name="source_link"
+              type="text"
+              placeholder="https://t.me/channel/123"
+              required
+            />
           </div>
           <div class="form-group">
             <label class="form-label" data-i18n="new.target">目标</label>
-            <input class="form-input" name="target_link" type="text" value="https://t.me/pikpak_bot" required>
+            <input
+              class="form-input"
+              name="target_link"
+              type="text"
+              value="https://t.me/pikpak_bot"
+              required
+            />
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="new.targetProfile">目标配置</label>
+            <label class="form-label" data-i18n="new.targetProfile"
+              >目标配置</label
+            >
             <select class="form-select" name="target_profile">
-              <option value="pikpak" data-i18n="profile.pikpak">PikPak 文档转存</option>
-              <option value="generic" data-i18n="profile.generic">通用 Telegram 目标</option>
+              <option value="pikpak" data-i18n="profile.pikpak">
+                PikPak 文档转存
+              </option>
+              <option value="generic" data-i18n="profile.generic">
+                通用 Telegram 目标
+              </option>
             </select>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label" data-i18n="new.startId">起始 ID</label>
-              <input class="form-input" name="start_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
+              <input
+                class="form-input"
+                name="start_id"
+                type="number"
+                data-i18n-placeholder="new.optional"
+                placeholder="可选"
+              />
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="new.endId">结束 ID</label>
-              <input class="form-input" name="end_id" type="number" data-i18n-placeholder="new.optional" placeholder="可选">
+              <input
+                class="form-input"
+                name="end_id"
+                type="number"
+                data-i18n-placeholder="new.optional"
+                placeholder="可选"
+              />
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="include_comment" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="include_comment" class="w-4 h-4" />
               <span data-i18n="new.includeComment">包含评论区</span>
             </label>
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4" />
               <span data-i18n="new.resolveDeepLink">深链取片</span>
             </label>
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4" />
               <span data-i18n="new.archiveByAuthor">按作者归档</span>
             </label>
           </div>
-          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <p
+            class="text-xs text-muted leading-normal mb-1"
+            data-i18n="new.archiveByAuthorHint"
+          >
+            勾选后按正文署名行嵌套作者目录；默认扁平归档。
+          </p>
           <div class="form-group">
-            <label class="form-label" data-i18n="new.archiveTitleSource">归档标题来源</label>
+            <label class="form-label" data-i18n="new.archiveTitleSource"
+              >归档标题来源</label
+            >
             <select class="form-input" name="archive_title_source">
-              <option value="auto" selected data-i18n="new.archiveTitleSourceAuto">自动</option>
-              <option value="title" data-i18n="new.archiveTitleSourceTitle">优先标题</option>
-              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">优先标签</option>
-              <option value="body" data-i18n="new.archiveTitleSourceBody">优先正文</option>
+              <option
+                value="auto"
+                selected
+                data-i18n="new.archiveTitleSourceAuto"
+              >
+                自动
+              </option>
+              <option value="title" data-i18n="new.archiveTitleSourceTitle">
+                优先标题
+              </option>
+              <option value="hashtag" data-i18n="new.archiveTitleSourceHashtag">
+                优先标签
+              </option>
+              <option value="body" data-i18n="new.archiveTitleSourceBody">
+                优先正文
+              </option>
             </select>
           </div>
-          <p class="text-xs text-muted leading-normal mb-1" data-i18n="new.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
-          <p class="text-xs text-warning leading-normal mb-2" data-i18n="new.resolveDeepLinkHint">
+          <p
+            class="text-xs text-muted leading-normal mb-1"
+            data-i18n="new.archiveTitleSourceHint"
+          >
+            控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。
+          </p>
+          <p
+            class="text-xs text-warning leading-normal mb-2"
+            data-i18n="new.resolveDeepLinkHint"
+          >
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
           <div class="form-group media-types-picker" data-media-types-picker>
-            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <label class="form-label" data-i18n="mediaOverride.label"
+              >媒体类型</label
+            >
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="inherit"
+                  data-media-types-mode
+                  checked
+                />
                 <span data-i18n="mediaOverride.inherit">使用系统设置</span>
               </label>
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="custom"
+                  data-media-types-mode
+                />
                 <span data-i18n="mediaOverride.custom">自定义</span>
               </label>
             </div>
-            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
-            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="transfer-media-types-grid"></div>
+            <p
+              class="text-xs text-muted leading-normal mb-1"
+              data-i18n="mediaOverride.hint"
+            >
+              自定义时整表替换系统设置；默认继承全局允许的媒体类型。
+            </p>
+            <div
+              class="settings-type-grid media-types-picker__grid hidden"
+              data-media-types-grid
+              id="transfer-media-types-grid"
+            ></div>
           </div>
-          <p class="text-xs text-muted leading-normal mb-2" data-i18n="new.hint">
+          <p
+            class="text-xs text-muted leading-normal mb-2"
+            data-i18n="new.hint"
+          >
             单条消息链接可留空。频道不填 ID 会自动探测可访问范围。
           </p>
           <div id="transfer-notice" class="text-xs mt-2 hidden"></div>
           <button type="submit" class="form-submit" id="transfer-submit">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
             <span data-i18n="new.create">创建任务</span>
           </button>
         </form>
@@ -672,12 +852,25 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel">
       <div class="panel-header">
         <h3 data-i18n="tasks.title">转存任务列表</h3>
-        <span class="text-xs text-muted" id="last-sync" data-i18n="tasks.notSynced">尚未同步</span>
+        <span
+          class="text-xs text-muted"
+          id="last-sync"
+          data-i18n="tasks.notSynced"
+          >尚未同步</span
+        >
       </div>
       <div class="task-list-body overflow-auto flex-1">
         <div id="tasks-empty" class="task-list-empty">
           <div class="task-list-empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" width="22" height="22"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+              <path
+                d="M12 16V4M7 9l5-5 5 5M5 20h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </div>
           <h4 data-i18n="tasks.empty">还没有转存任务。</h4>
           <p data-i18n="tasks.emptyHint">创建任务后在此查看进度</p>
@@ -689,7 +882,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 
   <!-- Task Detail Panel -->
   <div class="panel" id="task-detail">
-    <div class="p-8 text-center text-muted text-sm" data-i18n="items.selectTask">选择一个任务查看详情</div>
+    <div
+      class="p-8 text-center text-muted text-sm"
+      data-i18n="items.selectTask"
+    >
+      选择一个任务查看详情
+    </div>
   </div>
 </div>
 
@@ -701,52 +899,132 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div class="panel-header">
         <div class="flex items-center gap-2.5">
           <div class="stat-card-icon green !w-[34px] !h-[34px]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path
+                d="M12 16V4M7 9l5-5 5 5M5 20h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </div>
           <div>
             <h3 data-i18n="watches.downloadTitle">监听下载</h3>
-            <span class="text-xs text-muted" data-i18n="watches.downloadMeta">新消息自动下载</span>
+            <span class="text-xs text-muted" data-i18n="watches.downloadMeta"
+              >新消息自动下载</span
+            >
           </div>
         </div>
       </div>
       <div class="panel-body">
         <form id="watch-download-form">
           <div class="form-group">
-            <label class="form-label" data-i18n="watches.sources">来源频道（每行一个）</label>
-            <textarea class="form-input watch-download-sources" name="source_links" rows="3" placeholder="https://t.me/channel1&#10;https://t.me/channel2" required></textarea>
+            <label class="form-label" data-i18n="watches.sources"
+              >来源频道（每行一个）</label
+            >
+            <textarea
+              class="form-input watch-download-sources"
+              name="source_links"
+              rows="3"
+              placeholder="https://t.me/channel1&#10;https://t.me/channel2"
+              required
+            ></textarea>
           </div>
           <div class="form-group media-types-picker" data-media-types-picker>
-            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <label class="form-label" data-i18n="mediaOverride.label"
+              >媒体类型</label
+            >
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="inherit"
+                  data-media-types-mode
+                  checked
+                />
                 <span data-i18n="mediaOverride.inherit">使用系统设置</span>
               </label>
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="custom"
+                  data-media-types-mode
+                />
                 <span data-i18n="mediaOverride.custom">自定义</span>
               </label>
             </div>
-            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
-            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-download-media-types-grid"></div>
+            <p
+              class="text-xs text-muted leading-normal mb-1"
+              data-i18n="mediaOverride.hint"
+            >
+              自定义时整表替换系统设置；默认继承全局允许的媒体类型。
+            </p>
+            <div
+              class="settings-type-grid media-types-picker__grid hidden"
+              data-media-types-grid
+              id="watch-download-media-types-grid"
+            ></div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1">
-            <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+          <label
+            class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-1"
+          >
+            <input type="checkbox" name="archive_by_author" class="w-4 h-4" />
             <span data-i18n="watches.archiveByAuthor">按作者归档</span>
           </label>
-          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <p
+            class="text-xs text-muted leading-normal mb-3"
+            data-i18n="watches.archiveByAuthorHint"
+          >
+            勾选后按正文署名行嵌套作者目录；默认扁平归档。
+          </p>
           <div class="form-group">
-            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <label class="form-label" data-i18n="watches.archiveTitleSource"
+              >归档标题来源</label
+            >
             <select class="form-input" name="archive_title_source">
-              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
-              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
-              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
-              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+              <option
+                value="auto"
+                selected
+                data-i18n="watches.archiveTitleSourceAuto"
+              >
+                自动
+              </option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">
+                优先标题
+              </option>
+              <option
+                value="hashtag"
+                data-i18n="watches.archiveTitleSourceHashtag"
+              >
+                优先标签
+              </option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">
+                优先正文
+              </option>
             </select>
           </div>
-          <p class="text-xs text-muted leading-normal mb-3" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
+          <p
+            class="text-xs text-muted leading-normal mb-3"
+            data-i18n="watches.archiveTitleSourceHint"
+          >
+            控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。
+          </p>
           <button type="submit" class="form-submit">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
             <span data-i18n="watches.createDownload">新增监听下载</span>
           </button>
         </form>
@@ -758,74 +1036,187 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div class="panel-header">
         <div class="flex items-center gap-2.5">
           <div class="stat-card-icon blue !w-[34px] !h-[34px]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path
+                d="M5 12h14M13 6l6 6-6 6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </div>
           <div>
             <h3 data-i18n="watches.forwardTitle">监听转发</h3>
-            <span class="text-xs text-muted" data-i18n="watches.forwardMeta">新消息自动转发</span>
+            <span class="text-xs text-muted" data-i18n="watches.forwardMeta"
+              >新消息自动转发</span
+            >
           </div>
         </div>
       </div>
       <div class="panel-body">
         <form id="watch-forward-form">
           <div class="form-group">
-            <label class="form-label" data-i18n="watches.source">来源频道</label>
-            <input class="form-input" name="source_link" type="text" placeholder="https://t.me/source" required>
+            <label class="form-label" data-i18n="watches.source"
+              >来源频道</label
+            >
+            <input
+              class="form-input"
+              name="source_link"
+              type="text"
+              placeholder="https://t.me/source"
+              required
+            />
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="watches.target">目标频道</label>
-            <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
+            <label class="form-label" data-i18n="watches.target"
+              >目标频道</label
+            >
+            <input
+              class="form-input"
+              name="target_link"
+              type="text"
+              placeholder="https://t.me/target"
+              required
+            />
           </div>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="include_comment" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="include_comment" class="w-4 h-4" />
               <span data-i18n="watches.includeComment">包含评论区</span>
             </label>
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="resolve_deep_link" class="w-4 h-4" />
               <span data-i18n="watches.resolveDeepLink">深链取片</span>
             </label>
-            <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-              <input type="checkbox" name="archive_by_author" class="w-4 h-4">
+            <label
+              class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+            >
+              <input type="checkbox" name="archive_by_author" class="w-4 h-4" />
               <span data-i18n="watches.archiveByAuthor">按作者归档</span>
             </label>
           </div>
-          <div class="form-group comment-delay-field hidden" data-comment-delay-field>
-            <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
-            <input class="form-input" name="comment_delay_minutes" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
-            <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+          <div
+            class="form-group comment-delay-field hidden"
+            data-comment-delay-field
+          >
+            <label class="form-label" data-i18n="watches.commentDelayMinutes"
+              >评论区延迟（分钟）</label
+            >
+            <input
+              class="form-input"
+              name="comment_delay_minutes"
+              type="number"
+              min="0"
+              max="1440"
+              data-i18n-placeholder="watches.commentDelayPlaceholder"
+              placeholder="留空=系统默认"
+            />
+            <p
+              class="text-xs text-muted mt-1"
+              data-i18n="watches.commentDelayHint"
+            >
+              留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。
+            </p>
           </div>
-          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+          <p
+            class="text-xs text-muted leading-normal mb-1"
+            data-i18n="watches.archiveByAuthorHint"
+          >
+            勾选后按正文署名行嵌套作者目录；默认扁平归档。
+          </p>
           <div class="form-group">
-            <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
+            <label class="form-label" data-i18n="watches.archiveTitleSource"
+              >归档标题来源</label
+            >
             <select class="form-input" name="archive_title_source">
-              <option value="auto" selected data-i18n="watches.archiveTitleSourceAuto">自动</option>
-              <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
-              <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
-              <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+              <option
+                value="auto"
+                selected
+                data-i18n="watches.archiveTitleSourceAuto"
+              >
+                自动
+              </option>
+              <option value="title" data-i18n="watches.archiveTitleSourceTitle">
+                优先标题
+              </option>
+              <option
+                value="hashtag"
+                data-i18n="watches.archiveTitleSourceHashtag"
+              >
+                优先标签
+              </option>
+              <option value="body" data-i18n="watches.archiveTitleSourceBody">
+                优先正文
+              </option>
             </select>
           </div>
-          <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
-          <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
+          <p
+            class="text-xs text-muted leading-normal mb-1"
+            data-i18n="watches.archiveTitleSourceHint"
+          >
+            控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。
+          </p>
+          <p
+            class="text-xs text-warning leading-normal mb-3"
+            data-i18n="watches.resolveDeepLinkHint"
+          >
             勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
           </p>
           <div class="form-group media-types-picker" data-media-types-picker>
-            <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+            <label class="form-label" data-i18n="mediaOverride.label"
+              >媒体类型</label
+            >
             <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="inherit"
+                  data-media-types-mode
+                  checked
+                />
                 <span data-i18n="mediaOverride.inherit">使用系统设置</span>
               </label>
-              <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+              <label
+                class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="media_types_mode"
+                  value="custom"
+                  data-media-types-mode
+                />
                 <span data-i18n="mediaOverride.custom">自定义</span>
               </label>
             </div>
-            <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
-            <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-forward-media-types-grid"></div>
+            <p
+              class="text-xs text-muted leading-normal mb-1"
+              data-i18n="mediaOverride.hint"
+            >
+              自定义时整表替换系统设置；默认继承全局允许的媒体类型。
+            </p>
+            <div
+              class="settings-type-grid media-types-picker__grid hidden"
+              data-media-types-grid
+              id="watch-forward-media-types-grid"
+            ></div>
           </div>
           <button type="submit" class="form-submit">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
             <span data-i18n="watches.createForward">新增监听转发</span>
           </button>
         </form>
@@ -846,16 +1237,36 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <th class="watch-col-text" data-i18n="watches.source">来源</th>
             <th class="watch-col-text" data-i18n="watches.target">目标</th>
             <th class="watch-col-metric" data-i18n="tasks.status">状态</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.downloadQueueCount">下载队列</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.downloadCompletedCount">已下载</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.todayEvents">今日</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.totalEvents">总数</th>
+            <th
+              class="watch-col-metric w-16"
+              data-i18n="watches.downloadQueueCount"
+            >
+              下载队列
+            </th>
+            <th
+              class="watch-col-metric w-16"
+              data-i18n="watches.downloadCompletedCount"
+            >
+              已下载
+            </th>
+            <th class="watch-col-metric w-16" data-i18n="watches.todayEvents">
+              今日
+            </th>
+            <th class="watch-col-metric w-16" data-i18n="watches.totalEvents">
+              总数
+            </th>
             <th class="watch-col-actions" data-i18n="tasks.actions">操作</th>
           </tr>
         </thead>
         <tbody id="watches-tbody"></tbody>
       </table>
-      <div id="watches-empty" class="p-8 text-center text-muted text-sm" data-i18n="watches.empty">还没有实时监听。</div>
+      <div
+        id="watches-empty"
+        class="p-8 text-center text-muted text-sm"
+        data-i18n="watches.empty"
+      >
+        还没有实时监听。
+      </div>
     </div>
   </div>
 
@@ -872,16 +1283,36 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
             <th class="watch-col-text" data-i18n="watches.source">来源</th>
             <th class="watch-col-text" data-i18n="watches.target">目标</th>
             <th class="watch-col-metric" data-i18n="tasks.status">状态</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.downloadQueueCount">下载队列</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.downloadCompletedCount">已下载</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.todayEvents">今日</th>
-            <th class="watch-col-metric w-16" data-i18n="watches.totalEvents">总数</th>
+            <th
+              class="watch-col-metric w-16"
+              data-i18n="watches.downloadQueueCount"
+            >
+              下载队列
+            </th>
+            <th
+              class="watch-col-metric w-16"
+              data-i18n="watches.downloadCompletedCount"
+            >
+              已下载
+            </th>
+            <th class="watch-col-metric w-16" data-i18n="watches.todayEvents">
+              今日
+            </th>
+            <th class="watch-col-metric w-16" data-i18n="watches.totalEvents">
+              总数
+            </th>
             <th class="watch-col-actions" data-i18n="tasks.actions">操作</th>
           </tr>
         </thead>
         <tbody id="watches-tbody-comment"></tbody>
       </table>
-      <div id="watches-empty-comment" class="p-8 text-center text-muted text-sm" data-i18n="watches.empty">还没有实时监听。</div>
+      <div
+        id="watches-empty-comment"
+        class="p-8 text-center text-muted text-sm"
+        data-i18n="watches.empty"
+      >
+        还没有实时监听。
+      </div>
     </div>
   </div>
 </div>
@@ -892,9 +1323,19 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="watch-detail-header">
       <div>
         <h3 class="text-base font-semibold" id="watch-detail-title"></h3>
-        <div class="text-xs text-muted font-mono mt-1" id="watch-detail-subtitle"></div>
+        <div
+          class="text-xs text-muted font-mono mt-1"
+          id="watch-detail-subtitle"
+        ></div>
       </div>
-      <button type="button" class="btn btn-sm btn-icon" id="watch-detail-close" aria-label="Close">✕</button>
+      <button
+        type="button"
+        class="btn btn-sm btn-icon"
+        id="watch-detail-close"
+        aria-label="Close"
+      >
+        ✕
+      </button>
     </div>
     <div class="watch-detail-summary" id="watch-detail-summary"></div>
     <div class="watch-detail-filters" id="watch-detail-filters"></div>
@@ -907,70 +1348,200 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 <div class="watch-overlay" id="watch-edit-overlay">
   <div class="watch-dialog">
     <h3 class="text-base font-semibold flex items-center gap-2">
-      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+        <path
+          d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
       <span data-i18n="watches.edit">编辑监听</span>
     </h3>
     <form id="watch-edit-form">
-      <input type="hidden" name="id" id="edit-watch-id">
+      <input type="hidden" name="id" id="edit-watch-id" />
       <div class="form-group">
         <label class="form-label" data-i18n="watches.source">来源频道</label>
-        <input class="form-input" name="source_link" id="edit-watch-source" type="text" required>
+        <input
+          class="form-input"
+          name="source_link"
+          id="edit-watch-source"
+          type="text"
+          required
+        />
       </div>
       <div class="form-group">
         <label class="form-label" data-i18n="watches.target">目标频道</label>
-        <input class="form-input" name="target_link" id="edit-watch-target" type="text" required>
+        <input
+          class="form-input"
+          name="target_link"
+          id="edit-watch-target"
+          type="text"
+          required
+        />
       </div>
       <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-          <input type="checkbox" name="include_comment" id="edit-watch-comment" class="w-4 h-4">
+        <label
+          class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+        >
+          <input
+            type="checkbox"
+            name="include_comment"
+            id="edit-watch-comment"
+            class="w-4 h-4"
+          />
           <span data-i18n="watches.includeComment">包含评论区</span>
         </label>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-          <input type="checkbox" name="resolve_deep_link" id="edit-watch-deep-link" class="w-4 h-4">
+        <label
+          class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+        >
+          <input
+            type="checkbox"
+            name="resolve_deep_link"
+            id="edit-watch-deep-link"
+            class="w-4 h-4"
+          />
           <span data-i18n="watches.resolveDeepLink">深链取片</span>
         </label>
-        <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-          <input type="checkbox" name="archive_by_author" id="edit-watch-archive-author" class="w-4 h-4">
+        <label
+          class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+        >
+          <input
+            type="checkbox"
+            name="archive_by_author"
+            id="edit-watch-archive-author"
+            class="w-4 h-4"
+          />
           <span data-i18n="watches.archiveByAuthor">按作者归档</span>
         </label>
       </div>
-      <div class="form-group comment-delay-field hidden" data-comment-delay-field>
-        <label class="form-label" data-i18n="watches.commentDelayMinutes">评论区延迟（分钟）</label>
-        <input class="form-input" name="comment_delay_minutes" id="edit-watch-comment-delay" type="number" min="0" max="1440" data-i18n-placeholder="watches.commentDelayPlaceholder" placeholder="留空=系统默认">
-        <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。</p>
+      <div
+        class="form-group comment-delay-field hidden"
+        data-comment-delay-field
+      >
+        <label class="form-label" data-i18n="watches.commentDelayMinutes"
+          >评论区延迟（分钟）</label
+        >
+        <input
+          class="form-input"
+          name="comment_delay_minutes"
+          id="edit-watch-comment-delay"
+          type="number"
+          min="0"
+          max="1440"
+          data-i18n-placeholder="watches.commentDelayPlaceholder"
+          placeholder="留空=系统默认"
+        />
+        <p class="text-xs text-muted mt-1" data-i18n="watches.commentDelayHint">
+          留空则使用系统默认；0 表示立刻抓取。仅在勾选包含评论区时生效。
+        </p>
       </div>
-      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveByAuthorHint">勾选后按正文署名行嵌套作者目录；默认扁平归档。</p>
+      <p
+        class="text-xs text-muted leading-normal mb-1"
+        data-i18n="watches.archiveByAuthorHint"
+      >
+        勾选后按正文署名行嵌套作者目录；默认扁平归档。
+      </p>
       <div class="form-group">
-        <label class="form-label" data-i18n="watches.archiveTitleSource">归档标题来源</label>
-        <select class="form-input" name="archive_title_source" id="edit-watch-archive-title-source">
-          <option value="auto" data-i18n="watches.archiveTitleSourceAuto">自动</option>
-          <option value="title" data-i18n="watches.archiveTitleSourceTitle">优先标题</option>
-          <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">优先标签</option>
-          <option value="body" data-i18n="watches.archiveTitleSourceBody">优先正文</option>
+        <label class="form-label" data-i18n="watches.archiveTitleSource"
+          >归档标题来源</label
+        >
+        <select
+          class="form-input"
+          name="archive_title_source"
+          id="edit-watch-archive-title-source"
+        >
+          <option value="auto" data-i18n="watches.archiveTitleSourceAuto">
+            自动
+          </option>
+          <option value="title" data-i18n="watches.archiveTitleSourceTitle">
+            优先标题
+          </option>
+          <option value="hashtag" data-i18n="watches.archiveTitleSourceHashtag">
+            优先标签
+          </option>
+          <option value="body" data-i18n="watches.archiveTitleSourceBody">
+            优先正文
+          </option>
         </select>
       </div>
-      <p class="text-xs text-muted leading-normal mb-1" data-i18n="watches.archiveTitleSourceHint">控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。</p>
-      <p class="text-xs text-warning leading-normal mb-3" data-i18n="watches.resolveDeepLinkHint">
+      <p
+        class="text-xs text-muted leading-normal mb-1"
+        data-i18n="watches.archiveTitleSourceHint"
+      >
+        控制叶子目录摘要优先取标题、标签或正文；与按作者归档无关，默认自动。
+      </p>
+      <p
+        class="text-xs text-warning leading-normal mb-3"
+        data-i18n="watches.resolveDeepLinkHint"
+      >
         勾选后须先在「我的 → 系统设置」填写资源 bot 白名单，否则创建会失败。
       </p>
-      <div class="form-group media-types-picker" data-media-types-picker id="watch-edit-media-types-picker">
-        <label class="form-label" data-i18n="mediaOverride.label">媒体类型</label>
+      <div
+        class="form-group media-types-picker"
+        data-media-types-picker
+        id="watch-edit-media-types-picker"
+      >
+        <label class="form-label" data-i18n="mediaOverride.label"
+          >媒体类型</label
+        >
         <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-1">
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input type="radio" name="media_types_mode" value="inherit" data-media-types-mode checked>
+          <label
+            class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+          >
+            <input
+              type="radio"
+              name="media_types_mode"
+              value="inherit"
+              data-media-types-mode
+              checked
+            />
             <span data-i18n="mediaOverride.inherit">使用系统设置</span>
           </label>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input type="radio" name="media_types_mode" value="custom" data-media-types-mode>
+          <label
+            class="flex items-center gap-2 text-sm text-muted cursor-pointer"
+          >
+            <input
+              type="radio"
+              name="media_types_mode"
+              value="custom"
+              data-media-types-mode
+            />
             <span data-i18n="mediaOverride.custom">自定义</span>
           </label>
         </div>
-        <p class="text-xs text-muted leading-normal mb-1" data-i18n="mediaOverride.hint">自定义时整表替换系统设置；默认继承全局允许的媒体类型。</p>
-        <div class="settings-type-grid media-types-picker__grid hidden" data-media-types-grid id="watch-edit-media-types-grid"></div>
+        <p
+          class="text-xs text-muted leading-normal mb-1"
+          data-i18n="mediaOverride.hint"
+        >
+          自定义时整表替换系统设置；默认继承全局允许的媒体类型。
+        </p>
+        <div
+          class="settings-type-grid media-types-picker__grid hidden"
+          data-media-types-grid
+          id="watch-edit-media-types-grid"
+        ></div>
       </div>
       <div class="flex gap-2 justify-end">
-        <button type="button" class="btn" onclick="closeEditWatchModal()" data-i18n="action.cancel">取消</button>
-        <button type="submit" class="btn btn-primary" data-i18n="action.save">保存</button>
+        <button
+          type="button"
+          class="btn"
+          onclick="closeEditWatchModal()"
+          data-i18n="action.cancel"
+        >
+          取消
+        </button>
+        <button type="submit" class="btn btn-primary" data-i18n="action.save">
+          保存
+        </button>
       </div>
     </form>
   </div>
@@ -985,11 +1556,20 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div class="panel-header">
         <div class="flex items-center gap-2.5">
           <div class="stat-card-icon green !w-[34px] !h-[34px]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M5 5h14v10H8l-3 3V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path
+                d="M5 5h14v10H8l-3 3V5Z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linejoin="round"
+              />
+            </svg>
           </div>
           <div>
             <h3 data-i18n="dl.title">频道下载</h3>
-            <span class="text-xs text-muted" data-i18n="dl.meta">从 Telegram 频道拉取文件</span>
+            <span class="text-xs text-muted" data-i18n="dl.meta"
+              >从 Telegram 频道拉取文件</span
+            >
           </div>
         </div>
       </div>
@@ -997,32 +1577,70 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <form id="channel-download-form">
           <div class="form-group">
             <label class="form-label" data-i18n="dl.link">频道链接</label>
-            <input class="form-input" name="chat_link" type="text" placeholder="https://t.me/channel" required>
+            <input
+              class="form-input"
+              name="chat_link"
+              type="text"
+              placeholder="https://t.me/channel"
+              required
+            />
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" data-i18n="dl.startDate">起始时间</label>
-              <input class="form-input" name="start_date" type="datetime-local">
+              <label class="form-label" data-i18n="dl.startDate"
+                >起始时间</label
+              >
+              <input
+                class="form-input"
+                name="start_date"
+                type="datetime-local"
+              />
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="dl.endDate">结束时间</label>
-              <input class="form-input" name="end_date" type="datetime-local">
+              <input class="form-input" name="end_date" type="datetime-local" />
             </div>
           </div>
           <div class="form-group">
             <label class="form-label" data-i18n="dl.keywords">关键词</label>
-            <input class="form-input" name="keywords" type="text" data-i18n-placeholder="dl.keywordsPlaceholder" placeholder="逗号分隔，可留空">
+            <input
+              class="form-input"
+              name="keywords"
+              type="text"
+              data-i18n-placeholder="dl.keywordsPlaceholder"
+              placeholder="逗号分隔，可留空"
+            />
           </div>
-          <fieldset class="border border-line rounded-md p-[10px_14px] mb-[14px]">
-            <legend class="text-sm font-semibold text-muted" data-i18n="dl.types">下载类型</legend>
-            <div class="grid grid-cols-2 gap-y-1 gap-x-2.5" id="dl-download-type-grid"></div>
+          <fieldset
+            class="border border-line rounded-md p-[10px_14px] mb-[14px]"
+          >
+            <legend
+              class="text-sm font-semibold text-muted"
+              data-i18n="dl.types"
+            >
+              下载类型
+            </legend>
+            <div
+              class="grid grid-cols-2 gap-y-1 gap-x-2.5"
+              id="dl-download-type-grid"
+            ></div>
           </fieldset>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-            <input type="checkbox" name="include_comment" class="w-4 h-4">
+          <label
+            class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3"
+          >
+            <input type="checkbox" name="include_comment" class="w-4 h-4" />
             <span data-i18n="dl.includeComment">包含评论区</span>
           </label>
           <button type="submit" class="form-submit">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path
+                d="M12 16V4M7 9l5-5 5 5M5 20h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
             <span data-i18n="dl.create">创建下载任务</span>
           </button>
         </form>
@@ -1034,11 +1652,21 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div class="panel-header">
         <div class="flex items-center gap-2.5">
           <div class="stat-card-icon blue !w-[34px] !h-[34px]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <path
+                d="M12 16V4M7 9l5-5 5 5M5 20h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </div>
           <div>
             <h3 data-i18n="dl.uploadTitle">本地上传</h3>
-            <span class="text-xs text-muted" data-i18n="dl.uploadMeta">推送到 Telegram 频道</span>
+            <span class="text-xs text-muted" data-i18n="dl.uploadMeta"
+              >推送到 Telegram 频道</span
+            >
           </div>
         </div>
       </div>
@@ -1046,21 +1674,45 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <form id="upload-form">
           <div class="form-group">
             <label class="form-label" data-i18n="dl.uploadPath">本地路径</label>
-            <input class="form-input" name="path" type="text" placeholder="/data/files/movie.mp4" required>
+            <input
+              class="form-input"
+              name="path"
+              type="text"
+              placeholder="/data/files/movie.mp4"
+              required
+            />
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="dl.uploadTarget">目标频道</label>
-            <input class="form-input" name="target_link" type="text" placeholder="https://t.me/target" required>
+            <label class="form-label" data-i18n="dl.uploadTarget"
+              >目标频道</label
+            >
+            <input
+              class="form-input"
+              name="target_link"
+              type="text"
+              placeholder="https://t.me/target"
+              required
+            />
           </div>
-          <label class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3">
-            <input type="checkbox" name="recursive" class="w-4 h-4">
+          <label
+            class="flex items-center gap-2 text-sm text-muted cursor-pointer mb-3"
+          >
+            <input type="checkbox" name="recursive" class="w-4 h-4" />
             <span data-i18n="dl.recursive">递归上传文件夹</span>
           </label>
           <div class="download-upload-align-spacer" role="note">
             <span data-i18n="dl.uploadPlaceholder">占位区，待后续开发</span>
           </div>
           <button type="submit" class="form-submit">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+              <path
+                d="M12 16V4M7 9l5-5 5 5M5 20h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
             <span data-i18n="dl.createUpload">创建上传任务</span>
           </button>
         </form>
@@ -1073,7 +1725,15 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel-header">
       <h3 data-i18n="dl.history">操作历史</h3>
       <button class="btn btn-sm" id="dl-history-refresh">
-        <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" width="14" height="14">
+          <path
+            d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
         <span data-i18n="action.refresh">刷新</span>
       </button>
     </div>
@@ -1091,7 +1751,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </thead>
         <tbody id="dl-operations-tbody"></tbody>
       </table>
-      <div id="dl-operations-empty" class="p-8 text-center text-muted text-sm" data-i18n="dl.historyEmpty">还没有下载或上传操作记录。</div>
+      <div
+        id="dl-operations-empty"
+        class="p-8 text-center text-muted text-sm"
+        data-i18n="dl.historyEmpty"
+      >
+        还没有下载或上传操作记录。
+      </div>
     </div>
   </div>
 </div>
@@ -1101,38 +1767,83 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <div class="stats-kpi-grid">
     <div class="stat-card">
       <div class="stat-card-icon blue">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h10M4 17h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M4 7h16M4 12h10M4 17h7"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stats-kpi-channels">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiChannels">频道数</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiChannels">
+          频道数
+        </div>
       </div>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon green">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M5 12l4 4L19 6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stats-kpi-downloads">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiDownloads">条目总数</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiDownloads">
+          条目总数
+        </div>
       </div>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon cyan">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 20V10M8 14l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 20V10M8 14l4-4 4 4"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stats-kpi-success-rate">0%</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiSuccessRateLabel">成功率</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiSuccessRateLabel">
+          成功率
+        </div>
       </div>
     </div>
     <div class="stat-card">
       <div class="stat-card-icon orange">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 9v4M12 17h.01"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+        </svg>
       </div>
       <div>
         <div class="stat-card-value" id="stats-kpi-issues">0</div>
-        <div class="stat-card-label" data-i18n="statistics.kpiIssues">失败 / 跳过</div>
+        <div class="stat-card-label" data-i18n="statistics.kpiIssues">
+          失败 / 跳过
+        </div>
       </div>
     </div>
   </div>
@@ -1141,14 +1852,25 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel">
       <div class="panel-header">
         <h3 data-i18n="statistics.mediaChartTitle">媒体下载分布</h3>
-        <span class="text-xs text-muted" data-i18n="statistics.mediaChartMeta">近 7 天 · 按频道 · 成功 / 失败 / 跳过</span>
+        <span class="text-xs text-muted" data-i18n="statistics.mediaChartMeta"
+          >近 7 天 · 按频道 · 成功 / 失败 / 跳过</span
+        >
       </div>
       <div class="panel-body">
         <div id="stats-media-chart" class="stats-hbar-chart"></div>
         <div class="stats-chart-legend">
-          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-success"></span><span data-i18n="statistics.legendSuccess">成功</span></span>
-          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-failure"></span><span data-i18n="statistics.legendFailure">失败</span></span>
-          <span class="stats-legend-item"><span class="stats-legend-dot stats-legend-skip"></span><span data-i18n="statistics.legendSkip">跳过</span></span>
+          <span class="stats-legend-item"
+            ><span class="stats-legend-dot stats-legend-success"></span
+            ><span data-i18n="statistics.legendSuccess">成功</span></span
+          >
+          <span class="stats-legend-item"
+            ><span class="stats-legend-dot stats-legend-failure"></span
+            ><span data-i18n="statistics.legendFailure">失败</span></span
+          >
+          <span class="stats-legend-item"
+            ><span class="stats-legend-dot stats-legend-skip"></span
+            ><span data-i18n="statistics.legendSkip">跳过</span></span
+          >
         </div>
       </div>
     </div>
@@ -1157,9 +1879,23 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <div class="panel">
     <div class="panel-header">
       <h3 data-i18n="statistics.tabChannel">按频道</h3>
-      <button class="btn btn-sm btn-primary" id="statistics-export-btn" data-export="channel">
-        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span id="statistics-export-label" data-i18n="statistics.exportChannel">导出频道报表</span>
+      <button
+        class="btn btn-sm btn-primary"
+        id="statistics-export-btn"
+        data-export="channel"
+      >
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+          <path
+            d="M12 16V4M7 9l5-5 5 5M5 20h14"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <span id="statistics-export-label" data-i18n="statistics.exportChannel"
+          >导出频道报表</span
+        >
       </button>
     </div>
     <div class="overflow-auto">
@@ -1167,7 +1903,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <thead id="statistics-detail-thead"></thead>
         <tbody id="statistics-detail-tbody"></tbody>
       </table>
-      <div id="statistics-empty" class="p-8 text-center text-muted text-sm hidden" data-i18n="statistics.empty">暂无统计数据。</div>
+      <div
+        id="statistics-empty"
+        class="p-8 text-center text-muted text-sm hidden"
+        data-i18n="statistics.empty"
+      >
+        暂无统计数据。
+      </div>
     </div>
   </div>
 </div>
@@ -1177,7 +1919,14 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <div class="panel">
     <div class="panel-header">
       <h3 data-i18n="records.title">下载记录</h3>
-      <button class="btn btn-danger btn-sm" id="records-clear-btn" disabled data-i18n="records.clear">清空记录</button>
+      <button
+        class="btn btn-danger btn-sm"
+        id="records-clear-btn"
+        disabled
+        data-i18n="records.clear"
+      >
+        清空记录
+      </button>
     </div>
     <div class="overflow-auto">
       <table class="data-table">
@@ -1192,7 +1941,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </thead>
         <tbody id="records-tbody"></tbody>
       </table>
-      <div id="records-empty" class="p-8 text-center text-muted text-sm" data-i18n="records.empty">还没有下载成功记录。</div>
+      <div
+        id="records-empty"
+        class="p-8 text-center text-muted text-sm"
+        data-i18n="records.empty"
+      >
+        还没有下载成功记录。
+      </div>
     </div>
     <div id="records-pagination"></div>
   </div>
@@ -1204,34 +1959,82 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel-header">
       <div>
         <h3 data-i18n="systemLogs.title">系统日志</h3>
-        <p class="text-xs text-muted mt-1" id="system-logs-retention" data-i18n="systemLogs.retentionHint">链路调试日志，自动保留 2 天</p>
+        <p
+          class="text-xs text-muted mt-1"
+          id="system-logs-retention"
+          data-i18n="systemLogs.retentionHint"
+        >
+          链路调试日志，自动保留 2 天
+        </p>
       </div>
       <div class="flex items-center gap-2 flex-wrap text-xs">
-        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-category">
-          <option value="" data-i18n="systemLogs.filterAllCategories">全部分类</option>
-          <option value="watch" data-i18n="systemLogs.categoryWatch">监听</option>
-          <option value="filter" data-i18n="systemLogs.categoryFilter">过滤</option>
-          <option value="forward" data-i18n="systemLogs.categoryForward">转发</option>
-          <option value="transfer" data-i18n="systemLogs.categoryTransfer">下载上传</option>
-          <option value="archive" data-i18n="systemLogs.categoryArchive">归档</option>
+        <select
+          class="form-select !w-auto h-8 text-xs py-0"
+          id="system-logs-category"
+        >
+          <option value="" data-i18n="systemLogs.filterAllCategories">
+            全部分类
+          </option>
+          <option value="watch" data-i18n="systemLogs.categoryWatch">
+            监听
+          </option>
+          <option value="filter" data-i18n="systemLogs.categoryFilter">
+            过滤
+          </option>
+          <option value="forward" data-i18n="systemLogs.categoryForward">
+            转发
+          </option>
+          <option value="transfer" data-i18n="systemLogs.categoryTransfer">
+            下载上传
+          </option>
+          <option value="archive" data-i18n="systemLogs.categoryArchive">
+            归档
+          </option>
         </select>
-        <select class="form-select !w-auto h-8 text-xs py-0" id="system-logs-level">
-          <option value="" data-i18n="systemLogs.filterAllLevels">全部级别</option>
+        <select
+          class="form-select !w-auto h-8 text-xs py-0"
+          id="system-logs-level"
+        >
+          <option value="" data-i18n="systemLogs.filterAllLevels">
+            全部级别
+          </option>
           <option value="info">INFO</option>
           <option value="warning">WARNING</option>
           <option value="error">ERROR</option>
         </select>
-        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-          <input type="checkbox" id="system-logs-today">
+        <label
+          class="flex items-center gap-1.5 text-xs text-muted cursor-pointer"
+        >
+          <input type="checkbox" id="system-logs-today" />
           <span data-i18n="systemLogs.todayOnly">仅今天</span>
         </label>
-        <label class="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
-          <input type="checkbox" id="system-logs-auto-refresh">
+        <label
+          class="flex items-center gap-1.5 text-xs text-muted cursor-pointer"
+        >
+          <input type="checkbox" id="system-logs-auto-refresh" />
           <span data-i18n="systemLogs.autoRefresh">自动刷新</span>
         </label>
-        <button class="btn btn-sm" id="system-logs-refresh-btn" data-i18n="action.refresh">刷新</button>
-        <button class="btn btn-sm btn-primary" id="system-logs-copy-btn" data-i18n="systemLogs.copyPage">复制本页</button>
-        <button class="btn btn-sm" id="system-logs-download-btn" data-i18n="systemLogs.downloadAll">下载日志</button>
+        <button
+          class="btn btn-sm"
+          id="system-logs-refresh-btn"
+          data-i18n="action.refresh"
+        >
+          刷新
+        </button>
+        <button
+          class="btn btn-sm btn-primary"
+          id="system-logs-copy-btn"
+          data-i18n="systemLogs.copyPage"
+        >
+          复制本页
+        </button>
+        <button
+          class="btn btn-sm"
+          id="system-logs-download-btn"
+          data-i18n="systemLogs.downloadAll"
+        >
+          下载日志
+        </button>
       </div>
     </div>
     <div class="overflow-auto">
@@ -1249,7 +2052,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         </thead>
         <tbody id="system-logs-tbody"></tbody>
       </table>
-      <div id="system-logs-empty" class="p-8 text-center text-muted text-sm hidden" data-i18n="systemLogs.empty">暂无系统日志。</div>
+      <div
+        id="system-logs-empty"
+        class="p-8 text-center text-muted text-sm hidden"
+        data-i18n="systemLogs.empty"
+      >
+        暂无系统日志。
+      </div>
     </div>
     <div id="system-logs-pagination"></div>
   </div>
@@ -1259,8 +2068,17 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 <div class="watch-overlay" id="system-log-detail-overlay">
   <div class="watch-dialog system-log-detail-dialog">
     <div class="watch-history-header">
-      <h3 class="text-base font-semibold" data-i18n="systemLogs.detailTitle">日志详情</h3>
-      <button type="button" class="btn btn-sm btn-icon" id="system-log-detail-close" aria-label="Close">✕</button>
+      <h3 class="text-base font-semibold" data-i18n="systemLogs.detailTitle">
+        日志详情
+      </h3>
+      <button
+        type="button"
+        class="btn btn-sm btn-icon"
+        id="system-log-detail-close"
+        aria-label="Close"
+      >
+        ✕
+      </button>
     </div>
     <div class="system-log-detail-body" id="system-log-detail-body"></div>
   </div>
@@ -1272,49 +2090,84 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel-header">
       <h3 data-i18n="media.title">媒体管理</h3>
       <div class="flex items-center gap-2" id="media-actions">
-        <button class="btn btn-danger btn-sm" id="media-cleanup-btn" disabled data-i18n="media.cleanup">清理选中文件</button>
+        <button
+          class="btn btn-danger btn-sm"
+          id="media-cleanup-btn"
+          disabled
+          data-i18n="media.cleanup"
+        >
+          清理选中文件
+        </button>
         <button class="btn btn-primary btn-sm" id="media-scan-btn">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+            <path
+              d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
           <span data-i18n="media.scan">扫描可清理文件</span>
         </button>
       </div>
     </div>
     <div class="panel-body">
       <div id="media-result" class="hidden">
-        <div id="media-summary" class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div
+          id="media-summary"
+          class="flex gap-5 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"
+        ></div>
 
         <div id="media-items-section" class="mb-4 hidden">
-          <h4 class="text-base font-semibold mb-2" data-i18n="media.transferItems">转存任务文件</h4>
+          <h4
+            class="text-base font-semibold mb-2"
+            data-i18n="media.transferItems"
+          >
+            转存任务文件
+          </h4>
           <div class="overflow-x-auto rounded-lg border border-line">
             <table class="data-table min-w-[600px]">
-              <thead><tr>
-                <th class="w-10"><input type="checkbox" id="media-select-all-items"></th>
-                <th data-i18n="media.file">文件</th>
-                <th data-i18n="media.size" class="text-right">大小</th>
-                <th data-i18n="media.status" class="text-center">状态</th>
-                <th data-i18n="media.source">来源</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th class="w-10">
+                    <input type="checkbox" id="media-select-all-items" />
+                  </th>
+                  <th data-i18n="media.file">文件</th>
+                  <th data-i18n="media.size" class="text-right">大小</th>
+                  <th data-i18n="media.status" class="text-center">状态</th>
+                  <th data-i18n="media.source">来源</th>
+                </tr>
+              </thead>
               <tbody id="media-items-tbody"></tbody>
             </table>
           </div>
         </div>
 
         <div id="media-orphans-section" class="mb-4 hidden">
-          <h4 class="text-base font-semibold mb-2" data-i18n="media.orphanFiles">遗留文件</h4>
+          <h4
+            class="text-base font-semibold mb-2"
+            data-i18n="media.orphanFiles"
+          >
+            遗留文件
+          </h4>
           <div class="overflow-x-auto rounded-lg border border-line">
             <table class="data-table min-w-[600px]">
-              <thead><tr>
-                <th class="w-10"><input type="checkbox" id="media-select-all-orphans"></th>
-                <th data-i18n="media.path">路径</th>
-                <th data-i18n="media.size" class="text-right">大小</th>
-                <th data-i18n="media.mtime">最后修改</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th class="w-10">
+                    <input type="checkbox" id="media-select-all-orphans" />
+                  </th>
+                  <th data-i18n="media.path">路径</th>
+                  <th data-i18n="media.size" class="text-right">大小</th>
+                  <th data-i18n="media.mtime">最后修改</th>
+                </tr>
+              </thead>
               <tbody id="media-orphans-tbody"></tbody>
             </table>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </div>
@@ -1325,50 +2178,129 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     <div class="panel-header">
       <h3 data-i18n="archiveOrganize.title">归档整理</h3>
       <div class="flex items-center gap-2">
-        <button class="btn btn-danger btn-sm" id="archive-organize-run-btn" disabled data-i18n="archiveOrganize.runAll">全部迁移</button>
-        <button class="btn btn-secondary btn-sm hidden" id="archive-organize-stop-btn" data-i18n="archiveOrganize.stop">停止</button>
-        <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-unresolved-btn" data-i18n="archiveOrganize.resolveUnresolved">仅解析未识别</button>
-        <button class="btn btn-secondary btn-sm" id="archive-organize-resolve-btn" data-i18n="archiveOrganize.resolve">重新解析作者</button>
-        <button class="btn btn-primary btn-sm" id="archive-organize-scan-btn" data-i18n="archiveOrganize.scan">扫描网盘目录</button>
+        <button
+          class="btn btn-danger btn-sm"
+          id="archive-organize-run-btn"
+          disabled
+          data-i18n="archiveOrganize.runAll"
+        >
+          全部迁移
+        </button>
+        <button
+          class="btn btn-secondary btn-sm hidden"
+          id="archive-organize-stop-btn"
+          data-i18n="archiveOrganize.stop"
+        >
+          停止
+        </button>
+        <button
+          class="btn btn-secondary btn-sm"
+          id="archive-organize-resolve-unresolved-btn"
+          data-i18n="archiveOrganize.resolveUnresolved"
+        >
+          仅解析未识别
+        </button>
+        <button
+          class="btn btn-secondary btn-sm"
+          id="archive-organize-resolve-btn"
+          data-i18n="archiveOrganize.resolve"
+        >
+          重新解析作者
+        </button>
+        <button
+          class="btn btn-primary btn-sm"
+          id="archive-organize-scan-btn"
+          data-i18n="archiveOrganize.scan"
+        >
+          扫描网盘目录
+        </button>
       </div>
     </div>
     <div class="panel-body">
-      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">文件夹名前缀是频道主贴 ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。</p>
+      <p class="text-sm text-muted m-0 mb-4" data-i18n="archiveOrganize.hint">
+        文件夹名前缀是频道主贴
+        ID；作者优先从正文署名解析，其次用标签回连已知作者；若只剩一个非站点标签则进「待确认」（标签候选）。「仅解析未识别」会重查未识别与站点名误标（如海角社区），不必为此全量。抽看后点「全部迁移」（高置信+待确认）。未识别不搬。
+      </p>
       <div class="form-row mb-4">
-        <div class="form-group" style="min-width:240px;flex:1">
-          <label class="form-label" data-i18n="archiveOrganize.channel">频道文件夹</label>
+        <div class="form-group" style="min-width: 240px; flex: 1">
+          <label class="form-label" data-i18n="archiveOrganize.channel"
+            >频道文件夹</label
+          >
           <select class="form-input" id="archive-organize-channel"></select>
         </div>
       </div>
-      <div id="archive-organize-progress" class="hidden mb-4 p-4 bg-surface-alt rounded-lg">
+      <div
+        id="archive-organize-progress"
+        class="hidden mb-4 p-4 bg-surface-alt rounded-lg"
+      >
         <div class="flex items-center justify-between gap-3 mb-2">
-          <div id="archive-organize-progress-message" class="text-sm text-text">-</div>
-          <div id="archive-organize-progress-pct" class="text-sm font-semibold text-text whitespace-nowrap">0%</div>
+          <div id="archive-organize-progress-message" class="text-sm text-text">
+            -
+          </div>
+          <div
+            id="archive-organize-progress-pct"
+            class="text-sm font-semibold text-text whitespace-nowrap"
+          >
+            0%
+          </div>
         </div>
         <div class="progress-bar">
-          <div class="progress-fill" id="archive-organize-progress-fill" style="width:0%"></div>
+          <div
+            class="progress-fill"
+            id="archive-organize-progress-fill"
+            style="width: 0%"
+          ></div>
         </div>
-        <div id="archive-organize-progress-count" class="text-xs text-muted mt-2">0 / 0</div>
+        <div
+          id="archive-organize-progress-count"
+          class="text-xs text-muted mt-2"
+        >
+          0 / 0
+        </div>
       </div>
       <div id="archive-organize-result" class="hidden">
-        <div id="archive-organize-summary" class="flex gap-3 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"></div>
+        <div
+          id="archive-organize-summary"
+          class="flex gap-3 flex-wrap p-4 bg-surface-alt rounded-lg mb-4"
+        ></div>
         <div class="flex items-center justify-between gap-3 mb-2 flex-wrap">
-          <div id="archive-organize-bucket-label" class="text-sm text-muted"></div>
+          <div
+            id="archive-organize-bucket-label"
+            class="text-sm text-muted"
+          ></div>
           <div class="flex items-center gap-2">
-            <button type="button" class="btn btn-secondary btn-sm" id="archive-organize-prev-btn" disabled data-i18n="archiveOrganize.prev">上一页</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="archive-organize-next-btn" disabled data-i18n="archiveOrganize.next">下一页</button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              id="archive-organize-prev-btn"
+              disabled
+              data-i18n="archiveOrganize.prev"
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              id="archive-organize-next-btn"
+              disabled
+              data-i18n="archiveOrganize.next"
+            >
+              下一页
+            </button>
           </div>
         </div>
         <div class="overflow-x-auto rounded-lg border border-line">
           <table class="data-table min-w-[760px]">
-            <thead><tr>
-              <th data-i18n="archiveOrganize.messageId">主贴 ID</th>
-              <th data-i18n="archiveOrganize.author">作者</th>
-              <th data-i18n="archiveOrganize.method">识别</th>
-              <th data-i18n="archiveOrganize.from">原路径</th>
-              <th data-i18n="archiveOrganize.to">目标路径</th>
-              <th data-i18n="archiveOrganize.action">动作</th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th data-i18n="archiveOrganize.messageId">主贴 ID</th>
+                <th data-i18n="archiveOrganize.author">作者</th>
+                <th data-i18n="archiveOrganize.method">识别</th>
+                <th data-i18n="archiveOrganize.from">原路径</th>
+                <th data-i18n="archiveOrganize.to">目标路径</th>
+                <th data-i18n="archiveOrganize.action">动作</th>
+              </tr>
+            </thead>
             <tbody id="archive-organize-tbody"></tbody>
           </table>
         </div>
@@ -1381,281 +2313,630 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 <div class="view panel min-h-0" id="view-settings">
   <div class="panel-header">
     <h3 data-i18n="settings.title">系统设置</h3>
-    <span class="text-xs text-muted" data-i18n="settings.safeNote">敏感字段只显示是否已配置</span>
+    <span class="text-xs text-muted" data-i18n="settings.safeNote"
+      >敏感字段只显示是否已配置</span
+    >
   </div>
   <div class="panel-body" id="settings-body">
-
     <!-- Paths -->
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.paths">路径与任务</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.saveDirectory">保存目录</label>
-            <input class="form-input" name="user.save_directory">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.tempDirectory">临时目录</label>
-            <input class="form-input" name="user.temp_directory">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.sessionDirectory">会话目录</label>
-            <input class="form-input" name="user.session_directory">
-          </div>
+      <h4 class="settings-section-title" data-i18n="settings.paths">
+        路径与任务
+      </h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.saveDirectory"
+            >保存目录</label
+          >
+          <input class="form-input" name="user.save_directory" />
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.maxDownload">最大下载任务</label>
-            <input class="form-input" name="user.max_tasks.download" type="number" min="1">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.maxUpload">最大上传任务</label>
-            <input class="form-input" name="user.max_tasks.upload" type="number" min="1">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.retryDownload">下载重试</label>
-            <input class="form-input" name="user.max_retries.download" type="number" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.retryUpload">上传重试</label>
-            <input class="form-input" name="user.max_retries.upload" type="number" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakMaxFileSize">PikPak大小上限(字节)</label>
-            <input class="form-input" name="global.target_profiles.pikpak.max_file_size" type="number" min="1">
-          </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.tempDirectory"
+            >临时目录</label
+          >
+          <input class="form-input" name="user.temp_directory" />
         </div>
-      </section>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.sessionDirectory"
+            >会话目录</label
+          >
+          <input class="form-input" name="user.session_directory" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.maxDownload"
+            >最大下载任务</label
+          >
+          <input
+            class="form-input"
+            name="user.max_tasks.download"
+            type="number"
+            min="1"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.maxUpload"
+            >最大上传任务</label
+          >
+          <input
+            class="form-input"
+            name="user.max_tasks.upload"
+            type="number"
+            min="1"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.retryDownload"
+            >下载重试</label
+          >
+          <input
+            class="form-input"
+            name="user.max_retries.download"
+            type="number"
+            min="0"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.retryUpload"
+            >上传重试</label
+          >
+          <input
+            class="form-input"
+            name="user.max_retries.upload"
+            type="number"
+            min="0"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakMaxFileSize"
+            >PikPak大小上限(字节)</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.max_file_size"
+            type="number"
+            min="1"
+          />
+        </div>
+      </div>
+    </section>
 
     <!-- Behavior -->
     <section class="settings-section">
       <h4 class="settings-section-title" data-i18n="settings.behavior">行为</h4>
-        <div class="form-row">
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.notice" class="w-4 h-4">
-            <span data-i18n="settings.notice">机器人通知</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="user.is_shutdown" class="w-4 h-4">
-            <span data-i18n="settings.shutdown">退出后关机</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.upload.download_upload" class="w-4 h-4">
-            <span data-i18n="settings.downloadUpload">受限转发时下载后上传</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.upload.delete" class="w-4 h-4">
-            <span data-i18n="settings.uploadDelete">上传完成删除本地文件</span>
-          </label>
-        </div>
-        <div class="form-group mt-3">
-          <label class="form-label" data-i18n="settings.pendingLimit">下载后上传队列</label>
-          <input class="form-input" name="global.upload.pending_limit" type="number" min="1" max="5">
-        </div>
-        <div class="form-group mt-3">
-          <label class="form-label" data-i18n="settings.commentDelayMinutes">评论区延迟抓取（分钟）</label>
-          <input class="form-input" name="global.live_watch.comment_delay_minutes" type="number" min="0" max="1440">
-          <p class="text-xs text-muted mt-1" data-i18n="settings.commentDelayHint">系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0 表示立刻抓取。</p>
-        </div>
-        <div class="form-group mt-3">
-          <label class="form-label" data-i18n="settings.itemStaleTimeoutMinutes">任务项超时（分钟）</label>
-          <input class="form-input" name="global.transfer.item_stale_timeout_minutes" type="number" min="1" max="180">
-          <p class="text-xs text-muted mt-1" data-i18n="settings.itemStaleTimeoutHint">转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。</p>
-        </div>
-        <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">深链取片</h4>
-        <label class="form-label" data-i18n="settings.deepLinkWhitelist">资源 bot 白名单</label>
-        <textarea class="form-input" name="global.deep_link.bot_whitelist" rows="3"
-          placeholder="每行一个，例如：&#10;123456"></textarea>
-        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkWhitelistHint">
-          每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start= 会触发取片。留空且任务未勾选时功能关闭。
+      <div class="form-row">
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input type="checkbox" name="global.notice" class="w-4 h-4" />
+          <span data-i18n="settings.notice">机器人通知</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input type="checkbox" name="user.is_shutdown" class="w-4 h-4" />
+          <span data-i18n="settings.shutdown">退出后关机</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input
+            type="checkbox"
+            name="global.upload.download_upload"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.downloadUpload">受限转发时下载后上传</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input type="checkbox" name="global.upload.delete" class="w-4 h-4" />
+          <span data-i18n="settings.uploadDelete">上传完成删除本地文件</span>
+        </label>
+      </div>
+      <div class="form-group mt-3">
+        <label class="form-label" data-i18n="settings.pendingLimit"
+          >下载后上传队列</label
+        >
+        <input
+          class="form-input"
+          name="global.upload.pending_limit"
+          type="number"
+          min="1"
+          max="5"
+        />
+      </div>
+      <div class="form-group mt-3">
+        <label class="form-label" data-i18n="settings.commentDelayMinutes"
+          >评论区延迟抓取（分钟）</label
+        >
+        <input
+          class="form-input"
+          name="global.live_watch.comment_delay_minutes"
+          type="number"
+          min="0"
+          max="1440"
+        />
+        <p
+          class="text-xs text-muted mt-1"
+          data-i18n="settings.commentDelayHint"
+        >
+          系统默认：监听转发开启包含评论区且任务未单独设置时，主贴立刻转发，评论区延迟该分钟数后再抓取一次。0
+          表示立刻抓取。
         </p>
-        <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout">取片超时（秒）</label>
-        <input class="form-input" name="global.deep_link.timeout_seconds" type="number" min="1" max="600">
-        <label class="form-label mt-3" data-i18n="settings.deepLinkMinInterval">取片最小间隔（秒）</label>
-        <input class="form-input" name="global.deep_link.min_interval_seconds" type="number" min="0" max="600">
-        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMinIntervalHint">
-          两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0 表示不主动冷却（仍会遵守 FloodWait）。
+      </div>
+      <div class="form-group mt-3">
+        <label class="form-label" data-i18n="settings.itemStaleTimeoutMinutes"
+          >任务项超时（分钟）</label
+        >
+        <input
+          class="form-input"
+          name="global.transfer.item_stale_timeout_minutes"
+          type="number"
+          min="1"
+          max="180"
+        />
+        <p
+          class="text-xs text-muted mt-1"
+          data-i18n="settings.itemStaleTimeoutHint"
+        >
+          转存任务文件超过该分钟数无新进度时标记为停滞，用于停滞提醒。
         </p>
-        <label class="form-label mt-3" data-i18n="settings.deepLinkSettle">收齐静默（秒）</label>
-        <input class="form-input" name="global.deep_link.settle_seconds" type="number" min="0" max="60">
-        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkSettleHint">
-          首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0 表示收到首条后立即结束。
-        </p>
-        <label class="form-label mt-3" data-i18n="settings.deepLinkMaxPages">翻页最大页数</label>
-        <input class="form-input" name="global.deep_link.max_pages" type="number" min="1" max="100">
-        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkMaxPagesHint">
-          自动点击「下一页 / 组别」按钮的上限，防止异常 bot 占住取片串行锁。
-        </p>
-        <label class="form-label mt-3" data-i18n="settings.deepLinkPageInterval">翻页点击间隔（秒）</label>
-        <input class="form-input" name="global.deep_link.page_click_interval_seconds" type="number" min="0" max="30">
-        <p class="text-xs text-muted mt-1" data-i18n="settings.deepLinkPageIntervalHint">
-          两次翻页点击之间的等待；用于降低限流。0 表示不额外等待。
-        </p>
-      </section>
+      </div>
+      <h4 class="settings-section-title" data-i18n="settings.deepLinkTitle">
+        深链取片
+      </h4>
+      <label class="form-label" data-i18n="settings.deepLinkWhitelist"
+        >资源 bot 白名单</label
+      >
+      <textarea
+        class="form-input"
+        name="global.deep_link.bot_whitelist"
+        rows="3"
+        placeholder="每行一个，例如：&#10;123456"
+      ></textarea>
+      <p
+        class="text-xs text-muted mt-1"
+        data-i18n="settings.deepLinkWhitelistHint"
+      >
+        每行一个 bot 用户名（可带 @）。仅名单内的 t.me/&lt;bot&gt;?start=
+        会触发取片。留空且任务未勾选时功能关闭。
+      </p>
+      <label class="form-label mt-3" data-i18n="settings.deepLinkTimeout"
+        >取片超时（秒）</label
+      >
+      <input
+        class="form-input"
+        name="global.deep_link.timeout_seconds"
+        type="number"
+        min="1"
+        max="600"
+      />
+      <label class="form-label mt-3" data-i18n="settings.deepLinkMinInterval"
+        >取片最小间隔（秒）</label
+      >
+      <input
+        class="form-input"
+        name="global.deep_link.min_interval_seconds"
+        type="number"
+        min="0"
+        max="600"
+      />
+      <p
+        class="text-xs text-muted mt-1"
+        data-i18n="settings.deepLinkMinIntervalHint"
+      >
+        两次 StartBot 取片之间的最小冷却时间，用于降低 Telegram 限流。0
+        表示不主动冷却（仍会遵守 FloodWait）。
+      </p>
+      <label class="form-label mt-3" data-i18n="settings.deepLinkSettle"
+        >收齐静默（秒）</label
+      >
+      <input
+        class="form-input"
+        name="global.deep_link.settle_seconds"
+        type="number"
+        min="0"
+        max="60"
+      />
+      <p
+        class="text-xs text-muted mt-1"
+        data-i18n="settings.deepLinkSettleHint"
+      >
+        首条媒体到达后再等待该秒数无新媒体则结束收齐；用于资源 bot 连发多文件。0
+        表示收到首条后立即结束。
+      </p>
+      <label class="form-label mt-3" data-i18n="settings.deepLinkMaxPages"
+        >翻页最大页数</label
+      >
+      <input
+        class="form-input"
+        name="global.deep_link.max_pages"
+        type="number"
+        min="1"
+        max="100"
+      />
+      <p
+        class="text-xs text-muted mt-1"
+        data-i18n="settings.deepLinkMaxPagesHint"
+      >
+        自动点击「下一页 / 组别」按钮的上限，防止异常 bot 占住取片串行锁。
+      </p>
+      <label class="form-label mt-3" data-i18n="settings.deepLinkPageInterval"
+        >翻页点击间隔（秒）</label
+      >
+      <input
+        class="form-input"
+        name="global.deep_link.page_click_interval_seconds"
+        type="number"
+        min="0"
+        max="30"
+      />
+      <p
+        class="text-xs text-muted mt-1"
+        data-i18n="settings.deepLinkPageIntervalHint"
+      >
+        两次翻页点击之间的等待；用于降低限流。0 表示不额外等待。
+      </p>
+    </section>
 
     <!-- PikPak Archive -->
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.pikpakArchive">PikPak 归档</h4>
-        <div class="flex flex-wrap gap-2 mb-3">
-          <button type="button" class="btn" id="settings-btn-setup-rclone">配置 / 更换 rclone</button>
-          <button type="button" class="btn" id="settings-btn-test-rclone">验证 remote</button>
-          <button type="button" class="btn" id="settings-btn-relogin-telegram">重新登录 Telegram</button>
+      <h4 class="settings-section-title" data-i18n="settings.pikpakArchive">
+        PikPak 归档
+      </h4>
+      <div class="flex flex-wrap gap-2 mb-3">
+        <button type="button" class="btn" id="settings-btn-setup-rclone">
+          配置 / 更换 rclone
+        </button>
+        <button type="button" class="btn" id="settings-btn-test-rclone">
+          验证 remote
+        </button>
+        <button type="button" class="btn" id="settings-btn-relogin-telegram">
+          重新登录 Telegram
+        </button>
+      </div>
+      <div class="mb-3">
+        <div class="flex items-center gap-2 mb-2">
+          <span
+            class="text-sm font-semibold"
+            data-i18n="settings.pikpakAccounts"
+            >PikPak 账号</span
+          >
+          <span
+            class="text-xs text-muted"
+            data-i18n="settings.pikpakAccountLimit"
+            data-pikpak-account-limit
+            >最多可绑定 5 个 PikPak 账号。</span
+          >
         </div>
-        <div class="mb-3">
-          <div class="flex items-center gap-2 mb-2">
-            <span class="text-sm font-semibold" data-i18n="settings.pikpakAccounts">PikPak 账号</span>
-            <span class="text-xs text-muted" data-i18n="settings.pikpakAccountLimit" data-pikpak-account-limit>最多可绑定 5 个 PikPak 账号。</span>
+        <div id="pikpak-accounts-list" class="mb-2"></div>
+        <div
+          class="form-row items-end"
+          style="grid-template-columns: 1fr 1fr auto"
+        >
+          <div class="form-group mb-0">
+            <label class="form-label" data-i18n="settings.pikpakAccountUsername"
+              >PikPak 账号</label
+            >
+            <input
+              class="form-input"
+              id="pikpak-account-user"
+              type="text"
+              autocomplete="username"
+              placeholder="邮箱或手机号"
+            />
           </div>
-          <div id="pikpak-accounts-list" class="mb-2"></div>
-          <div class="form-row items-end" style="grid-template-columns: 1fr 1fr auto;">
-            <div class="form-group mb-0">
-              <label class="form-label" data-i18n="settings.pikpakAccountUsername">PikPak 账号</label>
-              <input class="form-input" id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号">
-            </div>
-            <div class="form-group mb-0">
-              <label class="form-label" data-i18n="settings.pikpakAccountPassword">PikPak 密码</label>
-              <input class="form-input" id="pikpak-account-pass" type="password" autocomplete="current-password" placeholder="密码">
-            </div>
-            <button type="button" class="btn btn-primary h-10" id="pikpak-account-add-btn" data-i18n="settings.pikpakAccountAdd">添加账号</button>
+          <div class="form-group mb-0">
+            <label class="form-label" data-i18n="settings.pikpakAccountPassword"
+              >PikPak 密码</label
+            >
+            <input
+              class="form-input"
+              id="pikpak-account-pass"
+              type="password"
+              autocomplete="current-password"
+              placeholder="密码"
+            />
           </div>
+          <button
+            type="button"
+            class="btn btn-primary h-10"
+            id="pikpak-account-add-btn"
+            data-i18n="settings.pikpakAccountAdd"
+          >
+            添加账号
+          </button>
         </div>
-        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">
-          <input type="checkbox" name="global.target_profiles.pikpak.archive.enable" class="w-4 h-4">
-          <span data-i18n="settings.pikpakArchiveEnable">PikPak按来源频道归档</span>
-        </label>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchiveRemote">PikPak rclone remote</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.remote">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchiveSource">PikPak入库目录</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.source_directory">
-          </div>
+      </div>
+      <label
+        class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3"
+      >
+        <input
+          type="checkbox"
+          name="global.target_profiles.pikpak.archive.enable"
+          class="w-4 h-4"
+        />
+        <span data-i18n="settings.pikpakArchiveEnable"
+          >PikPak按来源频道归档</span
+        >
+      </label>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchiveRemote"
+            >PikPak rclone remote</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.remote"
+          />
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchiveRoot">PikPak归档根目录</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.root_directory">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchivePoll">入库轮询秒数</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.poll_seconds" type="number" min="0">
-          </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchiveSource"
+            >PikPak入库目录</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.source_directory"
+          />
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchiveInterval">轮询间隔秒数</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.poll_interval_seconds" type="number" min="0">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.pikpakArchiveWindow">匹配时间窗口秒数</label>
-            <input class="form-input" name="global.target_profiles.pikpak.archive.match_window_seconds" type="number" min="0">
-          </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchiveRoot"
+            >PikPak归档根目录</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.root_directory"
+          />
         </div>
-      </section>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchivePoll"
+            >入库轮询秒数</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.poll_seconds"
+            type="number"
+            min="0"
+          />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchiveInterval"
+            >轮询间隔秒数</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.poll_interval_seconds"
+            type="number"
+            min="0"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.pikpakArchiveWindow"
+            >匹配时间窗口秒数</label
+          >
+          <input
+            class="form-input"
+            name="global.target_profiles.pikpak.archive.match_window_seconds"
+            type="number"
+            min="0"
+          />
+        </div>
+      </div>
+    </section>
 
     <!-- Account & Proxy -->
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.sensitive">账号与代理</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">API ID</label>
-            <input class="form-input" name="user.api_id">
-          </div>
-          <div class="form-group">
-            <label class="form-label">API Hash</label>
-            <input class="form-input" name="user.api_hash" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
-          </div>
+      <h4 class="settings-section-title" data-i18n="settings.sensitive">
+        账号与代理
+      </h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">API ID</label>
+          <input class="form-input" name="user.api_id" />
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Bot Token</label>
-            <input class="form-input" name="user.bot_token" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
-          </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="settings.proxyPassword">代理密码</label>
-            <input class="form-input" name="user.proxy.password" type="password" data-i18n-placeholder="settings.secretConfigured" placeholder="已配置">
-          </div>
+        <div class="form-group">
+          <label class="form-label">API Hash</label>
+          <input
+            class="form-input"
+            name="user.api_hash"
+            type="password"
+            data-i18n-placeholder="settings.secretConfigured"
+            placeholder="已配置"
+          />
         </div>
-      </section>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Bot Token</label>
+          <input
+            class="form-input"
+            name="user.bot_token"
+            type="password"
+            data-i18n-placeholder="settings.secretConfigured"
+            placeholder="已配置"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.proxyPassword"
+            >代理密码</label
+          >
+          <input
+            class="form-input"
+            name="user.proxy.password"
+            type="password"
+            data-i18n-placeholder="settings.secretConfigured"
+            placeholder="已配置"
+          />
+        </div>
+      </div>
+    </section>
 
     <!-- Message Filter / Unified Media Type Allowlist -->
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.messageFilter">消息过滤</h4>
-        <div class="mb-3">
-          <span class="form-label" data-i18n="settings.mediaTypes">允许的媒体类型</span>
-          <span class="text-xs text-muted ml-1" data-i18n="settings.mediaTypesHint">（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）</span>
-          <div class="settings-type-grid" id="filter-media-grid"></div>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-1">
-          <input type="checkbox" name="global.message_filter.enabled" class="w-4 h-4">
-          <span data-i18n="settings.enabled">启用</span>
+      <h4 class="settings-section-title" data-i18n="settings.messageFilter">
+        消息过滤
+      </h4>
+      <div class="mb-3">
+        <span class="form-label" data-i18n="settings.mediaTypes"
+          >允许的媒体类型</span
+        >
+        <span
+          class="text-xs text-muted ml-1"
+          data-i18n="settings.mediaTypesHint"
+          >（适用于全部下载/转发路径；勾选 = 允许，未勾选将被忽略）</span
+        >
+        <div class="settings-type-grid" id="filter-media-grid"></div>
+      </div>
+      <label
+        class="flex items-center gap-2 text-sm text-text cursor-pointer mb-1"
+      >
+        <input
+          type="checkbox"
+          name="global.message_filter.enabled"
+          class="w-4 h-4"
+        />
+        <span data-i18n="settings.enabled">启用</span>
+      </label>
+      <p class="text-xs text-muted mb-3" data-i18n="settings.filterEnabledHint">
+        仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。
+      </p>
+      <div class="mb-3">
+        <label
+          class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2"
+        >
+          <input
+            type="checkbox"
+            name="global.message_filter.date_range.enabled"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.dateRange">日期范围过滤</span>
         </label>
-        <p class="text-xs text-muted mb-3" data-i18n="settings.filterEnabledHint">仅控制日期范围与关键词过滤；媒体类型始终按上方白名单生效。</p>
-        <div class="mb-3">
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
-            <input type="checkbox" name="global.message_filter.date_range.enabled" class="w-4 h-4">
-            <span data-i18n="settings.dateRange">日期范围过滤</span>
-          </label>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" data-i18n="settings.startDate">起始日期</label>
-              <input class="form-input" name="global.message_filter.date_range.start_date" type="datetime-local">
-            </div>
-            <div class="form-group">
-              <label class="form-label" data-i18n="settings.endDate">结束日期</label>
-              <input class="form-input" name="global.message_filter.date_range.end_date" type="datetime-local">
-            </div>
-          </div>
-        </div>
-        <div>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2">
-            <input type="checkbox" name="global.message_filter.keywords.enabled" class="w-4 h-4">
-            <span data-i18n="settings.keywords">关键词过滤</span>
-          </label>
+        <div class="form-row">
           <div class="form-group">
-            <label class="form-label" data-i18n="settings.keywordList">关键词列表（逗号分隔）</label>
-            <input class="form-input" name="global.message_filter.keywords.words" data-i18n-placeholder="settings.keywordPlaceholder" placeholder="广告,推广,赞助">
+            <label class="form-label" data-i18n="settings.startDate"
+              >起始日期</label
+            >
+            <input
+              class="form-input"
+              name="global.message_filter.date_range.start_date"
+              type="datetime-local"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="settings.endDate"
+              >结束日期</label
+            >
+            <input
+              class="form-input"
+              name="global.message_filter.date_range.end_date"
+              type="datetime-local"
+            />
           </div>
         </div>
-      </section>
+      </div>
+      <div>
+        <label
+          class="flex items-center gap-2 text-sm text-text cursor-pointer mb-2"
+        >
+          <input
+            type="checkbox"
+            name="global.message_filter.keywords.enabled"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.keywords">关键词过滤</span>
+        </label>
+        <div class="form-group">
+          <label class="form-label" data-i18n="settings.keywordList"
+            >关键词列表（逗号分隔）</label
+          >
+          <input
+            class="form-input"
+            name="global.message_filter.keywords.words"
+            data-i18n-placeholder="settings.keywordPlaceholder"
+            placeholder="广告,推广,赞助"
+          />
+        </div>
+      </div>
+    </section>
 
     <!-- Export Tables -->
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.forwardWatchBackup">监听转发备份</h4>
-      <p class="text-xs text-muted mb-2" data-i18n="settings.forwardWatchBackupHint">导出监听转发规则，迁移时可直接导入，无需逐条手动录入。</p>
+      <h4
+        class="settings-section-title"
+        data-i18n="settings.forwardWatchBackup"
+      >
+        监听转发备份
+      </h4>
+      <p
+        class="text-xs text-muted mb-2"
+        data-i18n="settings.forwardWatchBackupHint"
+      >
+        导出监听转发规则，迁移时可直接导入，无需逐条手动录入。
+      </p>
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="btn btn-sm" id="forward-watch-export-btn" data-i18n="settings.forwardWatchExport">导出 JSON</button>
+        <button
+          type="button"
+          class="btn btn-sm"
+          id="forward-watch-export-btn"
+          data-i18n="settings.forwardWatchExport"
+        >
+          导出 JSON
+        </button>
         <label class="btn btn-sm btn-secondary cursor-pointer">
           <span data-i18n="settings.forwardWatchImport">导入 JSON</span>
-          <input type="file" id="forward-watch-import-input" accept=".json,application/json" hidden>
+          <input
+            type="file"
+            id="forward-watch-import-input"
+            accept=".json,application/json"
+            hidden
+          />
         </label>
       </div>
       <div id="forward-watch-import-notice" class="text-xs hidden mt-2"></div>
     </section>
 
     <section class="settings-section">
-      <h4 class="settings-section-title" data-i18n="settings.exports">导出表格</h4>
+      <h4 class="settings-section-title" data-i18n="settings.exports">
+        导出表格
+      </h4>
       <div class="settings-type-grid">
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.export_table.link" class="w-4 h-4">
-            <span data-i18n="settings.exportLink">链接统计表</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.export_table.count" class="w-4 h-4">
-            <span data-i18n="settings.exportCount">计数统计表</span>
-          </label>
-          <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-            <input type="checkbox" name="global.export_table.upload" class="w-4 h-4">
-            <span data-i18n="settings.exportUpload">上传统计表</span>
-          </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input
+            type="checkbox"
+            name="global.export_table.link"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.exportLink">链接统计表</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input
+            type="checkbox"
+            name="global.export_table.count"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.exportCount">计数统计表</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
+          <input
+            type="checkbox"
+            name="global.export_table.upload"
+            class="w-4 h-4"
+          />
+          <span data-i18n="settings.exportUpload">上传统计表</span>
+        </label>
       </div>
     </section>
 
     <div class="settings-footer">
       <div id="settings-notice" class="text-xs hidden"></div>
       <button class="btn btn-primary" id="settings-save">
-        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12l4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+          <path
+            d="M5 12l4 4L19 6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
         <span data-i18n="settings.save">保存设置</span>
       </button>
     </div>

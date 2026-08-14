@@ -19,10 +19,11 @@ from rich.logging import RichHandler
 
 
 def read_input_history(history_path: str, max_record_len: int, **kwargs) -> None:
-    if kwargs.get('platform') == 'Windows':
+    if kwargs.get("platform") == "Windows":
         # 尝试读取历史记录文件。
         import readline
-        readline.backend = 'readline'
+
+        readline.backend = "readline"
         try:
             readline.read_history_file(history_path)
         except FileNotFoundError:
@@ -33,9 +34,20 @@ def read_input_history(history_path: str, max_record_len: int, **kwargs) -> None
         atexit.register(readline.write_history_file, history_path)
 
 
-def via_log_level(log_level: str, param_name: str, default_level: int = logging.INFO) -> bool:
-    if log_level not in ['CRITICAL', 'FATAL', 'ERROR', 'WARN', 'WARNING', 'INFO', 'DEBUG', 'NOTSET']:
-        with open(file=GLOBAL_CONFIG_PATH, mode='w', encoding='UTF-8') as file:
+def via_log_level(
+    log_level: str, param_name: str, default_level: int = logging.INFO
+) -> bool:
+    if log_level not in [
+        "CRITICAL",
+        "FATAL",
+        "ERROR",
+        "WARN",
+        "WARNING",
+        "INFO",
+        "DEBUG",
+        "NOTSET",
+    ]:
+        with open(file=GLOBAL_CONFIG_PATH, mode="w", encoding="UTF-8") as file:
             global_config[param_name] = logging.getLevelName(default_level)
             yaml.dump(global_config, file)
         return False
@@ -43,52 +55,57 @@ def via_log_level(log_level: str, param_name: str, default_level: int = logging.
 
 
 class CustomDumper(yaml.Dumper):
-
     def represent_none(self, data):
         """自定义将yaml文件中None表示为~。"""
-        return self.represent_scalar('tag:yaml.org,2002:null', '~')
+        return self.represent_scalar("tag:yaml.org,2002:null", "~")
 
 
-LOG_TIME_FORMAT = '[%Y-%m-%d %H:%M:%S]'
+LOG_TIME_FORMAT = "[%Y-%m-%d %H:%M:%S]"
 console = Console(log_path=False, log_time_format=LOG_TIME_FORMAT)
 SLEEP_THRESHOLD = 60
-AUTHOR = 'Gentlesprite'
-__version__ = '0.2.239'
-__license__ = 'MIT License'
-__update_date__ = '2026/08/12 20:24:00'
-__copyright__ = f'Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>'
-SOFTWARE_FULL_NAME = 'Telegram Restricted Media Downloader'
-SOFTWARE_SHORT_NAME = 'TRMD'
+AUTHOR = "Gentlesprite"
+__version__ = "0.2.240"
+__license__ = "MIT License"
+__update_date__ = "2026/08/12 20:24:00"
+__copyright__ = f"Copyright (C) 2024-{__update_date__[:4]} {AUTHOR} <https://github.com/Gentlesprite>"
+SOFTWARE_FULL_NAME = "Telegram Restricted Media Downloader"
+SOFTWARE_SHORT_NAME = "TRMD"
 APPDATA_PATH = os.path.join(
-    os.environ.get('APPDATA') or os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
-    SOFTWARE_SHORT_NAME)
-GLOBAL_CONFIG_NAME = '.CONFIG.yaml'
+    os.environ.get("APPDATA")
+    or os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    SOFTWARE_SHORT_NAME,
+)
+GLOBAL_CONFIG_NAME = ".CONFIG.yaml"
 GLOBAL_CONFIG_PATH = os.path.join(APPDATA_PATH, GLOBAL_CONFIG_NAME)
 PLATFORM = platform.system()
 os.makedirs(APPDATA_PATH, exist_ok=True)  # v1.2.6修复初次运行打开报错问题。
-INPUT_HISTORY_PATH = os.path.join(APPDATA_PATH, f'.{SOFTWARE_SHORT_NAME}_HISTORY')
+INPUT_HISTORY_PATH = os.path.join(APPDATA_PATH, f".{SOFTWARE_SHORT_NAME}_HISTORY")
 MAX_RECORD_LENGTH = 1000
-read_input_history(history_path=INPUT_HISTORY_PATH, max_record_len=MAX_RECORD_LENGTH, platform=PLATFORM)
+read_input_history(
+    history_path=INPUT_HISTORY_PATH, max_record_len=MAX_RECORD_LENGTH, platform=PLATFORM
+)
 # 配置日志输出到文件
-LOG_PATH = os.path.join(APPDATA_PATH, f'{SOFTWARE_SHORT_NAME}_LOG.log')
+LOG_PATH = os.path.join(APPDATA_PATH, f"{SOFTWARE_SHORT_NAME}_LOG.log")
 LOG_RETENTION_DAYS = 3
 LOG_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 _log_cleanup_thread_started = False
 _log_cleanup_lock = threading.Lock()
 LINK_PREVIEW_OPTIONS = LinkPreviewOptions(is_disabled=True)
-LOG_FORMAT = '%(name)s:%(funcName)s:%(lineno)d - %(message)s'
+LOG_FORMAT = "%(name)s:%(funcName)s:%(lineno)d - %(message)s"
 FILE_LOG_LEVEL: int = logging.INFO
 CONSOLE_LOG_LEVEL: int = logging.WARNING
 
 
 def cleanup_old_log_files(
-        log_path: str = LOG_PATH,
-        retention_days: int = LOG_RETENTION_DAYS,
-        now: float | None = None
+    log_path: str = LOG_PATH,
+    retention_days: int = LOG_RETENTION_DAYS,
+    now: float | None = None,
 ) -> int:
-    cutoff = (time.time() if now is None else now) - max(0, retention_days) * 24 * 60 * 60
+    cutoff = (time.time() if now is None else now) - max(
+        0, retention_days
+    ) * 24 * 60 * 60
     removed = 0
-    for candidate in glob(f'{log_path}.*'):
+    for candidate in glob(f"{log_path}.*"):
         if not os.path.isfile(candidate):
             continue
         try:
@@ -101,9 +118,9 @@ def cleanup_old_log_files(
 
 
 def start_periodic_log_cleanup(
-        log_path: str = LOG_PATH,
-        retention_days: int = LOG_RETENTION_DAYS,
-        interval_seconds: int = LOG_CLEANUP_INTERVAL_SECONDS,
+    log_path: str = LOG_PATH,
+    retention_days: int = LOG_RETENTION_DAYS,
+    interval_seconds: int = LOG_CLEANUP_INTERVAL_SECONDS,
 ) -> None:
     """Start a daemon thread that removes rotated log files daily."""
     global _log_cleanup_thread_started
@@ -122,7 +139,7 @@ def start_periodic_log_cleanup(
 
     threading.Thread(
         target=_loop,
-        name='trmd-log-cleanup',
+        name="trmd-log-cleanup",
         daemon=True,
     ).start()
 
@@ -131,22 +148,34 @@ cleanup_old_log_files()
 # 配置日志文件处理器(文件记录)
 file_handler = TimedRotatingFileHandler(
     filename=LOG_PATH,
-    when='midnight',
+    when="midnight",
     interval=1,
     backupCount=LOG_RETENTION_DAYS,
-    encoding='UTF-8'
+    encoding="UTF-8",
 )
-file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s' + ' ' + LOG_FORMAT, datefmt=LOG_TIME_FORMAT))
+file_handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s %(levelname)-8s" + " " + LOG_FORMAT, datefmt=LOG_TIME_FORMAT
+    )
+)
 
 if os.path.exists(GLOBAL_CONFIG_PATH):
     try:
-        with open(file=GLOBAL_CONFIG_PATH, mode='r', encoding='UTF-8') as f:
+        with open(file=GLOBAL_CONFIG_PATH, mode="r", encoding="UTF-8") as f:
             global_config = yaml.safe_load(f)
-        file_log_level: str = global_config.get('file_log_level')
-        console_log_level: str = global_config.get('console_log_level')
-        if via_log_level(log_level=file_log_level, param_name='file_log_level', default_level=logging.INFO):
+        file_log_level: str = global_config.get("file_log_level")
+        console_log_level: str = global_config.get("console_log_level")
+        if via_log_level(
+            log_level=file_log_level,
+            param_name="file_log_level",
+            default_level=logging.INFO,
+        ):
             FILE_LOG_LEVEL: int = logging.getLevelName(file_log_level)
-        if via_log_level(log_level=console_log_level, param_name='console_log_level', default_level=logging.WARNING):
+        if via_log_level(
+            log_level=console_log_level,
+            param_name="console_log_level",
+            default_level=logging.WARNING,
+        ):
             CONSOLE_LOG_LEVEL: int = logging.getLevelName(console_log_level)
     except Exception:
         pass
@@ -160,7 +189,7 @@ console_handler = RichHandler(
     rich_tracebacks=True,
     show_path=False,
     omit_repeated_times=True,
-    log_time_format=LOG_TIME_FORMAT
+    log_time_format=LOG_TIME_FORMAT,
 )
 # 配置日志记录器(根记录器设置为最低级别 DEBUG)
 logging.basicConfig(
@@ -169,16 +198,16 @@ logging.basicConfig(
     datefmt=LOG_TIME_FORMAT,
     handlers=[
         console_handler,  # 控制台:WARNING+
-        file_handler  # 文件:INFO+
-    ]
+        file_handler,  # 文件:INFO+
+    ],
 )
-log = logging.getLogger('rich')
-log.info(f'{SOFTWARE_SHORT_NAME}:{__version__},更新日期:{__update_date__}。')
+log = logging.getLogger("rich")
+log.info(f"{SOFTWARE_SHORT_NAME}:{__version__},更新日期:{__update_date__}。")
 log.info(f'文件日志等级:"{logging.getLevelName(FILE_LOG_LEVEL)}"。')
 log.info(f'终端日志等级:"{logging.getLevelName(CONSOLE_LOG_LEVEL)}"。')
 start_periodic_log_cleanup()
 CustomDumper.add_representer(type(None), CustomDumper.represent_none)
-README = r'''
+README = r"""
 ```yaml
 api_hash: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx # 申请的api_hash。
 api_id: 'xxxxxxxx' # 申请的api_id。
@@ -227,4 +256,4 @@ save_directory: F:\directory\media\where\you\save # 下载的媒体保存的目�
 session_directory: F:\directory\session\where\you\save # 会话的保存目录（支持通配符）。
 temp_directory: F:\directory\temp\where\you\save # 缓存保存的目录（支持通配符）。
 ```
-'''
+"""

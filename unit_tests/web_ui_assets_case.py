@@ -338,7 +338,10 @@ class WebUiAssetsCase(unittest.TestCase):
     def test_media_cleanup_button_stays_in_header(self):
         self.assertIn('id="media-actions"', WEB_UI_HTML)
         self.assertIn('id="media-cleanup-btn"', WEB_UI_HTML)
-        self.assertIn('disabled data-i18n="media.cleanup"', WEB_UI_HTML)
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'<button[^>]*id="media-cleanup-btn"[^>]*disabled[^>]*data-i18n="media\.cleanup"[^>]*>',
+        )
         self.assertIn("function updateMediaCleanupButton", WEB_UI_HTML)
         self.assertIn("document.addEventListener('change', function(e) {", WEB_UI_HTML)
         self.assertNotIn('id="media-cleanup-actions"', WEB_UI_HTML)

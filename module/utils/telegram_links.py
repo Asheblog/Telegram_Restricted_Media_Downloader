@@ -18,14 +18,14 @@ from urllib.parse import parse_qs, urlparse
 
 from module.core.enums import Link
 
-TELEGRAM_HOSTS = frozenset({'t.me', 'telegram.me', 'telegram.dog'})
+TELEGRAM_HOSTS = frozenset({"t.me", "telegram.me", "telegram.dog"})
 
 
 def is_telegram_host(host: str | None) -> bool:
     """True when ``host`` is a Telegram link host (ignores a leading ``www.``)."""
     if not host:
         return False
-    return host.lower().removeprefix('www.') in TELEGRAM_HOSTS
+    return host.lower().removeprefix("www.") in TELEGRAM_HOSTS
 
 
 def normalize_telegram_link(text: str) -> str | None:
@@ -34,29 +34,29 @@ def normalize_telegram_link(text: str) -> str | None:
     Accepts ``t.me/…``, ``telegram.me/…``, ``www.…`` and ``http://`` variants;
     strips query strings; rejects non-Telegram hosts.
     """
-    raw = (text or '').strip()
+    raw = (text or "").strip()
     if not raw:
         return None
-    if raw.startswith('http://'):
-        raw = 'https://' + raw[7:]
-    elif not raw.startswith('https://'):
-        if raw.startswith(('t.me/', 'telegram.me/', 'telegram.dog/', 'www.')):
-            raw = 'https://' + raw
+    if raw.startswith("http://"):
+        raw = "https://" + raw[7:]
+    elif not raw.startswith("https://"):
+        if raw.startswith(("t.me/", "telegram.me/", "telegram.dog/", "www.")):
+            raw = "https://" + raw
         else:
             return None
-    if '?' in raw:
-        raw = raw.split('?', 1)[0]
+    if "?" in raw:
+        raw = raw.split("?", 1)[0]
     try:
         parsed = urlparse(raw)
     except ValueError:
         return None
-    host = parsed.netloc.lower().removeprefix('www.')
+    host = parsed.netloc.lower().removeprefix("www.")
     if host not in TELEGRAM_HOSTS:
         return None
-    path = parsed.path.rstrip('/')
-    if not path or path == '/':
+    path = parsed.path.rstrip("/")
+    if not path or path == "/":
         return None
-    return f'https://{host}{path}'
+    return f"https://{host}{path}"
 
 
 def telegram_path_parts(link: str | None) -> list[str]:
@@ -71,7 +71,7 @@ def telegram_path_parts(link: str | None) -> list[str]:
     # behavior; a present-but-foreign netloc is rejected.
     if parsed.netloc and not is_telegram_host(parsed.netloc):
         return []
-    return [part for part in parsed.path.split('/') if part]
+    return [part for part in parsed.path.split("/") if part]
 
 
 def channel_username_from_link(link: str | None) -> str | None:
@@ -81,7 +81,7 @@ def channel_username_from_link(link: str | None) -> str | None:
     to use as a folder name.
     """
     parts = telegram_path_parts(link)
-    if not parts or parts[0] == 'c':
+    if not parts or parts[0] == "c":
         return None
     return parts[0]
 
@@ -94,7 +94,7 @@ def message_id_from_telegram_link(link: str | None) -> int | None:
     if not parts:
         return None
     try:
-        if parts[0] == 'c':
+        if parts[0] == "c":
             if len(parts) >= 4 and parts[3].isdigit():
                 return int(parts[3])
             if len(parts) >= 3 and parts[2].isdigit():
@@ -109,12 +109,12 @@ def message_id_from_telegram_link(link: str | None) -> int | None:
     return None
 
 
-def _as_int(value, *, prefix: str = '') -> int:
+def _as_int(value, *, prefix: str = "") -> int:
     """Coerce a numeric path/query segment; raises ``ValueError`` on non-numeric."""
     try:
-        return int(f'{prefix}{value}')
+        return int(f"{prefix}{value}")
     except (TypeError, ValueError) as exc:
-        raise ValueError(f'invalid numeric link segment: {value!r}') from exc
+        raise ValueError(f"invalid numeric link segment: {value!r}") from exc
 
 
 def extract_info_from_link(link: str) -> Link:
@@ -124,39 +124,39 @@ def extract_info_from_link(link: str) -> Link:
     public/private channel and topic layouts). Raises ``ValueError`` on
     malformed numeric segments, which ``parse_link`` surfaces as an invalid link.
     """
-    if link in ('me', 'self'):
+    if link in ("me", "self"):
         return Link(group_id=link)
 
     try:
         u = urlparse(link)
-        paths = [p for p in u.path.split('/') if p]
+        paths = [p for p in u.path.split("/") if p]
         query = parse_qs(u.query)
     except ValueError:
         return Link()
 
     result = Link()
 
-    if 'comment' in query:
+    if "comment" in query:
         result.group_id = paths[0]
-        result.comment_id = _as_int(query['comment'][0])
-    elif len(paths) == 1 and paths[0] != 'c':
+        result.comment_id = _as_int(query["comment"][0])
+    elif len(paths) == 1 and paths[0] != "c":
         result.group_id = paths[0]
     elif len(paths) == 2:
-        if paths[0] == 'c':
-            result.group_id = _as_int(paths[1], prefix='-100')
+        if paths[0] == "c":
+            result.group_id = _as_int(paths[1], prefix="-100")
         else:
             result.group_id = paths[0]
             result.post_id = _as_int(paths[1])
     elif len(paths) == 3:
-        if paths[0] == 'c':
-            result.group_id = _as_int(paths[1], prefix='-100')
+        if paths[0] == "c":
+            result.group_id = _as_int(paths[1], prefix="-100")
             result.post_id = _as_int(paths[2])
         else:
             result.group_id = paths[0]
             result.topic_id = _as_int(paths[1])
             result.post_id = _as_int(paths[2])
-    elif len(paths) == 4 and paths[0] == 'c':
-        result.group_id = _as_int(paths[1], prefix='-100')
+    elif len(paths) == 4 and paths[0] == "c":
+        result.group_id = _as_int(paths[1], prefix="-100")
         result.topic_id = _as_int(paths[2])
         result.post_id = _as_int(paths[3])
 
@@ -173,10 +173,10 @@ def to_channel_root(link: str) -> str | None:
         return None
     if isinstance(info.group_id, int):
         internal = str(info.group_id)
-        if internal.startswith('-100'):
+        if internal.startswith("-100"):
             internal = internal[4:]
-        return f'https://t.me/c/{internal}'
-    return f'https://t.me/{info.group_id}'
+        return f"https://t.me/c/{internal}"
+    return f"https://t.me/{info.group_id}"
 
 
 def extract_post_id(link: str) -> int | None:
@@ -192,4 +192,4 @@ def channels_match(channel_link: str, message_link: str) -> bool:
     """True when both links resolve to the same channel root."""
     left = to_channel_root(channel_link)
     right = to_channel_root(message_link)
-    return bool(left and right and left.rstrip('/') == right.rstrip('/'))
+    return bool(left and right and left.rstrip("/") == right.rstrip("/"))
