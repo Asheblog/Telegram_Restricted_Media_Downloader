@@ -994,16 +994,16 @@
             <span class="text-xs text-muted" data-i18n="settings.pikpakAccountLimit" data-pikpak-account-limit>最多可绑定 5 个 PikPak 账号。</span>
           </div>
           <div id="pikpak-accounts-list" class="mb-2"></div>
-          <div class="flex flex-wrap gap-2" style="align-items:flex-end;">
-            <div class="form-group">
+          <div class="form-row items-end" style="grid-template-columns: 1fr 1fr auto;">
+            <div class="form-group mb-0">
               <label class="form-label" data-i18n="settings.pikpakAccountUsername">PikPak 账号</label>
               <input class="form-input" id="pikpak-account-user" type="text" autocomplete="username" placeholder="邮箱或手机号">
             </div>
-            <div class="form-group">
+            <div class="form-group mb-0">
               <label class="form-label" data-i18n="settings.pikpakAccountPassword">PikPak 密码</label>
               <input class="form-input" id="pikpak-account-pass" type="password" autocomplete="current-password" placeholder="密码">
             </div>
-            <button type="button" class="btn" id="pikpak-account-add-btn" data-i18n="settings.pikpakAccountAdd">添加账号</button>
+            <button type="button" class="btn btn-primary h-10" id="pikpak-account-add-btn" data-i18n="settings.pikpakAccountAdd">添加账号</button>
           </div>
         </div>
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer mb-3">

@@ -2125,7 +2125,7 @@ function pikpakAccountsMarkup(data) {
   }
   return warning + accounts.map(function(a) {
     var badges = '';
-    if (a.active) badges += '<span class="badge" style="margin-left:6px;">' + esc(t('settings.pikpakAccountActive')) + '</span>';
+    if (a.active) badges += '<span class="badge badge-success" style="margin-left:6px;">' + esc(t('settings.pikpakAccountActive')) + '</span>';
     if (a.missing) badges += '<span class="badge badge-failed" style="margin-left:6px;">' + esc(t('settings.pikpakAccountMissing')) + '</span>';
     var actions = '';
     if (a.active) {
