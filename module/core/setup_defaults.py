@@ -5,6 +5,7 @@ Moved out of ``adapters.webui.setup`` so ``core`` no longer depends on the
 webui adapter (layering inversion fix, arch-decouple Phase 2a). The webui
 setup module re-exports these for back-compat.
 """
+
 import os
 
 
@@ -35,7 +36,13 @@ def apply_web_safe_user_defaults(config: dict) -> dict:
         config["temp_directory"] = dirs["temp_directory"]
     if not config.get("download_type"):
         config["download_type"] = [
-            "video", "photo", "document", "audio", "voice", "animation", "video_note"
+            "video",
+            "photo",
+            "document",
+            "audio",
+            "voice",
+            "animation",
+            "video_note",
         ]
     if config.get("is_shutdown") is None:
         config["is_shutdown"] = False

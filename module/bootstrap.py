@@ -5,6 +5,7 @@ Importing this module is side-effect-free. Call :func:`initialize` once at the
 process entry point (and from the composition root as an idempotent fallback)
 to reproduce the historical behaviour of ``import module``.
 """
+
 import atexit
 import logging
 import os
@@ -156,13 +157,13 @@ def initialize() -> None:
     # 配置日志文件处理器(文件记录)
     file_log_level = logging.getLevelName(logging.INFO)
     console_log_level = logging.getLevelName(CONSOLE_LOG_LEVEL)
+    file_log_level_name = file_log_level
+    console_log_level_name = console_log_level
     if os.path.exists(GLOBAL_CONFIG_PATH):
         try:
             with open(file=GLOBAL_CONFIG_PATH, encoding="UTF-8") as f:
                 global_config = yaml.safe_load(f) or {}
-            file_log_level_str = cast(
-                "str | None", global_config.get("file_log_level")
-            )
+            file_log_level_str = cast("str | None", global_config.get("file_log_level"))
             console_log_level_str = cast(
                 "str | None", global_config.get("console_log_level")
             )
@@ -172,6 +173,7 @@ def initialize() -> None:
                 global_config=global_config,
                 default_level=logging.INFO,
             ):
+                file_log_level_name = file_log_level_str
                 file_log_level = logging.getLevelName(file_log_level_str)
             if via_log_level(
                 log_level=console_log_level_str,
@@ -179,6 +181,7 @@ def initialize() -> None:
                 global_config=global_config,
                 default_level=logging.WARNING,
             ):
+                console_log_level_name = console_log_level_str
                 console_log_level = logging.getLevelName(console_log_level_str)
         except Exception:
             pass
@@ -217,8 +220,8 @@ def initialize() -> None:
         ],
     )
     log.info(f"{SOFTWARE_SHORT_NAME}:{__version__},更新日期:{__update_date__}。")
-    log.info(f'文件日志等级:"{logging.getLevelName(file_log_level)}"。')
-    log.info(f'终端日志等级:"{logging.getLevelName(console_log_level)}"。')
+    log.info(f'文件日志等级:"{file_log_level_name}"。')
+    log.info(f'终端日志等级:"{console_log_level_name}"。')
     start_periodic_log_cleanup()
     CustomDumper.add_representer(type(None), CustomDumper.represent_none)
 

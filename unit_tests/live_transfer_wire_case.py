@@ -105,10 +105,10 @@ class LiveTransferWireCase(unittest.TestCase):
         from module.composition_root import TrmdCompositionRoot
 
         src = inspect.getsource(TrmdCompositionRoot.__init__)
-        self.assertIn("'handle_forwarded_media': self.handle_forwarded_media", src)
-        self.assertIn("'on_listen': self.on_listen", src)
-        self.assertIn("'start': self.start", src)
-        self.assertIn("'callback_data': self.callback_data", src)
+        self.assertIn('"handle_forwarded_media": self.handle_forwarded_media', src)
+        self.assertIn('"on_listen": self.on_listen', src)
+        self.assertIn('"start": self.start', src)
+        self.assertIn('"callback_data": self.callback_data', src)
         self.assertIn('LiveTransferService(host=self)', src)
 
     def test_bot_resolved_handler_prefers_host_overrides(self):

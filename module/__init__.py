@@ -6,6 +6,7 @@ creation, file I/O, or thread spawning. Runtime side effects are performed by
 ``module.bootstrap.initialize`` (idempotent), invoked from the process entry
 point and the composition root. See ``docs/specs/arch-decouple-phases.md``.
 """
+
 import yaml  # noqa: F401  (re-exported for back-compat: ``from module import yaml``)
 
 from module.bootstrap import (  # noqa: F401

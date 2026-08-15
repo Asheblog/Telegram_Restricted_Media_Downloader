@@ -7,7 +7,7 @@ from module.bootstrap import initialize
 from module.downloader import TelegramRestrictedMediaDownloader
 from module.util import check_environ
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     initialize()
     check_environ()
     trmd = TelegramRestrictedMediaDownloader()

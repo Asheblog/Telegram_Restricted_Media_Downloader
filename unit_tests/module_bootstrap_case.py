@@ -1,5 +1,6 @@
 # coding=UTF-8
 """Phase 1 回归：import module 零副作用 + bootstrap.initialize 幂等。"""
+
 import os
 import subprocess
 import sys
@@ -44,6 +45,25 @@ class ModuleBootstrapCase(unittest.TestCase):
         self.assertIn("LOG_EXISTS False", result.stdout)
         self.assertIn("THREADS []", result.stdout)
         self.assertIn(f"VERSION {__version__}", result.stdout)
+
+    def test_initialize_first_run_banner_uses_level_names(self):
+        """无 .CONFIG.yaml 时，启动横幅应打印 INFO/WARNING，而不是 20/30。"""
+        code = (
+            "from module.bootstrap import initialize\n"
+            "from module.constants import LOG_PATH\n"
+            "initialize()\n"
+            "text = open(LOG_PATH, encoding='UTF-8').read()\n"
+            "print('HAS_INFO', '文件日志等级:\"INFO\"' in text)\n"
+            "print('HAS_WARNING', '终端日志等级:\"WARNING\"' in text)\n"
+            "print('HAS_20', '文件日志等级:\"20\"' in text)\n"
+            "print('HAS_30', '终端日志等级:\"30\"' in text)\n"
+        )
+        result = _run_isolated(code)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("HAS_INFO True", result.stdout)
+        self.assertIn("HAS_WARNING True", result.stdout)
+        self.assertIn("HAS_20 False", result.stdout)
+        self.assertIn("HAS_30 False", result.stdout)
 
     def test_initialize_is_idempotent(self):
         """重复调用 initialize 不应重复配置日志 handler 或线程。"""

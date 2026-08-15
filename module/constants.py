@@ -5,6 +5,7 @@ Importing this module must not perform any I/O, create directories, open file
 handles, or start threads. All runtime side effects live in
 ``module.bootstrap.initialize()``.
 """
+
 import logging
 import os
 import platform
