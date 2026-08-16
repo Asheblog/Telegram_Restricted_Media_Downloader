@@ -9,7 +9,7 @@ from typing import Optional
 import pyrogram
 
 from module.core import media_types as media_types_mod
-from module.source_folders import MEDIA_FILE_NAME_ATTRS
+from module.domain.archive_naming.source_folders import MEDIA_FILE_NAME_ATTRS
 
 
 def message_keyword_scan_text(message: pyrogram.types.Message) -> str:

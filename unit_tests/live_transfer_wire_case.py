@@ -110,6 +110,11 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertIn('"start": self.start', src)
         self.assertIn('"callback_data": self.callback_data', src)
         self.assertIn('LiveTransferService(host=self)', src)
+        self.assertIn('self._transfer_ports = self._build_transfer_ports()', src)
+
+        class_src = inspect.getsource(TrmdCompositionRoot)
+        self.assertNotIn('def __getattr__', class_src)
+        self.assertNotIn('TransferPorts.from_host', src)
 
     def test_bot_resolved_handler_prefers_host_overrides(self):
         """Regression: without overrides, /listen_* stayed on Bot.on_listen (meta discarded)."""

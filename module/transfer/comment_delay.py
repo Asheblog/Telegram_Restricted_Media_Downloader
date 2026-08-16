@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any, Awaitable, Callable, Optional
 
-from module.transfer_store import DeferredDiscussionCaptureStatus
+from module.persistence.transfer_store import DeferredDiscussionCaptureStatus
 
 log = logging.getLogger('logger_stdout')
 

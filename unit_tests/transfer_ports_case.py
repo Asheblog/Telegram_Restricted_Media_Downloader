@@ -50,49 +50,10 @@ class TransferPortsCase(unittest.TestCase):
         ):
             self.assertNotIn(dead, flat_names)
 
-    def test_from_host_wires_clusters_from_host_methods(self):
+    def test_transfer_ports_no_longer_reflect_over_host_attributes(self):
         from module.transfer.context import TransferPorts
 
-        host = SimpleNamespace(
-            env_save_directory=lambda *a, **kw: '/save',
-            get_final_save_directory=lambda *a, **kw: '/final',
-            get_final_file_path=lambda *a, **kw: '/final/f.bin',
-            infer_target_profile=lambda *a, **kw: 'pikpak',
-            normalize_download_upload_meta=lambda wu: {**wu, 'normalized': True},
-            is_pikpak_target=lambda *a, **kw: True,
-            build_transfer_upload_meta=lambda *a, **kw: {'meta': 1},
-            record_transfer_download_success=lambda **kw: 'recorded',
-            on_transfer_file_ready=lambda *a, **kw: 7,
-            on_transfer_item_skipped=lambda *a, **kw: None,
-            on_transfer_item_failed=lambda *a, **kw: None,
-            on_transfer_upload_progress=lambda *a, **kw: None,
-            on_transfer_upload_status=lambda *a, **kw: None,
-            release_download_upload_window=lambda wu: setattr(wu, 'released', True) if False else None,
-            release_transfer_local_storage=lambda wu: None,
-            mark_transfer_local_storage_materialized=lambda wu: None,
-            ensure_uploader=lambda: 'uploader',
-            build_bot_transfer_progress_text=lambda *a, **kw: 'text',
-            schedule_bot_transfer_progress_update=lambda *a, **kw: None,
-            bot_task_link={'https://t.me/x/1'},
-            queue=SimpleNamespace(task_done=lambda: None),
-            pb=SimpleNamespace(progress=SimpleNamespace(remove_task=lambda **kw: None)),
-            event=SimpleNamespace(set=lambda: None),
-            create_download_task=lambda **kw: {'ok': True},
-            detect_transfer_range_async=lambda link: ('a', 'b'),
-        )
-
-        ports = TransferPorts.from_host(host)
-
-        self.assertEqual('/save', ports.paths.env_save_directory())
-        self.assertEqual('pikpak', ports.target.infer_target_profile('x'))
-        self.assertTrue(ports.target.is_pikpak_target('x'))
-        self.assertEqual(7, ports.progress.on_transfer_file_ready('p', {}))
-        self.assertEqual('text', ports.progress.build_bot_transfer_progress_text({}))
-        self.assertIs(host.bot_task_link, ports.runtime.bot_task_link())
-        self.assertEqual('uploader', ports.runtime.ensure_uploader())
-        self.assertIs(host.queue, ports.runtime.queue())
-        self.assertIs(host.pb.progress, ports.runtime.pb_progress())
-        self.assertIs(host.event, ports.runtime.event())
+        self.assertFalse(hasattr(TransferPorts, "from_host"))
 
     def test_engine_build_download_upload_meta_uses_progress_cluster(self):
         """Behaviour lock: TransferEngine still wires upload callbacks via ports.progress."""

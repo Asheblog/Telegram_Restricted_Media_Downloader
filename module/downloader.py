@@ -59,24 +59,24 @@ from module import (
     LINK_PREVIEW_OPTIONS,
     SLEEP_THRESHOLD
 )
-from module.filter import Filter, MessageFilter
-from module.app import Application
-from module.app import DownloadFileName
-from module.config import GlobalConfig, UserConfig
-from module.parser import PARSE_ARGS
-from module.async_window import DynamicAsyncWindow
-from module.diagnostics import RichDiagnosticAdapter
-from module.local_storage_guard import LocalStorageGuard
-from module.media_manager import MediaManager
-from module.web_task_manager import WebUITaskManager
-from module.live_watch_manager import LiveWatchManager
-from module.bot import (
+from module.core.filter import Filter, MessageFilter
+from module.core.app import Application
+from module.core.app import DownloadFileName
+from module.core.config import GlobalConfig, UserConfig
+from module.utils.parser import PARSE_ARGS
+from module.infra.async_window import DynamicAsyncWindow
+from module.utils.diagnostics import RichDiagnosticAdapter
+from module.persistence.local_storage_guard import LocalStorageGuard
+from module.persistence.media_manager import MediaManager
+from module.adapters.webui.task_manager import WebUITaskManager
+from module.transfer.live_watch import LiveWatchManager
+from module.adapters.bot.bot import (
     Bot,
     KeyboardButton,
     CallbackData
 )
-from module.callback_handler import CallbackHandler
-from module.enums import (
+from module.adapters.bot.callback_handler import CallbackHandler
+from module.core.enums import (
     DownloadStatus,
     UploadStatus,
     LinkType,
@@ -88,8 +88,8 @@ from module.enums import (
     CalenderKeyboard,
     SaveDirectoryPrefix
 )
-from module.language import _t
-from module.path_tool import (
+from module.utils.language import _t
+from module.utils.path_tool import (
     is_file_duplicate,
     safe_delete,
     get_file_size,
@@ -101,14 +101,14 @@ from module.path_tool import (
     extract_full_extension,
     is_compressed_file
 )
-from module.target_profiles import (
+from module.core.target_profiles import (
     target_profile_limit,
     target_profile_size_error
 )
-from module.pikpak_archive import build_pikpak_archive_client
-from module.pikpak_integration import PikpakIntegrationManager
-from module.transfer_progress import TransferProgressTracker
-from module.source_folders import (
+from module.adapters.pikpak.archive import build_pikpak_archive_client
+from module.adapters.pikpak.integration import PikpakIntegrationManager
+from module.transfer.progress import TransferProgressTracker
+from module.domain.archive_naming.source_folders import (
     archive_source_folder,
     archive_source_folder_for_messages,
     join_local_source_folder,
@@ -116,12 +116,12 @@ from module.source_folders import (
     normalize_archive_title_source,
     resolve_forward_archive_source_folder,
 )
-from module.task import DownloadTask, UploadTask
-from module.transfer_store import TransferStore, TransferStatus
+from module.domain.transfer_state.models import DownloadTask, UploadTask
+from module.persistence.transfer_store import TransferStore, TransferStatus
 from module.persistence.system_log import SystemLogTracer
-from module.stdio import ProgressBar, MetaData
-from module.uploader import TelegramUploader
-from module.web_ui import (
+from module.utils.stdio import ProgressBar, MetaData
+from module.infra.uploader import TelegramUploader
+from module.adapters.webui.server import (
     WebUiServer,
     get_web_host_from_env,
     get_web_password_from_env,
@@ -129,7 +129,7 @@ from module.web_ui import (
     get_web_username_from_env,
     merge_allowed_settings
 )
-from module.util import (
+from module.utils.util import (
     is_docker,
     parse_link,
     format_chat_link,
@@ -145,15 +145,15 @@ from module.util import (
     is_allow_upload,
     iter_discussion_reply_forward_units,
 )
-from module.transfer_engine import TransferEngine
-from module.comp import TransferContext, TransferPorts
+from module.transfer.engine import TransferEngine
+from module.transfer.context import TransferContext, TransferPorts
 from module.transfer.runner import WebTransferRunner
-from module.live_watch_applicator import LiveWatchApplicator
+from module.transfer.watch_applicator import LiveWatchApplicator
 from module.transfer.live_transfer import LiveTransferService
 
 from module.composition_root import TrmdCompositionRoot
-from module.web_operations import WebOperationsMixin
-from module.bot_host import BotHostMixin
+from module.adapters.webui.operations import WebOperationsMixin
+from module.adapters.bot.host import BotHostMixin
 
 
 class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin, BotHostMixin):
@@ -518,7 +518,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
 
     @property
     def pikpak_target(self):
-        return self.pikpak_manager
+        return self._require_pikpak_manager()
 
     async def wait_for_pikpak_ingest_confirmation(
             self,
@@ -527,7 +527,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
             timeout_seconds: float = 15,
             poll_interval: float = 3
     ) -> bool:
-        return await self.pikpak_manager.wait_for_pikpak_ingest_confirmation(
+        return await self._require_pikpak_manager().wait_for_pikpak_ingest_confirmation(
             target_chat_id=target_chat_id,
             forwarded_message=forwarded_message,
             timeout_seconds=timeout_seconds,
@@ -538,19 +538,19 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         return PikpakIntegrationManager.is_pikpak_target(target_link, target_profile)
 
     def archive_pikpak_item(self, *args, **kwargs):
-        return self.pikpak_manager.archive_pikpak_item(*args, **kwargs)
+        return self._require_pikpak_manager().archive_pikpak_item(*args, **kwargs)
 
     def complete_forwarded_pikpak_item(self, *args, **kwargs) -> bool:
-        return self.pikpak_manager.complete_forwarded_pikpak_item(*args, **kwargs)
+        return self._require_pikpak_manager().complete_forwarded_pikpak_item(*args, **kwargs)
 
     def skip_empty_transfer_source_message(self, *args, **kwargs) -> int:
-        return self.pikpak_manager.skip_empty_transfer_source_message(*args, **kwargs)
+        return self._require_pikpak_manager().skip_empty_transfer_source_message(*args, **kwargs)
 
     def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]:
-        return self.pikpak_manager.get_task_target_size_limit_error(task, message)
+        return self._require_pikpak_manager().get_task_target_size_limit_error(task, message)
 
     def get_message_media_target_limit_meta(self, message, post_message_id=None) -> Optional[dict]:
-        return self.pikpak_manager.get_message_media_target_limit_meta(
+        return self._require_pikpak_manager().get_message_media_target_limit_meta(
             message,
             post_message_id=post_message_id,
         )
@@ -571,7 +571,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         return PikpakIntegrationManager.is_pikpak_ingest_failure_message(message)
 
     def fail_transfer_item(self, task_id: int, item_id: int, message: str) -> None:
-        return self.pikpak_manager.fail_transfer_item(task_id, item_id, message)
+        return self._require_pikpak_manager().fail_transfer_item(task_id, item_id, message)
 
     def get_deep_link_resolver(self):
         if getattr(self, '_deep_link_resolver', None) is None:
@@ -1062,7 +1062,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         return bool(watch.get('archive_by_author'))
 
     def _watch_archive_title_source(self, watch_id):
-        from module.source_folders import ARCHIVE_TITLE_SOURCE_AUTO
+        from module.domain.archive_naming.source_folders import ARCHIVE_TITLE_SOURCE_AUTO
         if not watch_id:
             return ARCHIVE_TITLE_SOURCE_AUTO
         store = getattr(self, 'transfer_store', None)
@@ -1275,7 +1275,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
-        from module.source_folders import extract_message_body_title
+        from module.domain.archive_naming.source_folders import extract_message_body_title
 
         return extract_message_body_title(message)
 
@@ -1294,7 +1294,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         """
         if not isinstance(messages, list):
             return
-        from module.source_folders import pick_best_message_title
+        from module.domain.archive_naming.source_folders import pick_best_message_title
 
         title = pick_best_message_title(
             messages,

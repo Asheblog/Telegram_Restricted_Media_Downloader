@@ -4,17 +4,22 @@ import datetime
 from typing import Callable, Optional, Union
 
 from module.core.app import DownloadFileName
-from module.diagnostics import RichDiagnosticAdapter
-from module.enums import DownloadType
-from module.transfer_store import TransferStatus
-from module.path_tool import extract_full_extension, is_compressed_file
-from module.source_folders import (
+from module.utils.diagnostics import RichDiagnosticAdapter
+from module.core.enums import DownloadType
+from module.persistence.transfer_store import TransferStatus
+from module.utils.path_tool import extract_full_extension, is_compressed_file
+from module.domain.archive_naming.source_folders import (
     archive_source_folder,
     normalize_archive_title_source,
     resolve_forward_archive_source_folder,
     source_folder_from_link,
 )
 from module.core.target_profiles import target_profile_limit, target_profile_size_error
+from module.transfer.pikpak_rules import (
+    message_has_pikpak_ingestible_media,
+    transfer_item_archive_match_original_name,
+    transfer_item_archive_timestamp,
+)
 
 
 class PikpakIntegrationManager:
@@ -212,22 +217,11 @@ class PikpakIntegrationManager:
 
     @staticmethod
     def transfer_item_archive_match_original_name(item: dict) -> Optional[bool]:
-        value = item.get('archive_match_original_name')
-        if value is None:
-            return None
-        return bool(int(value))
+        return transfer_item_archive_match_original_name(item)
 
     @staticmethod
     def transfer_item_archive_timestamp(item: dict) -> float:
-        for key in ('updated_at', 'created_at'):
-            value = item.get(key)
-            if not value:
-                continue
-            try:
-                return datetime.datetime.fromisoformat(str(value)).timestamp()
-            except ValueError:
-                continue
-        return datetime.datetime.now(datetime.UTC).timestamp()
+        return transfer_item_archive_timestamp(item)
 
     @staticmethod
     def get_message_media_archive_filename(
@@ -564,14 +558,7 @@ class PikpakIntegrationManager:
 
     @staticmethod
     def message_has_pikpak_ingestible_media(message) -> bool:
-        """True when the message carries media PikPak can typically save (not bare text)."""
-        if message is None:
-            return False
-        from module.core.media_types import DOWNLOAD_MEDIA_TYPES
-        for dtype in DOWNLOAD_MEDIA_TYPES:
-            if getattr(message, dtype, None):
-                return True
-        return False
+        return message_has_pikpak_ingestible_media(message)
 
     async def wait_for_pikpak_ingest_confirmation(
             self,

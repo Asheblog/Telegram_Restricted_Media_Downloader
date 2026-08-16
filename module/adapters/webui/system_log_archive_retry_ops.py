@@ -9,8 +9,8 @@ from module.persistence.system_log import (
     archive_retry_inflight_key,
     resolve_archive_retry_meta,
 )
-from module.source_folders import archive_source_folder, normalize_archive_title_source
-from module.transfer_store import TransferStatus
+from module.domain.archive_naming.source_folders import archive_source_folder, normalize_archive_title_source
+from module.persistence.transfer_store import TransferStatus
 
 
 class SystemLogArchiveRetryOps:

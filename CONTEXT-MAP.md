@@ -14,12 +14,8 @@
 | `module/constants.py` | 纯常量、`console`/`log`/`CustomDumper`/`README`（零副作用） | ~130 |
 | `module/bootstrap.py` | 幂等 `initialize()`：日志 handler、readline、清理线程、`.CONFIG.yaml` | ~210 |
 | `module/downloader.py` | 门面：`CompositionRoot` + `WebOperationsMixin` + `BotHostMixin`；listen/forward/runner/PikPak 多已委托；残留下载编排与 Bot UX | ~1920 |
-| `module/composition_root.py` | 装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~365 |
-| `module/web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
-| `module/bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~370 |
-| `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotHost`、`IPikPakTarget` 等） | ~160 |
-| `module/live_watch_applicator.py` | 将 watch payload 应用到运行时监听 | ~85 |
-| `module/source_folders.py` | 来源频道 / 帖级归档路径命名 | ~200 |
+| `module/composition_root.py` | 显式装配根：接线 app / bot / store / managers / TransferEngine / LiveTransferService | ~600 |
+| `module/ports.py` | Protocol seam（`IWebUiOperations`、`IBotCallbackHost`、`IUploadContext` 等） | ~150 |
 
 ### 实现路径（子包）
 
@@ -52,17 +48,21 @@
 | `transfer/live_watch.py` | `live_watch_manager.py` | 实时监听管理 | ~400 |
 | `transfer/live_transfer.py` | — | listen/forward 转存（`forward` / `listen_*` / `on_listen` / discussion replies） | ~1120 |
 | `transfer/context.py` | `comp.py` | `TransferContext` + 分簇 `TransferPorts`（Paths/Progress/Target/Storage/Runtime） | ~180 |
-| `transfer/models.py` | `task.py` | DownloadTask / UploadTask | ~350 |
+| `domain/transfer_state/models.py` | `task.py` | DownloadTask / UploadTask | ~350 |
+| `domain/transfer_state/registry.py` | `transfer_registry.py` | 转存注册表 | ~20 |
 | `transfer/deep_link.py` | — | 深链取片 | ~200 |
 | `transfer/comment_delay.py` | — | 讨论区延迟抓取调度 | ~240 |
 | `transfer/watch_inline.py` | — | watch_inline 执行模式辅助 | ~50 |
 | `transfer/forward_watch_backup.py` | — | 转发监听导入/导出 | ~110 |
-| `transfer/registry.py` | `transfer_registry.py` | 转存注册表 | ~20 |
 | `adapters/bot/bot.py` | `bot.py` | Bot 命令 + 内联键盘 | ~1900 |
 | `adapters/bot/callback_handler.py` | `callback_handler.py` | Bot 回调路由 | ~740 |
+| `adapters/bot/host.py` | `bot_host.py` | Bot 宿主 mixin（start / callback / download_chat 等） | ~370 |
 | `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
 | `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
+| `adapters/pikpak/archive_author.py` | `archive_author_tool.py` | Archive Author 执行服务 | ~1130 |
 | `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP 壳（路由调度进 handlers） | ~1500 |
+| `adapters/webui/operations.py` | `web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
+| `adapters/webui/archive_author_jobs.py` | `archive_author_jobs.py` | Archive Author 作业 | ~500 |
 | `adapters/webui/handlers/` | — | 按 API 域拆分的 HTTP handlers（auth/tasks/watches/…） | ~1140 |
 | `adapters/webui/archive_author_ops.py` | — | Archive Author 作业编排（WebOps 委托） | ~550 |
 | `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone / 可选 Bot Token | ~350 |
@@ -77,21 +77,26 @@
 | `utils/parser.py` | `parser.py` | CLI 参数解析 | ~90 |
 | `utils/language.py` | `language.py` | 中文本地化 | ~65 |
 | `utils/diagnostics.py` | `diagnostics.py` | 诊断日志适配器 | ~30 |
+| `domain/archive_naming/source_folders.py` | `source_folders.py` | 来源频道 / 帖级归档路径命名 | ~1100 |
+| `domain/archive_naming/author_hashtags.py` | `author_hashtag_match.py` | hashtag → 作者匹配 | ~150 |
+| `domain/archive_author/reorganize.py` | `archive_reorganize.py` | Archive Author reorganize 计划 | ~410 |
+| `transfer/watch_applicator.py` | `live_watch_applicator.py` | 将 watch payload 应用到运行时监听 | ~85 |
 
 ## 子包 → 状态
 
 | 子包 | 内容 | 状态 |
 | ------ | ------ | ------ |
-| `adapters/webui/` | server / handlers / archive_author_ops / view_model / task_manager / assets / build | ✅ 已填充（P3 handlers 拆分） |
-| `adapters/bot/` | bot.py / callback_handler.py | ✅ 已填充 |
-| `adapters/pikpak/` | integration.py / archive.py | ✅ 已填充 |
+| `adapters/webui/` | server / handlers / operations / archive_author_ops / jobs / view_model / task_manager / assets / build | ✅ 已填充 |
+| `adapters/bot/` | bot.py / callback_handler.py / host.py | ✅ 已填充 |
+| `adapters/pikpak/` | integration.py / archive.py / archive_author.py | ✅ 已填充 |
 | `core/` | app / config / enums / filter / target_profiles | ✅ 已填充 |
 | `infra/` | client / uploader / async_window | ✅ 已填充 |
 | `persistence/` | transfer_store 门面 + store/* / media_manager / local_storage_guard / system_log | ✅ 已填充（P2 拆 mixin） |
-| `transfer/` | engine / runner / progress / live_watch / deep_link / comment_delay 等 | ✅ 已填充 |
+| `domain/` | archive_naming / archive_author / transfer_state | ✅ 已填充（arch-decouple Phase 3/6） |
+| `transfer/` | engine / runner / progress / live_watch / watch_applicator / deep_link / comment_delay 等 | ✅ 已填充 |
 | `utils/` | util / stdio / path_tool / parser / language / diagnostics | ✅ 已填充 |
 
-> Phase 0–3 目录迁移与 seam 引入已完成；deepen 轮 P1–P4 已完成。不做纯搬包、不以行数硬顶为目标；见 `CONTEXT.md` 架构立场与 ADR 0014。
+> Phase 0–3、deepen P1–P4、arch-decouple Phases 1–6 均已完成；无模块级导入环，新子包不 import 顶层 shim，组合根显式装配。见 `CONTEXT.md` 架构立场与 ADR 0014。
 
 ## 配置项 → 位置
 

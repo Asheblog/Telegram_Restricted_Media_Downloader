@@ -12,12 +12,16 @@ from pyrogram.errors import (
 from pyrogram.errors.exceptions.bad_request_400 import MessageNotModified
 
 from module import LINK_PREVIEW_OPTIONS
-from module.diagnostics import RichDiagnosticAdapter
-from module.enums import UploadStatus, KeyWord
-from module.language import _t
-from module.stdio import MetaData
-from module.pikpak_integration import PikpakIntegrationManager
-from module.transfer_store import TransferStatus
+from module.utils.diagnostics import RichDiagnosticAdapter
+from module.core.enums import UploadStatus, KeyWord
+from module.utils.language import _t
+from module.utils.stdio import MetaData
+from module.transfer.pikpak_rules import (
+    message_has_pikpak_ingestible_media,
+    transfer_item_archive_match_original_name,
+    transfer_item_archive_timestamp,
+)
+from module.persistence.transfer_store import TransferStatus
 
 
 class TransferProgressTracker:
@@ -123,7 +127,7 @@ class TransferProgressTracker:
                     continue
                 if archive_status not in ('pending', 'not_found', 'error'):
                     continue
-                transferred_at = PikpakIntegrationManager.transfer_item_archive_timestamp(item)
+                transferred_at = transfer_item_archive_timestamp(item)
                 remaining_window = self._pikpak_archive_remaining_window_seconds(transferred_at)
                 if remaining_window <= 0:
                     continue
@@ -144,7 +148,7 @@ class TransferProgressTracker:
                         file_name=item.get('file_name'),
                         file_size=item.get('file_size'),
                         transferred_at=transferred_at,
-                        match_original_name=PikpakIntegrationManager.transfer_item_archive_match_original_name(item),
+                        match_original_name=transfer_item_archive_match_original_name(item),
                         delay_seconds=delay_seconds,
                         reset_archive_status=archive_status != 'pending'
                 ):
@@ -876,7 +880,7 @@ class TransferProgressTracker:
             if store and item_id:
                 item = store.get_item(int(item_id))
                 if item is not None:
-                    stored = PikpakIntegrationManager.transfer_item_archive_match_original_name(item)
+                    stored = transfer_item_archive_match_original_name(item)
                     if stored is not None:
                         match_original_name = stored
             if (

@@ -32,31 +32,31 @@ from pyrogram.errors.exceptions.bad_request_400 import ChannelPrivate as Channel
 from pyrogram.errors.exceptions.not_acceptable_406 import ChannelPrivate as ChannelPrivate_406
 from pymediainfo import MediaInfo
 
-from module.diagnostics import default_diagnostic
-from module.language import _t
+from module.utils.diagnostics import default_diagnostic
+from module.utils.language import _t
 from module.ports import IUploadContext
 
-from module.task import UploadTask
-from module.transfer_registry import transfer_registry
-from module.path_tool import get_mime_from_extension
+from module.domain.transfer_state.models import UploadTask
+from module.domain.transfer_state.registry import transfer_registry
+from module.utils.path_tool import get_mime_from_extension
 
-from module.stdio import (
+from module.utils.stdio import (
     MetaData,
     ProgressBar
 )
-from module.path_tool import (
+from module.utils.path_tool import (
     split_path,
     safe_delete
 )
-from module.target_profiles import (
+from module.core.target_profiles import (
     target_profile_limit,
     target_profile_size_error
 )
-from module.enums import (
+from module.core.enums import (
     KeyWord,
     UploadStatus
 )
-from module.util import (
+from module.utils.util import (
     parse_link,
     truncate_display_filename,
     get_chat_with_notify,

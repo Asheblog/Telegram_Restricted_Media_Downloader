@@ -21,7 +21,7 @@ from rich.text import Text
 from module import log
 from module.utils.parser import PARSE_ARGS
 from module.utils.telegram_links import extract_info_from_link  # noqa: F401  (re-exported for back-compat)
-from module.enums import LinkType, DownloadType, ENVIRON
+from module.core.enums import LinkType, DownloadType, ENVIRON
 
 
 def safe_index(lst: list, index: int, default=None):
@@ -71,7 +71,7 @@ def split_archive_by_author_flag(args: list) -> Tuple[list, bool]:
 
 
 def split_archive_title_source_flag(args: list) -> Tuple[list, str]:
-    from module.source_folders import (
+    from module.domain.archive_naming.source_folders import (
         normalize_archive_title_source,
         ARCHIVE_TITLE_SOURCE_AUTO,
     )
@@ -101,7 +101,7 @@ def make_forward_watch_rule(
     archive_by_author: bool = False,
     archive_title_source: str = "auto",
 ) -> str:
-    from module.source_folders import (
+    from module.domain.archive_naming.source_folders import (
         normalize_archive_title_source,
         ARCHIVE_TITLE_SOURCE_AUTO,
     )

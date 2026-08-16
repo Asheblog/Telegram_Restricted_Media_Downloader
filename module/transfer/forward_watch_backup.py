@@ -27,7 +27,7 @@ def normalize_forward_watch_entry(raw: Any) -> dict[str, Any] | None:
     if not target_link.startswith('https://t.me/'):
         return None
     from module.transfer.comment_delay import normalize_optional_comment_delay_minutes
-    from module.source_folders import normalize_archive_title_source
+    from module.domain.archive_naming.source_folders import normalize_archive_title_source
 
     try:
         comment_delay_minutes = normalize_optional_comment_delay_minutes(

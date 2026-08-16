@@ -23,10 +23,10 @@ from module import (
     yaml,
 )
 from module.core.target_profiles import DEFAULT_TARGET_PROFILES
-from module.enums import GetStdioParams, KeyWord, ProcessConfig
-from module.language import _t
-from module.parser import PARSE_ARGS
-from module.path_tool import gen_backup_config, safe_scan_directory_file
+from module.core.enums import GetStdioParams, KeyWord, ProcessConfig
+from module.utils.language import _t
+from module.utils.parser import PARSE_ARGS
+from module.utils.path_tool import gen_backup_config, safe_scan_directory_file
 
 
 class BaseConfig:
@@ -918,7 +918,7 @@ class GlobalConfig(BaseConfig):
             raw = [p.strip() for p in raw.replace("\n", ",").split(",")]
         if not isinstance(raw, list):
             return []
-        from module.transfer.deep_link import normalize_bot_username
+        from module.utils.telegram_links import normalize_bot_username
 
         out = []
         seen = set()

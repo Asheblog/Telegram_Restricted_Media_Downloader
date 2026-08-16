@@ -12,11 +12,11 @@ import os
 import time
 from typing import Optional, List, Dict, Any
 
-from module.path_tool import safe_delete
+from module.utils.path_tool import safe_delete
 from module.persistence.transfer_store import TransferStore, TransferStatus
 
 try:
-    from module.enums import SaveDirectoryPrefix
+    from module.core.enums import SaveDirectoryPrefix
 except ImportError:  # pragma: no cover
     class SaveDirectoryPrefix:  # type: ignore
         CHAT_ID = '%CHAT_ID%'

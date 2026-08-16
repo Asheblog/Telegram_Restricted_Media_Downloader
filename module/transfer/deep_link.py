@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
+from module.utils.telegram_links import normalize_bot_username
+
 # Optional system-log sink: kwargs match SystemLogTracer.log / host._log_system_chain.
 DeepLinkEventLogger = Callable[..., None]
 
@@ -133,8 +135,6 @@ class PaginationClickTarget:
     button_text: str = ''
 
 
-def normalize_bot_username(value: str) -> str:
-    return str(value or '').strip().lstrip('@').lower()
 
 
 def parse_deep_link_url(url: str) -> Optional[DeepLink]:

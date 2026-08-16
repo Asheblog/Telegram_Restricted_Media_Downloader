@@ -3910,7 +3910,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
 
-        with patch("module.downloader.parse_link", side_effect=fake_parse_link):
+        with patch(
+            "module.adapters.webui.operations.parse_link",
+            side_effect=fake_parse_link,
+        ):
             detected = asyncio.run(
                 downloader.detect_transfer_range_async("https://t.me/source")
             )
@@ -3963,7 +3966,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
 
-        with patch("module.downloader.parse_link", side_effect=fake_parse_link):
+        with patch(
+            "module.adapters.webui.operations.parse_link",
+            side_effect=fake_parse_link,
+        ):
             detected = asyncio.run(
                 downloader.detect_transfer_range_async("https://t.me/source")
             )
@@ -4016,7 +4022,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
 
-        with patch("module.downloader.parse_link", side_effect=fake_parse_link):
+        with patch(
+            "module.adapters.webui.operations.parse_link",
+            side_effect=fake_parse_link,
+        ):
             detected = asyncio.run(
                 downloader.detect_transfer_range_async("https://t.me/source")
             )
@@ -4074,7 +4083,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
 
-        with patch("module.downloader.parse_link", side_effect=fake_parse_link):
+        with patch(
+            "module.adapters.webui.operations.parse_link",
+            side_effect=fake_parse_link,
+        ):
             detected = asyncio.run(
                 downloader.detect_transfer_range_async("https://t.me/source")
             )
@@ -4118,7 +4130,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
 
-        with patch("module.downloader.parse_link", side_effect=fake_parse_link):
+        with patch(
+            "module.adapters.webui.operations.parse_link",
+            side_effect=fake_parse_link,
+        ):
             detected = asyncio.run(
                 downloader.detect_transfer_range_async("https://t.me/source")
             )
@@ -4365,9 +4380,18 @@ class TransferStoreWebUiCase(unittest.TestCase):
         )
 
         with (
-            patch("module.downloader.PARSE_ARGS", SimpleNamespace(web=8080)),
-            patch("module.downloader.TransferStore", return_value=fake_store),
-            patch("module.downloader.WebUiServer", return_value=fake_web_ui),
+            patch(
+                "module.adapters.webui.operations.PARSE_ARGS",
+                SimpleNamespace(web=8080),
+            ),
+            patch(
+                "module.adapters.webui.operations.TransferStore",
+                return_value=fake_store,
+            ),
+            patch(
+                "module.adapters.webui.operations.WebUiServer",
+                return_value=fake_web_ui,
+            ),
         ):
             downloader.start_web_ui()
 

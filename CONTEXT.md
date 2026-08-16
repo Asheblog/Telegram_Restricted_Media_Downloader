@@ -14,34 +14,53 @@ TRMD 是一个长期运行的 Telegram 媒体转存工具，通过 WebUI 操作�
 
 ## 核心架构
 
-Phase 0–3 目录迁移与 Protocol seam 已完成；本轮 **deepen（P1–P4）** 在不改公开门面签名、不做纯搬包、不以行数硬顶为完成标准的前提下，加深了厨房水槽模块。对外仍以 `TelegramRestrictedMediaDownloader` 为门面；装配集中在 composition root。
+Phase 0–3 目录迁移、Protocol seam、deepen（P1–P4）与 arch-decouple Phases 1–6 均已完成。对外仍以 `TelegramRestrictedMediaDownloader` 为门面；装配集中在 composition root，依赖方向由 import 守卫约束。
 
 ```
 main.py
   └── TelegramRestrictedMediaDownloader          # module/downloader.py（门面）
-        ├── TrmdCompositionRoot                  # module/composition_root.py（接线）
-        ├── WebOperationsMixin                   # module/web_operations.py
+        ├── TrmdCompositionRoot                  # module/composition_root.py（显式接线）
+        ├── WebOperationsMixin                   # adapters/webui/operations.py
         │     └── ArchiveAuthorOps               # adapters/webui/archive_author_ops.py
-        └── BotHostMixin                         # module/bot_host.py
+        └── BotHostMixin                         # adapters/bot/host.py
 
 装配出的主要模块：
-  core/app.py              Application（下载路径 / 文件名）
+  core/app.py              Application（下载路径 / 文件名；Client 工厂由组合根注入）
+  core/config.py           UserConfig + GlobalConfig（不再依赖 transfer/adapters）
   infra/client.py          Telegram 客户端（Pyrogram 扩展）
-  adapters/bot/            Bot + CallbackHandler
-  transfer/engine.py       TransferEngine
-  transfer/runner.py       WebTransferRunner
-  transfer/progress.py     TransferProgressTracker
-  transfer/live_watch.py   LiveWatchManager
-  transfer/live_transfer.py LiveTransferService（listen/forward）
-  persistence/transfer_store.py   TransferStore 门面（实现见 persistence/store/*）
-  adapters/pikpak/         PikPak 集成 + rclone 归档
-  adapters/webui/          HTTP 壳 + handlers/* / ViewModel / 任务调度 / 前端资源
-  persistence/             LocalStorageGuard / MediaManager / SystemLog
+  infra/uploader.py        TelegramUploader（依赖 domain 模型，不依赖 transfer 实现）
+  adapters/bot/            Bot + CallbackHandler + BotHostMixin
+  adapters/pikpak/         PikPak 集成 + rclone 归档 + Archive Author 执行
+  adapters/webui/          HTTP 壳 + handlers/* / operations / ViewModel / 任务调度 / 前端资源
+  domain/archive_naming/   Source Folder / 标题 / 作者 / hashtag 领域逻辑
+  domain/archive_author/   Archive Author reorganize 计划领域逻辑
+  domain/transfer_state/   DownloadTask / UploadTask / TransferRegistry 领域状态
+  transfer/                Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
+  persistence/             TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
   infra/                   DynamicAsyncWindow / TelegramUploader
-  core/config.py           UserConfig + GlobalConfig
-  ports.py                 Protocol seam（IWebUiOperations / IBotHost 等）
+  ports.py                 Protocol seam（IWebUiOperations / IBotCallbackHost / IUploadContext 等）
   transfer/context.py      TransferContext + TransferPorts（Paths / Progress / Target / Storage / Runtime 分簇）
 ```
+
+### 子包结构
+
+```
+module/
+  adapters/
+    bot/          # Bot 命令与回调、BotHostMixin
+    pikpak/       # PikPak 集成、rclone 归档、Archive Author 执行
+    webui/        # HTTP 壳、handlers/*、operations、ArchiveAuthorOps、ViewModel、任务调度、前端资源
+  core/           # Application、Config、Enums、Filter、TargetProfiles
+  domain/         # archive_naming、archive_author、transfer_state（纯领域，不依赖 adapters）
+  infra/          # Client、Uploader、AsyncWindow
+  persistence/    # TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
+  transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
+  utils/          # util、stdio、path_tool、parser、language、diagnostics
+```
+
+顶层仅保留：`downloader.py`（门面）、`composition_root.py`、`constants.py`、`bootstrap.py`、`ports.py`；其余顶层文件均为指向子包实现的兼容 shim。`constants.py`（纯常量，零副作用）与 `bootstrap.py`（幂等 `initialize()`）承载原 `__init__.py` 的常量与运行时副作用；`module/__init__.py` 仅 re-export，**import 任何子模块均零副作用**（不建目录、不写日志、不起线程），运行时副作用由 `main.py` 与组合根显式调用 `bootstrap.initialize()` 触发。
+
+**架构立场**：解耦阶段已完成——无模块级导入环；新子包不再 import 顶层 shim；`core` 不依赖 `adapters/infra/transfer`；`transfer` 不依赖 `adapters`；`infra` 不依赖 `transfer`；组合根无 `__getattr__` 反射装配；God Protocol 已替换为按消费者裁剪的小 Protocol。**不做纯包搬家、不以单文件行数硬顶为完成标准**；后续仅在具体痛点出现时做局部深化。
 
 ### 配置系统（双层）
 

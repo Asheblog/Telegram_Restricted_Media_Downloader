@@ -85,65 +85,7 @@ class TransferPorts:
     storage: TransferStoragePorts = field(default_factory=TransferStoragePorts)
     runtime: TransferRuntimePorts = field(default_factory=TransferRuntimePorts)
 
-    @classmethod
-    def from_host(cls, host: Any) -> 'TransferPorts':
-        """Build clustered ports from composition root; missing attrs fall back to no-ops."""
-        def _attr(name: str, default):
-            return getattr(host, name, default)
 
-        return cls(
-            paths=TransferPathPorts(
-                env_save_directory=_attr('env_save_directory', _noop_str),
-                get_final_save_directory=_attr('get_final_save_directory', _noop_str),
-                get_final_file_path=_attr('get_final_file_path', _noop_str),
-            ),
-            progress=TransferProgressPorts(
-                record_transfer_download_success=_attr(
-                    'record_transfer_download_success', lambda **kw: None
-                ),
-                on_transfer_file_ready=_attr('on_transfer_file_ready', _noop),
-                on_transfer_item_skipped=_attr('on_transfer_item_skipped', _noop),
-                on_transfer_item_failed=_attr('on_transfer_item_failed', _noop),
-                on_transfer_upload_progress=_attr('on_transfer_upload_progress', _noop),
-                on_transfer_upload_status=_attr('on_transfer_upload_status', _noop),
-                build_bot_transfer_progress_text=_attr(
-                    'build_bot_transfer_progress_text', _noop_str
-                ),
-                schedule_bot_transfer_progress_update=_attr(
-                    'schedule_bot_transfer_progress_update', _noop
-                ),
-            ),
-            target=TransferTargetPorts(
-                infer_target_profile=_attr('infer_target_profile', lambda *a, **kw: None),
-                is_pikpak_target=_attr('is_pikpak_target', _noop_false),
-                normalize_download_upload_meta=_attr(
-                    'normalize_download_upload_meta', _identity_wu
-                ),
-                build_transfer_upload_meta=_attr('build_transfer_upload_meta', _noop_dict),
-            ),
-            storage=TransferStoragePorts(
-                release_download_upload_window=_attr(
-                    'release_download_upload_window', _noop
-                ),
-                release_transfer_local_storage=_attr(
-                    'release_transfer_local_storage', _noop
-                ),
-                mark_transfer_local_storage_materialized=_attr(
-                    'mark_transfer_local_storage_materialized', _noop
-                ),
-            ),
-            runtime=TransferRuntimePorts(
-                ensure_uploader=_attr('ensure_uploader', lambda: None),
-                bot_task_link=lambda: getattr(host, 'bot_task_link', set()),
-                queue=lambda: getattr(host, 'queue', None),
-                pb_progress=lambda: getattr(getattr(host, 'pb', None), 'progress', None),
-                event=lambda: getattr(host, 'event', None),
-                create_download_task=_attr('create_download_task', _noop_dict),
-                detect_transfer_range_async=_attr(
-                    'detect_transfer_range_async', lambda *a, **kw: None
-                ),
-            ),
-        )
 
 
 @dataclass

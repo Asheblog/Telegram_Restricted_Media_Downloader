@@ -54,8 +54,8 @@ from module import (
     log,
     __version__
 )
-from module.enums import KeyWord
-from module.language import _t
+from module.core.enums import KeyWord
+from module.utils.language import _t
 
 
 class TelegramRestrictedMediaDownloaderClient(pyrogram.Client):

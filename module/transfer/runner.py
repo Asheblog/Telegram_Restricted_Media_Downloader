@@ -21,9 +21,9 @@ from pyrogram.errors.exceptions.not_acceptable_406 import (
 )
 
 from module import log
-from module.enums import DownloadStatus, DownloadType
-from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import archive_source_folder, archive_source_folder_for_messages, media_group_post_message_id, normalize_archive_title_source
+from module.core.enums import DownloadStatus, DownloadType
+from module.transfer.pikpak_rules import message_has_pikpak_ingestible_media
+from module.domain.archive_naming.source_folders import archive_source_folder, archive_source_folder_for_messages, media_group_post_message_id, normalize_archive_title_source
 from module.transfer.deep_link import (
     DEEP_LINK_NO_LINK_AWAIT_COMMENT_MESSAGE,
     DEEP_LINK_NO_LINK_FAILURE_MESSAGE,
@@ -32,9 +32,9 @@ from module.transfer.deep_link import (
     messages_after_deep_link_resolve,
     normalize_resolved_messages,
 )
-from module.transfer_store import TransferStatus
-from module.uploader import TelegramUploader
-from module.util import get_message_by_link, iter_discussion_reply_messages
+from module.persistence.transfer_store import TransferStatus
+from module.infra.uploader import TelegramUploader
+from module.utils.util import get_message_by_link, iter_discussion_reply_messages
 
 
 @runtime_checkable
@@ -1055,7 +1055,7 @@ class WebTransferRunner:
                 continue
             if (
                     host.is_pikpak_target(task.get('target_link'), task.get('target_profile'))
-                    and not PikpakIntegrationManager.message_has_pikpak_ingestible_media(send_message)
+                    and not message_has_pikpak_ingestible_media(send_message)
             ):
                 skip_fn = getattr(host, 'skip_transfer_item_for_media_type', None)
                 reject_reason = 'PikPak 不支持无媒体消息'
@@ -1542,7 +1542,7 @@ class WebTransferRunner:
 
     @staticmethod
     def transfer_single_link(source_link: str) -> str:
-        from module.transfer_engine import TransferEngine
+        from module.transfer.engine import TransferEngine
         return TransferEngine.transfer_single_link(source_link)
 
     @staticmethod

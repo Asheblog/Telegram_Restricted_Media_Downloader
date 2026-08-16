@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Union, Optional, Callable, Any
 
 from module import console, log
-from module.language import _t
+from module.utils.language import _t
 
 
 class LinkType:

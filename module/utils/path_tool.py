@@ -25,7 +25,7 @@ from pyrogram.file_id import (
 )
 
 from module import log
-from module.enums import Extension, KeyWord
+from module.core.enums import Extension, KeyWord
 from module.utils.language import _t
 
 _mimetypes = mimetypes.MimeTypes()

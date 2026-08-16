@@ -31,22 +31,22 @@ from pyrogram.types.messages_and_media import ReplyParameters
 from pyrogram.types.bots_and_keyboards import InlineKeyboardButton, InlineKeyboardMarkup
 
 from module import console, log, LINK_PREVIEW_OPTIONS
-from module.enums import (
+from module.core.enums import (
     KeyWord,
     BotCallbackText,
     BotButton,
     DownloadType,
 )
-from module.language import _t
-from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import (
+from module.utils.language import _t
+from module.transfer.pikpak_rules import message_has_pikpak_ingestible_media
+from module.domain.archive_naming.source_folders import (
     archive_source_folder,
     archive_source_folder_for_messages,
     media_group_post_message_id,
     normalize_archive_title_source,
     resolve_forward_archive_source_folder,
 )
-from module.util import (
+from module.utils.util import (
     parse_link,
     safe_message,
     make_forward_watch_rule,
@@ -63,6 +63,13 @@ class LiveTransferService:
 
     def __getattr__(self, name):
         return getattr(object.__getattribute__(self, '_host'), name)
+
+    def _watch_manager(self):
+        host = object.__getattribute__(self, '_host')
+        manager = getattr(host, 'watch_manager', None)
+        if manager is None and hasattr(host, '_require_watch_manager'):
+            manager = host._require_watch_manager()
+        return manager
 
     async def _invoke(self, name: str, *args, **kwargs):
         """Prefer host instance monkeypatch; otherwise call local implementation.
@@ -326,7 +333,7 @@ class LiveTransferService:
             if (
                     self.is_pikpak_target(target_link)
                     and not media_group
-                    and not PikpakIntegrationManager.message_has_pikpak_ingestible_media(message)
+                    and not message_has_pikpak_ingestible_media(message)
             ):
                 reject_reason = 'PikPak 不支持无媒体消息'
                 self._log_system_chain(
@@ -531,10 +538,11 @@ class LiveTransferService:
                 archive_by_author=archive_by_author,
                 archive_title_source=title_source,
             )
-            if self.transfer_store and link and target_link:
+            transfer_store = getattr(self, "transfer_store", None)
+            if transfer_store and link and target_link:
                 from module.transfer.watch_inline import ensure_download_fallback_transfer_task
                 fallback_task_id = ensure_download_fallback_transfer_task(
-                    store=self.transfer_store,
+                    store=transfer_store,
                     source_link=link,
                     target_link=target_link,
                     target_profile=upload_meta.get('target_profile') or 'pikpak',
@@ -746,7 +754,12 @@ class LiveTransferService:
     ):
         try:
             origin_chat_id = str(getattr(getattr(message, 'chat', None), 'id', ''))
-            watch_id = self.watch_manager._download_chat_watch_id.get(origin_chat_id)
+            watch_manager = self._watch_manager()
+            watch_id = (
+                watch_manager._download_chat_watch_id.get(origin_chat_id)
+                if watch_manager is not None
+                else None
+            )
             trace_id, _, message_id = self._message_chain_context(message, watch_id)
             self._log_system_chain(
                 category='watch',
@@ -1045,7 +1058,12 @@ class LiveTransferService:
                 _target_chat_id = _target_link_meta.get('chat_id')
                 if listen_chat_id == _listen_chat_id:
                     matched = True
-                    watch_id = self.watch_manager.forward_watch_id(m)
+                    watch_manager = self._watch_manager()
+                    watch_id = (
+                        watch_manager.forward_watch_id(m)
+                        if watch_manager is not None
+                        else f"forward:{m}"
+                    )
                     resolve_deep_link = bool(rule.get('resolve_deep_link'))
                     self._log_system_chain(
                         category='watch',

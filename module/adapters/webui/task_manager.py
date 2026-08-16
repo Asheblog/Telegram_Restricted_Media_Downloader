@@ -3,9 +3,9 @@ import asyncio
 import threading
 from typing import Callable, Optional, Set
 
-from module.pikpak_integration import PikpakIntegrationManager
-from module.source_folders import archive_source_folder, normalize_archive_title_source
-from module.transfer_store import TransferStore, TransferStatus
+from module.adapters.pikpak.integration import PikpakIntegrationManager
+from module.domain.archive_naming.source_folders import archive_source_folder, normalize_archive_title_source
+from module.persistence.transfer_store import TransferStore, TransferStatus
 
 
 class WebUITaskManager:

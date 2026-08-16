@@ -16,11 +16,11 @@ from typing import Callable, Optional
 from urllib.parse import urlparse
 
 from module.adapters.webui.view_model import WebUiViewModel
-from module.diagnostics import default_diagnostic
-from module.enums import ENVIRON
+from module.utils.diagnostics import default_diagnostic
+from module.core.enums import ENVIRON
 from module.ports import IDiagnosticPort, IWebUiOperations
-from module.source_folders import normalize_archive_title_source
-from module.transfer_store import TransferStore
+from module.domain.archive_naming.source_folders import normalize_archive_title_source
+from module.persistence.transfer_store import TransferStore
 
 SENSITIVE_SETTING_KEYS = {"api_hash", "bot_token", "password", "username"}
 
@@ -1109,11 +1109,11 @@ class WebUiServer:
                 return statistics(tz_offset_minutes=tz_offset_minutes)
             except TypeError:
                 return statistics()
-        from module.statistics_payload import build_statistics_payload
+        from module.adapters.webui.statistics_payload import build_statistics_payload
 
         store = getattr(self, "transfer_store", None)
         if store is not None:
-            from module.statistics_payload import DEFAULT_STATISTICS_WINDOW_DAYS
+            from module.adapters.webui.statistics_payload import DEFAULT_STATISTICS_WINDOW_DAYS
 
             rows = store.aggregate_channel_download_stats(
                 days=DEFAULT_STATISTICS_WINDOW_DAYS,
@@ -1621,7 +1621,7 @@ def normalize_date_range(value) -> dict:
 
 
 def load_runtime_settings() -> dict:
-    from module.config import GlobalConfig, UserConfig
+    from module.core.config import GlobalConfig, UserConfig
 
     user = UserConfig()
     global_config = GlobalConfig()
@@ -1645,7 +1645,7 @@ def load_runtime_settings() -> dict:
 
 
 def save_runtime_settings(payload: dict) -> dict:
-    from module.config import GlobalConfig, UserConfig
+    from module.core.config import GlobalConfig, UserConfig
 
     user = UserConfig()
     global_config = GlobalConfig()

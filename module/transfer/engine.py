@@ -12,25 +12,25 @@ import pyrogram
 from pyrogram.errors import FloodWait, FloodPremiumWait
 
 from module import console, log
-from module.language import _t
-from module.parser import PARSE_ARGS
-from module.enums import DownloadStatus, UploadStatus, KeyWord, DownloadType, SaveDirectoryPrefix
-from module.transfer.models import DownloadTask, UploadTask
-from module.transfer.registry import transfer_registry
-from module.transfer_store import TransferStatus
-from module.target_profiles import target_profile_limit, target_profile_size_error
-from module.path_tool import (
+from module.utils.language import _t
+from module.utils.parser import PARSE_ARGS
+from module.core.enums import DownloadStatus, UploadStatus, KeyWord, DownloadType, SaveDirectoryPrefix
+from module.domain.transfer_state.models import DownloadTask, UploadTask
+from module.domain.transfer_state.registry import transfer_registry
+from module.persistence.transfer_store import TransferStatus
+from module.core.target_profiles import target_profile_limit, target_profile_size_error
+from module.utils.path_tool import (
     split_path,
     get_file_size,
     compare_file_size,
     move_to_save_directory,
     validate_title
 )
-from module.stdio import MetaData
-from module.util import is_allow_upload, parse_link
-from module.source_folders import archive_source_folder, join_local_source_folder, normalize_archive_title_source
-from module.local_storage_guard import LocalStorageGuard
-from module.filter import MessageFilter
+from module.utils.stdio import MetaData
+from module.utils.util import is_allow_upload, parse_link
+from module.domain.archive_naming.source_folders import archive_source_folder, join_local_source_folder, normalize_archive_title_source
+from module.persistence.local_storage_guard import LocalStorageGuard
+from module.core.filter import MessageFilter
 
 
 from module.transfer.context import TransferContext, TransferPorts
@@ -116,7 +116,7 @@ class TransferEngine:
 
     @staticmethod
     def get_download_message_title(message: pyrogram.types.Message) -> Optional[str]:
-        from module.source_folders import extract_message_body_title
+        from module.domain.archive_naming.source_folders import extract_message_body_title
 
         return extract_message_body_title(message)
 

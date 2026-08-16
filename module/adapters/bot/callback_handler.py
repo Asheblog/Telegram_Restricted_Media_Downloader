@@ -16,7 +16,7 @@ from module import (
     LINK_PREVIEW_OPTIONS,
 )
 from module.adapters.bot.bot import Bot, KeyboardButton
-from module.enums import (
+from module.core.enums import (
     DownloadStatus,
     UploadStatus,
     KeyWord,
@@ -25,14 +25,14 @@ from module.enums import (
     DownloadType,
     CalenderKeyboard,
 )
-from module.language import _t
-from module.source_folders import archive_source_folder
-from module.task import DownloadTask, UploadTask
-from module.util import (
+from module.utils.language import _t
+from module.domain.archive_naming.source_folders import archive_source_folder
+from module.domain.transfer_state.models import DownloadTask, UploadTask
+from module.utils.util import (
     is_docker,
     parse_forward_watch_rule,
 )
-from module.ports import IBotHost
+from module.ports import IBotCallbackHost
 
 
 class CallbackHandler:
@@ -46,7 +46,7 @@ class CallbackHandler:
         loop_getter=None,
         user_getter=None,
         my_id_getter=None,
-        host: IBotHost = None,
+        host: IBotCallbackHost = None,
         downloader_ref=None,
     ):
         self._app = app_getter

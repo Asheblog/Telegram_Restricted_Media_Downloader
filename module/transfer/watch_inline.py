@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from module.source_folders import ARCHIVE_TITLE_SOURCE_AUTO, normalize_archive_title_source
-from module.transfer_store import ExecutionMode, TransferStatus
+from module.domain.archive_naming.source_folders import ARCHIVE_TITLE_SOURCE_AUTO, normalize_archive_title_source
+from module.persistence.transfer_store import ExecutionMode, TransferStatus
 
 
 def source_link_belongs_to_watch(source_link: str, watch_source_link: str) -> bool:

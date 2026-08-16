@@ -14,17 +14,16 @@ import pyrogram
 
 from module import SLEEP_THRESHOLD, SOFTWARE_FULL_NAME, console, log
 from module.core.config import UserConfig
-from module.enums import DownloadStatus, DownloadType, KeyWord
-from module.infra.client import TelegramRestrictedMediaDownloaderClient
-from module.language import _t
-from module.parser import PARSE_ARGS
-from module.path_tool import (
+from module.core.enums import DownloadStatus, DownloadType, KeyWord
+from module.utils.language import _t
+from module.utils.parser import PARSE_ARGS
+from module.utils.path_tool import (
     extract_full_extension,
     is_compressed_file,
     truncate_filename,
     validate_title,
 )
-from module.stdio import StatisticalTable
+from module.utils.stdio import StatisticalTable
 
 
 def get_extension(*args, **kwargs):
@@ -34,9 +33,10 @@ def get_extension(*args, **kwargs):
 
 
 class Application(UserConfig, StatisticalTable):
-    def __init__(self):
+    def __init__(self, client_factory=None):
         UserConfig.__init__(self)
         StatisticalTable.__init__(self)
+        self.client_factory = client_factory
         # Defer Client until Telegram API credentials exist (--web first-run).
         self.client = (
             self.build_client() if self.has_telegram_api_credentials() else None
@@ -81,8 +81,12 @@ class Application(UserConfig, StatisticalTable):
         """用填写的配置文件,构造pyrogram客户端。"""
         if not self.has_telegram_api_credentials():
             raise ValueError("缺少 api_id / api_hash，无法创建 Telegram Client。")
+        if self.client_factory is None:
+            raise RuntimeError(
+                "client_factory is required to build the Telegram client."
+            )
         os.makedirs(self.work_directory, exist_ok=True)
-        return TelegramRestrictedMediaDownloaderClient(
+        return self.client_factory(
             name=SOFTWARE_FULL_NAME.replace(" ", ""),
             api_id=self.api_id,
             api_hash=self.api_hash,
@@ -299,7 +303,7 @@ class DownloadFileName:
 
     def get_message_title(self) -> Union[str, None]:
         """从消息正文、网页预览或媒体文件名提取可读标题。"""
-        from module.source_folders import extract_message_body_title
+        from module.domain.archive_naming.source_folders import extract_message_body_title
 
         if isinstance(self.title_override, str):
             title = self.title_override.strip()

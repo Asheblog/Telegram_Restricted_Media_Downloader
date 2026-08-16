@@ -14,7 +14,7 @@ from module import (
     __version__,
     console
 )
-from module.enums import (
+from module.core.enums import (
     Banner,
     MODE,
     GradientColor

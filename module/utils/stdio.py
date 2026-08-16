@@ -37,7 +37,7 @@ from module.utils.util import (
     get_terminal_width,
     is_docker
 )
-from module.enums import (
+from module.core.enums import (
     DownloadType,
     UploadStatus,
     KeyWord,

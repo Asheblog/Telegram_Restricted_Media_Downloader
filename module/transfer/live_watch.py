@@ -1,11 +1,11 @@
 # coding=UTF-8
 from typing import Optional
 
-from module.diagnostics import default_diagnostic
-from module.language import _t
-from module.source_folders import normalize_archive_title_source
-from module.transfer_store import TransferStatus
-from module.util import make_forward_watch_rule, parse_forward_watch_rule
+from module.utils.diagnostics import default_diagnostic
+from module.utils.language import _t
+from module.domain.archive_naming.source_folders import normalize_archive_title_source
+from module.persistence.transfer_store import TransferStatus
+from module.utils.util import make_forward_watch_rule, parse_forward_watch_rule
 
 
 class LiveWatchManager:

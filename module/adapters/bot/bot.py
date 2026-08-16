@@ -38,12 +38,12 @@ from module import (
     SOFTWARE_FULL_NAME,
     LINK_PREVIEW_OPTIONS
 )
-from module.language import _t
-from module.stdio import MetaData
-from module.task import UploadTask
+from module.utils.language import _t
+from module.utils.stdio import MetaData
+from module.domain.transfer_state.models import UploadTask
 from module.core.config import GlobalConfig
-from module.path_tool import safe_scan_directory_file
-from module.util import (
+from module.utils.path_tool import safe_scan_directory_file
+from module.utils.util import (
     parse_link,
     safe_index,
     safe_message,
@@ -52,7 +52,7 @@ from module.util import (
     split_include_comment_flag,
     parse_forward_watch_rule
 )
-from module.enums import (
+from module.core.enums import (
     CalenderKeyboard,
     UploadStatus,
     DownloadType,

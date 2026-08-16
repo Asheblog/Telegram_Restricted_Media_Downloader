@@ -1,4 +1,9 @@
 # coding=UTF-8
+"""Focused Protocol seams.
+
+Each consumer imports only the smallest protocol it needs.  God protocols
+(``IBotHost`` / ``IPikPakTarget``) were removed in favour of per-consumer seams.
+"""
 from typing import Optional, Protocol, runtime_checkable
 
 import asyncio
@@ -11,13 +16,13 @@ class IWatchOps(Protocol):
     def update_watch(self, watch_id: str, payload: dict) -> dict: ...
     def delete_watch(self, watch_id: str) -> bool: ...
     def list_watch_events(
-            self,
-            watch_id: str,
-            limit: int = 50,
-            offset: int = 0,
-            today_only: bool = False,
-            tz_offset_minutes: int | None = None,
-            status: str | None = None
+        self,
+        watch_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        today_only: bool = False,
+        tz_offset_minutes: int | None = None,
+        status: str | None = None,
     ) -> Optional[dict]: ...
 
 
@@ -34,12 +39,12 @@ class ITaskOps(Protocol):
 @runtime_checkable
 class IMediaOps(Protocol):
     def scan_media_for_cleanup(
-            self,
-            task_id: int = None,
-            items_limit: int = None,
-            items_offset: int = 0,
-            orphans_limit: int = None,
-            orphans_offset: int = 0,
+        self,
+        task_id: int = None,
+        items_limit: int = None,
+        items_offset: int = 0,
+        orphans_limit: int = None,
+        orphans_offset: int = 0,
     ) -> dict: ...
     def cleanup_media_files(self, payload: dict) -> dict: ...
     def list_cleanup_logs(self) -> list: ...
@@ -61,50 +66,13 @@ class IUploadOps(Protocol):
 @runtime_checkable
 class IWebUiOperations(IWatchOps, ITaskOps, IMediaOps, IStatsOps, IUploadOps, Protocol):
     """Combined WebUI operations seam for typing convenience."""
-    pass
 
 
 @runtime_checkable
-class ITransferRunner(Protocol):
-    async def process_task(self, task_id: int) -> None: ...
+class IBotCallbackHost(Protocol):
+    """Only the host surface actually consumed by CallbackHandler."""
 
-
-@runtime_checkable
-class IPikPakTarget(Protocol):
-    def is_pikpak_target(self, target_link: Optional[str], target_profile: Optional[str] = None) -> bool: ...
-
-    async def wait_for_pikpak_ingest_confirmation(
-            self,
-            target_chat_id,
-            forwarded_message=None,
-            timeout_seconds: float = 15,
-            poll_interval: float = 3
-    ) -> bool: ...
-
-    def archive_pikpak_item(self, *args, **kwargs): ...
-
-    def complete_forwarded_pikpak_item(self, *args, **kwargs) -> bool: ...
-
-    def skip_empty_transfer_source_message(self, *args, **kwargs) -> int: ...
-
-    def get_task_target_size_limit_error(self, task: dict, message) -> Optional[dict]: ...
-
-    def get_message_media_target_limit_meta(self, message, post_message_id=None) -> Optional[dict]: ...
-
-    def get_message_media_archive_filename(self, message, post_message_id=None) -> Optional[str]: ...
-
-    def forwarded_message_has_identity(self, forwarded_message) -> bool: ...
-
-    def is_pikpak_ingest_success_message(self, message) -> bool: ...
-
-    def is_pikpak_ingest_failure_message(self, message) -> bool: ...
-
-    def fail_transfer_item(self, task_id: int, item_id: int, message: str) -> None: ...
-
-
-@runtime_checkable
-class IBotHost(Protocol):
-    download_chat_filter: dict
+    bot: object
     cd: object
     download_upload_window: object
     listen_download_chat: dict
@@ -112,6 +80,7 @@ class IBotHost(Protocol):
     web_watch_handler_clients: dict
     web_pending_watches: dict
     adding_keywords: list
+    download_chat_filter: dict
     last_message: object
     last_client: object
 
@@ -126,14 +95,9 @@ class IBotHost(Protocol):
 
 
 @runtime_checkable
-class IWatchApplicator(Protocol):
-    async def apply_watch(self, payload: dict) -> None: ...
-    def remove_watch(self, watch_id: str) -> bool: ...
-
-
-@runtime_checkable
 class IUploadContext(Protocol):
     """Focused upload dependencies: config, loop, progress, diagnostics, lifetime."""
+
     app: object
     loop: asyncio.AbstractEventLoop
     pb: object

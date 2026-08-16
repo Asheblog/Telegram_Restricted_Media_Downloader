@@ -20,6 +20,10 @@ from module.core.enums import Link
 
 TELEGRAM_HOSTS = frozenset({"t.me", "telegram.me", "telegram.dog"})
 
+def normalize_bot_username(value: str) -> str:
+    return str(value or "").strip().lstrip("@").lower()
+
+
 
 def is_telegram_host(host: str | None) -> bool:
     """True when ``host`` is a Telegram link host (ignores a leading ``www.``)."""

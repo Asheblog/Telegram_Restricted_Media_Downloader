@@ -3,9 +3,9 @@ import datetime
 import os
 from typing import Any, Optional
 
-from module.local_storage_guard import LocalStorageGuard
-from module.source_folders import normalize_archive_title_source
-from module.transfer_store import TransferStatus, TransferStore
+from module.persistence.local_storage_guard import LocalStorageGuard
+from module.domain.archive_naming.source_folders import normalize_archive_title_source
+from module.persistence.transfer_store import TransferStatus, TransferStore
 
 # Progress callbacks stop updating download/upload_speed_bps when transfer stalls.
 # Exclude speeds whose item has not been touched within this window so the
@@ -50,7 +50,7 @@ class WebUiViewModel:
         self.store = store
 
     def task_list(self, limit: int = 100) -> dict[str, Any]:
-        from module.transfer_store import ExecutionMode
+        from module.persistence.transfer_store import ExecutionMode
 
         tasks = self.store.list_tasks(
             limit=limit,
@@ -75,7 +75,7 @@ class WebUiViewModel:
 
     def task_stats(self) -> dict[str, int]:
         """Aggregate task-level dashboard counts across the full Web queue."""
-        from module.transfer_store import ExecutionMode
+        from module.persistence.transfer_store import ExecutionMode
 
         with self.store.connect() as conn:
             rows = conn.execute(
@@ -116,7 +116,7 @@ class WebUiViewModel:
     def watch_download_tasks(self, watch_id: str, limit: int = 200) -> Optional[dict[str, Any]]:
         """返回某条监听触发的 watch_inline 下载/转存任务（含无 watch_id 的历史启发式归属）。"""
         from module.transfer.watch_inline import is_watch_inline_task, source_link_belongs_to_watch
-        from module.transfer_store import ExecutionMode
+        from module.persistence.transfer_store import ExecutionMode
 
         if not watch_id:
             return None

@@ -1,6 +1,6 @@
 # coding=UTF-8
 """Compatibility shim — implementation in module.core.app. Deprecated: import from module.core.app instead."""
-from module.path_tool import (  # noqa: F401
+from module.utils.path_tool import (  # noqa: F401
     extract_full_extension,
     get_extension,
     is_compressed_file,
