@@ -1935,7 +1935,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 log.error(f'网络连接失败,请检查VPN是否可用,{_t(KeyWord.REASON)}:"{e}"')
         except AttributeError as e:
             record_error: bool = True
-            log.error(f'登录超时,请重新打开软件尝试登录,{_t(KeyWord.REASON)}:"{e}"')
+            log.error(
+                f'运行时缺少必要属性,请检查版本/接线后重启,'
+                f'{_t(KeyWord.REASON)}:"{e}"'
+            )
         except KeyboardInterrupt:
             console.log('⌨️ 用户键盘中断。')
         except OperationalError as e:

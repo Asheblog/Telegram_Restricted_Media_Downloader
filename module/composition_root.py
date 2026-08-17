@@ -99,6 +99,10 @@ class TrmdCompositionRoot:
             app_getter=self._app,
             diagnostic=self.diagnostic,
         )
+        # Host + Bot must share watch_manager dicts. Missing host aliases crash after
+        # WebUI login when restore_live_transfer_watches reads self.listen_forward_chat.
+        self.listen_download_chat = self.watch_manager.listen_download_chat
+        self.listen_forward_chat = self.watch_manager.listen_forward_chat
         self.bot.listen_download_chat = self.watch_manager.listen_download_chat
         self.bot.listen_forward_chat = self.watch_manager.listen_forward_chat
         self.bot.downloader = self

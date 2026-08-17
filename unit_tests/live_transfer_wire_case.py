@@ -111,10 +111,44 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertIn('"callback_data": self.callback_data', src)
         self.assertIn('LiveTransferService(host=self)', src)
         self.assertIn('self._transfer_ports = self._build_transfer_ports()', src)
+        # Regression: login succeeded then crashed restore_live_transfer_watches with
+        # AttributeError: ... no attribute 'listen_forward_chat' (only bot.* was aliased).
+        self.assertIn(
+            'self.listen_download_chat = self.watch_manager.listen_download_chat',
+            src,
+        )
+        self.assertIn(
+            'self.listen_forward_chat = self.watch_manager.listen_forward_chat',
+            src,
+        )
 
         class_src = inspect.getsource(TrmdCompositionRoot)
         self.assertNotIn('def __getattr__', class_src)
         self.assertNotIn('TransferPorts.from_host', src)
+
+    def test_watch_manager_listen_dicts_are_shared_when_aliased(self):
+        """Same object identity the composition root must establish after login."""
+        from module.transfer.live_watch import LiveWatchManager
+
+        manager = LiveWatchManager(
+            transfer_store_getter=lambda: None,
+            operation_submitter=lambda *_a, **_k: {'id': 'op', 'status': 'pending'},
+            user_getter=lambda: None,
+            app_getter=lambda: None,
+            diagnostic=None,
+        )
+        host_listen_download = manager.listen_download_chat
+        host_listen_forward = manager.listen_forward_chat
+        bot_listen_download = manager.listen_download_chat
+        bot_listen_forward = manager.listen_forward_chat
+        self.assertIs(host_listen_download, manager.listen_download_chat)
+        self.assertIs(host_listen_forward, manager.listen_forward_chat)
+        self.assertIs(bot_listen_download, manager.listen_download_chat)
+        self.assertIs(bot_listen_forward, manager.listen_forward_chat)
+        sentinel = object()
+        host_listen_forward['probe-rule'] = sentinel
+        self.assertIs(manager.listen_forward_chat['probe-rule'], sentinel)
+        self.assertIs(bot_listen_forward['probe-rule'], sentinel)
 
     def test_bot_resolved_handler_prefers_host_overrides(self):
         """Regression: without overrides, /listen_* stayed on Bot.on_listen (meta discarded)."""

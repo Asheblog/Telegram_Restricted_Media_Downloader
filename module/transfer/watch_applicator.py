@@ -40,7 +40,9 @@ class LiveWatchApplicator:
         if watch_manager is not None:
             watch_manager.set_live_watch_status(watch_id, status, error_message)
             return
-        LiveWatchApplicator._set_live_watch_status(host,watch_id, status, error_message)
+        setter = getattr(host, "set_live_watch_status", None)
+        if callable(setter):
+            setter(watch_id, status, error_message)
 
     async def apply_watch(self, payload: dict) -> None:
         host = self._host

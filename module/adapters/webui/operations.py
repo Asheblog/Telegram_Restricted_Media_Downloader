@@ -1594,7 +1594,10 @@ class WebOperationsMixin:
                 rule = make_forward_watch_rule(
                     watch.get('source_link'),
                     watch.get('target_link'),
-                    bool(watch.get('include_comment'))
+                    bool(watch.get('include_comment')),
+                    bool(watch.get('resolve_deep_link')),
+                    bool(watch.get('archive_by_author')),
+                    normalize_archive_title_source(watch.get('archive_title_source')),
                 )
                 if rule in self.listen_forward_chat:
                     continue
