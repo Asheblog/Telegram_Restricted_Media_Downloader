@@ -150,6 +150,28 @@ class LiveTransferWireCase(unittest.TestCase):
         self.assertIs(manager.listen_forward_chat['probe-rule'], sentinel)
         self.assertIs(bot_listen_forward['probe-rule'], sentinel)
 
+    def test_host_exposes_attrs_formerly_resolved_via_getattr(self):
+        """187d1d8 removed composition_root.__getattr__; these must stay explicit."""
+        from module.downloader import TelegramRestrictedMediaDownloader
+
+        required = (
+            'mark_pending_watch',
+            'set_live_watch_status',
+            'persisted_watches',
+            'watch_payload_from_record',
+            'download_watch_id',
+            'forward_watch_id',
+            'start_bot',
+            'user',
+            'bot_task_link',
+            'BOT_NAME',
+        )
+        for name in required:
+            self.assertTrue(
+                hasattr(TelegramRestrictedMediaDownloader, name),
+                msg=f'missing host attribute after __getattr__ removal: {name}',
+            )
+
     def test_bot_resolved_handler_prefers_host_overrides(self):
         """Regression: without overrides, /listen_* stayed on Bot.on_listen (meta discarded)."""
         from module.adapters.bot.bot import Bot

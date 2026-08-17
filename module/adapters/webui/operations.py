@@ -381,6 +381,18 @@ class WebOperationsMixin:
     def list_watches(self, tz_offset_minutes: int | None = None) -> list:
         return self.watch_manager.list_watches(tz_offset_minutes=tz_offset_minutes)
 
+    def mark_pending_watch(self, payload: dict, status: str, error_message: str = None) -> None:
+        return self.watch_manager.mark_pending_watch(payload, status, error_message)
+
+    def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
+        return self.watch_manager.set_live_watch_status(watch_id, status, error_message)
+
+    def persisted_watches(self) -> list:
+        return self.watch_manager.persisted_watches()
+
+    def watch_payload_from_record(self, watch: dict) -> dict:
+        return self.watch_manager.watch_payload_from_record(watch)
+
     def create_watch(self, payload: dict) -> dict:
         return self.watch_manager.create_watch(payload)
 

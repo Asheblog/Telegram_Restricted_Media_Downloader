@@ -99,6 +99,30 @@ class BotHostMixin:
     def forward_watch_id(rule: str) -> str:
         return LiveWatchManager.forward_watch_id(rule)
 
+    @property
+    def user(self):
+        """User client: Bot.user after start_bot, else Application.client."""
+        bot = getattr(self, 'bot', None)
+        user = getattr(bot, 'user', None) if bot is not None else None
+        if user is not None:
+            return user
+        app = getattr(self, 'app', None)
+        return getattr(app, 'client', None) if app is not None else None
+
+    @property
+    def bot_task_link(self) -> set:
+        return self.bot.bot_task_link
+
+    @property
+    def BOT_NAME(self) -> str:
+        bot = getattr(self, 'bot', None)
+        if bot is not None:
+            return getattr(type(bot), 'BOT_NAME', 'TRMD_BOT')
+        return 'TRMD_BOT'
+
+    async def start_bot(self, *args, **kwargs):
+        return await self.bot.start_bot(*args, **kwargs)
+
     async def help(self, *args, **kwargs) -> dict:
         return await self.bot.help(*args, **kwargs)
 
