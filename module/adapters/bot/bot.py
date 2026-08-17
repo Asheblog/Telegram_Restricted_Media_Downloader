@@ -1179,7 +1179,7 @@ class Bot:
             self.bot.add_handler(
                 MessageHandler(
                     self.guide_wizard.handle_message,
-                    filters=pyrogram.filters.user(self.root) & pyrogram.filters.text & ~pyrogram.filters.command()
+                    filters=pyrogram.filters.user(self.root) & pyrogram.filters.text
                 ),
                 group=-2
             )

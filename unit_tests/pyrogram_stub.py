@@ -17,8 +17,28 @@ class Dummy:
     def __or__(self, other):
         return self
 
+    def __invert__(self):
+        return self
+
     def __iter__(self):
         return iter(())
+
+
+class DummyFilters:
+    """Stands in for pyrogram.filters, keeping command()'s required argument.
+
+    A permissive stub would silently accept ``filters.command()``, which raises
+    TypeError against real Pyrogram and aborts Bot.start_bot.
+    """
+
+    def __getattr__(self, name):
+        value = Dummy()
+        setattr(self, name, value)
+        return value
+
+    @staticmethod
+    def command(commands, prefixes='/', case_sensitive=False):
+        return Dummy(commands, prefixes, case_sensitive)
 
 
 class DummyModule(types.ModuleType):
@@ -60,7 +80,7 @@ def install_pyrogram_stub() -> None:
     pyrogram.__version__ = 'test'
     pyrogram.__license__ = 'test'
     pyrogram.Client = type('Client', (Dummy,), {})
-    pyrogram.filters = Dummy()
+    pyrogram.filters = DummyFilters()
 
     pyrogram_types = DummyModule('pyrogram.types')
     pyrogram_types.Message = type('Message', (Dummy,), {})

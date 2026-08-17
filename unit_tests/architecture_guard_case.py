@@ -76,6 +76,75 @@ def _import_graph(modules):
     return graph
 
 
+HOST_CLASSES = {
+    "composition_root.py": ["TrmdCompositionRoot"],
+    "adapters/webui/operations.py": ["WebOperationsMixin"],
+    "adapters/bot/host.py": ["BotHostMixin"],
+    "downloader.py": ["TelegramRestrictedMediaDownloader"],
+}
+# __getattr__ forwards every miss to the host, so their self.<attr> is a host read.
+HOST_PROXY_CLASSES = {
+    "transfer/live_transfer.py": ["LiveTransferService"],
+}
+
+
+def _class_nodes(path, names):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name in names:
+            yield node
+
+
+def _assigned_attribute_nodes(root):
+    targets = set()
+    for node in ast.walk(root):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute):
+                    targets.add(id(target))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Attribute):
+            targets.add(id(node.target))
+    return targets
+
+
+def _host_names_defined(node):
+    """Everything the class supplies: members plus self.<attr> assignments."""
+    defined = set()
+    for child in node.body:
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defined.add(child.name)
+        elif isinstance(child, ast.Assign):
+            defined.update(
+                target.id for target in child.targets if isinstance(target, ast.Name)
+            )
+        elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
+            defined.add(child.target.id)
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Assign):
+            for item in sub.targets:
+                if isinstance(item, ast.Attribute) and isinstance(item.value, ast.Name):
+                    if item.value.id == "self":
+                        defined.add(item.attr)
+        elif isinstance(sub, ast.AnnAssign):
+            target = sub.target
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+                if target.value.id == "self":
+                    defined.add(target.attr)
+    return defined
+
+
+def _attribute_reads(root, holders):
+    """First read line for each `<holder>.<attr>` that is not an assignment target."""
+    assigned = _assigned_attribute_nodes(root)
+    reads = {}
+    for node in ast.walk(root):
+        if not isinstance(node, ast.Attribute) or id(node) in assigned:
+            continue
+        if isinstance(node.value, ast.Name) and node.value.id in holders:
+            reads.setdefault(node.attr, node.lineno)
+    return reads
+
+
 def _layer(module_name):
     parts = module_name.split(".")
     if len(parts) > 1 and parts[1] in {
@@ -175,6 +244,46 @@ class ArchitectureGuardCase(unittest.TestCase):
                 if _layer(target) not in allowed.get(_layer(source), set()):
                     violations.append(f"{source} -> {target}")
         self.assertEqual([], violations)
+
+    def test_composed_host_resolves_every_attribute_read(self):
+        """Without __getattr__, an unresolved self.<attr>/host.<attr> is a runtime crash.
+
+        Production went dark because listen_forward_chat, mark_pending_watch and
+        done_notice were only reachable through the reflective __getattr__ that
+        187d1d8 deleted; each one surfaced as a separate AttributeError.
+        """
+        defined = set()
+        reads = {}
+        for rel, names in {**HOST_CLASSES, **HOST_PROXY_CLASSES}.items():
+            path = MODULE_DIR / rel
+            for node in _class_nodes(path, names):
+                if rel in HOST_PROXY_CLASSES:
+                    # Proxy methods resolve locally; only its self.<attr> misses hit the host.
+                    defined.update(
+                        child.name for child in node.body
+                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    )
+                else:
+                    defined |= _host_names_defined(node)
+                for attr, lineno in _attribute_reads(node, {"self"}).items():
+                    reads.setdefault(attr, f"{rel}:{lineno}")
+
+        # Services receive the host explicitly. module/utils is excluded: the layer
+        # rules forbid it from depending on the host, so its `host` params are strings.
+        for path in sorted(MODULE_DIR.rglob("*.py")):
+            rel = path.relative_to(MODULE_DIR).as_posix()
+            if rel.startswith("utils/") or "__pycache__" in path.parts:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for attr, lineno in _attribute_reads(tree, {"host", "_host"}).items():
+                reads.setdefault(attr, f"{rel}:{lineno}")
+
+        unresolved = sorted(
+            f"{attr} (first read at {where})"
+            for attr, where in reads.items()
+            if attr not in defined and not attr.startswith("__")
+        )
+        self.assertEqual([], unresolved)
 
     def test_composition_root_has_no_reflective_getattr(self):
         path = MODULE_DIR / "composition_root.py"

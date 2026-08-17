@@ -106,6 +106,8 @@ class TrmdCompositionRoot:
         self.bot.listen_download_chat = self.watch_manager.listen_download_chat
         self.bot.listen_forward_chat = self.watch_manager.listen_forward_chat
         self.bot.downloader = self
+        # Album dedupe state lives on Bot; live_transfer mutates it through the host.
+        self.handle_media_groups = self.bot.handle_media_groups
         self.web_pending_watches = self.watch_manager.web_pending_watches
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None

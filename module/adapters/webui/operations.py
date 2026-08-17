@@ -23,6 +23,10 @@ from module.utils.language import _t
 from module.domain.transfer_state.models import DownloadTask, UploadTask
 from module.persistence.transfer_store import DeferredDiscussionCaptureStatus, TransferStore, TransferStatus
 from module.transfer.comment_delay import CommentDelayScheduler
+from module.transfer.pikpak_rules import (
+    transfer_item_archive_match_original_name,
+    transfer_item_archive_timestamp,
+)
 
 
 ORPHAN_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
@@ -98,6 +102,9 @@ def _require_web_task_manager(host):
 
 
 class WebOperationsMixin:
+    # Fallback id counter for hosts assembled without a WebUITaskManager.
+    web_operation_counter: int = 0
+
     def _ensure_transfer_store(self) -> TransferStore:
         store = getattr(self, 'transfer_store', None)
         if store is not None:
@@ -460,8 +467,8 @@ class WebOperationsMixin:
             ),
             file_name=item.get('file_name'),
             file_size=item.get('file_size'),
-            transferred_at=self.transfer_item_archive_timestamp(item),
-            match_original_name=self.transfer_item_archive_match_original_name(item)
+            transferred_at=transfer_item_archive_timestamp(item),
+            match_original_name=transfer_item_archive_match_original_name(item)
         )
         if not bool(getattr(result, 'ok', False)):
             return False

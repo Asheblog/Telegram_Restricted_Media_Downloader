@@ -11,6 +11,7 @@ from module.persistence.system_log import (
 )
 from module.domain.archive_naming.source_folders import archive_source_folder, normalize_archive_title_source
 from module.persistence.transfer_store import TransferStatus
+from module.transfer.pikpak_rules import transfer_item_archive_match_original_name
 
 
 class SystemLogArchiveRetryOps:
@@ -79,7 +80,7 @@ class SystemLogArchiveRetryOps:
                 file_name = item.get('file_name') or file_name
                 file_size = item.get('file_size') if item.get('file_size') is not None else file_size
                 if match_original_name is None:
-                    match_original_name = host.transfer_item_archive_match_original_name(item)
+                    match_original_name = transfer_item_archive_match_original_name(item)
                 source_link = item.get('source_link') or task.get('source_link') or source_link
 
             if not source_folder or not file_name:

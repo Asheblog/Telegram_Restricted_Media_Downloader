@@ -11,7 +11,7 @@ from pyrogram.types.bots_and_keyboards import InlineKeyboardMarkup
 
 from module import log
 from module.core.filter import Filter
-from module.adapters.bot.bot import KeyboardButton
+from module.adapters.bot.bot import Bot, KeyboardButton
 from module.core.enums import BotCallbackText, BotButton, DownloadStatus, DownloadType, KeyWord
 from module.utils.language import _t
 from module.transfer.live_watch import LiveWatchManager
@@ -20,6 +20,8 @@ from module.utils.util import iter_discussion_reply_messages
 
 
 class BotHostMixin:
+    _user_client_override = None
+
     async def get_download_link_from_bot(
             self,
             client: pyrogram.Client,
@@ -101,7 +103,9 @@ class BotHostMixin:
 
     @property
     def user(self):
-        """User client: Bot.user after start_bot, else Application.client."""
+        """User client: explicit override, else Bot.user after start_bot, else Application.client."""
+        if self._user_client_override is not None:
+            return self._user_client_override
         bot = getattr(self, 'bot', None)
         user = getattr(bot, 'user', None) if bot is not None else None
         if user is not None:
@@ -109,9 +113,23 @@ class BotHostMixin:
         app = getattr(self, 'app', None)
         return getattr(app, 'client', None) if app is not None else None
 
+    @user.setter
+    def user(self, value) -> None:
+        self._user_client_override = value
+
     @property
     def bot_task_link(self) -> set:
         return self.bot.bot_task_link
+
+    async def done_notice(self, text) -> None:
+        return await self.bot.done_notice(text)
+
+    async def safe_edit_message(self, *args, **kwargs):
+        return await self.bot.safe_edit_message(*args, **kwargs)
+
+    @staticmethod
+    def update_text(*args, **kwargs) -> list:
+        return Bot.update_text(*args, **kwargs)
 
     @property
     def BOT_NAME(self) -> str:
