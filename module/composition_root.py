@@ -58,7 +58,7 @@ class TrmdCompositionRoot:
             },
             gc=self.gc,
         )
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self.loop: asyncio.AbstractEventLoop = self._resolve_event_loop()
         self.event: asyncio.Event = asyncio.Event()
         self.queue: asyncio.Queue = asyncio.Queue()
         self.app: Application = Application(
@@ -207,6 +207,30 @@ class TrmdCompositionRoot:
     # ------------------------------------------------------------------
     # Explicit late-bound dependencies (single source of truth; no __getattr__ magic)
     # ------------------------------------------------------------------
+    @staticmethod
+    def _resolve_event_loop() -> asyncio.AbstractEventLoop:
+        """取一个可用的 event loop，且不依赖进程级"当前 loop"状态。
+
+        原先直接 ``asyncio.get_event_loop()``：该 API 在 3.12+ 已废弃，并且在
+        "本线程曾被 set_event_loop 过、当前 loop 为 None"的进程里会抛
+        ``RuntimeError: There is no current event loop``（实测：组合根在完整测试
+        套件中构造即失败，单独构造却成功）。这里按"运行中 → 已设置 → 新建"取，
+        三种情况都不抛；生产入口没有显式设过 loop，因此得到的仍是新建的 loop。
+        """
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            # 不在协程里：本线程已设置过 loop 就复用，否则显式新建并注册。
+            try:
+                existing = asyncio.get_event_loop_policy().get_event_loop()
+            except RuntimeError:
+                existing = None
+            if existing is not None:
+                return existing
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
+
     def _app(self):
         return getattr(self, "app", None)
 

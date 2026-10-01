@@ -18,6 +18,12 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
 
+# module.utils.parser 在 import 期就执行 argparse.parse_args()，会把 pytest 自己的 argv
+# 当成未知参数并 sys.exit(2)：单独跑本文件必然命中，整套跑则因为更早的测试模块清过 argv
+# 而侥幸不报。这里与 webui_http_hardening_case.py 等兄弟用例保持同一写法，只清导入期的 argv。
+_ORIGINAL_ARGV = sys.argv
+sys.argv = [_ORIGINAL_ARGV[0]]
+
 import module as trmd_module
 from module.adapters.webui.task_manager import WebUITaskManager
 from module.core.media_types import MEDIA_TYPES_DEFAULT
@@ -28,6 +34,8 @@ from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
 from module.webui_view_model import WebUiViewModel
 from module.web_ui import WebUiServer
 
+sys.argv = _ORIGINAL_ARGV
+
 
 def import_with_clean_argv(importer):
     original_argv = sys.argv
@@ -36,6 +44,72 @@ def import_with_clean_argv(importer):
         return importer()
     finally:
         sys.argv = original_argv
+
+
+class WebUiTestConnection(http.client.HTTPConnection):
+    """WebUI 测试连接：同一连接上串联请求，并对 TCP 层竞态做有限重放。
+
+    背景（复现脚本与实测数据见 tmp/flake-fix/report.md）：
+    - 服务器响应固定 HTTP/1.0，``http.client`` 读完响应就会关闭连接，下一次请求本来
+      就会重连——「复用连接」不是失败原因（实测「每请求新建连接」同样复现）。
+    - 真正的竞态：请求带 body、而服务器在读取 body 之前就回应并关闭连接时
+      （未鉴权的 ``POST /api/auth/submit`` 回 401、``POST /api/forwards`` 回 404 等），
+      Windows 会因为套接字里还有未读数据而回 RST；RST 会让客户端丢掉内核中尚未取走的
+      响应字节，``getresponse()`` 于是随机抛 ``ConnectionAbortedError(10053)``
+      （实测约 0.5%/请求；失败时服务器**已经回应**，诊断日志里有该请求的响应行）。
+    - 重放边界刻意收得很紧，以免掩盖真实缺陷：只重放「连接层异常 + 一个完整响应都没
+      拿到 + 请求带 body」；任何 HTTP 响应（401/400/404/500、错误体、JSON 解析）都不
+      重放；不带 body 的请求一律不重放；畸形的 ``BadStatusLine`` 也不重放。
+    - 重放的幂等性：能触发该竞态的请求，一定是被服务器**在读取 body 之前**拒掉的请求
+      ——``_check_request_origin`` / ``_check_auth`` / ``_check_setup_ready`` 与路由匹配
+      都发生在 ``_read_json()`` 之前，处理函数从未运行，重放不会产生第二次副作用。
+      反过来，真正改状态的请求都先读完了 body，套接字里没有未读数据，产生不了这个 RST；
+      它们若出现连接层故障，测试仍会在有限次重放后失败，而不是被静默吞掉。
+    """
+
+    MAX_REPLAYS = 2
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._replay_args = None
+        self.replayed_requests = 0
+
+    def request(self, method, url, body=None, headers=None, *, encode_chunked=False):
+        # HTTPConnection.request 的默认 headers 是 {}，显式传 None 会让它 TypeError；
+        # 这里统一归一化，保持与直接调用 http.client 完全一致的行为。
+        headers = {} if headers is None else headers
+        replayable = body is None or isinstance(body, (str, bytes, bytearray))
+        self._replay_args = (
+            (method, url, body, headers, encode_chunked) if replayable else None
+        )
+        super().request(
+            method, url, body=body, headers=headers, encode_chunked=encode_chunked
+        )
+
+    def getresponse(self):
+        replays = 0
+        while True:
+            try:
+                return super().getresponse()
+            except ConnectionError:
+                args = self._replay_args
+                if replays >= self.MAX_REPLAYS or not args or args[2] is None:
+                    raise
+                replays += 1
+                self.replayed_requests += 1
+                self.close()
+                super().request(
+                    args[0],
+                    args[1],
+                    body=args[2],
+                    headers=args[3],
+                    encode_chunked=args[4],
+                )
+
+
+def connect_webui(server, timeout: float | None = 5) -> WebUiTestConnection:
+    """建立 WebUI 测试连接（对「服务器未读完 body 就关闭」的竞态做有限重放）。"""
+    return WebUiTestConnection(server.host, server.port, timeout=timeout)
 
 
 class FakeWebUiOperations:
@@ -289,7 +363,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         return headers
 
     def _authenticated_headers(self, server, content_type: str | None = None) -> dict:
-        conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+        conn = connect_webui(server)
         try:
             return self._login_headers(conn, content_type=content_type)
         finally:
@@ -1104,7 +1178,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request("GET", "/api/settings", headers=headers)
                 response = conn.getresponse()
@@ -1157,7 +1231,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request(
                     "GET", "/api/download-records?limit=2&offset=0", headers=headers
@@ -1195,7 +1269,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server = WebUiServer(store=store, username="admin", password="pass")
             server.start(open_browser=False)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request("GET", "/api/auth/status")
                 response = conn.getresponse()
@@ -1231,7 +1305,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server = WebUiServer(store=store, username="admin", password="pass")
             server.start(open_browser=False)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "GET",
                     "/api/auth/status",
@@ -1253,7 +1327,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request("GET", "/api/tasks/not-a-number", headers=headers)
                 response = conn.getresponse()
@@ -1327,7 +1401,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/tasks",
@@ -1366,7 +1440,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/tasks",
@@ -1402,7 +1476,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/tasks",
@@ -1461,7 +1535,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST", f"/api/tasks/{task_id}/retry-failed", headers=headers
                 )
@@ -1860,7 +1934,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request("POST", f"/api/tasks/{task_id}/pause", headers=headers)
                 response = conn.getresponse()
                 body = json.loads(response.read().decode("utf-8"))
@@ -1894,7 +1968,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request(
                     "POST",
@@ -1934,7 +2008,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request(
                     "POST",
@@ -2012,7 +2086,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request(
                     "POST",
@@ -2055,7 +2129,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request("GET", "/api/statistics", headers=headers)
                 response = conn.getresponse()
@@ -2092,7 +2166,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
 
                 conn.request(
                     "POST",
@@ -2145,7 +2219,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/tasks",
@@ -2179,7 +2253,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/watches",
@@ -2215,7 +2289,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         server.start(open_browser=False)
         headers = self._authenticated_headers(server, content_type="application/json")
         try:
-            conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+            conn = connect_webui(server)
             conn.request(
                 "POST",
                 "/api/watches",
@@ -2278,7 +2352,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 server, content_type="application/json"
             )
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/forwards",
@@ -4408,7 +4482,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server = WebUiServer(store=store, operations=operations)
             server.start(open_browser=False)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port)
+                conn = connect_webui(server, timeout=None)
                 conn.request("DELETE", f"/api/tasks/{task_id}")
                 response = conn.getresponse()
                 body = json.loads(response.read().decode("utf-8"))
@@ -4716,7 +4790,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/uploads",
@@ -4750,7 +4824,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 conn.request(
                     "POST",
                     "/api/uploads",
@@ -5105,7 +5179,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             server.start(open_browser=False)
             headers = self._authenticated_headers(server)
             try:
-                conn = http.client.HTTPConnection(server.host, server.port, timeout=5)
+                conn = connect_webui(server)
                 path = f"/api/watches/{quote(watch_id, safe='')}/events?limit=10&offset=0&status=skipped"
                 conn.request("GET", path, headers=headers)
                 response = conn.getresponse()
