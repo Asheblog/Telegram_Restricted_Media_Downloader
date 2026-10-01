@@ -4,7 +4,6 @@ name: Tests
 # 不含任何测试，721 个用例（含架构守卫与集成基线）在推送与 PR 上都不会执行。
 on:
   push:
-    branches: ['main', 'refactor/decouple-all']  # TEMP-VERIFY-BRANCH
   pull_request:
     branches: ['main']
   workflow_dispatch:

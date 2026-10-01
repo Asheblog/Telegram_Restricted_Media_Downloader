@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-    branches: ['refactor/decouple-all']  # TEMP-VERIFY-BRANCH
 
 permissions:
   contents: read
