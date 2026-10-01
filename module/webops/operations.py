@@ -693,6 +693,19 @@ class WebOperationsMixin:
         )
         return self.media_manager
 
+    def _ensure_media_cleanup_ops(self):
+        """媒体清理编排实例（懒建并缓存；实现见 module.webops.media_cleanup）。"""
+        ops = self.__dict__.get('_media_cleanup_ops_impl')
+        if ops is None:
+            from module.webops.media_cleanup import MediaCleanupOperations
+            ops = MediaCleanupOperations(
+                media_manager_getter=self._ensure_media_manager,
+                transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+                diagnostic_getter=lambda: getattr(self, 'diagnostic', None),
+            )
+            self._media_cleanup_ops_impl = ops
+        return ops
+
     def scan_media_for_cleanup(
             self,
             task_id: int = None,
@@ -702,8 +715,7 @@ class WebOperationsMixin:
             orphans_offset: int = 0,
     ) -> dict:
         """扫描可清理的媒体文件。"""
-        mm = self._ensure_media_manager()
-        return mm.scan_all(
+        return self._ensure_media_cleanup_ops().scan_media_for_cleanup(
             task_id=task_id,
             items_limit=items_limit,
             items_offset=items_offset,
@@ -712,60 +724,14 @@ class WebOperationsMixin:
         )
 
     def cleanup_media_files(self, payload: dict) -> dict:
-        """执行媒体文件清理。
-
-        payload: {'item_ids': [...], 'file_paths': [...]}
-        """
-        mm = self._ensure_media_manager()
-        item_ids = payload.get('item_ids') or []
-        file_paths = payload.get('file_paths') or []
-
-        result = {
-            'item_result': None,
-            'orphan_result': None,
-            'total_deleted_count': 0,
-            'total_deleted_size': 0,
-        }
-
-        if item_ids:
-            item_result = mm.cleanup_by_item_ids([int(i) for i in item_ids])
-            result['item_result'] = item_result
-            result['total_deleted_count'] += item_result['total_deleted_count']
-            result['total_deleted_size'] += item_result['total_deleted_size']
-
-        if file_paths:
-            orphan_result = mm.cleanup_orphan_files(file_paths)
-            result['orphan_result'] = orphan_result
-            result['total_deleted_count'] += orphan_result['total_deleted_count']
-            result['total_deleted_size'] += orphan_result['total_deleted_size']
-
-        return result
+        """执行媒体文件清理。payload: {'item_ids': [...], 'file_paths': [...]}"""
+        return self._ensure_media_cleanup_ops().cleanup_media_files(payload)
 
     def maybe_run_scheduled_media_cleanup(self) -> None:
-        if not self.transfer_store:
-            return
-        now = time.time()
-        last_run = getattr(self, '_last_orphan_cleanup_at', 0.0)
-        if now - last_run < ORPHAN_CLEANUP_INTERVAL_SECONDS:
-            return
-        self._last_orphan_cleanup_at = now
-        try:
-            result = self._ensure_media_manager().auto_cleanup_orphan_files()
-            deleted_count = int(result.get('total_deleted_count') or 0)
-            if deleted_count:
-                diagnostic = getattr(self, 'diagnostic', None)
-                message = f'Auto orphan cleanup removed {deleted_count} file(s).'
-                if diagnostic is not None:
-                    diagnostic.info(message)
-                else:
-                    log.info(message)
-        except Exception as error:
-            log.warning(f'Scheduled orphan cleanup failed: {error}')
+        return self._ensure_media_cleanup_ops().maybe_run_scheduled_media_cleanup()
 
     def list_cleanup_logs(self) -> list:
-        if not self.transfer_store:
-            return []
-        return self.transfer_store.list_cleanup_logs()
+        return self._ensure_media_cleanup_ops().list_cleanup_logs()
 
     def _run_telegram_coro(self, coro, timeout: float | None = 300):
         """Run a coroutine on the Telegram loop from a worker thread.
