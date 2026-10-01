@@ -40,6 +40,36 @@ from module.persistence.transfer_store import TransferStore
 MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
 
 
+def declared_length(handler) -> int:
+    """校验并返回 Content-Length 声明的请求体长度。
+
+    单一真源：``_consume_request_body``（决定读多少）与 ``_read_json``（回 400/413）
+    都走这里，避免上限变更后两处不一致。
+    """
+    raw_length = handler.headers.get("content-length") if handler.headers else None
+    try:
+        length = int(raw_length or "0")
+    except (TypeError, ValueError):
+        raise WebUiApiError(
+            "invalid_content_length",
+            "Invalid Content-Length header.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if length < 0:
+        raise WebUiApiError(
+            "invalid_content_length",
+            "Invalid Content-Length header.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if length > MAX_JSON_BODY_BYTES:
+        raise WebUiApiError(
+            "request_body_too_large",
+            "Request body is too large.",
+            HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+        )
+    return length
+
+
 def normalize_optional_int(value):
     return int(value) if value not in (None, "") else None
 
@@ -669,30 +699,9 @@ class WebUiServer:
                 正文已由 ``_run`` → ``_consume_request_body`` 提前读完并缓存，
                 这里不再碰 ``rfile``（否则会读到 EOF，把正常请求误判成空 body）。
                 """
-                raw_length = self.headers.get("content-length")
-                try:
-                    length = int(raw_length or "0")
-                except (TypeError, ValueError):
-                    raise WebUiApiError(
-                        "invalid_content_length",
-                        "Invalid Content-Length header.",
-                        HTTPStatus.BAD_REQUEST,
-                    )
-                if length < 0:
-                    raise WebUiApiError(
-                        "invalid_content_length",
-                        "Invalid Content-Length header.",
-                        HTTPStatus.BAD_REQUEST,
-                    )
-                if length > MAX_JSON_BODY_BYTES:
-                    raise WebUiApiError(
-                        "request_body_too_large",
-                        "Request body is too large.",
-                        HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                    )
-                raw = getattr(self, "_body_cache", None)
-                if raw is None:
-                    raw = b""
+                # 非法 / 超限的 Content-Length 在这里回 400 / 413（与预读同一个真源）。
+                declared_length(self)
+                raw = self._body_cache if self._body_cache is not None else b""
                 if not raw:
                     return {}
                 try:
@@ -765,33 +774,42 @@ class WebUiServer:
                 """请求一进来就把 body 读进内存缓存。
 
                 为什么要提前读：HTTP 层有多处在**读 body 之前**就回错误（鉴权 401、
-                跨站 403、setup 409、body 超限 413、Content-Length 非法 400）。
-                只要还有字节留在套接字里，本服务器关闭连接时内核就会发 RST，而 RST
-                会丢掉客户端内核中尚未取走的响应字节 —— 客户端在 `getresponse()`
-                处随机拿到 `ConnectionAbortedError`，而不是我们发出的 4xx
-                （实测：带 body 的未鉴权 POST 约 0.5%/请求，放大后 16.7%）。
+                跨站 403、setup 409、Content-Length 非法 400）。只要还有字节留在
+                套接字里，本服务器关闭连接时内核就会发 RST，而 RST 会丢掉客户端内核中
+                尚未取走的响应字节 —— 客户端在 `getresponse()` 处随机拿到
+                `ConnectionAbortedError`，而不是我们发出的 4xx（实测带 body 的未鉴权
+                POST 约 0.5%/请求，延迟读取放大后 6.7%~16.7%）。
 
                 因此这里统一读完并缓存，`_read_json()` 之后只从缓存解析。
-                上限仍按 MAX_JSON_BODY_BYTES 约束（超限留给 `_read_json` 回 413）。
+
+                已知边界（刻意不处理）：声明长度 > MAX_JSON_BODY_BYTES 时**不读**，
+                随后 `_read_json` 回 413。此时若客户端并未真的发满声明长度，套接字里
+                仍有未读字节，关闭连接可能丢掉这个 413 —— 实测 10% 出现。取舍理由：
+                唯一能同时避免丢响应与不吃内存的做法是把声明长度读掉，但那会让
+                "只发 1KB 却声明 9MB"的请求把服务端线程拖到超时（实测 10/10 卡死），
+                比丢一个本就畸形的请求的响应更糟。正常前端不会触发该分支。
                 """
                 self._body_cache = None
-                raw_length = self.headers.get("content-length") if self.headers else None
-                if not raw_length:
-                    return
                 try:
-                    length = int(raw_length)
-                except (TypeError, ValueError):
-                    return  # 非法长度交给 _read_json 回 400
-                if length < 0 or length > MAX_JSON_BODY_BYTES:
-                    return  # 超限交给 _read_json 回 413，避免先吃掉巨量内存
+                    length = declared_length(self)
+                except WebUiApiError:
+                    # 非法/超限长度交给 _read_json 回 400/413（那里会再校验一次）。
+                    return
+                if length <= 0:
+                    return
                 self._body_cache = self._read_exactly(length)
 
             def _read_exactly(self, length: int) -> bytes:
+                """读满 ``length`` 字节并返回。
+
+                与旧实现 ``rfile.read(length)`` 一致：客户端少发字节或连接中断时返回
+                已读到的部分（由 `_read_json` 判成非法 JSON 回 400）。
+                """
                 chunks: list[bytes] = []
                 remaining = length
                 while remaining > 0:
                     try:
-                        chunk = self.rfile.read(remaining)
+                        chunk = self.rfile.read(min(remaining, 65536))
                     except OSError:
                         self.close_connection = True
                         break
@@ -804,10 +822,10 @@ class WebUiServer:
             def _run(self, route) -> None:
                 """Run one route with a catch-all so nothing escapes to socketserver."""
                 self._response_started = False
-                self._body_cache = None
                 try:
                     # 先读干净请求体（见 _consume_request_body），避免早退路径留下未读
-                    # 字节导致关闭连接时发 RST、客户端丢响应。
+                    # 字节导致关闭连接时发 RST、客户端丢响应。该调用内部会把
+                    # _body_cache 置成 bytes 或 None。
                     self._consume_request_body()
                 except Exception:  # noqa: BLE001 - 读体失败也必须能回响应
                     self.close_connection = True

@@ -47,88 +47,33 @@ def import_with_clean_argv(importer):
 
 
 class WebUiTestConnection(http.client.HTTPConnection):
-    """WebUI 测试连接：同一连接上串联请求，并对 TCP 层竞态做有限重放。
+    """WebUI 测试连接。
 
-    背景（复现脚本与实测数据见 tmp/flake-fix/report.md）：
-    - 服务器响应固定 HTTP/1.0，``http.client`` 读完响应就会关闭连接，下一次请求本来
-      就会重连——「复用连接」不是失败原因（实测「每请求新建连接」同样复现）。
-    - 真正的竞态：请求带 body、而服务器在读取 body 之前就回应并关闭连接时
-      （未鉴权的 ``POST /api/auth/submit`` 回 401、``POST /api/forwards`` 回 404 等），
-      Windows 会因为套接字里还有未读数据而回 RST；RST 会让客户端丢掉内核中尚未取走的
-      响应字节，``getresponse()`` 于是随机抛 ``ConnectionAbortedError(10053)``
-      （实测约 0.5%/请求；失败时服务器**已经回应**，诊断日志里有该请求的响应行）。
-    - 重放边界刻意收得很紧，以免掩盖真实缺陷：只重放「连接层异常 + 一个完整响应都没
-      拿到 + 请求带 body」；任何 HTTP 响应（401/400/404/500、错误体、JSON 解析）都不
-      重放；不带 body 的请求一律不重放。
-    - 关于 `BadStatusLine`：`http.client.RemoteDisconnected` **同时**继承
-      `ConnectionResetError` 与 `BadStatusLine`，因此它会被重放——这正是本竞态的表现
-      （响应字节一个都没读到、连接已断）。真正的「服务器返回了畸形状态行」是裸
-      `BadStatusLine`（不是 `RemoteDisconnected`，也不是 `ConnectionError`），
-      它不在 `except ConnectionError` 范围内，照旧直接失败。
-    - 重放的幂等性：能触发该竞态的请求，一定是被服务器**在读取 body 之前**拒掉的请求
-      ——``_check_request_origin`` / ``_check_auth`` / ``_check_setup_ready`` 与路由匹配
-      都发生在 ``_read_json()`` 之前，处理函数从未运行，重放不会产生第二次副作用。
-      反过来，真正改状态的请求都先读完了 body，套接字里没有未读数据，产生不了这个 RST；
-      它们若出现连接层故障，测试仍会在有限次重放后失败，而不是被静默吞掉。
+    历史（值得留档）：本文件曾长期随机失败，表现为 ``getresponse()`` 抛
+    ``ConnectionAbortedError(10053)``。根因不是"客户端复用连接"，而是**服务器在读取
+    body 之前就回错误**（未鉴权的 ``POST /api/auth/submit`` 回 401 等）时，请求体仍
+    留在套接字里；服务器关闭连接触发 RST，而 RST 会丢掉客户端内核中尚未取走的响应
+    字节。该根因已在服务器侧修掉（``module/adapters/webui/server.py`` 的
+    ``_consume_request_body``：请求一进来就按 Content-Length 读完并缓存）。
+
+    因此这里曾加过的"连接层异常重放"已删除 —— 实测删掉后本文件 106 个用例仍全绿
+    （详见提交说明），保留它只会多一层"测试绕过"，掩盖未来同类缺陷。
+    现在只做一件事：把 ``headers=None`` 归一化为 ``{}``。``HTTPConnection.request``
+    的默认 headers 是 ``{}``，显式传 ``None`` 会让它抛 ``TypeError``。
     """
 
-    MAX_REPLAYS = 2
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._replay_args = None
-        self.replayed_requests = 0
-        # 上一个响应宣告服务器将关闭连接（本服务所有响应都是 HTTP/1.0 + 无 keep-alive）。
-        # 不能立刻 close()：HTTPConnection.close() 会顺带关闭**仍在被读取**的 response
-        # （实测导致 21 个用例读不到 body）。因此延后到下一次请求之前再关。
-        self._close_before_next_request = False
-
     def request(self, method, url, body=None, headers=None, *, encode_chunked=False):
-        # HTTPConnection.request 的默认 headers 是 {}，显式传 None 会让它 TypeError；
-        # 这里统一归一化，保持与直接调用 http.client 完全一致的行为。
-        headers = {} if headers is None else headers
-        if self._close_before_next_request:
-            # 服务器已就本次响应关连接；http.client 只记了 will_close，不会替我们关，
-            # 于是下一次 request() 会写到半关闭连接上（随机 ConnectionAbortedError，
-            # 服务器修掉未读 body 触发的 RST 后表现为确定性超时）。
-            # 这里在发送前关掉，让 http.client 自己重新建连。
-            self.close()
-            self._close_before_next_request = False
-        replayable = body is None or isinstance(body, (str, bytes, bytearray))
-        self._replay_args = (
-            (method, url, body, headers, encode_chunked) if replayable else None
-        )
         super().request(
-            method, url, body=body, headers=headers, encode_chunked=encode_chunked
+            method,
+            url,
+            body=body,
+            headers={} if headers is None else headers,
+            encode_chunked=encode_chunked,
         )
-
-    def getresponse(self):
-        replays = 0
-        while True:
-            try:
-                response = super().getresponse()
-                break
-            except ConnectionError:
-                args = self._replay_args
-                if replays >= self.MAX_REPLAYS or not args or args[2] is None:
-                    raise
-                replays += 1
-                self.replayed_requests += 1
-                self.close()
-                super().request(
-                    args[0],
-                    args[1],
-                    body=args[2],
-                    headers=args[3],
-                    encode_chunked=args[4],
-                )
-        if getattr(response, "will_close", False):
-            self._close_before_next_request = True
-        return response
 
 
 def connect_webui(server, timeout: float | None = 5) -> WebUiTestConnection:
-    """建立 WebUI 测试连接（对「服务器未读完 body 就关闭」的竞态做有限重放）。"""
+    """建立 WebUI 测试连接。"""
     return WebUiTestConnection(server.host, server.port, timeout=timeout)
 
 

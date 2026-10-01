@@ -26,7 +26,7 @@ _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
 from module.adapters.webui.security import LoginThrottle, is_cross_origin_request
-from module.adapters.webui.server import WebUiServer
+from module.adapters.webui.server import MAX_JSON_BODY_BYTES, WebUiServer
 
 sys.argv = _ORIGINAL_ARGV
 
@@ -594,7 +594,8 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         conn = http.client.HTTPConnection('127.0.0.1', server.port, timeout=15)
         try:
             conn.putrequest('POST', '/api/tasks')
-            oversized = 9 * 1024 * 1024
+            # 从上限派生，避免在测试里再写一份 8MB 的对偶知识。
+            oversized = MAX_JSON_BODY_BYTES + 1024
             conn.putheader('Content-Type', 'application/json')
             conn.putheader('Content-Length', str(oversized))
             conn.putheader('Cookie', cookie)
