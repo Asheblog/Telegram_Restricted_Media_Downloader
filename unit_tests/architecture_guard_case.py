@@ -119,7 +119,7 @@ def _import_graph(modules):
 
 HOST_CLASSES = {
     "composition_root.py": ["TrmdCompositionRoot"],
-    "adapters/webui/operations.py": ["WebOperationsMixin"],
+    "webops/operations.py": ["WebOperationsMixin"],
     "adapters/bot/host.py": ["BotHostMixin"],
     "downloader.py": ["TelegramRestrictedMediaDownloader"],
 }
@@ -190,6 +190,7 @@ def _layer(module_name):
     parts = module_name.split(".")
     if len(parts) > 1 and parts[1] in {
         "adapters", "core", "domain", "infra", "persistence", "transfer", "utils",
+        "webops",
     }:
         return parts[1]
     return "top"
@@ -271,6 +272,15 @@ class ArchitectureGuardCase(unittest.TestCase):
             "utils": {"utils", "core", "domain"},
             "adapters": {
                 "adapters", "core", "domain", "infra", "persistence",
+                "transfer", "utils",
+            },
+            # webops = 业务编排层（从 adapters/webui 的 WebOperationsMixin 迁出）。
+            # 它**有意**位于 adapters 之上：编排天然要组合适配器（PikPak 归档、
+            # 媒体清理、上传器）。与"层反转"的区别在于方向——被依赖的 adapters
+            # 不知道 webops 存在（无反向 import），且 webops 只暴露操作语义、
+            # 不含 HTTP 原语。允许它依赖全部下层，禁止反向（见 allowed 里各层均无 "webops"）。
+            "webops": {
+                "webops", "adapters", "core", "domain", "infra", "persistence",
                 "transfer", "utils",
             },
             "top": set(),

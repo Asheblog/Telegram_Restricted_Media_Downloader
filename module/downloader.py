@@ -152,7 +152,7 @@ from module.transfer.watch_applicator import LiveWatchApplicator
 from module.transfer.live_transfer import LiveTransferService
 
 from module.composition_root import TrmdCompositionRoot
-from module.adapters.webui.operations import WebOperationsMixin
+from module.webops.operations import WebOperationsMixin
 from module.adapters.bot.host import BotHostMixin
 
 

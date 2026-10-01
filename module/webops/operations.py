@@ -1,5 +1,15 @@
 # coding=UTF-8
-"""Web UI operations facade — IWebUiOperations / IWatchOps / ITaskOps seam."""
+"""WebUI 业务操作编排 —— IWebUiOperations / IWatchOps / ITaskOps 的实现。
+
+从 adapters/webui 迁出（原先与 HTTP 壳同目录）：本文件零 HTTP 原语，承载任务队列、
+监听、账号与安装向导、媒体清理、归档编排、诊断导出、统计等业务编排。
+
+放在 webops 编排层是刻意的依赖方向：编排组合适配器，而不是反过来。
+architecture_guard 的 test_no_layer_inversions 已登记该层（adapters 不得 import webops）。
+
+旧路径 module/adapters/webui/operations.py 保留为兼容 shim（测试里的 patch 目标
+依赖该字符串路径）。
+"""
 import os
 import asyncio
 import random
@@ -617,105 +627,26 @@ class WebOperationsMixin:
             offset_id = next_offset_id
 
     def statistics(self, tz_offset_minutes: int | None = None) -> dict:
-        from module.adapters.webui.statistics_payload import (
-            DEFAULT_STATISTICS_WINDOW_DAYS,
-            build_statistics_payload,
-        )
+        return self._ensure_stats_ops().statistics(tz_offset_minutes)
 
-        rows = self.transfer_store.aggregate_channel_download_stats(
-            days=DEFAULT_STATISTICS_WINDOW_DAYS,
-            tz_offset_minutes=tz_offset_minutes,
-        )
-        payload = build_statistics_payload(
-            rows,
-            window_days=DEFAULT_STATISTICS_WINDOW_DAYS,
-        )
-        payload['operations'] = list(self.web_operations.values())[-50:]
-        return payload
+    def _ensure_stats_ops(self):
+        """统计编排实例（懒建并缓存；实现见 module.webops.stats）。"""
+        ops = getattr(self, '_stats_ops', None)
+        if ops is None:
+            from module.webops.stats import StatsOperations
+            ops = StatsOperations(
+                transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+                web_operations_getter=lambda: getattr(self, 'web_operations', None) or {},
+                app_getter=lambda: getattr(self, 'app', None),
+            )
+            self._stats_ops = ops
+        return ops
 
     def export_table(self, table_type: str) -> dict:
-        if table_type == 'channel':
-            return self._export_channel_statistics_table()
-        if table_type == 'link':
-            exported = self.app.print_link_table(
-                link_info=DownloadTask.LINK_INFO,
-                export=True,
-                only_export=True
-            )
-            folder = 'form' if is_docker() else 'DownloadRecordForm'
-        elif table_type == 'count':
-            exported = self.app.print_count_table(export=True, only_export=True)
-            folder = 'form' if is_docker() else 'DownloadRecordForm'
-        else:
-            exported = self.app.print_upload_table(
-                upload_tasks=UploadTask.TASKS,
-                export=True,
-                only_export=True
-            )
-            folder = 'form' if is_docker() else 'UploadRecordForm'
-        return {
-            'exported': bool(exported),
-            'table_type': table_type,
-            'directory': folder
-        }
+        return self._ensure_stats_ops().export_table(table_type)
 
     def _export_channel_statistics_table(self) -> dict:
-        import csv
-        import datetime
-        import os
-        import sys
-        from module.adapters.webui.statistics_payload import (
-            DEFAULT_STATISTICS_WINDOW_DAYS,
-            build_statistics_payload,
-        )
-
-        rows = self.transfer_store.aggregate_channel_download_stats(
-            days=DEFAULT_STATISTICS_WINDOW_DAYS,
-            tz_offset_minutes=None,
-        )
-        payload = build_statistics_payload(
-            rows,
-            window_days=DEFAULT_STATISTICS_WINDOW_DAYS,
-        )
-        if not payload['tables']['channel']['available']:
-            return {
-                'exported': False,
-                'table_type': 'channel',
-                'directory': 'DownloadRecordForm',
-            }
-        if is_docker():
-            directory = '/app/form/ChannelForm'
-            folder = 'form'
-        else:
-            directory = os.path.join(
-                os.path.dirname(os.path.abspath(sys.argv[0])),
-                'DownloadRecordForm',
-                'ChannelForm',
-            )
-            folder = 'DownloadRecordForm'
-        os.makedirs(directory, exist_ok=True)
-        path = os.path.join(
-            directory,
-            f'{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_频道下载统计表.csv',
-        )
-        with open(path, 'w', encoding='utf-8-sig', newline='') as handle:
-            writer = csv.writer(handle)
-            writer.writerow(['频道', '成功', '失败', '跳过', '合计', '成功率'])
-            for row in payload['channels']:
-                writer.writerow([
-                    row['channel'],
-                    row['success'],
-                    row['failure'],
-                    row['skip'],
-                    row['total'],
-                    row['success_rate'],
-                ])
-        return {
-            'exported': True,
-            'table_type': 'channel',
-            'directory': folder,
-            'path': path,
-        }
+        return self._ensure_stats_ops()._export_channel_statistics_table()
 
     def create_upload(self, payload: dict) -> dict:
         operation = self.submit_web_operation('upload', payload)

@@ -3951,7 +3951,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4007,7 +4007,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4063,7 +4063,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4124,7 +4124,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4171,7 +4171,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4421,15 +4421,15 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         with (
             patch(
-                "module.adapters.webui.operations.PARSE_ARGS",
+                "module.webops.operations.PARSE_ARGS",
                 SimpleNamespace(web=8080),
             ),
             patch(
-                "module.adapters.webui.operations.TransferStore",
+                "module.webops.operations.TransferStore",
                 return_value=fake_store,
             ),
             patch(
-                "module.adapters.webui.operations.WebUiServer",
+                "module.webops.operations.WebUiServer",
                 return_value=fake_web_ui,
             ),
         ):

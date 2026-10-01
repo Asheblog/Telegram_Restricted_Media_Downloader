@@ -23,7 +23,7 @@ install_pyrogram_stub()
 _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
-from module.adapters.webui.operations import (  # noqa: E402
+from module.webops.operations import (  # noqa: E402
     WebOperationsFacade,
     _WEB_UI_DELEGATE_METHODS,
 )
@@ -34,6 +34,11 @@ sys.argv = _ORIGINAL_ARGV
 SERVER_PATH = (
     pathlib.Path(__file__).resolve().parents[1]
     / "module" / "adapters" / "webui" / "server.py"
+)
+# facade 的实现已迁到编排层（webops），派发契约要对着实现文件断言。
+FACADE_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "module" / "webops" / "operations.py"
 )
 
 
@@ -55,9 +60,7 @@ class WebUiDispatchContractCase(unittest.TestCase):
         missing = [n for n in _WEB_UI_DELEGATE_METHODS if not callable(getattr(WebOperationsFacade, n, None))]
         self.assertEqual([], missing)
         # 类体里不应出现"手写"的业务方法（只有 __init__）。
-        tree = ast.parse(
-            (SERVER_PATH.parent / "operations.py").read_text(encoding="utf-8")
-        )
+        tree = ast.parse(FACADE_PATH.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == "WebOperationsFacade":
                 defined = [
