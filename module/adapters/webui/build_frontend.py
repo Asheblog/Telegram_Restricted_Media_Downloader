@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-"""Build frontend assets into assets.py Python string constants.
+"""Build frontend runtime assets into dist/webui/.
 
-Reads HTML/JS/CSS files from templates/ and static/ directories,
-assembles the final HTML documents, and writes them as Python
-constants in assets.py.
+Reads HTML/JS/CSS from templates/ and static/, assembles the final documents, and
+writes `dist/webui/assets.json` plus `dist/webui/fonts/*`.
 
-All styles now live in tailwind.css (@theme + @layer components);
-mobile.css has been removed — mobile components are part of the
-same Tailwind build.
+产物是**运行时**资源，不再写入 Python 源：历史做法把 3 份完整 HTML（含内联
+CSS/JS 与 base64 字体）写进 assets.py，得到 1.2 MB / 约 15,700 行的提交物，
+占 module/ 全部 Python 字节 41%，且是全仓 churn 第一名（近 200 次提交改动 141 次）。
+现在 templates/ + static/ 是唯一真源，构建只产出部署产物；
+`module/adapters/webui/static_assets.py` 负责运行时读取，源码在时还会内存重建，
+因此改完模板不跑构建也能立刻看到效果。
+
+All styles live in tailwind.css (@theme + @layer components); there is no
+separate mobile.css — mobile components come from the same Tailwind build.
 """
 
 import base64
+import json
+import shutil
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DIST_DIR = HERE / "dist"
 TEMPLATES_DIR = HERE / "templates"
 STATIC_DIR = HERE / "static"
-OUTPUT_FILE = HERE / "assets.py"
+OUTPUT_DIR = DIST_DIR / "webui"
+OUTPUT_FILE = OUTPUT_DIR / "assets.json"
+OUTPUT_FONTS_DIR = OUTPUT_DIR / "fonts"
 
 
 def read_text(path: Path) -> str:
@@ -90,6 +99,22 @@ def build_mobile_html(tailwind_css: str, fonts_css: str) -> str:
 </html>"""
 
 
+def _copy_font_files() -> int:
+    """把字体原始文件复制到产物目录（运行时按需读取，不再 base64 常驻）。"""
+    output_fonts = OUTPUT_FONTS_DIR
+    if output_fonts.is_dir():
+        shutil.rmtree(output_fonts)
+    output_fonts.mkdir(parents=True, exist_ok=True)
+    source = STATIC_DIR / "fonts"
+    count = 0
+    if source.is_dir():
+        for path in sorted(source.iterdir()):
+            if path.suffix in (".woff2", ".woff", ".ttf"):
+                shutil.copyfile(path, output_fonts / path.name)
+                count += 1
+    return count
+
+
 def main():
     tailwind_css = read_text(DIST_DIR / "tailwind.min.css")
     fonts_css, font_files = _load_font_data()
@@ -98,31 +123,20 @@ def main():
     desktop_html = build_desktop_html(tailwind_css, fonts_css)
     mobile_html = build_mobile_html(tailwind_css, fonts_css)
 
-    # Build font data dict source code
-    if font_files:
-        font_entries = ",\n    ".join(
-            f'"{name}": "{data}"' for name, data in sorted(font_files.items())
-        )
-        font_dict_src = "{\n    " + font_entries + "\n}"
-    else:
-        font_dict_src = "{}"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    bundle = {
+        "web_ui_html": desktop_html,
+        "web_ui_mobile_html": mobile_html,
+        "login_page_html": login_html,
+    }
+    OUTPUT_FILE.write_text(
+        json.dumps(bundle, ensure_ascii=False), encoding="utf-8"
+    )
+    font_count = _copy_font_files()
 
-    output = f'''# coding=UTF-8
-# WebUI 静态资源 — 由 build_frontend.py 自动生成
-# 请勿手动编辑。模板文件在 templates/ 和 static/ 目录。
-
-WEB_UI_HTML = r"""{desktop_html}"""
-
-WEB_UI_MOBILE_HTML = r"""{mobile_html}"""
-
-LOGIN_PAGE_HTML = r"""{login_html}"""
-
-FONTS = {font_dict_src}
-'''
-
-    OUTPUT_FILE.write_text(output, encoding="utf-8")
-    print(f"[build_frontend] Written {OUTPUT_FILE} ({len(output)} bytes)")
-    print(f"  Fonts CSS:    {len(fonts_css)} bytes ({len(font_files)} files, {sum(len(b64) for b64 in font_files.values()) * 3 // 4 // 1024} KB raw)")
+    print(f"[build_frontend] Written {OUTPUT_FILE} ({OUTPUT_FILE.stat().st_size} bytes)")
+    print(f"  Font files:   {font_count} copied to {OUTPUT_FONTS_DIR}")
+    print(f"  Fonts CSS:    {len(fonts_css)} bytes")
     print(f"  Tailwind CSS: {len(tailwind_css)} bytes")
     print(f"  Desktop HTML: {len(desktop_html)} bytes")
     print(f"  Login HTML:   {len(login_html)} bytes")

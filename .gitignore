@@ -36,6 +36,10 @@ AGENTS.md
 !requirements.txt
 !uv.lock
 
+# WebUI 运行时产物：由 build_frontend.py 从 templates/ + static/ 生成，
+# 不提交（仓库只保存源码）；Docker 构建期生成，开发/测试期由 static_assets 内存重建。
+module/adapters/webui/dist/webui/
+
 .venv
 .cursor/.worktrees/
 .worktrees/

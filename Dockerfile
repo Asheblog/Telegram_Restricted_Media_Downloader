@@ -54,6 +54,18 @@ COPY main.py .
 COPY module/ ./module/
 COPY scripts/ ./scripts/
 
+# 生成 WebUI 运行时资源，并裁掉仅供构建的源文件。
+# 为什么在镜像里生成：产物（3 份完整 HTML，约 1 MB）曾以 15,700 行 Python 常量的形式
+# 提交进仓库，占 module/ 全部 Python 字节 41%，且是全仓 churn 第一名（近 200 次提交
+# 改动 141 次）。现在 templates/ + static/ 是唯一真源，构建期生成 dist/webui/。
+# 生成后删除源文件：运行时由 static_assets 读取 dist/webui/assets.json；
+# 保留源码只是让镜像多带一份等价内容（两者一致性有测试断言）。
+RUN python module/adapters/webui/build_frontend.py \
+    && rm -rf module/adapters/webui/templates \
+              module/adapters/webui/static \
+              module/adapters/webui/build_frontend.py \
+              module/adapters/webui/download_fonts.py
+
 # 设置挂载点。
 VOLUME ["/app/TRMD", "/app/downloads", "/app/sessions", "/app/temp", "/app/form", "/app/rclone"]
 
