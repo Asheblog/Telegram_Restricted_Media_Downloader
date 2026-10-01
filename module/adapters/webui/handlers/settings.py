@@ -3,7 +3,7 @@
 
 from http import HTTPStatus
 
-from module.adapters.webui.server import sanitize_settings
+from module.adapters.webui.server import WebUiApiError, sanitize_settings
 from module.adapters.webui.view_model import WebUiViewModel
 
 
@@ -33,6 +33,10 @@ def handle_patch(handler, server, parsed) -> bool:
             'schema': schema,
             'settings_model': WebUiViewModel.settings_model(sanitized, schema)
         })
+    except WebUiApiError:
+        # 请求体本身的问题（非法 JSON / 非对象 / 超限）按原错误码上抛，
+        # 交给 handler 的统一异常边界回 4xx，避免被下面的宽 except 改标签。
+        raise
     except Exception as e:
         server.diagnostic.exception('[WebUI] 更新设置失败。')
         handler._send_json(

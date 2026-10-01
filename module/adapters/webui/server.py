@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from module.adapters.webui.security import (
     LoginThrottle,
+    cookie_secure_mode,
     cookie_secure_required,
     is_cross_origin_request,
     security_headers,
@@ -453,6 +454,10 @@ class WebUiServer:
             # 不泄露 stdlib / Python 版本指纹（`Server: BaseHTTP/0.6 Python/3.x`）。
             server_version = "trmd-webui"
             sys_version = ""
+            # stdlib 默认 HTTP/0.9 会在解析失败时抑制全部响应头（连状态行都没有，
+            # 反向代理会判为 invalid upstream response）；抬到 HTTP/1.0 保证
+            # 非法请求行也能拿到带状态行 + 安全头的正规响应。
+            default_request_version = "HTTP/1.0"
             _response_started = False
 
             def log_message(self, fmt, *args):
@@ -541,9 +546,11 @@ class WebUiServer:
                 return False
 
             def _check_request_origin(self):
-                """Reject browser-declared cross-site state-changing requests (CSRF)."""
-                if not server.auth_enabled:
-                    return True
+                """Reject browser-declared cross-site state-changing requests (CSRF).
+
+                不因「未启用登录」而跳过：无凭证的本地部署同样不希望被跨站页面驱动。
+                不带 ``Origin``/``Referer`` 的客户端（curl、脚本、单测）照旧放行。
+                """
                 if not is_cross_origin_request(self):
                     return True
                 server.diagnostic.warning(
@@ -753,21 +760,27 @@ class WebUiServer:
                 return int(task_id)
 
             def _respond_unhandled(self, exc: Exception) -> None:
-                """Last line of defense: structured 5xx instead of a dead connection."""
-                if isinstance(exc, WebUiApiError):
-                    server.diagnostic.warning(
-                        f"[WebUI] 请求失败 {self.command} {self.path}: {exc.error_code}"
+                """Last line of defense: structured 5xx instead of a dead connection.
+
+                自身也必须绝不抛出——否则等于把异常又送回 socketserver（F-01 症状）。
+                """
+                try:
+                    if isinstance(exc, WebUiApiError):
+                        server.diagnostic.warning(
+                            f"[WebUI] 请求失败 {self.command} {self.path}: {exc.error_code}"
+                        )
+                        self._send_error(exc.error_code, exc.message, exc.status)
+                        return
+                    server.diagnostic.exception(
+                        f"[WebUI] 未捕获异常 {self.command} {self.path}，已返回 internal_error。"
                     )
-                    self._send_error(exc.error_code, exc.message, exc.status)
-                    return
-                server.diagnostic.exception(
-                    f"[WebUI] 未捕获异常 {self.command} {self.path}，已返回 internal_error。"
-                )
-                self._send_error(
-                    "internal_error",
-                    "Internal server error.",
-                    HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
+                    self._send_error(
+                        "internal_error",
+                        "Internal server error.",
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                    )
+                except Exception:  # noqa: BLE001 - 兜底路径不可再抛
+                    self.close_connection = True
 
             def _run(self, route) -> None:
                 """Run one route with a catch-all so nothing escapes to socketserver."""
@@ -781,7 +794,9 @@ class WebUiServer:
                 if not self._begin_response(HTTPStatus.METHOD_NOT_ALLOWED):
                     return
                 try:
-                    self.send_header("allow", "GET, POST, PUT, PATCH, DELETE")
+                    self.send_header(
+                        "allow", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"
+                    )
                     self.send_header("cache-control", "no-store")
                     self.send_header("content-length", "0")
                     self.end_headers()
@@ -877,7 +892,8 @@ class WebUiServer:
         auth_status = "enabled" if self.auth_enabled else "disabled"
         self.diagnostic.info(
             f"WebUI started at {self.url}, auth={auth_status}, "
-            f"login_ratelimit={'on' if self.login_throttle else 'off'}"
+            f"login_ratelimit={'on' if self.login_throttle else 'off'}, "
+            f"cookie_secure={cookie_secure_mode()}"
         )
         if open_browser:
             try:

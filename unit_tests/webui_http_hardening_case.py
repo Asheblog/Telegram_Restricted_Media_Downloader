@@ -34,16 +34,18 @@ sys.argv = _ORIGINAL_ARGV
 class _StubHandler:
     """Minimal handler stand-in for header-only security helpers."""
 
-    def __init__(self, headers):
+    def __init__(self, headers, peer=None):
         self.headers = headers
+        if peer is not None:
+            self.client_address = (peer, 45678)
 
 
 class WebUiHttpHardeningCase(unittest.TestCase):
-    def _server(self, **kwargs) -> WebUiServer:
+    def _server(self, username='admin', password='pass', **kwargs) -> WebUiServer:
         server = WebUiServer(
             store=MagicMock(),
-            username='admin',
-            password='pass',
+            username=username,
+            password=password,
             **kwargs,
         )
         server.start(open_browser=False)
@@ -336,6 +338,45 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         self.assertEqual(403, status, raw)
         self.assertEqual('cross_origin_forbidden', json.loads(raw)['error_code'])
 
+    def test_cross_origin_check_applies_without_auth(self):
+        """未启用登录时同样拒绝跨站状态变更（无凭证的本地部署也需要）。"""
+        server = self._server(username='', password='')
+        self.assertFalse(server.auth_enabled)
+        status, _, raw = self._request(
+            server,
+            'POST',
+            '/api/tasks',
+            body=json.dumps({'source_link': 'https://t.me/example/1'}),
+            headers={
+                'Content-Type': 'application/json',
+                'Host': 'tgbot.example.com',
+                'Origin': 'https://evil.example',
+            },
+        )
+        self.assertEqual(403, status, raw)
+        self.assertEqual('cross_origin_forbidden', json.loads(raw)['error_code'])
+
+    def test_proxy_headers_are_only_trusted_from_local_peers(self):
+        from module.adapters.webui.security import cookie_secure_required, hsts_enabled
+
+        public_peer = _StubHandler({'x-forwarded-proto': 'https'}, peer='8.8.8.8')
+        local_peer = _StubHandler({'x-forwarded-proto': 'https'}, peer='127.0.0.1')
+        # 直连暴露时客户端自填 X-Forwarded-Proto 不作数
+        self.assertFalse(cookie_secure_required(public_peer))
+        self.assertFalse(hsts_enabled(public_peer))
+        self.assertTrue(cookie_secure_required(local_peer))
+        self.assertTrue(hsts_enabled(local_peer))
+        # 容器 / 内网里的反代同样可信
+        self.assertTrue(
+            cookie_secure_required(
+                _StubHandler({'x-forwarded-for': '203.0.113.9'}, peer='172.17.0.1')
+            )
+        )
+        # 拿不到对端地址（单测 stub）时按可信处理
+        self.assertTrue(
+            cookie_secure_required(_StubHandler({'x-forwarded-proto': 'https'}))
+        )
+
     def test_cross_origin_matrix(self):
         def check(headers):
             return is_cross_origin_request(_StubHandler(headers))
@@ -357,9 +398,24 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         self.assertFalse(
             check({'host': '127.0.0.1:3921', 'origin': 'http://127.0.0.1:3921'})
         )
+        # 已知端口存在时必须一致
+        self.assertTrue(
+            check({'host': 'tgbot.example.com:8443', 'origin': 'https://tgbot.example.com:9443'})
+        )
+        # 反代 Host $host 会剥掉端口：外部端口非 80/443 时 Origin 必带端口，
+        # 此时只比主机名，否则登录会被自己的校验 403 掉
+        self.assertFalse(
+            check({'host': 'tgbot.example.com', 'origin': 'https://tgbot.example.com:8443'})
+        )
+        self.assertFalse(
+            check({'host': 'tgbot.example.com', 'origin': 'http://tgbot.example.com:8080'})
+        )
         # 跨站（Origin 与 Referer 两条路径）
         self.assertTrue(
             check({'host': 'tgbot.example.com', 'origin': 'https://evil.example'})
+        )
+        self.assertTrue(
+            check({'host': 'tgbot.example.com', 'origin': 'https://evil.example:8443'})
         )
         self.assertTrue(
             check({'host': 'tgbot.example.com', 'referer': 'https://evil.example/x'})
@@ -424,6 +480,8 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         status, headers, raw = self._request(server, 'OPTIONS', '/api/auth/login')
         self.assertEqual(405, status, raw)
         self.assertIn('GET', headers.get('allow', ''))
+        self.assertIn('OPTIONS', headers.get('allow', ''))
+        self.assertIn('HEAD', headers.get('allow', ''))
         self.assertNotIn('Unsupported method', raw)
         self.assertNotIn('Python', raw)
         self.assertNotIn('Python', headers.get('server', ''))
@@ -437,11 +495,27 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         self.assertEqual(405, status)
         self.assertEqual('', raw)
 
+        # 非法请求行：抬到 HTTP/1.0 后也必须是带状态行与安全头的正规响应
         with socket.create_connection(('127.0.0.1', server.port), timeout=10) as sock:
             sock.sendall(b'BAD-REQUEST-LINE\r\n\r\n')
-            data = sock.recv(4096).decode('utf-8', 'replace')
+            chunks = []
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        data = b''.join(chunks).decode('utf-8', 'replace')
+        self.assertIn('HTTP/1.0 400', data)
+        self.assertIn('x-frame-options: DENY', data)
         self.assertIn('http_', data)
         self.assertNotIn('Python', data)
+
+        # 无版本号（HTTP/0.9 风格）请求也按 HTTP/1.0 正常应答
+        with socket.create_connection(('127.0.0.1', server.port), timeout=10) as sock:
+            sock.sendall(b'GET /\r\n\r\n')
+            data = sock.recv(4096).decode('utf-8', 'replace')
+        self.assertIn('HTTP/1.0 200', data)
+        self.assertIn('x-frame-options: DENY', data)
 
     # ---- 回归：监听备份仍接受数组载荷 -------------------------------------
 

@@ -52,6 +52,7 @@ server {
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;   # 应用据此判定 HTTPS → HSTS + Secure Cookie
+        proxy_set_header   X-Forwarded-Host  $http_host; # 含端口，供应用的跨站来源校验比对
 
         proxy_intercept_errors on;                    # 后端 5xx 统一走 nginx 错误页
         error_page 502 503 504 /50x.html;
@@ -65,10 +66,15 @@ server {
 
 - `proxy_set_header X-Forwarded-Proto $scheme;` 是应用层 HTTPS 判定的**首选信号**：
   有了它，HSTS 与 `Secure` Cookie 的判定不再依赖「非 loopback 监听」这种间接推断。
-- `proxy_set_header Host $host;`（以及可选的 `X-Forwarded-Host`）决定应用的跨站来源校验能否
+- `proxy_set_header Host $host;`（以及可选的 `X-Forwarded-Host $http_host`）决定应用的跨站来源校验能否
   正确判断「本站」。`proxy_pass` 缺省时 nginx 会把 `Host` 写成上游地址（如 `127.0.0.1:2921`）；
   应用检测到回环 / 内网 `Host` 时会放行而不是 403（避免把正常登录打死），但这会削弱同源校验。
-  若你的反代只能用内网域名当 Host，可显式设 `TRMD_WEB_CSRF_ORIGIN_CHECK=off`。
+  `$host` 不含端口，而浏览器在外部端口非 80/443 时 `Origin` 带端口——应用对「Host 无端口」
+  的情况只比主机名，所以 `Host $host` 即可；若要用端口严格比对，转发 `X-Forwarded-Host $http_host`
+  （含端口）。若你的反代只能用内网域名当 Host，可显式设 `TRMD_WEB_CSRF_ORIGIN_CHECK=off`。
+- 应用只采信来自回环 / 私网对端的 `X-Forwarded-*`：nginx 与应用在同一主机或同一容器网络时天然满足；
+  若反代部署在公网地址上，请改用 nginx 层 `add_header` 兜 HSTS（模板已含），Cookie `Secure`
+  仍由非 loopback 监听判定拿到。
 - `add_header` 默认继承规则：子级（`location`）一旦自己写了 `add_header`，
   父级的全部失效。上面 `location /` 不写 `add_header`，因此继承 server 级。
 - 应用与 nginx 会下发同名安全头（值一致，重复无害）。若要求响应里只留一份，

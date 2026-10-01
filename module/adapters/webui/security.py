@@ -99,8 +99,31 @@ def _header(handler, name: str) -> str:
     return str(headers.get(name) or "")
 
 
+def _peer_address(handler) -> str:
+    address = getattr(handler, "client_address", None) or ()
+    return str(address[0]) if len(address) > 0 else ""
+
+
+def peer_is_trusted(handler) -> bool:
+    """Whether the TCP peer may be believed about reverse-proxy headers.
+
+    只信回环 / 私网 / 链路本地对端：直连暴露时任意客户端都能自填
+    ``X-Forwarded-Proto``，让它只影响自己那份响应（不可利用），但没必要采信。
+    拿不到对端地址（单元测试 stub、socket 已卸载）时按可信处理。
+    """
+    peer = _peer_address(handler)
+    if not peer:
+        return True
+    return _is_local_host(peer)
+
+
 def forwarded_proto(handler) -> str:
-    """First hop of ``X-Forwarded-Proto`` (lower-case), or ``""``."""
+    """First hop of ``X-Forwarded-Proto`` (lower-case), or ``""``.
+
+    只有可信对端（反代）声明的协议才作数。
+    """
+    if not peer_is_trusted(handler):
+        return ""
     return _header(handler, FORWARDED_PROTO_HEADER).split(",")[0].strip().lower()
 
 
@@ -109,7 +132,9 @@ def is_tls_connection(handler) -> bool:
 
 
 def is_proxied_request(handler) -> bool:
-    """Whether the request carries reverse-proxy hop headers."""
+    """Whether the request carries reverse-proxy hop headers from a trusted peer."""
+    if not peer_is_trusted(handler):
+        return False
     return any(_header(handler, name) for name in PROXY_HINT_HEADERS)
 
 
@@ -167,16 +192,49 @@ def cookie_secure_required(handler, *, requires_auth: bool = False) -> bool:
     return is_proxied_request(handler)
 
 
-def _normalize_netloc(netloc: str, scheme: str) -> str:
+def cookie_secure_mode() -> str:
+    """``always`` / ``never`` (env override) or ``auto`` (per-request detection)."""
+    raw = _env_raw(ENVIRON.TRMD_WEB_COOKIE_SECURE)
+    if not raw:
+        return "auto"
+    return "always" if raw in _TRUTHY else "never"
+
+
+def _netloc_parts(netloc: str) -> tuple[str, int | None]:
+    """Split a netloc into ``(hostname, port_or_None)``."""
     netloc = netloc.strip().lower().rstrip(".")
-    host_part, sep, port = netloc.rpartition(":")
-    if (
-        sep
-        and port.isdigit()
-        and (scheme, port) in (("https", "443"), ("http", "80"))
-    ):
-        return host_part
-    return netloc
+    if not netloc:
+        return "", None
+    hostname, sep, port = netloc.rpartition(":")
+    if sep and port.isdigit():
+        return hostname, int(port)
+    return netloc, None
+
+
+def _origin_parts(parsed) -> tuple[str, int | None]:
+    hostname, port = _netloc_parts(parsed.netloc)
+    if port is None:
+        port = {"https": 443, "http": 80}.get(parsed.scheme)
+    return hostname, port
+
+
+def _site_matches(
+    origin: tuple[str, int | None], known: tuple[tuple[str, int | None], ...]
+) -> bool:
+    """Origin 与本站候选（Host / X-Forwarded-Host）是否同一站点。
+
+    已知端口缺失时（反代 ``proxy_set_header Host $host`` 会剥掉端口）只比主机名：
+    浏览器在非 80/443 端口访问时 ``Origin`` 必带端口，若强比端口会把正常登录
+    403 掉。已知端口存在时端口也必须一致。
+    """
+    origin_host, origin_port = origin
+    for hostname, port in known:
+        if not hostname or hostname != origin_host:
+            continue
+        if port is not None and origin_port is not None and port != origin_port:
+            continue
+        return True
+    return False
 
 
 def _is_local_host(hostname: str) -> bool:
@@ -194,9 +252,12 @@ def _is_local_host(hostname: str) -> bool:
 def is_cross_origin_request(handler) -> bool:
     """Whether a browser-supplied ``Origin``/``Referer`` points at another site.
 
-    比对基准是 ``Host`` 与 ``X-Forwarded-Host``。两种刻意的宽松处理：
+    比对基准是 ``Host`` 与 ``X-Forwarded-Host``（默认端口与「已知端口缺失」按
+    :func:`_site_matches` 归一化）。三种刻意的宽松处理：
 
     - 不带这两个头的非浏览器客户端（curl、脚本、单元测试）直接放行；
+    - ``Host`` 无端口而 ``Origin`` 带端口（反代 ``Host $host`` 会剥端口，外部端口
+      非 80/443 时必然如此）：只比主机名，避免把正常登录 403 掉；
     - 反代把 ``Host`` 改写成回环 / 内网地址（nginx `proxy_pass` 且未
       `proxy_set_header Host $host` 时的默认行为）时**无法判断真实站点**，
       此时放行而不是把正常登录 403 掉——会话 Cookie 仍是 `SameSite=Lax`，
@@ -215,23 +276,20 @@ def is_cross_origin_request(handler) -> bool:
     parsed = urlparse(source)
     if not parsed.netloc:
         return False
-    origin_netloc = _normalize_netloc(parsed.netloc, parsed.scheme)
     known = tuple(
-        netloc
-        for netloc in (
-            _normalize_netloc(_header(handler, "host"), parsed.scheme),
-            _normalize_netloc(
-                _header(handler, "x-forwarded-host").split(",", 1)[0], parsed.scheme
-            ),
+        parts
+        for parts in (
+            _netloc_parts(_header(handler, "host")),
+            _netloc_parts(_header(handler, "x-forwarded-host").split(",", 1)[0]),
         )
-        if netloc
+        if parts[0]
     )
     if not known:
         return False
-    if origin_netloc in known:
+    if _site_matches(_origin_parts(parsed), known):
         return False
     # 反代把 Host 改写成了回环 / 内网地址时无法判断真实站点，放行。
-    return not all(_is_local_host(netloc.rsplit(":", 1)[0]) for netloc in known)
+    return not all(_is_local_host(hostname) for hostname, _ in known)
 
 
 class _Bucket:
@@ -376,5 +434,15 @@ class LoginThrottle:
         overflow = len(self._buckets) - self.max_tracked
         if overflow <= 0:
             return
-        for key, _ in sorted(self._buckets.items(), key=lambda item: item[1].last_seen)[:overflow]:
+        # 只淘汰「无失败记录且未锁定」的桶；锁定中的桶绝不因容量压力被丢弃，
+        # 否则攻击者可以用大量源 IP 把正在生效的锁定挤出去。
+        evictable = sorted(
+            (
+                (key, bucket)
+                for key, bucket in self._buckets.items()
+                if not bucket.failures and bucket.locked_until <= now
+            ),
+            key=lambda item: item[1].last_seen,
+        )
+        for key, _ in evictable[:overflow]:
             self._buckets.pop(key, None)

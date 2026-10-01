@@ -66,16 +66,22 @@
   `GET /api/auth/login`、`GET/POST /api/auth/logout` 等未授权访问一律 `401 auth_required`，
   404/401 差分预言机消失。
 - `POST /api/auth/logout` 移入鉴权门之后：必须有有效会话，未授权返回 401（不再是 200）。
-- 所有状态变更方法（POST/PUT/PATCH/DELETE）在鉴权前做同源校验：
-  带 `Origin` / `Referer` 且与 `Host`（或 `X-Forwarded-Host`）不同源 → `403 cross_origin_forbidden`
-  （默认端口 80/443 归一化比较）。不带这两个头的非浏览器客户端（curl、脚本、测试）放行。
-  两种刻意的宽松处理，避免把正常登录 403 掉：
+- 所有状态变更方法（POST/PUT/PATCH/DELETE）在鉴权前做同源校验（**不因「未启用登录」
+  而跳过**：无凭证的本地部署同样不希望被跨站页面驱动）：
+  带 `Origin` / `Referer` 且与 `Host`（或 `X-Forwarded-Host`）不同源 → `403 cross_origin_forbidden`。
+  不带这两个头的非浏览器客户端（curl、脚本、测试）放行。三种刻意的宽松处理：
+  - `Host` 无端口而 `Origin` 带端口（反代 `proxy_set_header Host $host` 会剥掉端口，
+    外部端口非 80/443 时浏览器 `Origin` 必带端口）→ 只比主机名，否则等于用自家校验
+    把登录 403 掉；已知端口存在时端口仍必须一致；
   - `Host` 被反代改写成回环 / 内网地址（`proxy_pass` 且未 `proxy_set_header Host $host`
     时 nginx 的默认行为）时无法判断真实站点 → 放行；
   - `Origin: null`（沙箱 iframe）按跨站处理。
 
   会话 Cookie 的 `SameSite=Lax` 仍是第一道防线：跨站表单 POST 根本带不上会话。
   特殊反代或排障可用 `TRMD_WEB_CSRF_ORIGIN_CHECK=off` 关闭该校验。
+- 反向代理头（`X-Forwarded-Proto` / `X-Forwarded-For` / `X-Real-IP` / `Forwarded` /
+  `X-Forwarded-Host`）只采信回环 / 私网 / 链路本地对端：直连暴露时任意客户端都能自填，
+  虽只影响它自己那份响应，但没必要采信（`security.peer_is_trusted`）。
 
 ### 5. 登录限流（F-05）
 
@@ -98,8 +104,9 @@
 
 - `Server: trmd-webui`（去掉 `BaseHTTP/0.6 Python/3.x`）。
 - 重写 `send_error`：stdlib 的 HTML 错误页换成 JSON，`501` 不回显调用方自选方法名，
-  非法请求行也只得到 JSON。
-- 新增 `do_OPTIONS` / `do_HEAD` → `405` + `Allow: GET, POST, PUT, PATCH, DELETE`，
+  非法请求行也只得到 JSON；`default_request_version` 由 `HTTP/0.9` 抬到 `HTTP/1.0`，
+  否则 stdlib 会抑制解析失败响应的状态行与响应头（反向代理判为 invalid upstream response）。
+- 新增 `do_OPTIONS` / `do_HEAD` → `405` + `Allow: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD`，
   不再走 stdlib 的 `501 Unsupported method`。
 
 ### 7. 配置面
@@ -124,8 +131,14 @@
   TLS vhost `add_header Strict-Transport-Security ... always;`、
   `proxy_set_header X-Forwarded-Proto $scheme;`（让应用能精确判定 HTTPS）、
   默认 server `return 444`（未知 Host 兜底）、`proxy_intercept_errors on`（5xx 统一页面）。
+- ⚠️ **应用层 F-02 / F-04 依赖反代契约**：WebUI 绑回环 + 反代（默认 `TRMD_WEB_HOST=127.0.0.1`，
+  也是渗透目标的形态）时，应用层 HSTS 只有拿到 `X-Forwarded-Proto: https` 才下发、
+  Cookie `Secure` 才走 HTTPS 分支；因此 ops 模板强制
+  `proxy_set_header X-Forwarded-Proto $scheme;`，并在 nginx 层再 `add_header` 一层 HSTS。
+  少了这个头，F-02 就只剩 nginx 侧兜底（Cookie 仍由非 loopback 判定拿到 `Secure`）。
 - ⚠️ 明文 HTTP 的非 loopback 部署会拿到 `Secure` Cookie 而被浏览器丢弃：
-  应启用 HTTPS，或显式设 `TRMD_WEB_COOKIE_SECURE=0`。两种情况的取舍写进启动日志与文档。
+  应启用 HTTPS，或显式设 `TRMD_WEB_COOKIE_SECURE=0`。启动日志会打印
+  `cookie_secure=auto|always|never`，README 与本文档记录该取舍。
 - ⚠️ 同源校验只挡浏览器发起的跨站请求（`Origin`/`Referer`），不是密钥级 CSRF Token；
   会话 Cookie 仍是 `SameSite=Lax`，二者叠加覆盖登出 CSRF 与跨站表单 POST。
 - ⚠️ 404/401 在**已认证**状态下仍然不同形（已认证用户本就知道路由是否存在），
