@@ -111,7 +111,8 @@ def install_pyrogram_stub() -> None:
 
     errors = DummyModule('pyrogram.errors')
     for name in (
-            'BadMsgNotification', 'FileReferenceExpired', 'FloodWait', 'FloodPremiumWait',
+            'BadMsgNotification', 'FileReferenceEmpty', 'FileReferenceExpired',
+            'FileReferenceInvalid', 'FilerefUpgradeNeeded', 'FloodWait', 'FloodPremiumWait',
             'InternalServerError', 'ServiceUnavailable', 'AuthBytesInvalid', 'RPCError',
             'CDNFileHashMismatch', 'VolumeLocNotFound'
     ):

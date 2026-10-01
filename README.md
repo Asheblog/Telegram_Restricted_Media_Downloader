@@ -119,6 +119,8 @@ tar -C /opt/trmd -czf trmd-backup.tar.gz config sessions temp form rclone
 
 **Telegram 登录失败或下载不动**：检查 `api_id`、`api_hash`、代理与账号权限；遇到 FloodWait 时程序会等待后继续，不建议频繁重启。
 
+**系统日志出现 `FILE_REFERENCE_X_EXPIRED` / `FILEREF_UPGRADE_NEEDED`**：Telegram 的 `file_reference` 会过期（约 1 小时，也可能被服务端随时作废）。长耗时转发（等待 FloodWait、深链取片、延迟抓取评论区）复用的是消息解析时的旧引用，发送时会被拒。程序现在会用同一账号重新拉取源消息刷新引用后自动重试（最多 2 次；等过 30 分钟以上的 FloodWait 会先主动刷新；源消息取不到时改按 id 重新拉取），成功时在系统日志记一条 `file_reference_refreshed` 警告；刷新与重试都无望时才落到「监听转发异常」。反复出现时优先确认源媒体是否已删除、目标频道是否仍有发送权限。
+
 **PikPak 已收到文件但未归档**：在「系统设置 → PikPak 归档」点「验证 remote」，确认 rclone 可用且归档开关已打开。
 
 排障时可从「系统设置 → 诊断包导出」下载 ZIP（含日志与失败项实测结果）。注意该包**含登录态与密钥**，请仅私密传输，勿公开分享。

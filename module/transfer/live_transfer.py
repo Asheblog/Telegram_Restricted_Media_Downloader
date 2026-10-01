@@ -13,7 +13,14 @@ import time
 from typing import Callable, Optional, Union
 
 import pyrogram
-from pyrogram.errors import FloodWait, FloodPremiumWait
+from pyrogram.errors import (
+    FileReferenceEmpty,
+    FileReferenceExpired,
+    FileReferenceInvalid,
+    FilerefUpgradeNeeded,
+    FloodWait,
+    FloodPremiumWait,
+)
 from pyrogram.errors.exceptions.bad_request_400 import (
     MsgIdInvalid,
     UsernameInvalid,
@@ -52,6 +59,26 @@ from module.utils.util import (
     make_forward_watch_rule,
     parse_forward_watch_rule,
     iter_discussion_reply_forward_units,
+)
+
+# Telegram file references expire (~1h, and can be invalidated at any time):
+# a copy/send reusing a stale one fails with FILE_REFERENCE_X_EXPIRED. The
+# documented remedy is to re-fetch the message for a fresh reference and retry.
+FILE_REFERENCE_REFRESH_RETRIES = 2
+# 单次 FloodWait 超过该秒数后, 内存里的 file_reference 大概率已过期, 发送前主动刷新。
+FILE_REFERENCE_FLOOD_REFRESH_SECONDS = 1800
+FILE_REFERENCE_EXPIRED_ERRORS = (
+    FileReferenceExpired,
+    FileReferenceInvalid,
+    FileReferenceEmpty,
+    FilerefUpgradeNeeded,
+)
+_FILE_REFERENCE_EVENT_KEYS = (
+    'trace_id',
+    'watch_id',
+    'source_chat_id',
+    'source_message_id',
+    'target_link',
 )
 
 
@@ -106,6 +133,271 @@ class LiveTransferService:
                 )
             except (FloodWait, FloodPremiumWait) as e:
                 await self.wait_for_telegram_flood(e, action='forward message')
+
+    @staticmethod
+    def file_reference_refresh_retries() -> int:
+        return FILE_REFERENCE_REFRESH_RETRIES
+
+    @staticmethod
+    def _copy_source_client(message, client):
+        """消息自带的 client 才是执行 Message.copy 的账号, 刷新引用必须用同一个账号。"""
+        return getattr(message, '_client', None) or client
+
+    @staticmethod
+    def _flood_expires_file_reference(error) -> bool:
+        """长 FloodWait 之后内存里的 file_reference 大概率已过期。"""
+        try:
+            seconds = int(getattr(error, 'value', 0) or 0)
+        except (TypeError, ValueError):
+            return False
+        return seconds >= FILE_REFERENCE_FLOOD_REFRESH_SECONDS
+
+    async def fetch_message_with_fresh_file_reference(
+            self,
+            *,
+            client,
+            chat_id,
+            message_id,
+            action: str = 'refresh message',
+    ):
+        """用执行复制的同一个 client 重新拉取消息, 取新的 file_reference；失败返回 None。
+
+        Telegram 的 file_reference 会过期（约 1 小时，也可能被服务端随时作废），
+        messages.SendMedia 因此返回 FILE_REFERENCE_X_EXPIRED；官方要求在源上下文中
+        重新获取消息来刷新引用。FloodWait 属于"等一会就能取到"，等待后重试而不放弃。
+        """
+        if client is None or chat_id is None or message_id is None:
+            return None
+        if not callable(getattr(client, 'get_messages', None)):
+            return None
+        while True:
+            try:
+                refreshed = await client.get_messages(
+                    chat_id=chat_id,
+                    message_ids=message_id,
+                )
+                break
+            except (FloodWait, FloodPremiumWait) as e:
+                # 主客户端(自定义 session)通常会在会话内部消化 FloodWait; 这里兜底,
+                # 其它 client 若把 FloodWait 抛出来, 等待后重试而不是当成"取不到消息"。
+                await self.wait_for_telegram_flood(e, action=action)
+            except Exception as e:
+                log.warning(f'刷新消息文件引用失败,{_t(KeyWord.REASON)}:"{e}"')
+                return None
+        if refreshed is None or getattr(refreshed, 'empty', False):
+            return None
+        return refreshed
+
+    @staticmethod
+    def _file_reference_event_context(event_context: Optional[dict]) -> dict:
+        """白名单取上下文: event_context 混入 category/stage 会与固定 kwargs 冲突。"""
+        return {
+            key: value
+            for key, value in (event_context or {}).items()
+            if key in _FILE_REFERENCE_EVENT_KEYS
+        }
+
+    def _log_file_reference_refresh(
+            self,
+            *,
+            error,
+            outcome: str,
+            action: str,
+            refresh_attempt: int,
+            refreshed: Optional[bool] = None,
+            event_context: Optional[dict] = None,
+    ) -> None:
+        prompt = (
+            f'转发文件引用已过期({action}),{outcome}'
+            f'({refresh_attempt}/{self.file_reference_refresh_retries()}),'
+            f'{_t(KeyWord.REASON)}:"{error}"'
+        )
+        log.warning(prompt)
+        context = self._file_reference_event_context(event_context)
+        if not context:
+            return
+        details = {
+            'action': action,
+            'refresh_attempt': refresh_attempt,
+            'error': str(error),
+        }
+        if refreshed is not None:
+            details['refreshed'] = bool(refreshed)
+        self._log_system_chain(
+            category='forward',
+            stage='file_reference_refreshed',
+            message=f'文件引用已过期,{outcome}({action})',
+            level='warning',
+            details=details,
+            **context,
+        )
+
+    def _log_file_reference_preemptive_refresh(
+            self,
+            *,
+            error,
+            action: str,
+            event_context: Optional[dict] = None,
+    ) -> None:
+        """长限流等待后主动刷新引用: 与"发送被拒后再刷新"区分, 便于线上复盘。"""
+        flood_seconds = getattr(error, 'value', 0)
+        prompt = (
+            f'等待 Telegram 限流{flood_seconds}秒后主动刷新源消息文件引用({action}),'
+            f'避免复用已过期的 file_reference。'
+        )
+        log.warning(prompt)
+        context = self._file_reference_event_context(event_context)
+        if not context:
+            return
+        self._log_system_chain(
+            category='forward',
+            stage='file_reference_refreshed',
+            message=f'长限流等待后主动刷新源消息引用({action})',
+            level='warning',
+            details={
+                'action': action,
+                'preemptive': True,
+                'flood_seconds': flood_seconds,
+                'error': str(error),
+            },
+            **context,
+        )
+
+    async def copy_source_message(
+            self,
+            *,
+            client,
+            message: pyrogram.types.Message,
+            origin_chat_id: Union[str, int],
+            message_id: int,
+            target_chat_id: Union[str, int],
+            prefer_held_message: bool = True,
+            action: str = 'copy message',
+            event_context: Optional[dict] = None,
+    ):
+        """复制源消息到目标频道，遇到 file_reference 过期时刷新引用后重试。
+
+        长时间运行的监听转发（FloodWait 等待、深链解析、延迟抓取评论区）会在消息
+        解析很久之后才真正发送，此时内存里的 file_reference 可能已过期，直接复制
+        会以 FILE_REFERENCE_X_EXPIRED 失败。这里在失败时用同一个账号重新获取源消息
+        （取不到时退回 client.copy_message 按 id 重新拉取）后重试；刷新与重试都
+        无望时保留原始错误让上层可见，绝不静默丢帖。
+        """
+        # 复制与刷新必须同账号: A 账号刷出来的引用给 B 账号发送仍然会失败,
+        # 刷新成功后也不能把发送账号静默切到 refreshed 消息自己的 client。
+        copy_client = (
+            self._copy_source_client(message, client)
+            if prefer_held_message else client
+        )
+        held_message = message if prefer_held_message else None
+        attempts_left = self.file_reference_refresh_retries()
+        last_file_reference_error = None
+        while True:
+            try:
+                if held_message is not None:
+                    result = await held_message.copy(
+                        chat_id=target_chat_id,
+                        disable_notification=True,
+                        protect_content=False,
+                    )
+                else:
+                    result = await client.copy_message(
+                        chat_id=target_chat_id,
+                        from_chat_id=origin_chat_id,
+                        message_id=message_id,
+                        disable_notification=True,
+                        protect_content=False,
+                    )
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, action=action)
+                if held_message is not None and self._flood_expires_file_reference(e):
+                    # 在引用 TTL 量级里等过限流, 内存引用基本已作废: 主动刷新,
+                    # 免得下一次发送必然失败并白白吃掉一次刷新预算。
+                    refreshed = await self.fetch_message_with_fresh_file_reference(
+                        client=copy_client,
+                        chat_id=origin_chat_id,
+                        message_id=message_id,
+                        action=action,
+                    )
+                    if refreshed is not None:
+                        held_message = refreshed
+                        self._log_file_reference_preemptive_refresh(
+                            error=e,
+                            action=action,
+                            event_context=event_context,
+                        )
+                continue
+            except FILE_REFERENCE_EXPIRED_ERRORS as e:
+                last_file_reference_error = e
+                if attempts_left <= 0:
+                    raise
+                attempts_left -= 1
+                refresh_attempt = self.file_reference_refresh_retries() - attempts_left
+                refreshed = await self.fetch_message_with_fresh_file_reference(
+                    client=copy_client,
+                    chat_id=origin_chat_id,
+                    message_id=message_id,
+                    action=action,
+                )
+                if refreshed is None and held_message is None:
+                    # 已经走的是"按 id 重新拉取"这条路, 取不到就没有刷新手段了。
+                    raise
+                # None 表示源消息取不到, 下一轮退回 client.copy_message 按 id 重新拉取。
+                held_message = refreshed
+                self._log_file_reference_refresh(
+                    error=e,
+                    outcome=(
+                        '已重新获取源消息并重试' if refreshed is not None
+                        else '未能重新获取源消息, 按 id 重新拉取再试'
+                    ),
+                    refreshed=refreshed is not None,
+                    action=action,
+                    refresh_attempt=refresh_attempt,
+                    event_context=event_context,
+                )
+                continue
+            if (
+                    last_file_reference_error is not None
+                    and not self.forwarded_message_has_identity(result)
+            ):
+                # 按 id 重新拉取也没产出消息(MessageEmpty): 保留原始 file_reference 错误,
+                # 否则会退化成只写一条 log.error 的静默丢帖。
+                raise last_file_reference_error
+            return result
+
+    async def copy_media_group_with_file_reference_refresh(
+            self,
+            *,
+            chat_id: Union[str, int],
+            from_chat_id: Union[str, int],
+            message_id: int,
+            action: str = 'copy media group',
+            event_context: Optional[dict] = None,
+    ):
+        """复制媒体组；copy_media_group 每次都重新拉取成员，重试即可刷新 file_reference。"""
+        attempts_left = self.file_reference_refresh_retries()
+        while True:
+            try:
+                return await self.app.client.copy_media_group(
+                    chat_id=chat_id,
+                    from_chat_id=from_chat_id,
+                    message_id=message_id,
+                    disable_notification=True
+                )
+            except (FloodWait, FloodPremiumWait) as e:
+                await self.wait_for_telegram_flood(e, action=action)
+            except FILE_REFERENCE_EXPIRED_ERRORS as e:
+                if attempts_left <= 0:
+                    raise
+                attempts_left -= 1
+                refresh_attempt = self.file_reference_refresh_retries() - attempts_left
+                self._log_file_reference_refresh(
+                    error=e,
+                    outcome='已重新拉取媒体组成员并重试',
+                    action=action,
+                    refresh_attempt=refresh_attempt,
+                    event_context=event_context,
+                )
 
     async def _run_pikpak_archive_after_forward(
             self,
@@ -361,17 +653,18 @@ class LiveTransferService:
                 return None
             forwarded_message = None
             if media_group:
-                while True:
-                    try:
-                        forwarded_message = await self.app.client.copy_media_group(
-                            chat_id=target_chat_id,
-                            from_chat_id=origin_chat_id,
-                            message_id=message_id,
-                            disable_notification=True
-                        )
-                        break
-                    except (FloodWait, FloodPremiumWait) as e:
-                        await self.wait_for_telegram_flood(e, action='copy media group')
+                forwarded_message = await self.copy_media_group_with_file_reference_refresh(
+                    chat_id=target_chat_id,
+                    from_chat_id=origin_chat_id,
+                    message_id=message_id,
+                    event_context={
+                        'trace_id': trace_id,
+                        'watch_id': watch_id,
+                        'source_chat_id': origin_chat_id,
+                        'source_message_id': message_id,
+                        'target_link': target_link,
+                    },
+                )
             elif getattr(message, 'text', False):
                 while True:
                     try:
@@ -402,29 +695,39 @@ class LiveTransferService:
                     and callable(getattr(message, 'copy', None))
                 )
                 if can_copy_held:
-                    while True:
-                        try:
-                            forwarded_message = await message.copy(
-                                chat_id=target_chat_id,
-                                disable_notification=True,
-                                protect_content=False,
-                            )
-                            break
-                        except (FloodWait, FloodPremiumWait) as e:
-                            await self.wait_for_telegram_flood(e, action='copy held message')
+                    forwarded_message = await self.copy_source_message(
+                        client=self.app.client,
+                        message=message,
+                        origin_chat_id=origin_chat_id,
+                        message_id=message_id,
+                        target_chat_id=target_chat_id,
+                        prefer_held_message=True,
+                        action='copy held message',
+                        event_context={
+                            'trace_id': trace_id,
+                            'watch_id': watch_id,
+                            'source_chat_id': origin_chat_id,
+                            'source_message_id': message_id,
+                            'target_link': target_link,
+                        },
+                    )
                 if not self.forwarded_message_has_identity(forwarded_message):
-                    while True:
-                        try:
-                            forwarded_message = await self.app.client.copy_message(
-                                chat_id=target_chat_id,
-                                from_chat_id=origin_chat_id,
-                                message_id=message_id,
-                                disable_notification=True,
-                                protect_content=False
-                            )
-                            break
-                        except (FloodWait, FloodPremiumWait) as e:
-                            await self.wait_for_telegram_flood(e, action='copy message')
+                    forwarded_message = await self.copy_source_message(
+                        client=self.app.client,
+                        message=message,
+                        origin_chat_id=origin_chat_id,
+                        message_id=message_id,
+                        target_chat_id=target_chat_id,
+                        prefer_held_message=False,
+                        action='copy message',
+                        event_context={
+                            'trace_id': trace_id,
+                            'watch_id': watch_id,
+                            'source_chat_id': origin_chat_id,
+                            'source_message_id': message_id,
+                            'target_link': target_link,
+                        },
+                    )
                 if not self.forwarded_message_has_identity(forwarded_message):
                     try:
                         forwarded_message = await self.forward_messages_with_flood_retry(
