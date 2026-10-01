@@ -783,7 +783,7 @@ class WebTransferRunner:
         if callable(runtime_filter_fn):
             source_filter = runtime_filter_fn(task.get('media_types'))
         else:
-            from module.core.media_types import build_runtime_message_filter
+            from module.core.message_filter_factory import build_runtime_message_filter
             mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
             source_filter = build_runtime_message_filter(mf, task.get('media_types'))
         # Keyword Blacklist on Source Post before deep-link resolve.
@@ -1017,7 +1017,7 @@ class WebTransferRunner:
             if callable(runtime_filter_fn):
                 runtime_filter = runtime_filter_fn(task.get('media_types'))
             else:
-                from module.core.media_types import build_runtime_message_filter
+                from module.core.message_filter_factory import build_runtime_message_filter
                 mf = getattr(getattr(host, 'gc', None), 'message_filter', None)
                 runtime_filter = build_runtime_message_filter(mf, task.get('media_types'))
             # 深链取回的 bot 媒体跳过关键词（caption 也可能含「搜索」等）。

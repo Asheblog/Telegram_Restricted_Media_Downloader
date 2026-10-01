@@ -176,18 +176,8 @@ class MessageFilter:
         return self._check_media_type(message)
 
     def _check_media_type(self, message: pyrogram.types.Message) -> bool:
-        """检查消息媒体类型是否在允许列表中。"""
-        media_types = self.media_types
-        if not media_types:
-            return True  # 未配置则通过
-        for dtype, is_allowed in media_types.items():
-            if is_allowed and getattr(message, dtype, None):
-                return True
-        # 所有启用的类型都不匹配 → 拒绝
-        enabled_types = [k for k, v in media_types.items() if v]
-        if not enabled_types:
-            return True  # 全部禁用 → 通过
-        return False
+        """检查消息媒体类型是否在允许列表中（委托 media_types 的唯一实现）。"""
+        return media_types_mod.matches_allowlist(message, self.media_types)
 
     def _check_date_range(self, message: pyrogram.types.Message) -> bool:
         """检查消息日期是否在允许范围内。"""

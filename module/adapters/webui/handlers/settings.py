@@ -3,7 +3,7 @@
 
 from http import HTTPStatus
 
-from module.adapters.webui.server import WebUiApiError, sanitize_settings
+from module.adapters.webui.contracts import WebUiApiError, sanitize_settings
 from module.adapters.webui.view_model import WebUiViewModel
 
 

@@ -15,6 +15,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+from module.adapters.webui.contracts import (
+    SENSITIVE_SETTING_KEYS,
+    SPA_VIEW_PATHS,
+    WebUiApiError,
+    is_spa_page_path,
+    sanitize_settings,
+)
 from module.adapters.webui.security import (
     LoginThrottle,
     cookie_secure_mode,
@@ -29,54 +36,8 @@ from module.ports import IDiagnosticPort, IWebUiOperations
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStore
 
-SENSITIVE_SETTING_KEYS = {"api_hash", "bot_token", "password", "username"}
-
 # JSON 请求体上限：WebUI 只收发控制数据（路径 / 链接 / 监听备份），不上传媒体本体。
 MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
-
-# WebUI SPA 视图路径（刷新后由前端按 pathname 恢复对应视图）
-SPA_VIEW_PATHS = frozenset(
-    {
-        "/",
-        "/index.html",
-        "/transfers",
-        "/watches",
-        "/downloads-uploads",
-        "/statistics",
-        "/records",
-        "/media",
-        "/archive-organize",
-        "/system-logs",
-        "/settings",
-        "/profile",
-    }
-)
-
-
-def is_spa_page_path(path: str) -> bool:
-    """Whether a GET path should serve the SPA shell (not /api or static files)."""
-    if not path:
-        return True
-    if path.startswith("/api/") or path.startswith("/fonts/"):
-        return False
-    normalized = path.rstrip("/") or "/"
-    if normalized in SPA_VIEW_PATHS or path == "/index.html":
-        return True
-    leaf = normalized.rsplit("/", 1)[-1]
-    if leaf and "." in leaf:
-        return False
-    # Unknown path without extension: still serve SPA so client can rewrite.
-    return True
-
-
-class WebUiApiError(Exception):
-    def __init__(
-        self, error_code: str, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST
-    ):
-        super().__init__(message)
-        self.error_code = error_code
-        self.message = message
-        self.status = status
 
 
 def normalize_optional_int(value):
@@ -1851,20 +1812,6 @@ class WebUiServer:
             "target_profiles": {"pikpak": {"max_file_size": {"min": 1}}},
             "sensitive_keys": sorted(SENSITIVE_SETTING_KEYS),
         }
-
-
-def sanitize_settings(value):
-    if isinstance(value, dict):
-        result = {}
-        for key, nested in value.items():
-            if key in SENSITIVE_SETTING_KEYS:
-                result[key] = {"configured": bool(nested), "value": ""}
-            else:
-                result[key] = sanitize_settings(nested)
-        return result
-    if isinstance(value, list):
-        return [sanitize_settings(item) for item in value]
-    return value
 
 
 def parse_optional_timestamp(value):

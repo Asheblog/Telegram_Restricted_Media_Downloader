@@ -4,6 +4,7 @@
 from http import HTTPStatus
 
 from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, FONTS
+from module.adapters.webui.contracts import is_spa_page_path
 
 import base64
 import re
@@ -11,8 +12,6 @@ import re
 
 def handle_get(handler, server, parsed) -> bool:
     """Serve fonts and SPA pages. Returns True if handled (before API auth gate)."""
-    from module.adapters.webui.server import is_spa_page_path
-
     if parsed.path.startswith('/fonts/'):
         filename = parsed.path[len('/fonts/'):]
         if filename and '/' not in filename:

@@ -64,27 +64,28 @@ def media_types_to_download_type_list(media_types: Any) -> list[str]:
     return [t for t in DOWNLOAD_MEDIA_TYPES if allowed.get(t)]
 
 
+def matches_allowlist(message: Any, media_types: Any) -> bool:
+    """消息媒体类型是否命中允许列表。
+
+    这是媒体类型判定的**唯一实现**：``MessageFilter._check_media_type`` 与
+    ``message_matches_media_types`` 都委托到这里。此前 ``MessageFilter`` 自己抄了
+    一份同样的循环，且本模块反向 import ``MessageFilter``，形成
+    ``media_types -> filter -> media_types`` 的导入环（架构守卫实测报出）。
+    """
+    if not media_types:
+        return True  # 未配置则通过
+    for dtype, is_allowed in media_types.items():
+        if is_allowed and getattr(message, dtype, None):
+            return True
+    # 所有启用的类型都不匹配 → 拒绝；全部禁用 → 通过
+    if not [k for k, v in media_types.items() if v]:
+        return True
+    return False
+
+
 def message_matches_media_types(message: Any, media_types: Any) -> bool:
     """Return True when message matches at least one allowed media type."""
-    from module.core.filter import MessageFilter
-
-    allowed = resolve_allowed_media_types(media_types)
-    return MessageFilter({'media_types': allowed}).should_pass_media_type(message)
-
-
-def build_runtime_message_filter(
-        message_filter_config: Any = None,
-        media_types_override: Any = None,
-):
-    """Build MessageFilter with Media Type Allowlist (+ optional override)."""
-    from module.core.filter import MessageFilter
-
-    config = dict(message_filter_config or {})
-    config['media_types'] = resolve_allowed_media_types(
-        config.get('media_types'),
-        media_types_override,
-    )
-    return MessageFilter(config)
+    return matches_allowlist(message, resolve_allowed_media_types(media_types))
 
 
 def parse_media_types_payload(raw: Any) -> Optional[dict]:

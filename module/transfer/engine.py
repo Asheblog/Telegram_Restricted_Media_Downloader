@@ -529,7 +529,7 @@ class TransferEngine:
         )
 
     def runtime_message_filter(self, media_types_override=None):
-        from module.core.media_types import build_runtime_message_filter
+        from module.core.message_filter_factory import build_runtime_message_filter
         return build_runtime_message_filter(
             getattr(self.gc, 'message_filter', None),
             media_types_override,

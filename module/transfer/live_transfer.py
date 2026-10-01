@@ -576,7 +576,7 @@ class LiveTransferService:
                 if te is not None and hasattr(te, 'runtime_message_filter'):
                     runtime_filter = te.runtime_message_filter(media_types_override)
                 elif media_types_override is not None:
-                    from module.core.media_types import build_runtime_message_filter
+                    from module.core.message_filter_factory import build_runtime_message_filter
                     runtime_filter = build_runtime_message_filter(
                         getattr(getattr(self, 'gc', None), 'message_filter', None),
                         media_types_override,

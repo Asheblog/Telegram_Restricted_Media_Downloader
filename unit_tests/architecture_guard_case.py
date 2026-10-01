@@ -44,35 +44,76 @@ def _modules():
     return modules
 
 
-def _resolve(alias, current_module):
-    if alias.startswith("."):
-        parts = current_module.split(".")
-        dots = len(alias) - len(alias.lstrip("."))
+def _module_is_in(alias, known):
+    """``alias`` is ``known``, a submodule of it, or a package containing submodules of it."""
+    return (
+        alias in known
+        or any(item.startswith(alias + ".") for item in known)
+        or any(alias.startswith(item + ".") for item in known)
+    )
+
+
+def _resolve(alias, current_module, is_package=False, level=0):
+    """Resolve one import target to the module names it can bind.
+
+    Returns a set: ``from pkg import submodule`` genuinely depends on
+    ``pkg.submodule``, and a relative import inside ``__init__.py`` is resolved
+    against the package itself rather than its parent.
+
+    ``level`` is ``ast.ImportFrom.level``: a leading dot is stored there, not in
+    ``node.module``, so ``from . import x`` arrives with ``alias=""``.
+    """
+    if level or alias.startswith("."):
+        dots = level or (len(alias) - len(alias.lstrip(".")))
         rest = alias.lstrip(".")
-        base = parts[: len(parts) - dots]
+        parts = current_module.split(".")
+        # Drop the imported module's own name, then one level per extra dot.
+        # For a package (__init__.py) its own name *is* the base, so nothing drops.
+        cut = len(parts) - (dots - 1 if is_package else dots)
+        base = parts[:cut]
         if rest:
             base += rest.split(".")
-        return ".".join(base)
+        return {".".join(base)} if base else set()
     if alias == "module" or alias.startswith("module."):
-        return alias
-    return None
+        return {alias}
+    return set()
+
+
+def _import_targets(alias, current_module, is_package, known):
+    """Expand a bare ``from X import Y`` statement into real module dependencies.
+
+    The guard used to keep only ``node.module``, so ``from pkg import submodule``
+    never produced the ``pkg.submodule`` edge — that blind spot is what let three
+    genuine import cycles pass as "no cycles".
+    """
+    targets = _resolve(alias, current_module, is_package)
+    if "." in alias:  # an absolute dotted module, never a name inside ``module``
+        return targets
+    return {t for t in targets if _module_is_in(t, known)}
 
 
 def _import_graph(modules):
     graph = {name: set() for name in modules}
     for name, path in modules.items():
+        is_package = path.name == "__init__.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                aliases = [item.name for item in node.names]
+                for item in node.names:
+                    for target in _import_targets(item.name, name, is_package, modules):
+                        if target in modules and target != name:
+                            graph[name].add(target)
             elif isinstance(node, ast.ImportFrom):
-                aliases = [node.module or ""]
-            else:
-                continue
-            for alias in aliases:
-                target = _resolve(alias, name)
-                if target in modules:
-                    graph[name].add(target)
+                base = _resolve(node.module or "", name, is_package, node.level)
+                for target in base:
+                    if target in modules and target != name:
+                        graph[name].add(target)
+                # `from pkg import submodule` also depends on pkg.submodule.
+                for item in node.names:
+                    for parent in base:
+                        candidate = f"{parent}.{item.name}"
+                        if candidate in modules and candidate != name:
+                            graph[name].add(candidate)
     return graph
 
 

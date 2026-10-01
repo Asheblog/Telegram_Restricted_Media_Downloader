@@ -10,7 +10,8 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
-from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
+from module.core.media_types import MEDIA_TYPES_DEFAULT
+from module.core.message_filter_factory import build_runtime_message_filter
 from module.persistence.transfer_store import TransferStore
 from module.transfer.deep_link import DeepLinkResolveError
 from module.transfer.runner import WebTransferRunner
@@ -1129,7 +1130,8 @@ class DeepLinkListenForwardFolderCase(unittest.TestCase):
 class WebRangeAlbumArchiveCase(unittest.TestCase):
     def test_web_target_album_uses_min_id_even_when_caller_passes_member_range_id(self):
         """Range loop used to pass each member id as range_message_id, splitting folders."""
-        from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
+        from module.core.media_types import MEDIA_TYPES_DEFAULT
+        from module.core.message_filter_factory import build_runtime_message_filter
         from module.transfer.runner import WebTransferRunner
         from module.transfer_store import TransferStore, TransferStatus
 

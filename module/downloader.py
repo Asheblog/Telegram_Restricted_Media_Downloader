@@ -1009,7 +1009,8 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
                 return te.check_type(message, media_types_override=media_types_override)
             except Exception:
                 pass
-        from module.core.media_types import build_runtime_message_filter, resolve_allowed_media_types
+        from module.core.media_types import resolve_allowed_media_types
+        from module.core.message_filter_factory import build_runtime_message_filter
         mf = getattr(getattr(self, 'gc', None), 'message_filter', None) or {}
         allowed = resolve_allowed_media_types(
             mf.get('media_types') if isinstance(mf, dict) else None,
@@ -1021,7 +1022,7 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         te = getattr(self, 'transfer_engine', None)
         if te is not None and hasattr(te, 'runtime_message_filter'):
             return te.runtime_message_filter(media_types_override)
-        from module.core.media_types import build_runtime_message_filter
+        from module.core.message_filter_factory import build_runtime_message_filter
         return build_runtime_message_filter(
             getattr(getattr(self, 'gc', None), 'message_filter', None),
             media_types_override,

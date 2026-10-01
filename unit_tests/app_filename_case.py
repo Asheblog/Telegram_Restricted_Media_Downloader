@@ -27,7 +27,7 @@ class AppFilenameCase(unittest.TestCase):
             photo=SimpleNamespace(file_id='photo-file-id', file_unique_id='AQADenglishId')
         )
 
-        with patch('module.app.get_extension', return_value='jpg'):
+        with patch('module.core.app.get_extension', return_value='jpg'):
             path = app.get_temp_file_path(message, DownloadType.PHOTO)
 
         self.assertEqual(
@@ -47,7 +47,7 @@ class AppFilenameCase(unittest.TestCase):
             )
         )
 
-        with patch('module.app.get_extension', return_value='mp4'):
+        with patch('module.core.app.get_extension', return_value='mp4'):
             file_name = DownloadFileName(message, DownloadType.VIDEO).get_video_filename()
 
         self.assertEqual('13 - 第02话｜真正的标题.mp4', file_name)
@@ -89,7 +89,7 @@ class AppFilenameCase(unittest.TestCase):
         downloader.app = app
         downloader.env_save_directory = lambda message: app.save_directory
 
-        with patch('module.app.get_extension', return_value='jpg'):
+        with patch('module.core.app.get_extension', return_value='jpg'):
             meta = downloader.get_media_meta(second, DownloadType.PHOTO)
 
         self.assertEqual('22 - 相册文章标题.jpg', meta['file_name'])

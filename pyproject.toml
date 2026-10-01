@@ -27,5 +27,17 @@ dev = ["pytest>=8.0"]
 [tool.hatch.build.targets.wheel]
 packages = ["module"]
 
+[tool.pytest.ini_options]
+# 测试文件命名为 *_case.py，而 pytest 默认只收集 test_*.py。
+# 不补这一行时 `pytest unit_tests` 会收集 0 个用例并以退出码 5 结束，
+# 导致 702 个用例与 architecture_guard_case.py 在默认流程中静默不执行。
+testpaths = ["unit_tests"]
+python_files = ["test_*.py", "*_test.py", "*_case.py"]
+# 仓库根目录入 sys.path，使 `from unit_tests.pyrogram_stub import ...` 可用。
+pythonpath = ["."]
+# 只收集用例类，避免把 helper 类误当测试集。
+python_classes = ["*Case", "Test*"]
+addopts = "-ra"
+
 [tool.uv]
 package = true

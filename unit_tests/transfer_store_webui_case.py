@@ -20,7 +20,8 @@ install_pyrogram_stub()
 
 import module as trmd_module
 from module.adapters.webui.task_manager import WebUITaskManager
-from module.core.media_types import MEDIA_TYPES_DEFAULT, build_runtime_message_filter
+from module.core.media_types import MEDIA_TYPES_DEFAULT
+from module.core.message_filter_factory import build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import ExecutionMode, TransferStatus, TransferStore

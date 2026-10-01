@@ -4,7 +4,7 @@
 from http import HTTPStatus
 from urllib.parse import parse_qs
 
-from module.adapters.webui.server import WebUiApiError
+from module.adapters.webui.contracts import WebUiApiError
 
 
 def handle_get(handler, server, parsed) -> bool:

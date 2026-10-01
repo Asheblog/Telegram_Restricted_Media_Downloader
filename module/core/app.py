@@ -19,17 +19,12 @@ from module.utils.language import _t
 from module.utils.parser import PARSE_ARGS
 from module.utils.path_tool import (
     extract_full_extension,
+    get_extension,
     is_compressed_file,
     truncate_filename,
     validate_title,
 )
 from module.utils.stdio import StatisticalTable
-
-
-def get_extension(*args, **kwargs):
-    from module import app as app_module
-
-    return app_module.get_extension(*args, **kwargs)
 
 
 class Application(UserConfig, StatisticalTable):
