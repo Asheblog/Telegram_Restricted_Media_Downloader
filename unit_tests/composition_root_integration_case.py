@@ -20,6 +20,8 @@
 - setup 向导状态机（``SetupCoordinator.build_status`` + ``is_setup_ready``）
 - ``TransferStore`` 真实建库、建表、写入、跨连接读取
 """
+import asyncio
+import datetime
 import http.client
 import json
 import os
@@ -29,6 +31,8 @@ import socket
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import patch
 
 # ── 沙箱：必须在 import 任何 module.* 之前完成 ──
@@ -53,7 +57,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub  # noqa: E402
 install_pyrogram_stub()
 
 from module.downloader import TelegramRestrictedMediaDownloader  # noqa: E402
-from module.persistence.transfer_store import TransferStore  # noqa: E402
+from module.persistence.transfer_store import TransferStatus, TransferStore  # noqa: E402
 from module.utils.parser import PARSE_ARGS  # noqa: E402
 
 sys.argv = _ORIGINAL_ARGV
@@ -109,6 +113,11 @@ class CompositionRootIntegrationCase(unittest.TestCase):
     def setUpClass(cls):
         cls._cwd_dir = tempfile.mkdtemp(prefix="trmd-integration-work-")
         os.chdir(cls._cwd_dir)
+        # 组合根的 self.loop 需要"当前线程的 event loop"。这里**显式**提供一个：
+        # 既贴近生产（main.py 在无 loop 的进程里由组合根自建），又避免
+        # asyncio 的"隐式兜底"产生 DeprecationWarning（在 -W error 下会变成失败）。
+        cls._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(cls._loop)
         # 真实构造门面；open_browser 不弹浏览器。
         with patch("module.adapters.webui.server.webbrowser.open", return_value=True):
             cls.downloader = TelegramRestrictedMediaDownloader()
@@ -124,6 +133,11 @@ class CompositionRootIntegrationCase(unittest.TestCase):
         finally:
             if cls.downloader.transfer_store is not None:
                 cls.downloader.transfer_store.close()
+            # 还原本类设置的进程级 asyncio 状态，避免影响同进程的其它测试模块。
+            # 注意：不删除 _WORKDIR —— PARSE_ARGS.config 指向其中的 config.yaml，
+            # 本文件后续的测试类仍要用（删掉会让它们构造失败）。
+            asyncio.set_event_loop(None)
+            cls._loop.close()
             os.chdir(_ORIGINAL_CWD)
 
     # ── 1. 真实装配 ──
@@ -254,6 +268,35 @@ class CompositionRootIntegrationCase(unittest.TestCase):
             rows = recheck.list_tasks()
             self.assertEqual(1, len(rows), "独立连接读不到任务：没有真正落盘")
             self.assertEqual(source_link, rows[0].get("source_link"))
+
+            # ── item 级别的真实落库 ──
+            # item 由执行期（runner）在遍历来源消息时创建，而执行需要真实 Telegram 会话，
+            # 集成环境无法覆盖。这里改为对**服务端同一个 store 实例**写入 item 并回读，
+            # 覆盖的仍是真实 SQLite 表结构 / 状态字段 / 跨连接可见性，
+            # 而不是用 mock 假装成功。
+            item_id = self.downloader.transfer_store.add_item(
+                task_id=int(body["task_id"]),
+                source_chat_id=-1001234567890,
+                source_message_id=42,
+                source_link=f"{source_link}/42",
+                target_link="https://t.me/pikpak_bot",
+            )
+            item = recheck.get_item(int(item_id))
+            self.assertIsNotNone(item, "独立连接读不到 item：item 未真正落盘")
+            self.assertEqual(
+                TransferStatus.PENDING,
+                item.get("status"),
+                f"新建 item 的初始状态应为 PENDING，实际 {item.get('status')!r}",
+            )
+            self.assertEqual(42, item.get("source_message_id"))
+            self.assertEqual(
+                int(body["task_id"]), int(item.get("task_id"))
+            )
+            # 以权威来源（item 表）断言，而不是冗余计数列：
+            # add_item 本身不刷新 transfer_tasks.total_items（由 refresh_task_counts 维护），
+            # 因此断言 total_items 会误判为缺陷。
+            items = recheck.list_items(int(body["task_id"]))
+            self.assertEqual(1, len(items), "独立连接的 item 列表里查不到该 item")
         finally:
             recheck.close()
 
@@ -262,6 +305,123 @@ class CompositionRootIntegrationCase(unittest.TestCase):
         status, body = self.http.request("GET", "/api/tasks")
         self.assertEqual(200, status, f"就绪后 /api/tasks 应可用: {status} {body}")
         self.assertIn("tasks", body)
+
+
+class _FakeMessage:
+    """足够真实 runner 遍历的最小消息替身（只提供被读取的字段）。"""
+
+    def __init__(self, message_id, chat_id, has_video=True):
+        self.id = message_id
+        self.chat = SimpleNamespace(id=chat_id)
+        self.text = None
+        self.caption = "integration caption"
+        self.date = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+        self.web_page = None
+        self.video = SimpleNamespace(
+            file_id="fake-file-id",
+            file_unique_id="fake-unique-id",
+            file_name="clip.mp4",
+            file_size=1024,
+            mime_type="video/mp4",
+            duration=1,
+            width=2,
+            height=2,
+        ) if has_video else None
+        self.photo = None
+        self.document = None
+
+
+class TransferChainIntegrationCase(unittest.TestCase):
+    """驱动**真实** WebTransferRunner.process_task 直到 item 落库。
+
+    与上一个类不同，这里不满足于"手工 add_item"：由真实 runner 执行任务，
+    真实判定媒体类型并创建 Transfer Item，再用独立连接读回。
+    只有两处面向 Telegram 的取数被替换（integration 环境无会话）：
+    - ``parse_web_transfer_link``（解析链接 -> chat_id）
+    - ``get_web_transfer_range_message``（按 id 取消息）
+    其余全部走真实代码：process_task 的状态机、range 遍历、
+    runtime_message_filter 判定、skip_transfer_item_for_media_type 落库、
+    refresh_task_counts 聚合。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._cwd_dir = tempfile.mkdtemp(prefix="trmd-chain-work-")
+        os.chdir(cls._cwd_dir)
+        cls._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(cls._loop)
+        with patch("module.adapters.webui.server.webbrowser.open", return_value=True):
+            cls.downloader = TelegramRestrictedMediaDownloader()
+            cls.downloader.start_web_ui(with_auth_provider=True)
+        cls.store = cls.downloader.transfer_store
+        cls.temp_directory = cls.downloader.app.temp_directory
+        cls.origin_chat_id = -1009999
+
+        # 只允许 photo：让视频消息被判定为"媒体类型不匹配" -> 走 skip 分支落 item。
+        # 注意 message_filter 属于**全局配置**（GlobalConfig，~/.config/TRMD/.CONFIG.yaml），
+        # 不是用户 config.yaml；写错位置会导致过滤不生效（实测过）。
+        gc = cls.downloader.gc
+        gc_config = deepcopy(gc.config)
+        gc_config["message_filter"] = {
+            "enabled": True,
+            "media_types": {"photo": True, "video": False},
+        }
+        gc.save_config(gc_config)
+
+        async def _parse(client, link):
+            return {"chat_id": cls.origin_chat_id}
+
+        async def _range_message(chat_id, message_id, task_id):
+            return _FakeMessage(message_id, cls.origin_chat_id)
+
+        cls.downloader.parse_web_transfer_link = _parse
+        cls.downloader.get_web_transfer_range_message = _range_message
+        # ensure_uploader 会真的构造 uploader（需要 client），这里给一个惰性替身，
+        # 本用例的 skip 分支不触碰上传。
+        cls.downloader.ensure_uploader = lambda: SimpleNamespace()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            if cls.downloader.web_ui is not None:
+                cls.downloader.web_ui.stop()
+        finally:
+            if cls.downloader.transfer_store is not None:
+                cls.downloader.transfer_store.close()
+            asyncio.set_event_loop(None)
+            cls._loop.close()
+            os.chdir(_ORIGINAL_CWD)
+
+    def test_real_runner_creates_skipped_item_for_disallowed_media(self):
+        source_link = "https://t.me/example_channel"
+        task_id = self.store.create_task(
+            source_link, "https://t.me/pikpak_bot", start_id=42, end_id=42
+        )
+        runner = self.downloader._transfer_runner
+        asyncio.run(runner.process_task(int(task_id)))
+
+        # 真实 runner 应当已经创建了 item（媒体类型不允许 -> SKIPPED）
+        items = self.store.list_items(int(task_id))
+        self.assertEqual(1, len(items), f"真实 runner 未创建 item: {items}")
+        item = items[0]
+        self.assertEqual(TransferStatus.SKIPPED, item.get("status"))
+        self.assertEqual("filtered", item.get("media_type"))
+        self.assertEqual(42, item.get("source_message_id"))
+        # store 以 TEXT 存 source_chat_id，比较时统一成字符串。
+        self.assertEqual(str(self.origin_chat_id), str(item.get("source_chat_id")))
+
+        # 冗余计数列应已被 refresh_task_counts 刷新
+        task = self.store.get_task(int(task_id))
+        self.assertEqual(1, int(task.get("total_items") or 0))
+
+        # 跨连接可见 —— 真的落盘
+        recheck = TransferStore(directory=self.temp_directory)
+        try:
+            rows = recheck.list_items(int(task_id))
+            self.assertEqual(1, len(rows), "独立连接读不到 runner 创建的 item")
+            self.assertEqual(TransferStatus.SKIPPED, rows[0].get("status"))
+        finally:
+            recheck.close()
 
 
 if __name__ == "__main__":

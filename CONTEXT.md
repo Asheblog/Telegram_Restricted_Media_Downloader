@@ -7,7 +7,10 @@ TRMD 是一个长期运行的 Telegram 媒体转存工具，通过 WebUI 操作�
 - **上游**: [Gentlesprite/Telegram_Restricted_Media_Downloader](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) (v2.x)
 - **本 Fork**: [Asheblog/Telegram_Restricted_Media_Downloader](https://github.com/Asheblog/Telegram_Restricted_Media_Downloader) (v0.2.x)
 - **许可证**: MIT
-- **Python**: ≥3.13.2
+- **Python**: ≥3.13.2,<3.14（上界与 `build.py` 的 `check_python_version()` 及 Dockerfile 的
+  `python:3.13.14-slim` 对齐）。仓库根 `.python-version`（`3.13`）供 `uv` 选择解释器——
+  **不要**用 3.14：目前 3.14 只有 alpha 可用于本机场景，PyYAML 等 C 扩展的 cp314 轮子
+  与 alpha ABI 不匹配时 `import module` 会直接 0xC0000005 硬崩（不可读报错）。
 - **入口**: `main.py`
 
 ---
@@ -250,7 +253,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 | ------ | ------ | ------ |
 | [kurigram](https://github.com/KurimizunAkuma/pyrogram) | 2.2.19 | Telegram MTProto API (Pyrogram fork) |
 | rclone | 1.74.4（Dockerfile `TRMD_RCLONE_RELEASE` 固定；checksum 校验；勿用 `RCLONE_*` 名以免与 rclone 环境变量冲突） | PikPak 云盘归档（容器内安装） |
-| Python 基础镜像 | 3.13.14-slim（`requires-python` 仍 ≥3.13.2） | Docker 发行线运行时 |
+| Python 基础镜像 | 3.13.14-slim（`requires-python` 为 `>=3.13.2,<3.14`，与 `.python-version` 一致） | Docker 发行线运行时 |
 | SQLite | — | 转存任务状态持久化 |
 | TailwindCSS | ^4.1.18 | WebUI 前端样式（字号 token：page 20 / title 16 / body 14 / caption 12；根 16px；表格统一 caption；仅移动端输入允许 16px；行距：标题 1.25 / 正文与说明 1.5；字距：仅 uppercase 标签 0.04em） |
 | Rich | 14.2.0 | 终端格式化输出 |
@@ -284,10 +287,20 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 
 ## 开发约定
 
-- **版本号**: `pyproject.toml` 和 `module/constants.py` 必须一致（`__init__.py` re-export）
+- **版本号**: `pyproject.toml` 和 `module/constants.py` 必须一致（`__init__.py` re-export）。
+  bump 后必须重跑 `uv lock`，否则 `uv.lock` 里的根包版本会滞后（CI 用 `--locked` 校验，
+  见下）；`.python-version` 是解释器选择的第三处声明，不参与包版本。
 - **import 副作用**: `module` 包 import 必须零副作用；新增运行期副作用统一收进 `module.bootstrap.initialize()`（幂等）
-- **依赖**: `pyproject.toml` 为声明真源，`uv.lock` 入库；变更依赖后执行 `uv lock`，再 `uv export --no-dev --no-emit-project --frozen -o requirements.txt`（Docker 用 `--require-hashes` 安装，勿手改 requirements.txt）
-- **测试**: `unit_tests/`，pytest 运行（dev 组：`uv sync --group dev`）
+- **依赖**: `pyproject.toml` 为声明真源，`uv.lock` 入库；变更依赖后执行 `uv lock`，再 `uv export --no-dev --no-emit-project --frozen -o requirements.txt`（Docker 用 `--require-hashes` 安装，勿手改 requirements.txt）。
+  校验一致性要用 `uv lock --check` / `uv sync --locked`：实测（uv 0.8.22）`--frozen` 在
+  pyproject 与 uv.lock 不一致时仍 exit 0，拿它当门禁是无效的。
+- **测试**: `unit_tests/`，pytest 运行（dev 组：`uv sync --group dev`）。pytest 配置在
+  `pyproject.toml`（`python_files` 含 `*_case.py`、`testpaths=unit_tests`）；**无参数
+  `pytest` 即可跑全量**，收集 0 个用例会以 exit 5 失败（这是有意的门禁）。
+  `unit_tests/composition_root_integration_case.py` 是真实装配基线：真构造门面、真起
+  HTTP、走真实首启向导 API、真落 SQLite，改动组合根/接线前先看它。
+- **CI**: `.github/workflows/ci.yml` 在 push/PR 到 main 时跑全量测试（含架构守卫）；
+  `release_docker.yml` 的 `build` 依赖其 `test` job，发布镜像前必须通过测试。
 - **Docker 构建**: GitHub Actions 在 `v*.*.*` tag push 时触发；基础镜像与 rclone 版本见「关键外部依赖」
-- **发布流程**: bump 版本 → 提交 → `git tag -a vX.Y.Z` → push main + tag
+- **发布流程**: bump 版本（两处真源）+ `uv lock` → 提交 → `git tag -a vX.Y.Z` → push main + tag
 - **提交信息** 末尾可附 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`

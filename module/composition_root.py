@@ -205,7 +205,7 @@ class TrmdCompositionRoot:
         self._web_operations_facade = WebOperationsFacade(self)
 
     # ------------------------------------------------------------------
-    # Explicit late-bound dependencies (single source of truth; no __getattr__ magic)
+    # Construction helpers
     # ------------------------------------------------------------------
     @staticmethod
     def _resolve_event_loop() -> asyncio.AbstractEventLoop:
@@ -231,6 +231,9 @@ class TrmdCompositionRoot:
             asyncio.set_event_loop(loop)
             return loop
 
+    # ------------------------------------------------------------------
+    # Explicit late-bound dependencies (single source of truth; no __getattr__ magic)
+    # ------------------------------------------------------------------
     def _app(self):
         return getattr(self, "app", None)
 

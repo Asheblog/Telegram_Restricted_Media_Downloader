@@ -14,7 +14,8 @@ env:
 
 jobs:
   # 发布前必须先过测试：此前 Docker 镜像会在无任何测试的情况下直接发布。
-  # 与 tests.yml 同口径（uv sync --frozen + pytest），tag 上跑一次防止绕过分支保护。
+  # 与 .github/workflows/ci.yml 同口径（uv sync --locked + pytest），tag 上再跑一次，
+  # 防止通过 tag 绕过分支保护直接发布未测代码。
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -32,10 +33,11 @@ jobs:
           cache-dependency-glob: |
             uv.lock
             pyproject.toml
+      # --locked（不是 --frozen）：只有前者会校验 uv.lock 与 pyproject 一致，见 ci.yml 注释。
       - name: Install dependencies
-        run: uv sync --frozen --group dev
+        run: uv sync --locked --group dev
       - name: Run test suite
-        run: uv run --frozen pytest -q
+        run: uv run --locked pytest -q
 
   build:
     needs: [test]

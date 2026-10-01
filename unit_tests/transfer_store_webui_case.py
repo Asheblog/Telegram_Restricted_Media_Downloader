@@ -59,7 +59,12 @@ class WebUiTestConnection(http.client.HTTPConnection):
       （实测约 0.5%/请求；失败时服务器**已经回应**，诊断日志里有该请求的响应行）。
     - 重放边界刻意收得很紧，以免掩盖真实缺陷：只重放「连接层异常 + 一个完整响应都没
       拿到 + 请求带 body」；任何 HTTP 响应（401/400/404/500、错误体、JSON 解析）都不
-      重放；不带 body 的请求一律不重放；畸形的 ``BadStatusLine`` 也不重放。
+      重放；不带 body 的请求一律不重放。
+    - 关于 `BadStatusLine`：`http.client.RemoteDisconnected` **同时**继承
+      `ConnectionResetError` 与 `BadStatusLine`，因此它会被重放——这正是本竞态的表现
+      （响应字节一个都没读到、连接已断）。真正的「服务器返回了畸形状态行」是裸
+      `BadStatusLine`（不是 `RemoteDisconnected`，也不是 `ConnectionError`），
+      它不在 `except ConnectionError` 范围内，照旧直接失败。
     - 重放的幂等性：能触发该竞态的请求，一定是被服务器**在读取 body 之前**拒掉的请求
       ——``_check_request_origin`` / ``_check_auth`` / ``_check_setup_ready`` 与路由匹配
       都发生在 ``_read_json()`` 之前，处理函数从未运行，重放不会产生第二次副作用。

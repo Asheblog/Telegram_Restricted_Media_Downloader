@@ -40,16 +40,18 @@ jobs:
             uv.lock
             pyproject.toml
 
-      # --frozen：锁文件必须与 pyproject 一致，防止"改了 pyproject 没重新 lock"。
+      # 用 --locked 而非 --frozen：实测（uv 0.8.22）在 pyproject 与 uv.lock 不一致时
+      # `uv sync --frozen` / `uv run --frozen` 仍 exit 0，门禁形同虚设；
+      # 只有 --locked（等价的 uv lock --check）会以非零退出拦住"改了 pyproject 没重新 lock"。
       - name: Install dependencies
-        run: uv sync --frozen --group dev
+        run: uv sync --locked --group dev
 
       # `pytest` 无参数即可（pyproject 配了 testpaths 与 python_files），
       # 收集 0 个用例时 pytest 以退出码 5 结束，本步骤会失败 —— 这正是我们要的：
       # 不再允许"静默跑 0 个用例"通过。
       - name: Run test suite
-        run: uv run --frozen pytest -q
+        run: uv run --locked pytest -q
 
       # 显式再跑一次架构守卫：它是防腐化的核心断言，单独列出便于在日志里定位。
       - name: Architecture guard
-        run: uv run --frozen pytest unit_tests/architecture_guard_case.py -q
+        run: uv run --locked pytest unit_tests/architecture_guard_case.py -q
