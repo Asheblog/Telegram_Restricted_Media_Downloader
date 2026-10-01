@@ -1,0 +1,58 @@
+name: Tests
+
+# 本工作流补上此前缺失的测试门禁：仓库原唯一工作流是 tag 触发的 Docker 构建，
+# 不含任何测试，714 个用例（含架构守卫与集成基线）在推送与 PR 上都不会执行。
+#
+# 注意：'ci/verify-workflows' 是临时分支，用于在真实 runner 上验证本工作流本身；
+# 验证通过后会在合并前移除，主分支只保留 main / PR 触发。
+on:
+  push:
+    branches: ['main', 'ci/verify-workflows']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # 版本由仓库根 .python-version 与 pyproject 的 requires-python(>=3.13.2,<3.14) 约束。
+      # 不装系统 MediaInfo：pymediainfo 在测试中不加载本地库。
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
+
+      # --frozen：锁文件必须与 pyproject 一致，防止"改了 pyproject 没重新 lock"。
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      # `pytest` 无参数即可（pyproject 配了 testpaths 与 python_files），
+      # 收集 0 个用例时 pytest 以退出码 5 结束，本步骤会失败 —— 这正是我们要的：
+      # 不再允许"静默跑 0 个用例"通过。
+      - name: Run test suite
+        run: uv run --frozen pytest -q
+
+      # 显式再跑一次架构守卫：它是防腐化的核心断言，单独列出便于在日志里定位。
+      - name: Architecture guard
+        run: uv run --frozen pytest unit_tests/architecture_guard_case.py -q
