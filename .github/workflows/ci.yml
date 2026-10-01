@@ -1,13 +1,10 @@
 name: Tests
 
 # 本工作流补上此前缺失的测试门禁：仓库原唯一工作流是 tag 触发的 Docker 构建，
-# 不含任何测试，714 个用例（含架构守卫与集成基线）在推送与 PR 上都不会执行。
-#
-# 注意：'ci/verify-workflows' 是临时分支，用于在真实 runner 上验证本工作流本身；
-# 验证通过后会在合并前移除，主分支只保留 main / PR 触发。
+# 不含任何测试，721 个用例（含架构守卫与集成基线）在推送与 PR 上都不会执行。
 on:
   push:
-    branches: ['main', 'ci/verify-workflows']
+    branches: ['main']
   pull_request:
     branches: ['main']
   workflow_dispatch:
