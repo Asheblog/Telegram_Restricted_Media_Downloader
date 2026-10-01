@@ -15,6 +15,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+from module.adapters.webui.security import (
+    LoginThrottle,
+    cookie_secure_required,
+    is_cross_origin_request,
+    security_headers,
+)
 from module.adapters.webui.view_model import WebUiViewModel
 from module.utils.diagnostics import default_diagnostic
 from module.core.enums import ENVIRON
@@ -23,6 +29,9 @@ from module.domain.archive_naming.source_folders import normalize_archive_title_
 from module.persistence.transfer_store import TransferStore
 
 SENSITIVE_SETTING_KEYS = {"api_hash", "bot_token", "password", "username"}
+
+# JSON 请求体上限：WebUI 只收发控制数据（路径 / 链接 / 监听备份），不上传媒体本体。
+MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
 
 # WebUI SPA 视图路径（刷新后由前端按 pathname 恢复对应视图）
 SPA_VIEW_PATHS = frozenset(
@@ -232,6 +241,7 @@ class WebUiServer:
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
         self.auth_provider: Optional[AuthProvider] = None
+        self.login_throttle = LoginThrottle.from_env(on_lockout=self._report_login_lockout)
         self.validate_auth_config()
 
     def is_setup_ready(self) -> bool:
@@ -325,16 +335,65 @@ class WebUiServer:
         payload = f"{expiry}.{nonce}"
         return f"{payload}.{self._sign_session_payload(payload)}"
 
-    def _create_session_cookie(self, token: str, remember_me: bool = True) -> str:
+    def _create_session_cookie(
+        self, token: str, remember_me: bool = True, secure: bool = False
+    ) -> str:
         parts = [
             f"{self.SESSION_COOKIE_NAME}={token}",
             "Path=/",
             "HttpOnly",
             "SameSite=Lax",
         ]
+        if secure:
+            parts.append("Secure")
         if remember_me:
             parts.insert(1, f"Max-Age={self.SESSION_MAX_AGE}")
         return "; ".join(parts)
+
+    def _clear_session_cookie(self, secure: bool = False) -> str:
+        parts = [
+            f"{self.SESSION_COOKIE_NAME}=",
+            "Max-Age=0",
+            "Path=/",
+            "HttpOnly",
+            "SameSite=Lax",
+        ]
+        if secure:
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def security_headers(self, handler) -> list[tuple[str, str]]:
+        """Security headers attached to every response served by this server."""
+        return security_headers(handler, requires_auth=self.requires_auth)
+
+    def cookie_secure_required(self, handler) -> bool:
+        """Whether this request must get a ``Secure`` session cookie."""
+        return cookie_secure_required(handler, requires_auth=self.requires_auth)
+
+    @staticmethod
+    def client_ip(handler) -> str:
+        """Peer address of the TCP connection.
+
+        不解析 ``X-Forwarded-For``：反代是否覆写该头不由本程序控制，信任它等于
+        给攻击者一个「换个头就换桶」的限流绕过口子。反代部署下所有请求落在同一
+        桶里是刻意的取舍（配合「凭据正确即放行」，正常登录不会被锁）。
+        """
+        address = getattr(handler, "client_address", None) or ()
+        return str(address[0]) if len(address) > 0 else ""
+
+    def register_login_failure(self, handler, username: str) -> int:
+        """Record a failed login and return retry-after seconds (0 = not limited)."""
+        if self.login_throttle is None:
+            return 0
+        return self.login_throttle.record_failure(self.client_ip(handler), username)
+
+    def clear_login_failures(self, handler, username: str) -> None:
+        if self.login_throttle is not None:
+            self.login_throttle.record_success(self.client_ip(handler), username)
+
+    def _report_login_lockout(self, locked: list[tuple[str, int]]) -> None:
+        detail = ", ".join(f"{key}:{seconds}s" for key, seconds in locked)
+        self.diagnostic.warning(f"[WebUI] 登录失败次数超限，已临时限流（{detail}）。")
 
     def validate_session_token(self, token: str) -> bool:
         if not token or not self.auth_enabled:
@@ -391,23 +450,63 @@ class WebUiServer:
         server = self
 
         class Handler(BaseHTTPRequestHandler):
+            # 不泄露 stdlib / Python 版本指纹（`Server: BaseHTTP/0.6 Python/3.x`）。
+            server_version = "trmd-webui"
+            sys_version = ""
+            _response_started = False
+
             def log_message(self, fmt, *args):
                 server.diagnostic.info("[WebUI] " + fmt, *args)
 
+            def log_error(self, fmt, *args):
+                server.diagnostic.warning("[WebUI] " + fmt, *args)
+
+            def version_string(self) -> str:
+                return self.server_version
+
+            def send_response_only(self, code, message=None):
+                self._response_started = True
+                super().send_response_only(code, message)
+
+            def end_headers(self):
+                """Attach the security headers to every response, including errors."""
+                for name, value in server.security_headers(self):
+                    self.send_header(name, value)
+                super().end_headers()
+
+            def send_error(self, code, message=None, explain=None):
+                """JSON error body instead of the stdlib HTML error page.
+
+                覆盖后 ``OPTIONS``/``HEAD``/非法请求行等由 stdlib 触发的错误不再
+                回吐 ``Unsupported method (...)`` 与 Python 版本指纹。
+                """
+                try:
+                    fallback = HTTPStatus(code).phrase
+                except ValueError:
+                    fallback = "Error"
+                detail = str(message or fallback)
+                if detail.startswith("Unsupported method"):
+                    # 不回显调用方自选的方法名（也是 stdlib 指纹的一部分）。
+                    detail = "Unsupported method."
+                self.log_error("code %s, message %s", code, message)
+                self.close_connection = True
+                self._send_json(
+                    {
+                        "error_code": f"http_{int(code)}",
+                        "error": detail,
+                    },
+                    code,
+                    {"connection": "close"},
+                )
+
             def _send_auth_required(self):
-                data = json.dumps(
+                self._send_json(
                     {
                         "error_code": "auth_required",
                         "error": "Authentication required.",
                     },
-                    ensure_ascii=False,
-                ).encode("utf-8")
-                self.send_response(HTTPStatus.UNAUTHORIZED)
-                self.send_header("content-type", "application/json; charset=utf-8")
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                    HTTPStatus.UNAUTHORIZED,
+                )
 
             def _write_pending_cookie(self):
                 cookie = getattr(self, "_pending_cookie", None)
@@ -427,28 +526,44 @@ class WebUiServer:
                 )
 
             def _check_auth(self):
+                """Auth gate.
+
+                只放行「精确方法 + 精确路径」的登录入口；其余一律 401。这样
+                ``GET /api/auth/login``（方法不支持）不再返回 ``404 not_found``，
+                未授权者无法再用 404/401 差分枚举路由白名单。
+                """
                 path = urlparse(self.path).path
-                if path in ("/api/auth/login", "/api/auth/logout"):
+                if self.command == "POST" and path == "/api/auth/login":
                     return True
                 if self._try_authorize():
                     return True
                 self._send_auth_required()
                 return False
 
+            def _check_request_origin(self):
+                """Reject browser-declared cross-site state-changing requests (CSRF)."""
+                if not server.auth_enabled:
+                    return True
+                if not is_cross_origin_request(self):
+                    return True
+                server.diagnostic.warning(
+                    f"[WebUI] 已拒绝跨站状态变更请求: {self.path}"
+                )
+                self._send_error(
+                    "cross_origin_forbidden",
+                    "Cross-origin request rejected.",
+                    HTTPStatus.FORBIDDEN,
+                )
+                return False
+
             def _send_setup_required(self):
-                data = json.dumps(
+                self._send_json(
                     {
                         "error_code": "setup_required",
                         "error": "请先完成初始化配置。",
                     },
-                    ensure_ascii=False,
-                ).encode("utf-8")
-                self.send_response(HTTPStatus.CONFLICT)
-                self.send_header("content-type", "application/json; charset=utf-8")
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                    HTTPStatus.CONFLICT,
+                )
 
             def _check_setup_ready(self):
                 path = urlparse(self.path).path
@@ -465,66 +580,150 @@ class WebUiServer:
                 """Check auth silently — returns bool without sending error response."""
                 return self._try_authorize()
 
-            def _send_json(self, payload, status=HTTPStatus.OK):
+            def _safe_write(self, data: bytes) -> None:
+                """Never let a half-dead client socket turn into a stderr traceback."""
+                try:
+                    self.wfile.write(data)
+                except OSError:
+                    self.close_connection = True
+
+            def _begin_response(self, status) -> bool:
+                """Start a response; False when headers were already flushed."""
+                if self._response_started:
+                    self.close_connection = True
+                    return False
+                try:
+                    self.send_response(status)
+                except OSError:
+                    self.close_connection = True
+                    return False
+                return True
+
+            def _send_json(self, payload, status=HTTPStatus.OK, extra_headers=None):
                 data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                self.send_response(status)
-                self._write_pending_cookie()
-                self.send_header("content-type", "application/json; charset=utf-8")
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                if not self._begin_response(status):
+                    return
+                try:
+                    self._write_pending_cookie()
+                    for name, value in (extra_headers or {}).items():
+                        self.send_header(name, value)
+                    self.send_header("content-type", "application/json; charset=utf-8")
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", str(len(data)))
+                    self.end_headers()
+                except OSError:
+                    self.close_connection = True
+                    return
+                self._safe_write(data)
 
             def _send_text_download(self, content: str, filename: str):
                 data = (content or "").encode("utf-8")
-                self.send_response(HTTPStatus.OK)
-                self._write_pending_cookie()
-                self.send_header("content-type", "text/plain; charset=utf-8")
-                self.send_header(
-                    "content-disposition", f'attachment; filename="{filename}"'
-                )
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                if not self._begin_response(HTTPStatus.OK):
+                    return
+                try:
+                    self._write_pending_cookie()
+                    self.send_header("content-type", "text/plain; charset=utf-8")
+                    self.send_header(
+                        "content-disposition", f'attachment; filename="{filename}"'
+                    )
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", str(len(data)))
+                    self.end_headers()
+                except OSError:
+                    self.close_connection = True
+                    return
+                self._safe_write(data)
 
             def _send_json_download(self, payload, filename: str):
                 data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-                self.send_response(HTTPStatus.OK)
-                self._write_pending_cookie()
-                self.send_header("content-type", "application/json; charset=utf-8")
-                self.send_header(
-                    "content-disposition", f'attachment; filename="{filename}"'
-                )
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                if not self._begin_response(HTTPStatus.OK):
+                    return
+                try:
+                    self._write_pending_cookie()
+                    self.send_header("content-type", "application/json; charset=utf-8")
+                    self.send_header(
+                        "content-disposition", f'attachment; filename="{filename}"'
+                    )
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", str(len(data)))
+                    self.end_headers()
+                except OSError:
+                    self.close_connection = True
+                    return
+                self._safe_write(data)
 
             def _send_bytes_download(
                 self, data: bytes, filename: str, content_type: str
             ):
                 payload = data or b""
-                self.send_response(HTTPStatus.OK)
-                self._write_pending_cookie()
-                self.send_header("content-type", content_type)
-                self.send_header(
-                    "content-disposition", f'attachment; filename="{filename}"'
+                if not self._begin_response(HTTPStatus.OK):
+                    return
+                try:
+                    self._write_pending_cookie()
+                    self.send_header("content-type", content_type)
+                    self.send_header(
+                        "content-disposition", f'attachment; filename="{filename}"'
+                    )
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                except OSError:
+                    self.close_connection = True
+                    return
+                self._safe_write(payload)
+
+            def _send_error(self, error_code, fallback, status, extra_headers=None):
+                self._send_json(
+                    {"error_code": error_code, "error": fallback},
+                    status,
+                    extra_headers,
                 )
-                self.send_header("cache-control", "no-store")
-                self.send_header("content-length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
 
-            def _send_error(self, error_code, fallback, status):
-                self._send_json({"error_code": error_code, "error": fallback}, status)
+            def _read_json(self, expect_object: bool = True):
+                """Parse the request body; every malformed shape becomes a 4xx.
 
-            def _read_json(self):
-                length = int(self.headers.get("content-length") or "0")
+                非对象 JSON（``[]`` / ``123`` / ``null`` / ``"a"``）与非法 JSON 一律
+                返回结构化 400，绝不抛到 ``socketserver`` 造成 502 / 连接重置。
+                """
+                raw_length = self.headers.get("content-length")
+                try:
+                    length = int(raw_length or "0")
+                except (TypeError, ValueError):
+                    raise WebUiApiError(
+                        "invalid_content_length",
+                        "Invalid Content-Length header.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                if length < 0:
+                    raise WebUiApiError(
+                        "invalid_content_length",
+                        "Invalid Content-Length header.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                if length > MAX_JSON_BODY_BYTES:
+                    raise WebUiApiError(
+                        "request_body_too_large",
+                        "Request body is too large.",
+                        HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    )
                 raw = self.rfile.read(length)
                 if not raw:
                     return {}
-                return json.loads(raw.decode("utf-8"))
+                try:
+                    payload = json.loads(raw.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    raise WebUiApiError(
+                        "invalid_json_body",
+                        "Request body must be valid JSON.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                if expect_object and not isinstance(payload, dict):
+                    raise WebUiApiError(
+                        "invalid_json_body",
+                        "Request body must be a JSON object.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                return payload
 
             @staticmethod
             def _query_int(query: dict, key: str, default: int) -> int:
@@ -553,7 +752,49 @@ class WebUiServer:
                     return None
                 return int(task_id)
 
-            def do_GET(self):
+            def _respond_unhandled(self, exc: Exception) -> None:
+                """Last line of defense: structured 5xx instead of a dead connection."""
+                if isinstance(exc, WebUiApiError):
+                    server.diagnostic.warning(
+                        f"[WebUI] 请求失败 {self.command} {self.path}: {exc.error_code}"
+                    )
+                    self._send_error(exc.error_code, exc.message, exc.status)
+                    return
+                server.diagnostic.exception(
+                    f"[WebUI] 未捕获异常 {self.command} {self.path}，已返回 internal_error。"
+                )
+                self._send_error(
+                    "internal_error",
+                    "Internal server error.",
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+
+            def _run(self, route) -> None:
+                """Run one route with a catch-all so nothing escapes to socketserver."""
+                self._response_started = False
+                try:
+                    route()
+                except Exception as exc:  # noqa: BLE001 - HTTP 边界必须兜底
+                    self._respond_unhandled(exc)
+
+            def _send_method_not_allowed(self):
+                if not self._begin_response(HTTPStatus.METHOD_NOT_ALLOWED):
+                    return
+                try:
+                    self.send_header("allow", "GET, POST, PUT, PATCH, DELETE")
+                    self.send_header("cache-control", "no-store")
+                    self.send_header("content-length", "0")
+                    self.end_headers()
+                except OSError:
+                    self.close_connection = True
+
+            def do_OPTIONS(self):
+                self._run(self._send_method_not_allowed)
+
+            def do_HEAD(self):
+                self._run(self._send_method_not_allowed)
+
+            def _route_get(self):
                 parsed = urlparse(self.path)
                 if static_pages.handle_get(self, server, parsed):
                     return
@@ -565,8 +806,10 @@ class WebUiServer:
                     return
                 self._send_error("not_found", "Not found.", HTTPStatus.NOT_FOUND)
 
-            def do_POST(self):
+            def _route_post(self):
                 parsed = urlparse(self.path)
+                if not self._check_request_origin():
+                    return
                 if auth.handle_post_public(self, server, parsed):
                     return
                 if not self._check_auth():
@@ -577,7 +820,9 @@ class WebUiServer:
                     return
                 self._send_error("not_found", "Not found.", HTTPStatus.NOT_FOUND)
 
-            def do_PATCH(self):
+            def _route_patch(self):
+                if not self._check_request_origin():
+                    return
                 if not self._check_auth():
                     return
                 if not self._check_setup_ready():
@@ -587,7 +832,9 @@ class WebUiServer:
                     return
                 self._send_error("not_found", "Not found.", HTTPStatus.NOT_FOUND)
 
-            def do_PUT(self):
+            def _route_put(self):
+                if not self._check_request_origin():
+                    return
                 if not self._check_auth():
                     return
                 if not self._check_setup_ready():
@@ -597,7 +844,9 @@ class WebUiServer:
                     return
                 self._send_error("not_found", "Not found.", HTTPStatus.NOT_FOUND)
 
-            def do_DELETE(self):
+            def _route_delete(self):
+                if not self._check_request_origin():
+                    return
                 if not self._check_auth():
                     return
                 if not self._check_setup_ready():
@@ -607,11 +856,29 @@ class WebUiServer:
                     return
                 self._send_error("not_found", "Not found.", HTTPStatus.NOT_FOUND)
 
+            def do_GET(self):
+                self._run(self._route_get)
+
+            def do_POST(self):
+                self._run(self._route_post)
+
+            def do_PATCH(self):
+                self._run(self._route_patch)
+
+            def do_PUT(self):
+                self._run(self._route_put)
+
+            def do_DELETE(self):
+                self._run(self._route_delete)
+
         self.httpd = ThreadingHTTPServer((self.host, self.port), Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         auth_status = "enabled" if self.auth_enabled else "disabled"
-        self.diagnostic.info(f"WebUI started at {self.url}, auth={auth_status}")
+        self.diagnostic.info(
+            f"WebUI started at {self.url}, auth={auth_status}, "
+            f"login_ratelimit={'on' if self.login_throttle else 'off'}"
+        )
         if open_browser:
             try:
                 webbrowser.open(self.url)

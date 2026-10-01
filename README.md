@@ -123,6 +123,37 @@ tar -C /opt/trmd -czf trmd-backup.tar.gz config sessions temp form rclone
 
 排障时可从「系统设置 → 诊断包导出」下载 ZIP（含日志与失败项实测结果）。注意该包**含登录态与密钥**，请仅私密传输，勿公开分享。
 
+## 安全加固（WebUI）
+
+自 v0.2.246 起，WebUI HTTP 层按渗透测试结论做了统一加固（详见 [ADR-0017](docs/adr/0017-webui-http-hardening.md)）：
+
+- 每个响应都带 `nosniff` / `X-Frame-Options: DENY` / `frame-ancestors 'none'` / `Referrer-Policy: no-referrer`；
+  确认走 HTTPS 时额外下发 HSTS。
+- 登录失败按「客户端 IP + 用户名」双维度限流（默认 5 次 / 60s，超限指数退避锁定并告警）；
+  **正确口令始终放行**，不会因被喷洒而把管理员锁在门外。
+- 会话 Cookie 在生产姿态（HTTPS / 非 loopback 监听 / 反代）下带 `Secure`；
+  本地 `127.0.0.1` 明文开发不加 `Secure`，避免浏览器丢弃 Cookie。
+- 公开路由白名单精确到「方法 + 路径」，只有 `POST /api/auth/login` 免鉴权；
+  `logout` 需要有效会话，跨站来源的状态变更请求被 `403` 拒绝。
+- 畸形 JSON、非对象 JSON、超大请求体都返回结构化 4xx，不再产生 502 / 连接重置与堆栈刷屏；
+  `Server` 头与错误页不再暴露 Python `http.server` 指纹。
+
+可调环境变量：
+
+| 变量 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `TRMD_WEB_COOKIE_SECURE` | 自动判定 | `1` 强制会话 Cookie 加 `Secure`；`0` 关闭（**明文 HTTP 部署必须设 `0`**，否则浏览器丢弃 Cookie） |
+| `TRMD_WEB_CSRF_ORIGIN_CHECK` | `on` | `off` 关闭 `Origin`/`Referer` 同源校验（反代未转发原始 `Host` 时可用） |
+| `TRMD_WEB_LOGIN_RATELIMIT` | `on` | `off` 关闭登录限流 |
+| `TRMD_WEB_LOGIN_MAX_FAILURES` | `5` | 计数窗口内允许的失败次数 |
+| `TRMD_WEB_LOGIN_WINDOW_SECONDS` | `60` | 失败计数窗口（秒） |
+| `TRMD_WEB_LOGIN_LOCKOUT_SECONDS` | `60` | 首次锁定窗口（秒），重复触发翻倍 |
+| `TRMD_WEB_LOGIN_MAX_LOCKOUT_SECONDS` | `900` | 退避锁定上限（秒） |
+
+> 反向代理（openresty / nginx）侧的 HSTS、未知 Host 兜底与 5xx 统一页面需要单独落地，
+> 配置模板与验证清单见 [docs/ops/webui-nginx-hardening.md](docs/ops/webui-nginx-hardening.md)。
+> 其中 `proxy_set_header X-Forwarded-Proto $scheme;` 建议必配——应用靠它精确判定 HTTPS。
+
 ## License
 
 本项目继承上游 [Gentlesprite/Telegram_Restricted_Media_Downloader](https://github.com/Gentlesprite/Telegram_Restricted_Media_Downloader) 的 MIT License。

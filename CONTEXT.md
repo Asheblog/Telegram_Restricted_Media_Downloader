@@ -224,7 +224,7 @@ _Avoid_: caption-only keyword scan, whitelist-as-blacklist, keyword-block-deep-l
 **Media Type Override** — 转存任务、实时监听或 Bot 下载会话上可选的媒体类型整表替换；未设置则继承 Media Type Allowlist，设置后不再并入全局。
 _Avoid_: type delta, additive filter, per-pipeline settings
 
-**WebUI Credentials** — 环境变量提供的站内登录凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码；用户通过 WebUI 登录页换取 HttpOnly 签名 session cookie（HMAC，密钥由用户名/密码派生；勾选记住我后 Cookie `Max-Age` 为 30 天，进程/容器重启后仍有效；修改密码会使旧 cookie 失效）。
+**WebUI Credentials** — 环境变量提供的站内登录凭据。`TRMD_WEB_HOST` 非 localhost 时，必须设置用户名和密码；用户通过 WebUI 登录页换取 HttpOnly 签名 session cookie（HMAC，密钥由用户名/密码派生；勾选记住我后 Cookie `Max-Age` 为 30 天，进程/容器重启后仍有效；修改密码会使旧 cookie 失效）。HTTP 层加固见 ADR-0017：生产姿态（HTTPS / 非 loopback / 反代）Cookie 带 `Secure`，登录失败按 IP + 用户名双维度限流（正确口令始终放行），公开路由白名单只剩 `POST /api/auth/login`，`logout` 需有效会话，跨站状态变更请求按 `Origin`/`Referer` 同源校验拒绝。
 _Avoid_: HTTP Basic Auth, Random ttyd password, public WebUI, in-memory-only session store
 
 **WebUI Telegram Login** — WebUI 中通过表单完成 Telegram 登录（替代 CLI `console.input()`）。
@@ -278,6 +278,7 @@ _Avoid_: Desktop-only payload, mobile-only field mapping, duplicated frontend st
 - [ADR-0011](docs/adr/0011-source-post-archive-path.md) — 按频道主贴嵌套归档路径
 - [ADR-0012](docs/adr/0012-first-run-webui-setup.md) — WebUI 首启配置向导（API / Telegram / rclone / 可选 Bot Token）
 - [ADR-0015](docs/adr/0015-archive-target-name-dedup.md) — 归档目标名去重，同帖多媒体不互相覆盖
+- [ADR-0017](docs/adr/0017-webui-http-hardening.md) — WebUI HTTP 层安全加固（统一异常边界 / 安全头 / Secure Cookie / 登录限流 / 鉴权白名单与同源校验）
 
 ---
 

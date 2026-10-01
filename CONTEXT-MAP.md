@@ -60,7 +60,8 @@
 | `adapters/pikpak/integration.py` | `pikpak_integration.py` | 入库确认、归档编排 | ~410 |
 | `adapters/pikpak/archive.py` | `pikpak_archive.py` | rclone PikPak 归档客户端 | ~350 |
 | `adapters/pikpak/archive_author.py` | `archive_author_tool.py` | Archive Author 执行服务 | ~1130 |
-| `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP 壳（路由调度进 handlers） | ~1500 |
+| `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP 壳（路由调度进 handlers；统一异常边界 / 安全头 / 鉴权门） | ~1600 |
+| `adapters/webui/security.py` | — | HTTP 层安全策略：安全响应头 + HSTS、Secure Cookie 判定、登录失败限流（`LoginThrottle`）、同源校验 | ~330 |
 | `adapters/webui/operations.py` | `web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
 | `adapters/webui/archive_author_jobs.py` | `archive_author_jobs.py` | Archive Author 作业 | ~500 |
 | `adapters/webui/handlers/` | — | 按 API 域拆分的 HTTP handlers（auth/tasks/watches/…） | ~1140 |
@@ -126,10 +127,14 @@
 | `deep_link.settle_seconds` | GlobalConfig | 首条媒体后的收齐静默秒数 |
 | `deep_link.max_pages` | GlobalConfig | 翻页/组别按钮最大点击次数 |
 | `deep_link.page_click_interval_seconds` | GlobalConfig | 翻页点击间隔秒数 |
+| `TRMD_WEB_COOKIE_SECURE` / `TRMD_WEB_CSRF_ORIGIN_CHECK` / `TRMD_WEB_LOGIN_*` | 环境变量（非配置文件） | `core/enums.py::ENVIRON`，消费于 `adapters/webui/security.py`（见 ADR-0017） |
 
 ## WebUI API → handler
 
 路由仍由 `adapters/webui/server.py` 承接；具体 GET/POST/… 分发在 `adapters/webui/handlers/`（`auth` / `setup_api` / `tasks` / `watches` / `stats` / `media` / `archive_author` / `settings` / `misc` / `static_pages`）。契约未改。
+
+> 免鉴权面（ADR-0017）：只有 `POST /api/auth/login` 与 `/fonts/<name>`、SPA 登录页；其余路径未授权一律
+> `401 auth_required`（不再区分「方法不支持」），`POST /api/auth/logout` 需要有效会话。
 
 | 路由 | 方法 | 作用 |
 | ------ | ------ | ------ |

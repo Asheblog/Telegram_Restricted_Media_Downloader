@@ -90,7 +90,8 @@ def handle_get(handler, server, parsed) -> bool:
 def handle_post(handler, server, parsed) -> bool:
     if parsed.path == '/api/watches/forward/import':
         try:
-            payload = handler._read_json()
+            # 转发监听备份既可以是对象，也可以是纯数组（历史导出格式）。
+            payload = handler._read_json(expect_object=False)
             result = server.import_forward_watches(payload)
             handler._send_json(result)
         except WebUiApiError as e:
