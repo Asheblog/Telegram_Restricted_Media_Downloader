@@ -8,9 +8,12 @@
 - 组合根里 50 个 getter / 199 个 kwarg 的接线错误在单测里无法暴露；
 - 因此任何结构性重构（例如拆上帝对象）都没有安全网。
 
-本文件提供一条**真实**链路的最小基线：真构造门面 → 真起 HTTP 服务 →
-走真实首启向导 API → 真实提交转存任务 → 真实落 SQLite → 用独立只读连接读回。
-只有"Telegram 登录"与"rclone 探测"被替代（它们需要外部服务）。
+本文件提供两条**真实**链路的最小基线：
+- ``CompositionRootIntegrationCase``：真构造门面 → 真起 HTTP 服务 → 走真实首启向导
+  API → 真实提交转存任务 → 真实落 SQLite → 用独立只读连接读回。
+- ``TransferChainIntegrationCase``：驱动**真实** ``WebTransferRunner.process_task``，
+  由真实 runner 的 range 遍历 / 媒体类型判定 / skip 分支创建 Transfer Item 并落库。
+只有"Telegram 登录 / 取消息 / rclone 探测"被替代（需要外部服务）。
 
 ## 覆盖到的真实接线（此前无任何测试覆盖）
 - ``TelegramRestrictedMediaDownloader()`` 完整构造（composition_root 装配）
@@ -19,6 +22,8 @@
 - ``WebUiServer._operation()`` 字符串派发 → ``WebOperationsFacade`` → 宿主 mixin
 - setup 向导状态机（``SetupCoordinator.build_status`` + ``is_setup_ready``）
 - ``TransferStore`` 真实建库、建表、写入、跨连接读取
+- ``WebTransferRunner.process_task`` → ``TransferEngine.skip_transfer_item_for_media_type``
+  → ``TransferStore.add_item`` → ``refresh_task_counts`` 的真实调用链
 """
 import asyncio
 import datetime
@@ -26,7 +31,6 @@ import http.client
 import json
 import os
 import pathlib
-import shutil
 import socket
 import sys
 import tempfile
@@ -62,15 +66,11 @@ from module.utils.parser import PARSE_ARGS  # noqa: E402
 
 sys.argv = _ORIGINAL_ARGV
 
-_WEB_PORT = PARSE_ARGS.web
-if not _WEB_PORT:
-    # 未带 --web 时显式给一个空端口，供 start_web_ui 绑定。
-    with socket.socket() as _probe:
-        _probe.bind(("127.0.0.1", 0))
-        _WEB_PORT = _probe.getsockname()[1]
-    PARSE_ARGS.web = _WEB_PORT
+# start_web_ui 会提前 return 除非 PARSE_ARGS.web 有值；真实端口在各自 setUpClass 里取，
+# 这里只保证 import 阶段"看起来是 --web 模式"。
+if not PARSE_ARGS.web:
+    PARSE_ARGS.web = 0
 os.environ["TRMD_WEB_HOST"] = "127.0.0.1"
-os.environ["TRMD_WEB_PORT"] = str(_WEB_PORT)
 
 # UserConfig.DIRECTORY_NAME 是**类属性**，在进程内首次 import module.core.config 时
 # 就由当时的 sys.argv[0] 固化。跑完整套件时它往往已被别的测试模块导入并指向
@@ -78,6 +78,17 @@ os.environ["TRMD_WEB_PORT"] = str(_WEB_PORT)
 # `--config` 契约（UserConfig.__init__ 会优先采用 PARSE_ARGS.config）显式指向沙箱。
 _SANDBOX_CONFIG = _WORKDIR / "config.yaml"
 PARSE_ARGS.config = str(_SANDBOX_CONFIG)
+
+
+def _free_port() -> int:
+    """取一个当前空闲的 TCP 端口。
+
+    WebUiServer 在构造期（`resolve_port`）绑定端口以探活，因此必须给一个真的空闲端口；
+    每个测试类各取一个，避免前一个类 stop() 后端口仍被占用（Linux 上会 EADDRINUSE）。
+    """
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
 
 
 class _Http:
@@ -113,6 +124,12 @@ class CompositionRootIntegrationCase(unittest.TestCase):
     def setUpClass(cls):
         cls._cwd_dir = tempfile.mkdtemp(prefix="trmd-integration-work-")
         os.chdir(cls._cwd_dir)
+        # 每个测试类各自取一个空闲端口：两个类共用同一端口时，前一个类 stop() 后
+        # Linux 上端口仍被占用，第二个类的 start_web_ui 会 EADDRINUSE
+        # （Windows 对 loopback 的复用更宽容，所以本机不复现——CI 上暴露）。
+        free_port = _free_port()
+        os.environ["TRMD_WEB_PORT"] = str(free_port)
+        PARSE_ARGS.web = free_port
         # 组合根的 self.loop 需要"当前线程的 event loop"。这里**显式**提供一个：
         # 既贴近生产（main.py 在无 loop 的进程里由组合根自建），又避免
         # asyncio 的"隐式兜底"产生 DeprecationWarning（在 -W error 下会变成失败）。
@@ -348,6 +365,9 @@ class TransferChainIntegrationCase(unittest.TestCase):
     def setUpClass(cls):
         cls._cwd_dir = tempfile.mkdtemp(prefix="trmd-chain-work-")
         os.chdir(cls._cwd_dir)
+        free_port = _free_port()
+        os.environ["TRMD_WEB_PORT"] = str(free_port)
+        PARSE_ARGS.web = free_port
         cls._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(cls._loop)
         with patch("module.adapters.webui.server.webbrowser.open", return_value=True):
