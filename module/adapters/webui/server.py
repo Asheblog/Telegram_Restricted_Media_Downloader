@@ -243,10 +243,23 @@ class WebUiServer:
             )
 
     def _operation(self, name: str):
+        """按名字取业务操作。
+
+        返回 ``None`` **仅表示"整套 operations 未接线"**（调用方回 503 是对的）。
+        如果 operations 在、但这个名字不存在，那是接线/改名错误，不是服务不可用：
+        旧实现同样返回 ``None``，于是被上层报成 503「operations unavailable」，
+        把 bug 伪装成故障。现在显式抛 500 并带上具体方法名。
+        """
         if self.operations is None:
             return None
         method = getattr(self.operations, name, None)
-        return method if callable(method) else None
+        if callable(method):
+            return method
+        raise WebUiApiError(
+            "operation_not_wired",
+            f"WebUI operation {name!r} is not implemented by the operations facade.",
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
 
     @staticmethod
     def resolve_port(port: int) -> int:

@@ -49,6 +49,8 @@ class WebTransferHost(Protocol):
 
     def should_continue_web_transfer_task(self, task_id: int) -> bool: ...
     def should_continue_web_transfer_item(self, item_id: int) -> bool: ...
+    def should_start_next_web_transfer_item(self, task_id: int) -> bool: ...
+    async def settle_web_task_pause_request(self, task_id: int, *, before: Optional[str] = None) -> bool: ...
     async def wait_for_telegram_flood(self, error, task_id: Optional[int] = None, action: str = 'request') -> None: ...
     async def forward(self, **kwargs): ...
     async def create_download_task(self, **kwargs) -> dict: ...
@@ -74,16 +76,36 @@ class WebTransferHost(Protocol):
 
 
 class WebTransferRunner:
+    """跑 Web 转存任务；需要宿主能力的部分通过 WebTransferHost 拿。
+
+    方法解析分两类，**不再用 ``is not`` 反射猜**：
+    - ``_RUNNER_LOCAL_METHODS``：runner 自己的实现，必须优先于宿主。宿主的
+      ``wait_between_transfer_messages`` 本身是转发回 runner 的，若优先取宿主会无限递归。
+    - 其余名字：宿主拥有，从宿主取；宿主没提供才回落到 runner 的同名实现。
+      （历史实现用 ``instance_method is not class_method`` 判断"是否被 monkeypatch"，
+      该方法对普通方法恒为真，兜底分支永远不会执行 —— 已删除。）
+    """
+    _RUNNER_LOCAL_METHODS = frozenset({
+        'wait_between_transfer_messages',
+        'transfer_send_interval',
+    })
+
     def __init__(self, host: WebTransferHost):
         self._host = host
 
     def _resolve_method(self, name: str):
-        host_type = type(self._host)
-        instance_method = getattr(self._host, name)
-        class_method = getattr(host_type, name, None)
-        if instance_method is not class_method:
-            return instance_method
-        return getattr(self, name)
+        """取 ``name`` 的实现：runner 自己的优先，其余以宿主为准。"""
+        if name in self._RUNNER_LOCAL_METHODS:
+            return getattr(self, name)
+        host_method = getattr(self._host, name, None)
+        if host_method is not None:
+            return host_method
+        local_method = getattr(self, name, None)
+        if local_method is not None:
+            return local_method
+        raise AttributeError(
+            f'{type(self._host).__name__} 未提供 {name!r}，runner 也没有本地实现。'
+        )
 
     @staticmethod
     def transfer_send_interval() -> float:

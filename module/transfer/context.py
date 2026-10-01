@@ -1,7 +1,7 @@
 # coding=UTF-8
 import asyncio
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any
 
 from module.ports import IDiagnosticPort
 
@@ -90,8 +90,11 @@ class TransferPorts:
 
 @dataclass
 class TransferContext:
-    """Holds shared services for transfer operations.
-    Replaces 50+ individual getter lambdas with a single structured context.
+    """持有 transfer 相关共享服务。
+
+    只放**已解析好的实例**。此前还有一组 ``*_getter`` 字段 + ``build()`` +
+    ``resolve()`` + ``downloader_callbacks``，设计意图是"替代 50 个 getter lambda"，
+    但实测全仓零调用（组合根只传实例值），属于死抽象，已删除以免误导读者。
     """
     app: Any = None
     gc: Any = None
@@ -107,27 +110,3 @@ class TransferContext:
     transfer_store: Optional[Any] = None
     local_storage_guard: Optional[Any] = None
     download_upload_window: Optional[Any] = None
-
-    uploader_getter: Optional[Callable[[], Any]] = None
-    progress_tracker_getter: Optional[Callable[[], Any]] = None
-    pikpak_manager_getter: Optional[Callable[[], Any]] = None
-    watch_manager_getter: Optional[Callable[[], Any]] = None
-    web_task_manager_getter: Optional[Callable[[], Any]] = None
-    transfer_store_getter: Optional[Callable[[], Any]] = None
-
-    downloader_callbacks: Dict[str, Callable] = field(default_factory=dict)
-
-    def build(self) -> 'TransferContext':
-        for name in ('uploader', 'progress_tracker', 'pikpak_manager',
-                      'watch_manager', 'web_task_manager', 'transfer_store'):
-            getter = getattr(self, f'{name}_getter', None)
-            if getter is not None and getattr(self, name, None) is None:
-                try:
-                    setattr(self, name, getter())
-                except Exception:
-                    pass
-        return self
-
-    def resolve(self, name: str, default=None):
-        cb = self.downloader_callbacks.get(name)
-        return cb if cb is not None else default
