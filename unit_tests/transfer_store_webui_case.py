@@ -78,11 +78,22 @@ class WebUiTestConnection(http.client.HTTPConnection):
         super().__init__(*args, **kwargs)
         self._replay_args = None
         self.replayed_requests = 0
+        # 上一个响应宣告服务器将关闭连接（本服务所有响应都是 HTTP/1.0 + 无 keep-alive）。
+        # 不能立刻 close()：HTTPConnection.close() 会顺带关闭**仍在被读取**的 response
+        # （实测导致 21 个用例读不到 body）。因此延后到下一次请求之前再关。
+        self._close_before_next_request = False
 
     def request(self, method, url, body=None, headers=None, *, encode_chunked=False):
         # HTTPConnection.request 的默认 headers 是 {}，显式传 None 会让它 TypeError；
         # 这里统一归一化，保持与直接调用 http.client 完全一致的行为。
         headers = {} if headers is None else headers
+        if self._close_before_next_request:
+            # 服务器已就本次响应关连接；http.client 只记了 will_close，不会替我们关，
+            # 于是下一次 request() 会写到半关闭连接上（随机 ConnectionAbortedError，
+            # 服务器修掉未读 body 触发的 RST 后表现为确定性超时）。
+            # 这里在发送前关掉，让 http.client 自己重新建连。
+            self.close()
+            self._close_before_next_request = False
         replayable = body is None or isinstance(body, (str, bytes, bytearray))
         self._replay_args = (
             (method, url, body, headers, encode_chunked) if replayable else None
@@ -95,7 +106,8 @@ class WebUiTestConnection(http.client.HTTPConnection):
         replays = 0
         while True:
             try:
-                return super().getresponse()
+                response = super().getresponse()
+                break
             except ConnectionError:
                 args = self._replay_args
                 if replays >= self.MAX_REPLAYS or not args or args[2] is None:
@@ -110,6 +122,9 @@ class WebUiTestConnection(http.client.HTTPConnection):
                     headers=args[3],
                     encode_chunked=args[4],
                 )
+        if getattr(response, "will_close", False):
+            self._close_before_next_request = True
+        return response
 
 
 def connect_webui(server, timeout: float | None = 5) -> WebUiTestConnection:

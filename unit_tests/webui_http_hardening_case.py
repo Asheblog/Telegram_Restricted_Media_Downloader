@@ -542,5 +542,71 @@ class WebUiHttpHardeningCase(unittest.TestCase):
         self.assertEqual([[], {'watches': []}], seen)
 
 
+    # ---- 回归：早退路径必须读干净请求体，不能丢响应 ------------------------
+
+    def test_early_rejection_with_body_does_not_drop_the_response(self):
+        """带 body 的请求在鉴权前被拒时，客户端必须完整拿到 4xx。
+
+        背景：请求体若留在套接字里没被读走，服务器关闭连接时内核会发 RST，
+        而 RST 会丢掉客户端内核中尚未取走的响应字节 —— 客户端在
+        ``getresponse()`` 处随机抛 ``ConnectionAbortedError``，看不到我们发出的
+        401/403/409/413（实测带 body 的未鉴权 POST 约 0.5%/请求；延迟读取放大后
+        稳定复现）。修复方式：请求进入时（``_run`` → ``_consume_request_body``）
+        先读干净 body，`_read_json` 只从缓存解析。
+
+        这里用「延迟读取 + 重复多轮」把概率问题变成可复现断言：只要 body 没被
+        读走，delay 期间 RST 必定先到，响应就会丢。
+        """
+        import time
+
+        server = self._server()
+        body = json.dumps({'phone': '+8615000000000'})
+        payload = body.encode('utf-8')
+
+        for attempt in range(8):
+            with self.subTest(attempt=attempt):
+                conn = http.client.HTTPConnection('127.0.0.1', server.port, timeout=10)
+                try:
+                    conn.request(
+                        'POST',
+                        '/api/auth/submit',
+                        body=payload,
+                        headers={'Content-Type': 'application/json'},
+                    )
+                    # 放大：等服务端先关闭连接（若未读 body，此处必丢响应）
+                    time.sleep(0.05)
+                    response = conn.getresponse()
+                    raw = response.read().decode('utf-8', 'replace')
+                except ConnectionError as exc:
+                    self.fail(
+                        f'第 {attempt} 轮丢响应（未读 body 触发 RST）: '
+                        f'{type(exc).__name__}: {exc}'
+                    )
+                finally:
+                    conn.close()
+                self.assertEqual(401, response.status, raw)
+                self.assertEqual('auth_required', json.loads(raw)['error_code'])
+
+    def test_oversized_body_still_rejected_without_dropping_response(self):
+        """超限 body 仍回 413（先不回读巨量内存，但拒绝语义不能变）。"""
+        server = self._server()
+        cookie = self._cookie(self._login(server)[1])
+        conn = http.client.HTTPConnection('127.0.0.1', server.port, timeout=15)
+        try:
+            conn.putrequest('POST', '/api/tasks')
+            oversized = 9 * 1024 * 1024
+            conn.putheader('Content-Type', 'application/json')
+            conn.putheader('Content-Length', str(oversized))
+            conn.putheader('Cookie', cookie)
+            conn.endheaders()
+            # 只发 1KB 就读取响应：超限判定基于声明的 Content-Length
+            conn.send(b'x' * 1024)
+            response = conn.getresponse()
+            raw = response.read().decode('utf-8', 'replace')
+        finally:
+            conn.close()
+        self.assertEqual(413, response.status, raw)
+
+
 if __name__ == '__main__':
     unittest.main()

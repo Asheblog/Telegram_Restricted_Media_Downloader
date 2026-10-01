@@ -665,6 +665,9 @@ class WebUiServer:
 
                 非对象 JSON（``[]`` / ``123`` / ``null`` / ``"a"``）与非法 JSON 一律
                 返回结构化 400，绝不抛到 ``socketserver`` 造成 502 / 连接重置。
+
+                正文已由 ``_run`` → ``_consume_request_body`` 提前读完并缓存，
+                这里不再碰 ``rfile``（否则会读到 EOF，把正常请求误判成空 body）。
                 """
                 raw_length = self.headers.get("content-length")
                 try:
@@ -687,7 +690,9 @@ class WebUiServer:
                         "Request body is too large.",
                         HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                     )
-                raw = self.rfile.read(length)
+                raw = getattr(self, "_body_cache", None)
+                if raw is None:
+                    raw = b""
                 if not raw:
                     return {}
                 try:
@@ -756,9 +761,56 @@ class WebUiServer:
                 except Exception:  # noqa: BLE001 - 兜底路径不可再抛
                     self.close_connection = True
 
+            def _consume_request_body(self) -> None:
+                """请求一进来就把 body 读进内存缓存。
+
+                为什么要提前读：HTTP 层有多处在**读 body 之前**就回错误（鉴权 401、
+                跨站 403、setup 409、body 超限 413、Content-Length 非法 400）。
+                只要还有字节留在套接字里，本服务器关闭连接时内核就会发 RST，而 RST
+                会丢掉客户端内核中尚未取走的响应字节 —— 客户端在 `getresponse()`
+                处随机拿到 `ConnectionAbortedError`，而不是我们发出的 4xx
+                （实测：带 body 的未鉴权 POST 约 0.5%/请求，放大后 16.7%）。
+
+                因此这里统一读完并缓存，`_read_json()` 之后只从缓存解析。
+                上限仍按 MAX_JSON_BODY_BYTES 约束（超限留给 `_read_json` 回 413）。
+                """
+                self._body_cache = None
+                raw_length = self.headers.get("content-length") if self.headers else None
+                if not raw_length:
+                    return
+                try:
+                    length = int(raw_length)
+                except (TypeError, ValueError):
+                    return  # 非法长度交给 _read_json 回 400
+                if length < 0 or length > MAX_JSON_BODY_BYTES:
+                    return  # 超限交给 _read_json 回 413，避免先吃掉巨量内存
+                self._body_cache = self._read_exactly(length)
+
+            def _read_exactly(self, length: int) -> bytes:
+                chunks: list[bytes] = []
+                remaining = length
+                while remaining > 0:
+                    try:
+                        chunk = self.rfile.read(remaining)
+                    except OSError:
+                        self.close_connection = True
+                        break
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                return b"".join(chunks)
+
             def _run(self, route) -> None:
                 """Run one route with a catch-all so nothing escapes to socketserver."""
                 self._response_started = False
+                self._body_cache = None
+                try:
+                    # 先读干净请求体（见 _consume_request_body），避免早退路径留下未读
+                    # 字节导致关闭连接时发 RST、客户端丢响应。
+                    self._consume_request_body()
+                except Exception:  # noqa: BLE001 - 读体失败也必须能回响应
+                    self.close_connection = True
                 try:
                     route()
                 except Exception as exc:  # noqa: BLE001 - HTTP 边界必须兜底
