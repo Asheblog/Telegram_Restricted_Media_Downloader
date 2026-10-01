@@ -8,7 +8,11 @@ authors = [{ name = "Gentlesprite", email = "Gentlesprites@outlook.com" }]
 version = "0.2.249"
 description = "Telegram downloader (TRMD): Supports resumable downloads and uploads. Bot supports commands/links for downloading, forwarding, listening, uploading, and upload-after-download of non-downloadable Telegram content via API."
 readme = "README.md"
-requires-python = ">=3.13.2"
+# 上界对齐 build.py 的 check_python_version()（明确拒绝 >=3.14）与 Dockerfile 的
+# python:3.13。没有上界时 uv 会选中 3.14 并为它装 cp314 的 C 扩展；而 3.14 目前
+# 只有 alpha 可用于本机场景，PyYAML 等扩展的 ABI 一旦不匹配就是 0xC0000005 硬崩，
+# 表现为"测试/产品坏了"，排查成本极高。
+requires-python = ">=3.13.2,<3.14"
 license = "MIT"
 dependencies = [
   "kurigram==2.2.19",
