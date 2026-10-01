@@ -457,6 +457,13 @@ class WebUiServer:
         class Handler(BaseHTTPRequestHandler):
             # 不泄露 stdlib / Python 版本指纹（`Server: BaseHTTP/0.6 Python/3.x`）。
             server_version = "trmd-webui"
+
+            # 请求读取超时。必须设：请求进入时会按 Content-Length 预读 body
+            # （见 `_consume_request_body`），若客户端声明了长度却一直不发，
+            # 不设超时就会**无界阻塞工作线程**（实测声明 100000 字节、一字节不发：
+            # 6s 内无任何响应）。这是未鉴权就能触发的慢速攻击面，因此把阻塞上限
+            # 收敛到这个值；超时由 stdlib 记 warning 并关闭连接。
+            timeout = 10.0
             sys_version = ""
             # stdlib 默认 HTTP/0.9 会在解析失败时抑制全部响应头（连状态行都没有，
             # 反向代理会判为 invalid upstream response）；抬到 HTTP/1.0 保证
@@ -784,10 +791,13 @@ class WebUiServer:
 
                 已知边界（刻意不处理）：声明长度 > MAX_JSON_BODY_BYTES 时**不读**，
                 随后 `_read_json` 回 413。此时若客户端并未真的发满声明长度，套接字里
-                仍有未读字节，关闭连接可能丢掉这个 413 —— 实测 10% 出现。取舍理由：
-                唯一能同时避免丢响应与不吃内存的做法是把声明长度读掉，但那会让
-                "只发 1KB 却声明 9MB"的请求把服务端线程拖到超时（实测 10/10 卡死），
-                比丢一个本就畸形的请求的响应更糟。正常前端不会触发该分支。
+                仍有未读字节，关闭连接可能丢掉这个 413 —— 实测约 10%（非法
+                Content-Length 分支同理，约 5%）。取舍理由：要避免丢响应就得把声明
+                长度读掉，而"只发 1KB 却声明 9MB"的请求会把处理拖满 10 秒再回
+                （`Handler.timeout` 兜底，实测该中间版本 10/10 卡死或超时），
+                比丢一个本就畸形请求的响应更糟；正常前端不会触发该分支。
+                更精确的做法（排空"已到达字节"而非"声明的全部字节"）需在 handler 上做
+                非阻塞读，复杂度与收益不匹配，故不做。
                 """
                 self._body_cache = None
                 try:
