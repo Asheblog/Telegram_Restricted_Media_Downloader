@@ -1,0 +1,1740 @@
+[
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_ensure_transfer_store",
+  "start": 108,
+  "end": 125,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_bind_transfer_store_runtime",
+  "start": 127,
+  "end": 148,
+  "nlines": 22,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "store"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_persisted_watch_records",
+  "start": 150,
+  "end": 154,
+  "nlines": 5,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_set_live_watch_status",
+  "start": 156,
+  "end": 161,
+  "nlines": 6,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "status",
+   "error_message"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_watch_payload_from_record",
+  "start": 163,
+  "end": 167,
+  "nlines": 5,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_ensure_comment_delay_scheduler",
+  "start": 169,
+  "end": 230,
+  "nlines": 62,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_has_active_derived_tasks_for_deferred_capture",
+  "start": 232,
+  "end": 247,
+  "nlines": 16,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "capture"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_cancel_derived_tasks_for_deferred_capture",
+  "start": 249,
+  "end": 270,
+  "nlines": 22,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "capture"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "schedule_or_forward_discussion_replies",
+  "start": 272,
+  "end": 306,
+  "nlines": 35,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_web_ui_operations",
+  "start": 308,
+  "end": 313,
+  "nlines": 6,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_require_web_task_manager",
+  "start": 315,
+  "end": 316,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "should_continue_web_transfer_task",
+  "start": 318,
+  "end": 319,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "should_continue_web_transfer_item",
+  "start": 321,
+  "end": 323,
+  "nlines": 3,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "item_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "should_start_next_web_transfer_item",
+  "start": 325,
+  "end": 327,
+  "nlines": 3,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "has_active_transfer_io",
+  "start": 329,
+  "end": 330,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "settle_web_task_pause_request",
+  "start": 332,
+  "end": 336,
+  "nlines": 5,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "cancel_task_uploads",
+  "start": 338,
+  "end": 339,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "pause_task_uploads",
+  "start": 341,
+  "end": 342,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_transfer_download_registry",
+  "start": 344,
+  "end": 345,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_register_transfer_download_task",
+  "start": 347,
+  "end": 350,
+  "nlines": 4,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "with_upload",
+   "download_task"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_unregister_transfer_download_task",
+  "start": 352,
+  "end": 355,
+  "nlines": 4,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "with_upload",
+   "download_task"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "cancel_task_downloads",
+  "start": 357,
+  "end": 358,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "submit_web_task",
+  "start": 360,
+  "end": 361,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "discard_web_task_submission",
+  "start": 363,
+  "end": 371,
+  "nlines": 9,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id",
+   "cancel_running",
+   "wait"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "drop_web_task_from_queue",
+  "start": 373,
+  "end": 374,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "delete_web_task",
+  "start": 376,
+  "end": 377,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "pause_web_task",
+  "start": 379,
+  "end": 380,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "resume_web_task",
+  "start": 382,
+  "end": 383,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "retry_failed_web_task",
+  "start": 385,
+  "end": 386,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_watches",
+  "start": 388,
+  "end": 389,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "tz_offset_minutes"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "mark_pending_watch",
+  "start": 391,
+  "end": 392,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload",
+   "status",
+   "error_message"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "set_live_watch_status",
+  "start": 394,
+  "end": 395,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "status",
+   "error_message"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "persisted_watches",
+  "start": 397,
+  "end": 398,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "watch_payload_from_record",
+  "start": 400,
+  "end": 401,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "create_watch",
+  "start": 403,
+  "end": 404,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "export_forward_watches",
+  "start": 406,
+  "end": 407,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "delete_watch",
+  "start": 409,
+  "end": 416,
+  "nlines": 8,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "update_watch",
+  "start": 418,
+  "end": 419,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_watch_events",
+  "start": 421,
+  "end": 437,
+  "nlines": 17,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "limit",
+   "offset",
+   "today_only",
+   "tz_offset_minutes",
+   "status"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "recover_pikpak_failed_item_before_retry",
+  "start": 439,
+  "end": 499,
+  "nlines": 61,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task",
+   "item"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "next_web_operation_id",
+  "start": 501,
+  "end": 506,
+  "nlines": 6,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "operation_type"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "submit_web_operation",
+  "start": 508,
+  "end": 524,
+  "nlines": 17,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "operation_type",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "detect_transfer_range",
+  "start": 526,
+  "end": 527,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "source_link"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "detect_transfer_range_async",
+  "start": 529,
+  "end": 537,
+  "nlines": 9,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "source_link"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "detect_transfer_range_by_history_scan",
+  "start": 539,
+  "end": 550,
+  "nlines": 12,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "chat_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "detect_transfer_range_fast",
+  "start": 552,
+  "end": 586,
+  "nlines": 35,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "chat_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "get_first_transfer_range_history_message",
+  "start": 588,
+  "end": 595,
+  "nlines": 8,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "chat_id",
+   "limit"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "iter_transfer_range_history",
+  "start": 597,
+  "end": 617,
+  "nlines": 21,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "chat_id",
+   "limit"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "statistics",
+  "start": 619,
+  "end": 634,
+  "nlines": 16,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "tz_offset_minutes"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "export_table",
+  "start": 636,
+  "end": 660,
+  "nlines": 25,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "table_type"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_export_channel_statistics_table",
+  "start": 662,
+  "end": 718,
+  "nlines": 57,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "create_upload",
+  "start": 720,
+  "end": 722,
+  "nlines": 3,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "create_channel_download",
+  "start": 724,
+  "end": 726,
+  "nlines": 3,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_operations",
+  "start": 728,
+  "end": 733,
+  "nlines": 6,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "limit"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_ensure_media_manager",
+  "start": 737,
+  "end": 763,
+  "nlines": 27,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "scan_media_for_cleanup",
+  "start": 765,
+  "end": 781,
+  "nlines": 17,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id",
+   "items_limit",
+   "items_offset",
+   "orphans_limit",
+   "orphans_offset"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "cleanup_media_files",
+  "start": 783,
+  "end": 811,
+  "nlines": 29,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "maybe_run_scheduled_media_cleanup",
+  "start": 813,
+  "end": 832,
+  "nlines": 20,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_cleanup_logs",
+  "start": 834,
+  "end": 837,
+  "nlines": 4,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_run_telegram_coro",
+  "start": 839,
+  "end": 849,
+  "nlines": 11,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "coro",
+   "timeout"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_archive_author_ops",
+  "start": 851,
+  "end": 857,
+  "nlines": 7,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_archive_author_channels",
+  "start": 859,
+  "end": 860,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "resume_interrupted_archive_author_jobs",
+  "start": 862,
+  "end": 863,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "stop_archive_author_job",
+  "start": 865,
+  "end": 866,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "job_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "scan_archive_author_reorganize",
+  "start": 868,
+  "end": 869,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "resolve_archive_author_reorganize",
+  "start": 871,
+  "end": 872,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "execute_archive_author_reorganize",
+  "start": 874,
+  "end": 875,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_archive_author_plan_moves",
+  "start": 877,
+  "end": 878,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "get_archive_author_job",
+  "start": 880,
+  "end": 881,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "job_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "get_active_archive_author_job",
+  "start": 883,
+  "end": 884,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "channel_folder"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_system_logs",
+  "start": 886,
+  "end": 916,
+  "nlines": 31,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "limit",
+   "offset",
+   "category",
+   "level",
+   "trace_id",
+   "watch_id",
+   "today_only",
+   "tz_offset_minutes"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "retry_archive_from_system_log",
+  "start": 918,
+  "end": 925,
+  "nlines": 8,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "log_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "export_diagnostic_bundle",
+  "start": 927,
+  "end": 1030,
+  "nlines": 104,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "export_system_logs",
+  "start": 1032,
+  "end": 1052,
+  "nlines": 21,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "category",
+   "level",
+   "trace_id",
+   "watch_id",
+   "today_only",
+   "tz_offset_minutes"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "get_web_settings",
+  "start": 1054,
+  "end": 1071,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "update_web_settings",
+  "start": 1073,
+  "end": 1111,
+  "nlines": 39,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "start_web_ui",
+  "start": 1113,
+  "end": 1157,
+  "nlines": 45,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "with_auth_provider",
+   "defer_runtime_recovery"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "recover_web_runtime",
+  "start": 1159,
+  "end": 1206,
+  "nlines": 48,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_archive_settings",
+  "start": 1208,
+  "end": 1212,
+  "nlines": 5,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_set_archive_settings",
+  "start": 1214,
+  "end": 1233,
+  "nlines": 20,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_normalize_account_remote",
+  "start": 1238,
+  "end": 1239,
+  "nlines": 2,
+  "async": false,
+  "deco": [
+   "staticmethod"
+  ],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "value"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_pikpak_accounts",
+  "start": 1241,
+  "end": 1258,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_set_pikpak_accounts",
+  "start": 1260,
+  "end": 1277,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "accounts"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_next_pikpak_remote_name",
+  "start": 1280,
+  "end": 1288,
+  "nlines": 9,
+  "async": false,
+  "deco": [
+   "staticmethod"
+  ],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "existing"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_invalidate_pikpak_archive_client",
+  "start": 1290,
+  "end": 1294,
+  "nlines": 5,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_setup_coordinator",
+  "start": 1296,
+  "end": 1302,
+  "nlines": 7,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_read_rclone_remotes",
+  "start": 1304,
+  "end": 1313,
+  "nlines": 10,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_pikpak_accounts",
+  "start": 1315,
+  "end": 1338,
+  "nlines": 24,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "add_pikpak_account",
+  "start": 1340,
+  "end": 1368,
+  "nlines": 29,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "switch_pikpak_account",
+  "start": 1370,
+  "end": 1387,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "remove_pikpak_account",
+  "start": 1389,
+  "end": 1413,
+  "nlines": 25,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "is_setup_ready",
+  "start": 1415,
+  "end": 1416,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "get_setup_status",
+  "start": 1418,
+  "end": 1449,
+  "nlines": 32,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "save_setup_api_credentials",
+  "start": 1451,
+  "end": 1493,
+  "nlines": 43,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "configure_setup_rclone",
+  "start": 1495,
+  "end": 1524,
+  "nlines": 30,
+  "async": false,
+  "deco": [],
+  "http_sig": true,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "skip_setup_rclone",
+  "start": 1526,
+  "end": 1527,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "test_setup_rclone",
+  "start": 1529,
+  "end": 1542,
+  "nlines": 14,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "save_setup_bot_token",
+  "start": 1544,
+  "end": 1566,
+  "nlines": 23,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "skip_setup_bot_token",
+  "start": 1568,
+  "end": 1575,
+  "nlines": 8,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "process_web_operation",
+  "start": 1577,
+  "end": 1603,
+  "nlines": 27,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "operation_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "restore_live_transfer_watches",
+  "start": 1605,
+  "end": 1633,
+  "nlines": 29,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "_ensure_watch_applicator",
+  "start": 1635,
+  "end": 1640,
+  "nlines": 6,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "apply_web_watch",
+  "start": 1642,
+  "end": 1643,
+  "nlines": 2,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "remove_web_watch",
+  "start": 1645,
+  "end": 1646,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "apply_web_upload",
+  "start": 1648,
+  "end": 1682,
+  "nlines": 35,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "apply_web_channel_download",
+  "start": 1684,
+  "end": 1739,
+  "nlines": 56,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self",
+   "payload"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "process_web_task_queue",
+  "start": 1741,
+  "end": 1754,
+  "nlines": 14,
+  "async": true,
+  "deco": [],
+  "http_sig": false,
+  "await": true,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "start_next_web_transfer_task",
+  "start": 1756,
+  "end": 1784,
+  "nlines": 29,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "is_web_transfer_task_schedulable",
+  "start": 1786,
+  "end": 1803,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "finish_web_transfer_task",
+  "start": 1805,
+  "end": 1822,
+  "nlines": 18,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "task_id",
+   "completed_task"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "list_deferred_discussion_captures",
+  "start": 1825,
+  "end": 1828,
+  "nlines": 4,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "cancel_deferred_discussion_capture",
+  "start": 1830,
+  "end": 1836,
+  "nlines": 7,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "capture_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "run_deferred_discussion_capture_now",
+  "start": 1838,
+  "end": 1848,
+  "nlines": 11,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "capture_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsMixin",
+  "name": "retry_deferred_discussion_capture",
+  "start": 1850,
+  "end": 1860,
+  "nlines": 11,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "watch_id",
+   "capture_id"
+  ]
+ },
+ {
+  "cls": "WebOperationsFacade",
+  "name": "__init__",
+  "start": 1885,
+  "end": 1886,
+  "nlines": 2,
+  "async": false,
+  "deco": [],
+  "http_sig": false,
+  "await": false,
+  "args": [
+   "self",
+   "host"
+  ]
+ }
+]
