@@ -36,33 +36,15 @@ def import_downloader_class():
 
 class WebTaskDeleteCase(unittest.TestCase):
     def _attach_task_manager(self, downloader, store, **kwargs):
-        from module.webops.task_manager import WebUITaskManager
+        """转发到共享工厂 —— 装配细节只在 unit_tests/support 里写一次。
+
+        原先这里自己抄了 25 行 WebUITaskManager(...) 接线（形参与生产装配重复），
+        宿主改一处就要同步改测试。现在与生产接线保持单一真源。
+        """
+        from unit_tests.support.downloader_factory import attach_task_manager
 
         loop = kwargs.pop('loop', getattr(downloader, 'loop', None))
-        queue = kwargs.pop('web_task_queue', getattr(downloader, 'web_task_queue', None) or asyncio.Queue())
-        submitted = kwargs.pop(
-            'web_submitted_task_ids',
-            getattr(downloader, 'web_submitted_task_ids', None),
-        )
-        if submitted is None:
-            submitted = set()
-        manager = WebUITaskManager(
-            transfer_store_getter=lambda: store,
-            diagnostic=SimpleNamespace(),
-            loop_getter=lambda: loop,
-            web_task_queue=queue,
-            web_submitted_task_ids=submitted,
-            web_running_task_getter=lambda: getattr(downloader, 'web_running_task', None),
-            web_running_task_setter=lambda value: setattr(downloader, 'web_running_task', value),
-            web_running_task_id_getter=lambda: getattr(downloader, 'web_running_task_id', None),
-            web_running_task_id_setter=lambda value: setattr(downloader, 'web_running_task_id', value),
-            web_operation_queue=kwargs.pop('web_operation_queue', asyncio.Queue()),
-            web_operations=kwargs.pop('web_operations', {}),
-            uploader_getter=lambda: getattr(downloader, 'uploader', None),
-            **kwargs,
-        )
-        downloader.web_task_manager = manager
-        return manager
+        return attach_task_manager(downloader, store, loop=loop, **kwargs)
 
     def test_should_continue_web_transfer_task_false_when_task_deleted(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
