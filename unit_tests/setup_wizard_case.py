@@ -11,10 +11,10 @@ install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
 from module.adapters.webui.setup import (
-    SetupCoordinator,
     apply_web_safe_user_defaults,
     has_telegram_api_credentials,
 )
+from module.webops.setup_coordinator import SetupCoordinator
 from module.core.target_profiles import DEFAULT_TARGET_PROFILES
 
 
@@ -213,7 +213,7 @@ class SetupWizardCase(unittest.TestCase):
             conf = os.path.join(tmp, 'rclone.conf')
             with patch.dict(os.environ, {'RCLONE_CONFIG': conf}):
                 coord = SetupCoordinator(runner=runner, rclone_bin='rclone')
-                with patch('module.adapters.webui.setup.shutil.which', return_value='rclone'):
+                with patch('module.webops.setup_coordinator.shutil.which', return_value='rclone'):
                     probe = coord.configure_pikpak_remote(
                         remote='pikpak',
                         username='user@example.com',

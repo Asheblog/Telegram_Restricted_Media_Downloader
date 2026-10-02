@@ -754,7 +754,7 @@ class WebOperationsMixin:
         """取（必要时创建）首启向导协调器。"""
         coordinator = getattr(self, 'setup_coordinator', None)
         if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
+            from module.webops.setup_coordinator import SetupCoordinator
             coordinator = SetupCoordinator()
             self.setup_coordinator = coordinator
         return coordinator
