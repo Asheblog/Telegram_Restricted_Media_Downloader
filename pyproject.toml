@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "Telegram_Restricted_Media_Downloader"
 authors = [{ name = "Gentlesprite", email = "Gentlesprites@outlook.com" }]
-version = "0.2.261"
+version = "0.2.262"
 description = "Telegram downloader (TRMD): Supports resumable downloads and uploads. Bot supports commands/links for downloading, forwarding, listening, uploading, and upload-after-download of non-downloadable Telegram content via API."
 readme = "README.md"
 # 上界对齐 build.py 的 check_python_version()（明确拒绝 >=3.14）与 Dockerfile 的
