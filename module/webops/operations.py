@@ -1028,167 +1028,55 @@ class WebOperationsMixin:
     def remove_pikpak_account(self, payload: dict) -> dict:
         return self._ensure_settings_ops().remove_pikpak_account(payload)
 
+    def _ensure_setup_wizard_ops(self):
+        """安装向导编排实例（懒建并缓存；实现见 module.webops.setup_wizard）。"""
+        ops = self.__dict__.get('_setup_wizard_ops_impl')
+        if ops is None:
+            from module.webops.setup_wizard import SetupWizardOperations
+
+            ops = SetupWizardOperations(
+                app_getter=lambda: getattr(self, 'app', None),
+                loop_getter=lambda: getattr(self, 'loop', None),
+                setup_coordinator_getter=lambda: self._setup_coordinator(),
+                auth_provider_getter=lambda: self.__dict__.get('web_ui_auth'),
+                api_credentials_event_getter=lambda: self.__dict__.get(
+                    '_api_credentials_event'
+                ),
+                archive_settings_getter=lambda: self._archive_settings(),
+                set_archive_settings=lambda **kw: self._set_archive_settings(**kw),
+                pikpak_accounts_getter=lambda: self._pikpak_accounts(),
+                set_pikpak_accounts=lambda accounts: self._set_pikpak_accounts(accounts),
+                invalidate_pikpak_archive_client=self._invalidate_pikpak_archive_client,
+                # 必须经实例属性解析：宿主（含测试替身）可能覆盖 get_setup_status，
+                # 直接调用类方法会绕过覆盖，把"宿主可替换"这一契约弄丢。
+                setup_status_getter=lambda: self.get_setup_status(),
+            )
+            self._setup_wizard_ops_impl = ops
+        return ops
+
     def is_setup_ready(self) -> bool:
-        return bool(self.get_setup_status().get('ready'))
+        return self._ensure_setup_wizard_ops().is_setup_ready()
 
     def get_setup_status(self) -> dict:
-        from module.adapters.webui.setup import has_configured_bot_token, has_telegram_api_credentials
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        api_done = has_telegram_api_credentials(self.app.config)
-        telegram_step = 'none'
-        telegram_error = None
-        telegram_done = False
-        auth = getattr(self, 'web_ui_auth', None)
-        if auth is not None:
-            state = auth.get_state()
-            telegram_step = state.get('step') or 'pending'
-            telegram_error = state.get('error')
-            telegram_done = telegram_step == 'done'
-        client = getattr(self.app, 'client', None)
-        if client is not None and getattr(client, 'is_connected', False) and getattr(client, 'me', None):
-            telegram_done = True
-            if telegram_step in ('none', 'pending'):
-                telegram_step = 'done'
-        archive = self._archive_settings()
-        return coordinator.build_status(
-            api_done=api_done,
-            telegram_done=telegram_done,
-            telegram_step=telegram_step,
-            telegram_error=telegram_error,
-            archive_enable=bool(archive.get('enable')),
-            archive_remote=str(archive.get('remote') or 'pikpak'),
-            bot_token_configured=has_configured_bot_token(self.app.config),
-        )
+        return self._ensure_setup_wizard_ops().get_setup_status()
 
     def save_setup_api_credentials(self, payload: dict) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        api_id = payload.get('api_id')
-        api_hash = str(payload.get('api_hash') or '').strip()
-        try:
-            api_id_int = int(api_id)
-        except (TypeError, ValueError):
-            raise ValueError('api_id 必须是数字。')
-        if api_id_int <= 0:
-            raise ValueError('api_id 无效。')
-        if len(api_hash) < 16:
-            raise ValueError('api_hash 无效。')
-
-        user_config = deepcopy(self.app.config)
-        user_config['api_id'] = api_id_int
-        user_config['api_hash'] = api_hash
-        proxy_patch = payload.get('proxy')
-        if isinstance(proxy_patch, dict):
-            proxy = user_config.get('proxy') if isinstance(user_config.get('proxy'), dict) else {}
-            if proxy_patch.get('enable_proxy') is not None:
-                proxy['enable_proxy'] = bool(proxy_patch.get('enable_proxy'))
-            for key in ('scheme', 'hostname', 'port', 'username', 'password'):
-                if key in proxy_patch:
-                    proxy[key] = proxy_patch.get(key)
-            user_config['proxy'] = proxy
-        from module.adapters.webui.setup import apply_web_safe_user_defaults
-        user_config = apply_web_safe_user_defaults(user_config)
-        user_config = UserConfig.normalize_runtime_numbers(user_config)
-        self.app.save_config(user_config)
-        self.app.config = user_config
-        self.app.refresh_runtime_fields()
-        # Signal main loop to build/rebuild client then authorize.
-        event = getattr(self, '_api_credentials_event', None)
-        if event is not None:
-            loop = getattr(self, 'loop', None)
-            if loop is not None and loop.is_running():
-                loop.call_soon_threadsafe(event.set)
-            else:
-                event.set()
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is not None:
-            coordinator.signal_api_ready()
-        return self.get_setup_status()
+        return self._ensure_setup_wizard_ops().save_setup_api_credentials(payload)
 
     def configure_setup_rclone(self, payload: dict) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        remote = str(payload.get('remote') or 'pikpak').strip().rstrip(':') or 'pikpak'
-        # Enforce the account cap BEFORE creating the rclone remote or writing
-        # config, so a rejected request leaves no orphaned credentials, no flipped
-        # archive.enable, and no active pointer to an unregistered remote (ADR-0016).
-        accounts = self._pikpak_accounts()
-        if remote not in {a['remote'] for a in accounts} and len(accounts) >= PIKPAK_MAX_ACCOUNTS:
-            raise ValueError(f'最多只能绑定 {PIKPAK_MAX_ACCOUNTS} 个 PikPak 账号。')
-        probe = coordinator.configure_pikpak_remote(
-            remote=remote,
-            username=str(payload.get('username') or ''),
-            password=str(payload.get('password') or ''),
-            overwrite=bool(payload.get('overwrite', True)),
-        )
-        self._set_archive_settings(enable=True, remote=remote)
-        # Register/replace this remote as a bound account so the switch UI sees it.
-        if remote not in {a['remote'] for a in accounts}:
-            accounts.append({'remote': remote})
-            self._set_pikpak_accounts(accounts)
-        self._invalidate_pikpak_archive_client()
-        coordinator.dismiss_rclone()
-        status = self.get_setup_status()
-        status['rclone_probe'] = probe
-        return status
+        return self._ensure_setup_wizard_ops().configure_setup_rclone(payload)
 
     def skip_setup_rclone(self, payload: Optional[dict] = None) -> dict:
-        raise ValueError('初始化必须配置 rclone（下载回退会直接上传到 My Telegram）。')
+        return self._ensure_setup_wizard_ops().skip_setup_rclone(payload)
 
     def test_setup_rclone(self, payload: Optional[dict] = None) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        archive = self._archive_settings()
-        remote = str(payload.get('remote') or archive.get('remote') or 'pikpak').strip().rstrip(':') or 'pikpak'
-        probe = coordinator.probe_rclone(remote)
-        if probe.get('ok'):
-            self._set_archive_settings(enable=True, remote=remote)
-            coordinator.dismiss_rclone()
-        return {'probe': probe, 'status': self.get_setup_status()}
+        return self._ensure_setup_wizard_ops().test_setup_rclone(payload)
 
     def save_setup_bot_token(self, payload: dict) -> dict:
-        from module.adapters.webui.setup import verify_bot_token
-        payload = payload if isinstance(payload, dict) else {}
-        token = str(payload.get('bot_token') or '').strip()
-        proxy = self.app.config.get('proxy') if isinstance(self.app.config.get('proxy'), dict) else None
-        verified = verify_bot_token(token, proxy=proxy)
-        user_config = deepcopy(self.app.config)
-        user_config['bot_token'] = token
-        from module.adapters.webui.setup import apply_web_safe_user_defaults
-        user_config = apply_web_safe_user_defaults(user_config)
-        user_config = UserConfig.normalize_runtime_numbers(user_config)
-        self.app.save_config(user_config)
-        self.app.config = user_config
-        self.app.refresh_runtime_fields()
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        coordinator.dismiss_bot()
-        status = self.get_setup_status()
-        status['bot_probe'] = verified
-        return status
+        return self._ensure_setup_wizard_ops().save_setup_bot_token(payload)
 
     def skip_setup_bot_token(self, payload: Optional[dict] = None) -> dict:
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        coordinator.dismiss_bot()
-        return self.get_setup_status()
+        return self._ensure_setup_wizard_ops().skip_setup_bot_token(payload)
 
     async def process_web_operation(self, operation_id: str) -> None:
         operation = self.web_operations.get(operation_id)
