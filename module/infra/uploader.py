@@ -3,13 +3,11 @@
 # Software:PyCharm
 # Time:2025/9/6 23:00
 # File:uploader.py
-import json
 import os
 import hashlib
 import asyncio
 import inspect
 import random
-import time
 
 from functools import partial
 from typing import (

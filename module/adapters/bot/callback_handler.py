@@ -1,11 +1,9 @@
 # coding=UTF-8
-import asyncio
 import datetime
 from copy import deepcopy
 from functools import partial
 from typing import Union
 
-import pyrogram
 from pyrogram.errors.exceptions.bad_request_400 import (
     MessageNotModified,
 )
@@ -17,12 +15,9 @@ from module import (
 )
 from module.adapters.bot.bot import Bot, KeyboardButton
 from module.core.enums import (
-    DownloadStatus,
-    UploadStatus,
     KeyWord,
     BotCallbackText,
     BotButton,
-    DownloadType,
     CalenderKeyboard,
 )
 from module.utils.language import _t

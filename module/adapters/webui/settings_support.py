@@ -9,13 +9,12 @@
 """
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from typing import Optional
 
 import os
 
-from module.adapters.webui.contracts import SENSITIVE_SETTING_KEYS, sanitize_settings
+from module.adapters.webui.contracts import SENSITIVE_SETTING_KEYS
 from module.core.enums import ENVIRON
 
 

@@ -2,7 +2,6 @@
 import asyncio
 import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -12,7 +11,7 @@ install_pyrogram_stub()
 
 from module.core.filter import MessageFilter
 from module.core.media_types import MEDIA_TYPES_DEFAULT, resolve_allowed_media_types
-from module.persistence.transfer_store import TransferStatus, TransferStore
+from module.persistence.transfer_store import TransferStore
 from module.transfer.runner import WebTransferRunner
 
 

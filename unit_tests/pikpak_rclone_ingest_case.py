@@ -6,18 +6,16 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from module.enums import UploadStatus
 from module.pikpak_archive import (
-    DisabledPikPakArchiveClient,
     PikPakArchiveResult,
     RclonePikPakArchiveClient,
 )
@@ -150,7 +148,6 @@ class PikpakRcloneIngestCase(unittest.TestCase):
 
     def test_download_upload_pikpak_uses_rclone_not_telegram_send(self):
         from module.infra.uploader import TelegramUploader
-        from module.task import UploadTask
 
         statuses = []
         cleaned = []

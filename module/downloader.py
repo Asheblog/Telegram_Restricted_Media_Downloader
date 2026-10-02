@@ -47,7 +47,6 @@ from module import (
 from module.utils.parser import PARSE_ARGS
 from module.adapters.bot.keyboards import KeyboardButton
 from module.adapters.bot.bot import (
-    Bot,
     CallbackData
 )
 from module.core.enums import DownloadStatus, LinkType, KeyWord, BotButton, BotMessage, DownloadType, SaveDirectoryPrefix

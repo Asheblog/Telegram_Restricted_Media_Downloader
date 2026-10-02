@@ -6,8 +6,6 @@
 import os
 import copy
 import asyncio
-import datetime
-import calendar
 from functools import partial
 from typing import List, Dict, Union, Optional, Callable
 
@@ -53,9 +51,7 @@ from module.utils.util import (
     parse_forward_watch_rule
 )
 from module.core.enums import (
-    CalenderKeyboard,
     UploadStatus,
-    DownloadType,
     BotCommandText,
     BotMessage,
     BotCallbackText,

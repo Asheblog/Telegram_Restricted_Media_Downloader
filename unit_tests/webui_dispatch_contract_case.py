@@ -27,7 +27,9 @@ from module.webops.operations import (  # noqa: E402
     WebOperationsFacade,
     _WEB_UI_DELEGATE_METHODS,
 )
-from module.adapters.webui.server import WebUiApiError, WebUiServer  # noqa: E402
+from module.adapters.webui.contracts import WebUiApiError
+from module.adapters.webui.server import WebUiServer  # noqa: E402
+# noqa: E402
 
 sys.argv = _ORIGINAL_ARGV
 

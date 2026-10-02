@@ -17,13 +17,11 @@ from typing import Optional, Union
 import pyrogram
 from pyrogram.errors.exceptions.bad_request_400 import MessageNotModified
 from pyrogram.types.bots_and_keyboards import (
-    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
 
 from module import log
-from module.core.config import GlobalConfig
 from module.core.enums import (
     BotButton,
     BotCallbackText,

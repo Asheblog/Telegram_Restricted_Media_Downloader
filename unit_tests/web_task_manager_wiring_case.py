@@ -15,7 +15,6 @@
 """
 import ast
 import pathlib
-import re
 import unittest
 
 MODULE_DIR = pathlib.Path(__file__).resolve().parents[1] / "module"

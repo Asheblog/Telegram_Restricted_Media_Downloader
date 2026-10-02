@@ -12,10 +12,6 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from module.domain.archive_naming.source_folders import (
-    ARCHIVE_TITLE_SOURCE_AUTO,
-    normalize_archive_title_source,
-)
 
 
 INCLUDE_COMMENT_FLAGS = {"--include-comment", "--include-comments", "--comment"}

@@ -67,7 +67,6 @@ class RunnerHostParityCase(unittest.TestCase):
         return call(host_dl, host_runner), call(bare_dl, bare_runner)
 
     def _task_in_status(self, store, status):
-        from module.persistence.transfer_store import TransferStatus
 
         task_id = store.create_task("https://t.me/source/1", "https://t.me/pikpak_bot")
         if status is not None:

@@ -11,7 +11,9 @@ install_pyrogram_stub()
 _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
-from module.adapters.webui.server import WebUiApiError, WebUiServer
+from module.adapters.webui.contracts import WebUiApiError
+from module.adapters.webui.server import WebUiServer
+
 from module.persistence.diagnostic_bundle import PROBE_ERROR_MARKER, build_diagnostic_bundle
 from module.persistence.transfer_store import TransferStatus, TransferStore
 

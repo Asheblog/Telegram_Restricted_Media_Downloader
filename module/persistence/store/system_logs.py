@@ -1,5 +1,5 @@
 # coding=UTF-8
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 class SystemLogsMixin:
     def add_system_log(

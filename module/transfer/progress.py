@@ -17,7 +17,6 @@ from module.core.enums import UploadStatus, KeyWord
 from module.utils.language import _t
 from module.utils.stdio import MetaData
 from module.transfer.pikpak_rules import (
-    message_has_pikpak_ingestible_media,
     transfer_item_archive_match_original_name,
     transfer_item_archive_timestamp,
 )

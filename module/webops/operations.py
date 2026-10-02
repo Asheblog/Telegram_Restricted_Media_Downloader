@@ -18,10 +18,8 @@ import os
 import threading
 from typing import Callable, Optional
 
-import pyrogram
-from pyrogram.errors import FloodWait
 
-from module import console, log
+from module import console
 from module.adapters.pikpak.integration import PikpakIntegrationManager
 from module.adapters.webui.server import (
     WebUiServer,

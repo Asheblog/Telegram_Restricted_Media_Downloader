@@ -1,5 +1,5 @@
 # coding=UTF-8
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import pyrogram
 from pyrogram.errors.exceptions.bad_request_400 import PeerIdInvalid

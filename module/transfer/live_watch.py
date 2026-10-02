@@ -2,7 +2,6 @@
 from typing import Optional
 
 from module.utils.diagnostics import default_diagnostic
-from module.utils.language import _t
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStatus
 from module.utils.flag_support import (

@@ -8,11 +8,14 @@ from . import (
     misc,
     settings,
     setup_api,
-    static_pages,
     stats,
     tasks,
     watches,
 )
+
+# 注意：`static_pages` 不在此导入 —— 它由 server.py 直接
+# （`from module.adapters.webui.handlers import static_pages`）使用，
+# 且必须在鉴权栅栏之前单独处理；本包不需要它，导入只会让 ruff F401 报警。
 
 # GET: after auth + setup gate (static_pages handled separately before gate)
 GET_DISPATCHERS = (

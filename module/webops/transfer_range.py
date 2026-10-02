@@ -17,7 +17,6 @@ from typing import Callable, Optional
 
 from pyrogram.errors import FloodPremiumWait, FloodWait
 
-from module.utils.util import parse_link
 
 
 class TransferRangeDetector:

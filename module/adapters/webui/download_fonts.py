@@ -7,7 +7,6 @@ Font files go to static/fonts/.
 """
 
 import hashlib
-import os
 import re
 import time
 import urllib.request

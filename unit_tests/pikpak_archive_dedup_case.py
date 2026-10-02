@@ -7,10 +7,8 @@ same target path — the last move silently overwrote the earlier ones, leaving 
 single file on PikPak while SQLite kept one item (with distinct size) per file.
 """
 import json
-import os
 import sys
 import unittest
-from types import SimpleNamespace
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 

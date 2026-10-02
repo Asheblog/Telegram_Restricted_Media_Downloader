@@ -1,5 +1,4 @@
 # coding=UTF-8
-import datetime
 import hashlib
 import hmac
 import json
@@ -9,7 +8,6 @@ import socket
 import threading
 import time
 import webbrowser
-from copy import deepcopy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
@@ -37,9 +35,7 @@ from module.adapters.webui.settings_support import (  # noqa: F401
 
 from module.adapters.webui.contracts import (
     SENSITIVE_SETTING_KEYS,
-    SPA_VIEW_PATHS,
     WebUiApiError,
-    is_spa_page_path,
     sanitize_settings,
 )
 from module.adapters.webui.security import (
@@ -51,7 +47,6 @@ from module.adapters.webui.security import (
 )
 from module.adapters.webui.view_model import WebUiViewModel
 from module.utils.diagnostics import default_diagnostic
-from module.core.enums import ENVIRON
 from module.ports import IDiagnosticPort, IWebUiOperations
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStore

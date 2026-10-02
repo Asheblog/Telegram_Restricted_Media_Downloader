@@ -12,7 +12,6 @@ import stat
 import string
 import sys
 
-from typing import List
 
 from module import log
 from module.core.enums import ENVIRON

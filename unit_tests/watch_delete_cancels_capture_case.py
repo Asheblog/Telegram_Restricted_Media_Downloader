@@ -13,7 +13,6 @@
 """
 import sys
 import unittest
-from types import SimpleNamespace
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 

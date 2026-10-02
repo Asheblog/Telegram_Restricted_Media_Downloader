@@ -3,12 +3,7 @@
 # Software:PyCharm
 # Time:2025/3/10 0:45
 # File:util.py
-import os
 import re
-import sys
-import stat
-import string
-import random
 
 from typing import Tuple, List, Union, Optional, Callable, AsyncIterator
 
@@ -16,12 +11,9 @@ import pyrogram
 from pyrogram import utils
 from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid
 from pyrogram.types.messages_and_media import ReplyParameters
-from rich.text import Text
 
-from module import log
-from module.utils.parser import PARSE_ARGS
 from module.utils.telegram_links import extract_info_from_link  # noqa: F401  (re-exported for back-compat)
-from module.core.enums import LinkType, DownloadType, ENVIRON
+from module.core.enums import LinkType, DownloadType
 
 # 以下名字按内聚拆到子模块；此处 re-export，既有 `from module.utils.util import X` 继续可用。
 from module.utils.flag_support import (  # noqa: F401

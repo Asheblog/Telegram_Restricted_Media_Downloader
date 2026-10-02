@@ -13,7 +13,6 @@ from unit_tests.support.downloader_factory import (
 )
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
-from unit_tests.support.downloader_factory import build_downloader
 
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]

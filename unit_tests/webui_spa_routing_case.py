@@ -11,7 +11,9 @@ install_pyrogram_stub()
 _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
-from module.adapters.webui.server import WebUiServer, is_spa_page_path
+from module.adapters.webui.contracts import is_spa_page_path
+from module.adapters.webui.server import WebUiServer
+
 
 sys.argv = _ORIGINAL_ARGV
 

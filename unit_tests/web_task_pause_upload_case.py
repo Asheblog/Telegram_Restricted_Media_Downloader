@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 

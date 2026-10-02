@@ -3,9 +3,7 @@
 import asyncio
 import sys
 import tempfile
-import time
 import unittest
-from types import SimpleNamespace
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 

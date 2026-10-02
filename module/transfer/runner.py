@@ -3,7 +3,7 @@ import asyncio
 import datetime
 import random
 import time
-from typing import Optional, Protocol, Union, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 import pyrogram
 from pyrogram.errors import FloodWait, FloodPremiumWait

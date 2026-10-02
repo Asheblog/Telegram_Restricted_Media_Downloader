@@ -15,7 +15,6 @@ sys.argv = [sys.argv[0]]
 from module.enums import UploadStatus
 from module.diagnostics import default_diagnostic
 from module.task import UploadTask
-from module.transfer_registry import transfer_registry
 from module.uploader import TelegramUploader
 from pyrogram.errors import FloodWait
 from pyrogram.errors.exceptions import FilePartMissing

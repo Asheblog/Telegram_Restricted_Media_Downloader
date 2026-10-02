@@ -27,7 +27,6 @@ _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
 import module as trmd_module
-from module.webops.task_manager import WebUITaskManager
 from module.core.media_types import MEDIA_TYPES_DEFAULT
 from module.core.message_filter_factory import build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager

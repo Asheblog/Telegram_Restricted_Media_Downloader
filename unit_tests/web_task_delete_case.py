@@ -13,7 +13,6 @@ from unit_tests.support.downloader_factory import build_downloader
 
 install_pyrogram_stub()
 
-import sys
 
 
 def import_with_clean_argv(importer):

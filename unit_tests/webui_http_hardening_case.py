@@ -26,7 +26,9 @@ _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
 from module.adapters.webui.security import LoginThrottle, is_cross_origin_request
-from module.adapters.webui.server import MAX_JSON_BODY_BYTES, WebUiServer
+from module.adapters.webui.http_support import MAX_JSON_BODY_BYTES
+from module.adapters.webui.server import WebUiServer
+
 
 sys.argv = _ORIGINAL_ARGV
 

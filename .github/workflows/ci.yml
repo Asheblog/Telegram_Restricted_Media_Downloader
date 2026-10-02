@@ -55,3 +55,13 @@ jobs:
       # 显式再跑一次架构守卫：它是防腐化的核心断言，单独列出便于在日志里定位。
       - name: Architecture guard
         run: uv run --locked pytest unit_tests/architecture_guard_case.py -q
+
+      # 静态检查（F401 未用导入 / F811 重复定义）。
+      # 为什么用 ruff 而不是自写脚本：解耦轮里我自写的"名字只出现 1 次"扫描器
+      # 连续三轮误删在用名字（`from __future__ import annotations` 下注解是字符串、
+      # 以及 `-> LoginThrottle | None` 这种 Attribute-in-BinOp 形态）。
+      # ruff 的 F401 已正确处理字符串注解与 `__all__`，是**已验证**的工具。
+      # 规则只选 F401/F811：实测全仓在这两条下干净；F841（未用变量）在测试里
+      # 有 17 处属刻意写法，收进来会让门禁长期泛红而失去意义。
+      - name: Lint (unused imports / redefinitions)
+        run: uvx ruff check --select F401,F811 module/ unit_tests/
