@@ -102,11 +102,18 @@ module/
 | 残留 | 现状 | 为什么没做 |
 | --- | --- | --- |
 | `WebOperationsMixin` 仍是宿主门面 | 约 1,060 行，15 个 `_ensure_*` 惰性工厂 + 大量单语句转发 | `WebOperationsFacade` 必须按名字取到这些方法；继续搬只增加间接层，不减少耦合 |
-| `composition_root` 的约 50 个 `*_getter` | 协作方接线已去重为三个 `_new_*()` 工厂；getter 本身仍在 | 做过收紧实验（把"构造期必定已赋值"的改成直接属性访问）→ 6 个用例失败：半构造宿主依赖这些静默兜底。正确顺序是先让测试全面走 `unit_tests/support/downloader_factory.py`，再收紧 |
+| `composition_root` 的 `*_getter` | **`_app` / `_gc` / `_loop` / `_pb` 已去掉静默兜底**（改为直接属性访问，初始化顺序错误会立刻 AttributeError）；其余 getter 仍是 `getattr(self, "x", default)` | 这四个的收紧是**单变量实验**定出来的（逐个收紧、跑全量、记录失败）：`_app`/`_pb` 各 0 失败，`_gc` 5 个失败（探针定位到 `target_profile_limit(gc, ...)` 只需 config，补 `SimpleNamespace(config={})` 后收紧），`_loop` 1 个失败（核对该用例走的是生产降级分支，改为显式 `loop = None` 后收紧）。其余 getter 尚未逐个实验 |
 | `WebTransferRunner` 的 4 个"双实现"方法 | 宿主有 `web_task_manager` 时转发；否则按 `transfer_store` 自行判定 | **已加一致性契约测试**（`runner_host_parity_case`：同状态两条路径结论一致，3 用例 / 14 subtests 全绿）。删兜底会同时改 15 个用 `SimpleNamespace` 宿主构造 runner 的测试文件，属独立变更 |
 | `runner.py` / `operations.py` 的约 68 处宿主能力探测 | `getattr(host, 'x', None)` 式软探测 | 多数是可选能力（如 `_log_system_chain`），软探测本身合理；需要逐点判定"可选"还是"必需" |
 | 测试仍有约 40 处 `object.__new__(host)` 手工装配 | 工厂 `unit_tests/support/downloader_factory.py` 已就位并迁移了部分 | 多数赋值在 `with` 块内、缩进更深（机械替换会破坏语义，试过两版 codemod 都只能吃到少数），需逐个手迁 |
 | 15 个 `_ensure_*` 的"检查-创建-赋值"未加锁 | 只有 `ensure_scheduler()` 加了双检锁（它有实害：并发首次触发会双启动调度器） | 其余协作者并发首次触发最多多造一个实例、由最后一次赋值胜出，无功能性危害；给全部 15 个加锁会引入新的全局锁与大量缩进变化，收益不抵成本 |
+
+**方法学教训（值得沿用）**：判断"某处兜底能不能删"时，**一次只改一个变量**。
+我曾把四个 getter 一起收紧，得到"6 个用例失败"的结论并写进文档；后来逐个测才发现
+`_app`/`_pb` 各 0 失败、主因只是 `_gc`（5 个）—— 也就是说**错误的实验设计产生了
+过宽的结论，而且被写进了文档**。单变量实验 + 记录失败清单（`tmp/tighten_matrix.py`）
+才是可复现的判据。
+
 
 **测试基础设施的既有限制（重要，避免重复踩坑）**：
 - 仓库**不能有"会在收集期 import `module.*` 的 `conftest.py`"** —— 那会触发
