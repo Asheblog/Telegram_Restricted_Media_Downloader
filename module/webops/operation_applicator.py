@@ -24,7 +24,11 @@ from module.domain.archive_naming.source_folders import normalize_archive_title_
 from module.domain.transfer_state.models import UploadTask
 from module.persistence.transfer_store import TransferStatus, TransferStore
 from module.utils.language import _t
-from module.utils.util import iter_discussion_reply_messages, make_forward_watch_rule, parse_link
+from module.utils.flag_support import make_forward_watch_rule
+from module.utils.util import (
+    iter_discussion_reply_messages,
+    parse_link,
+)
 
 from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid
 

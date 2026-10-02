@@ -8,7 +8,8 @@ from pyrogram.handlers import MessageHandler
 from module import log
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStatus
-from module.utils.util import make_forward_watch_rule, parse_link
+from module.utils.flag_support import make_forward_watch_rule
+from module.utils.util import parse_link
 
 
 @runtime_checkable

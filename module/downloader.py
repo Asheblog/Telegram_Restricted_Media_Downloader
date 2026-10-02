@@ -129,8 +129,13 @@ from module.adapters.webui.server import (
     get_web_username_from_env,
     merge_allowed_settings
 )
+from module.utils.display_support import truncate_display_filename
+from module.utils.flag_support import (
+    make_forward_watch_rule,
+    parse_forward_watch_rule,
+)
+from module.utils.runtime_support import is_docker
 from module.utils.util import (
-    is_docker,
     parse_link,
     format_chat_link,
     get_my_id,
@@ -138,10 +143,7 @@ from module.utils.util import (
     get_chat_with_notify,
     safe_message,
     safe_delete_message,
-    truncate_display_filename,
     Issues,
-    make_forward_watch_rule,
-    parse_forward_watch_rule,
     is_allow_upload,
     iter_discussion_reply_forward_units,
 )

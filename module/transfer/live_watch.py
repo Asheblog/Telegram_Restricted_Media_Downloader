@@ -5,7 +5,10 @@ from module.utils.diagnostics import default_diagnostic
 from module.utils.language import _t
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStatus
-from module.utils.util import make_forward_watch_rule, parse_forward_watch_rule
+from module.utils.flag_support import (
+    make_forward_watch_rule,
+    parse_forward_watch_rule,
+)
 
 
 class LiveWatchManager:

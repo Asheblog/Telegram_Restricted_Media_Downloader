@@ -12,7 +12,7 @@ import os
 import sys
 from typing import Callable, Optional
 
-from module.utils.util import is_docker
+from module.utils.runtime_support import is_docker
 
 
 class StatsOperations:

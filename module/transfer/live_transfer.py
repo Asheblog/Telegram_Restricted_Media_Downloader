@@ -53,11 +53,13 @@ from module.domain.archive_naming.source_folders import (
     normalize_archive_title_source,
     resolve_forward_archive_source_folder,
 )
+from module.utils.flag_support import (
+    make_forward_watch_rule,
+    parse_forward_watch_rule,
+)
 from module.utils.util import (
     parse_link,
     safe_message,
-    make_forward_watch_rule,
-    parse_forward_watch_rule,
     iter_discussion_reply_forward_units,
 )
 
