@@ -23,132 +23,53 @@ from module.utils.parser import PARSE_ARGS
 from module.utils.telegram_links import extract_info_from_link  # noqa: F401  (re-exported for back-compat)
 from module.core.enums import LinkType, DownloadType, ENVIRON
 
-
-def safe_index(lst: list, index: int, default=None):
-    try:
-        return lst[index]
-    except IndexError:
-        return default
-
-
-INCLUDE_COMMENT_FLAGS = {"--include-comment", "--include-comments", "--comment"}
-RESOLVE_DEEP_LINK_FLAGS = {"--resolve-deep-link", "--resolve_deep_link"}
-ARCHIVE_BY_AUTHOR_FLAGS = {"--archive-by-author", "--archive_by_author"}
-ARCHIVE_TITLE_SOURCE_PREFIXES = ("--archive-title-source=", "--archive_title_source=")
-
-
-def split_include_comment_flag(args: list) -> Tuple[list, bool]:
-    include_comment = False
-    clean_args = []
-    for arg in args:
-        if str(arg).strip().lower() in INCLUDE_COMMENT_FLAGS:
-            include_comment = True
-        else:
-            clean_args.append(arg)
-    return clean_args, include_comment
-
-
-def split_resolve_deep_link_flag(args: list) -> Tuple[list, bool]:
-    resolve_deep_link = False
-    clean_args = []
-    for arg in args:
-        if str(arg).strip().lower() in RESOLVE_DEEP_LINK_FLAGS:
-            resolve_deep_link = True
-        else:
-            clean_args.append(arg)
-    return clean_args, resolve_deep_link
+# 以下名字按内聚拆到子模块；此处 re-export，既有 `from module.utils.util import X` 继续可用。
+from module.utils.flag_support import (  # noqa: F401
+    ARCHIVE_BY_AUTHOR_FLAGS,
+    ARCHIVE_TITLE_SOURCE_PREFIXES,
+    INCLUDE_COMMENT_FLAGS,
+    RESOLVE_DEEP_LINK_FLAGS,
+    make_forward_watch_rule,
+    parse_forward_watch_rule,
+    safe_index,
+    split_archive_by_author_flag,
+    split_archive_title_source_flag,
+    split_include_comment_flag,
+    split_resolve_deep_link_flag,
+)
+from module.utils.display_support import (  # noqa: F401
+    get_terminal_width,
+    truncate_display_filename,
+)
+from module.utils.runtime_support import (  # noqa: F401
+    add_executable_permission,
+    check_environ,
+    gen_random_credential,
+    get_subprocess_args,
+    is_docker,
+    is_nuitka,
+)
 
 
-def split_archive_by_author_flag(args: list) -> Tuple[list, bool]:
-    archive_by_author = False
-    clean_args = []
-    for arg in args:
-        if str(arg).strip().lower() in ARCHIVE_BY_AUTHOR_FLAGS:
-            archive_by_author = True
-        else:
-            clean_args.append(arg)
-    return clean_args, archive_by_author
 
 
-def split_archive_title_source_flag(args: list) -> Tuple[list, str]:
-    from module.domain.archive_naming.source_folders import (
-        normalize_archive_title_source,
-        ARCHIVE_TITLE_SOURCE_AUTO,
-    )
-
-    archive_title_source = ARCHIVE_TITLE_SOURCE_AUTO
-    clean_args = []
-    for arg in args:
-        lowered = str(arg).strip().lower()
-        matched = False
-        for prefix in ARCHIVE_TITLE_SOURCE_PREFIXES:
-            if lowered.startswith(prefix):
-                archive_title_source = normalize_archive_title_source(
-                    lowered[len(prefix) :]
-                )
-                matched = True
-                break
-        if not matched:
-            clean_args.append(arg)
-    return clean_args, archive_title_source
 
 
-def make_forward_watch_rule(
-    source_link: str,
-    target_link: str,
-    include_comment: bool = False,
-    resolve_deep_link: bool = False,
-    archive_by_author: bool = False,
-    archive_title_source: str = "auto",
-) -> str:
-    from module.domain.archive_naming.source_folders import (
-        normalize_archive_title_source,
-        ARCHIVE_TITLE_SOURCE_AUTO,
-    )
-
-    rule = f"{source_link} {target_link}"
-    if include_comment:
-        rule += " --include-comment"
-    if resolve_deep_link:
-        rule += " --resolve-deep-link"
-    if archive_by_author:
-        rule += " --archive-by-author"
-    title_source = normalize_archive_title_source(archive_title_source)
-    if title_source != ARCHIVE_TITLE_SOURCE_AUTO:
-        rule += f" --archive-title-source={title_source}"
-    return rule
 
 
-def parse_forward_watch_rule(rule: str) -> dict:
-    args, include_comment = split_include_comment_flag(str(rule).split())
-    args, resolve_deep_link = split_resolve_deep_link_flag(args)
-    args, archive_by_author = split_archive_by_author_flag(args)
-    args, archive_title_source = split_archive_title_source_flag(args)
-    return {
-        "source_link": safe_index(args, 0, ""),
-        "target_link": safe_index(args, 1, ""),
-        "include_comment": include_comment,
-        "resolve_deep_link": resolve_deep_link,
-        "archive_by_author": archive_by_author,
-        "archive_title_source": archive_title_source,
-    }
 
 
-def get_terminal_width() -> int:
-    terminal_width: int = 120
-    try:
-        terminal_width: int = os.get_terminal_size().columns
-    except OSError:
-        pass
-    return terminal_width
 
 
-def truncate_display_filename(file_name: str) -> Text:
-    terminal_width: int = get_terminal_width()
-    max_width: int = max(int(terminal_width * 0.3), 1)
-    text = Text(file_name)
-    text.truncate(max_width=max_width, overflow="ellipsis")
-    return text
+
+
+
+
+
+
+
+
+
 
 
 def safe_message(text: str, max_length: int = 3969) -> List[str]:
@@ -588,74 +509,16 @@ async def get_my_id(client: pyrogram.Client) -> int:
     return me.id
 
 
-def add_executable_permission(file_path: str) -> bool:
-    """确保文件具有执行权限(仅Linux/macOS)。"""
-    if sys.platform not in ("linux", "darwin"):
-        return True
-    try:
-        st = os.stat(file_path)
-        mode = st.st_mode
-        if not (mode & stat.S_IXUSR):
-            os.chmod(file_path, mode | stat.S_IXUSR)
-            log.info(f'已为"{file_path}"添加执行权限。')
-        return True
-    except Exception as e:
-        log.warning(f"添加执行权限失败:{e}。")
-        return False
 
 
-def get_subprocess_args(main_file: str) -> list:
-    """获取子进程参数列表。"""
-    args = [sys.argv[0]] if "__compiled__" in globals() else [sys.executable, main_file]
-    # 添加非web参数
-    if PARSE_ARGS.quiet:
-        args.append("--quiet")
-    if PARSE_ARGS.config:
-        args.extend(["--config", PARSE_ARGS.config])
-    if PARSE_ARGS.session:
-        args.extend(["--session", PARSE_ARGS.session])
-    if PARSE_ARGS.temp:
-        args.extend(["--temp", PARSE_ARGS.temp])
-
-    return args
 
 
-def gen_random_credential() -> dict:
-    chars = string.ascii_letters + string.digits
-    username = "".join(random.choices(chars, k=8))
-    password = "".join(random.choices(chars, k=12))
-    return {"username": username, "password": password}
 
 
-def check_environ() -> None:
-    if PARSE_ARGS.web is not None:
-        environ_name, environ_param = ENVIRON.TRMD_WEB_PORT, str(PARSE_ARGS.web)
-        os.environ[environ_name] = environ_param
-        log.info(f'添加系统环境变量:"{environ_name}={environ_param}"。')
 
 
-def is_nuitka() -> bool:
-    return "__compiled__" in globals()
 
 
-def is_docker() -> bool:
-    """检查是否在Docker容器中运行。"""
-    # 检查/.dockerenv文件是否存在。
-    if os.path.exists("/.dockerenv"):
-        return True
-
-    # 检查/proc/1/cgroup中是否包含"docker"。
-    try:
-        with open("/proc/1/cgroup", "r") as f:
-            content = f.read()
-            if "docker" in content or "kubepods" in content:
-                return True
-    except (FileNotFoundError, IOError):
-        pass
-    except Exception:
-        pass
-
-    return False
 
 
 class Issues:
