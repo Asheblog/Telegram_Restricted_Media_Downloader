@@ -1242,90 +1242,50 @@ class WebOperationsMixin:
                 diy_download_type=[_ for _ in DownloadType()]
             )
 
+    def _ensure_task_queue_ops(self):
+        """任务队列编排实例（懒建并缓存；实现见 module.webops.task_queue）。"""
+        ops = self.__dict__.get('_task_queue_ops_impl')
+        if ops is None:
+            from module.webops.task_queue import TaskQueueOperations
+
+            ops = TaskQueueOperations(
+                web_task_manager_getter=lambda: getattr(self, 'web_task_manager', None),
+                web_task_queue_getter=lambda: getattr(self, 'web_task_queue', None),
+                web_operation_queue_getter=lambda: getattr(
+                    self, 'web_operation_queue', None
+                ),
+                submitted_task_ids_getter=lambda: getattr(
+                    self, 'web_submitted_task_ids', set()
+                ),
+                running_task_getter=lambda: getattr(self, 'web_running_task', None),
+                running_task_setter=lambda value: setattr(
+                    self, 'web_running_task', value
+                ),
+                running_task_id_getter=lambda: getattr(
+                    self, 'web_running_task_id', None
+                ),
+                running_task_id_setter=lambda value: setattr(
+                    self, 'web_running_task_id', value
+                ),
+                transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+                loop_getter=lambda: getattr(self, 'loop', None),
+                process_web_transfer_task=self.process_web_transfer_task,
+                process_web_operation=self.process_web_operation,
+            )
+            self._task_queue_ops_impl = ops
+        return ops
+
     async def process_web_task_queue(self) -> None:
-        self.start_next_web_transfer_task()
-        while not self.web_task_queue.empty():
-            if self.web_running_task and not self.web_running_task.done():
-                break
-            self.start_next_web_transfer_task()
-            if self.web_running_task and not self.web_running_task.done():
-                break
-        while not self.web_operation_queue.empty():
-            operation_id = await self.web_operation_queue.get()
-            try:
-                await self.process_web_operation(operation_id)
-            finally:
-                self.web_operation_queue.task_done()
+        return await self._ensure_task_queue_ops().process_web_task_queue()
 
     def start_next_web_transfer_task(self) -> None:
-        wm = getattr(self, 'web_task_manager', None)
-        if wm is not None:
-            return wm.start_next_web_transfer_task()
-        if self.web_running_task and not self.web_running_task.done():
-            return
-        if self.web_running_task and self.web_running_task.done():
-            self.finish_web_transfer_task(self.web_running_task_id, self.web_running_task)
-        while not self.web_task_queue.empty():
-            try:
-                task_id = int(self.web_task_queue.get_nowait())
-            except asyncio.QueueEmpty:
-                return
-            try:
-                if not self.is_web_transfer_task_schedulable(task_id):
-                    self.web_submitted_task_ids.discard(task_id)
-                    continue
-                runner = self.loop.create_task(self.process_web_transfer_task(task_id))
-                self.web_running_task = runner
-                self.web_running_task_id = task_id
-                runner.add_done_callback(
-                    lambda completed_task, completed_task_id=task_id: self.finish_web_transfer_task(
-                        completed_task_id,
-                        completed_task
-                    )
-                )
-                return
-            finally:
-                self.web_task_queue.task_done()
+        return self._ensure_task_queue_ops().start_next_web_transfer_task()
 
     def is_web_transfer_task_schedulable(self, task_id: int) -> bool:
-        wm = getattr(self, 'web_task_manager', None)
-        if wm is not None:
-            return wm.is_web_transfer_task_schedulable(task_id)
-        if not self.transfer_store:
-            return False
-        task = self.transfer_store.get_task(task_id)
-        if not task:
-            return False
-        from module.transfer.watch_inline import is_watch_inline_task
-        if is_watch_inline_task(task):
-            return False
-        return task.get('status') in (
-            TransferStatus.PENDING,
-            TransferStatus.RUNNING,
-            TransferStatus.PAUSING,
-            TransferStatus.FAILURE,
-        )
+        return self._ensure_task_queue_ops().is_web_transfer_task_schedulable(task_id)
 
     def finish_web_transfer_task(self, task_id: Optional[int], completed_task: asyncio.Task) -> None:
-        wm = getattr(self, 'web_task_manager', None)
-        if wm is not None:
-            return wm.finish_web_transfer_task(task_id, completed_task)
-        if task_id is not None:
-            self.web_submitted_task_ids.discard(task_id)
-        if self.web_running_task is completed_task:
-            self.web_running_task = None
-            self.web_running_task_id = None
-        if not completed_task.cancelled():
-            error = completed_task.exception()
-            if error:
-                log.error(
-                    f'WebUI转存任务执行失败:{task_id},{_t(KeyWord.REASON)}:"{error}"',
-                    exc_info=(type(error), error, error.__traceback__)
-                )
-        if not self.web_task_queue.empty():
-            self.loop.create_task(self.process_web_task_queue())
-
-
+        return self._ensure_task_queue_ops().finish_web_transfer_task(task_id, completed_task)
     def list_deferred_discussion_captures(self, watch_id: str) -> dict:
         return self._ensure_watch_ops().list_deferred_discussion_captures(watch_id)
 
