@@ -939,54 +939,26 @@ class WebOperationsMixin:
             self.recover_web_runtime()
         console.log(f'WebUI已启动: {self.web_ui.url}', style='#B1DB74')
 
+    def _ensure_runtime_recovery_ops(self):
+        """运行时恢复编排实例（懒建并缓存；实现见 module.webops.runtime_recovery）。"""
+        ops = self.__dict__.get('_runtime_recovery_ops_impl')
+        if ops is None:
+            from module.webops.runtime_recovery import RuntimeRecoveryOperations
+
+            ops = RuntimeRecoveryOperations(
+                transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+                diagnostic_getter=lambda: getattr(self, 'diagnostic', None),
+                submit_web_task=self.submit_web_task,
+                progress_tracker_getter=lambda: getattr(self, 'progress_tracker', None),
+                ensure_comment_delay_scheduler=self._ensure_comment_delay_scheduler,
+                resume_interrupted_archive_author_jobs=self.resume_interrupted_archive_author_jobs,
+            )
+            self._runtime_recovery_ops_impl = ops
+        return ops
+
     def recover_web_runtime(self) -> None:
         """Resume pending web tasks / archives after Setup Ready."""
-        if not self.transfer_store:
-            return
-        for task in self.transfer_store.list_tasks():
-            status = task.get('status')
-            task_id = int(task.get('id'))
-            from module.transfer.watch_inline import is_watch_inline_task
-            if is_watch_inline_task(task):
-                continue
-            if status == TransferStatus.PAUSING:
-                has_active_item = any(
-                    item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
-                    for item in self.transfer_store.list_items(task_id)
-                )
-                if has_active_item:
-                    self.submit_web_task(task_id)
-                else:
-                    self.transfer_store.update_task(task_id, status=TransferStatus.PAUSED)
-                    self.transfer_store.add_event(
-                        task_id,
-                        'Transfer task paused after restart with no in-flight item.',
-                        level='warning',
-                    )
-                continue
-            if status not in (TransferStatus.PENDING, TransferStatus.RUNNING, TransferStatus.FAILURE):
-                continue
-            self.submit_web_task(task_id)
-        recovered_archives = 0
-        progress_tracker = getattr(self, 'progress_tracker', None)
-        if progress_tracker is not None:
-            recovered_archives = progress_tracker.recover_pending_upload_archives()
-        if recovered_archives:
-            self.diagnostic.info(f'Recovered {recovered_archives} pending PikPak upload archive job(s).')
-        if self.transfer_store:
-            reconcile = getattr(self.transfer_store, 'reconcile_active_tasks', None)
-            if callable(reconcile):
-                reconciled = reconcile(force=True)
-                if reconciled:
-                    self.diagnostic.info(f'Reconciled {reconciled} stale transfer task(s).')
-        try:
-            self._ensure_comment_delay_scheduler()
-        except Exception as e:
-            log.debug(f'Comment delay scheduler start skipped: {e}')
-        try:
-            self.resume_interrupted_archive_author_jobs()
-        except Exception as e:
-            log.debug(f'Archive author reorganize resume skipped: {e}')
+        return self._ensure_runtime_recovery_ops().recover()
 
     def _archive_settings(self) -> dict:
         return self._ensure_settings_ops()._archive_settings()
