@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
-from unit_tests.support.downloader_factory import build_downloader
+from unit_tests.support.downloader_factory import attach_task_manager, build_downloader
 
 install_pyrogram_stub()
 
@@ -1787,45 +1787,23 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, task["failed_items"])
 
     def test_webui_task_pause_blocks_scheduling_and_resume_resubmits(self):
-        TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
                 "https://t.me/source", "https://t.me/pikpak_bot"
             )
-            downloader.transfer_store = store
-            downloader.web_submitted_task_ids = set()
-            downloader.web_task_queue = asyncio.Queue()
-            downloader.web_operation_queue = asyncio.Queue()
-            downloader.web_operations = {}
-            downloader.web_running_task = None
-            downloader.web_running_task_id = None
+            # 宿主装配收口到工厂：原先这里手工塞 7 个运行时槽位 + 20 行
+            # WebUITaskManager(...) 接线（与生产装配重复）。
+            # attach_task_manager 已按同一套形参接线，且 getter 全指向本宿主的实例属性。
+            downloader = build_downloader(transfer_store=store)
+            manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
             submitted = []
-            manager = WebUITaskManager(
-                transfer_store_getter=lambda: store,
-                diagnostic=SimpleNamespace(),
-                loop_getter=lambda: None,
-                web_task_queue=downloader.web_task_queue,
-                web_submitted_task_ids=downloader.web_submitted_task_ids,
-                web_running_task_getter=lambda: downloader.web_running_task,
-                web_running_task_setter=lambda value: setattr(
-                    downloader, "web_running_task", value
-                ),
-                web_running_task_id_getter=lambda: downloader.web_running_task_id,
-                web_running_task_id_setter=lambda value: setattr(
-                    downloader, "web_running_task_id", value
-                ),
-                web_operation_queue=downloader.web_operation_queue,
-                web_operations=downloader.web_operations,
-            )
             manager.discard_web_task_submission = (
                 lambda discarded_task_id, cancel_running=False, wait=False: (
                     submitted.append(f"discard:{discarded_task_id}:{cancel_running}")
                 )
             )
             manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
-            downloader.web_task_manager = manager
 
             self.assertTrue(downloader.pause_web_task(task_id))
             self.assertEqual(TransferStatus.PAUSED, store.get_task(task_id)["status"])

@@ -33,8 +33,9 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 __all__ = [
-    "attach_task_manager",
     "attach_stub_task_manager",
+    "attach_task_manager",
+    "attach_task_manager_with_media_cleanup",
     "build_downloader",
     "import_downloader_class",
 ]
@@ -154,6 +155,31 @@ def _minimal_gc() -> Any:
         get_comment_delay_minutes=lambda watch_id=None: 0,
         get_deep_link_bot_whitelist=lambda: [],
         message_filter=None,
+    )
+
+
+def attach_task_manager_with_media_cleanup(
+    downloader: Any,
+    store: Any,
+    *,
+    loop: Any = None,
+    diagnostic: Any = None,
+):
+    """接任务管理器，并把"清理任务文件""上传器"两个 getter 也指向本宿主。
+
+    这是若干测试反复手抄的形态（`web_task_delete_case` 里 5 处）：
+    `cleanup_task_files_getter` 要经 `media_manager.cleanup_task_files`，
+    `uploader_getter` 指向宿主 uploader。收进工厂后各处只写一行。
+    """
+    return attach_task_manager(
+        downloader,
+        store,
+        loop=loop if loop is not None else getattr(downloader, "loop", None),
+        diagnostic=diagnostic,
+        cleanup_task_files_getter=lambda task_id: (
+            downloader.media_manager.cleanup_task_files(task_id)
+        ),
+        uploader_getter=lambda: getattr(downloader, "uploader", None),
     )
 
 
