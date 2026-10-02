@@ -249,7 +249,9 @@ class TrmdCompositionRoot:
         return getattr(self, "user", None)
 
     def _watch_manager(self):
-        return getattr(self, "watch_manager", None)
+        # __init__ 保证已赋值（self.watch_manager = self._new_watch_manager()）；
+        # 不兜底，顺序错误要立刻暴露。
+        return self.watch_manager
 
     def _require_watch_manager(self):
         if getattr(self, "watch_manager", None) is None:
@@ -346,7 +348,8 @@ class TrmdCompositionRoot:
         )
 
     def _pikpak_manager(self):
-        return getattr(self, "pikpak_manager", None)
+        # __init__ 保证已赋值；不兜底。
+        return self.pikpak_manager
 
     def _require_pikpak_manager(self):
         if getattr(self, "pikpak_manager", None) is None:
@@ -410,9 +413,13 @@ class TrmdCompositionRoot:
         return self._require_progress_tracker().recover_pending_upload_archives(*args, **kwargs)
 
     def _progress_tracker(self):
-        return getattr(self, "progress_tracker", None)
+        # __init__ 保证已赋值；不兜底。
+        return self.progress_tracker
 
     def _uploader(self):
+        # **刻意保留兜底**：uploader 是运行期才装配的（首启向导完成前不存在），
+        # 直接属性访问会让"尚未装配"变成 AttributeError，而不是下游需要的 None。
+        # 同理保留兜底的还有 _transfer_store / _runtime_user / _my_id。
         return getattr(self, "uploader", None)
 
     def _web_running_task(self):
