@@ -7,6 +7,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from unit_tests.support.downloader_factory import (
+    attach_stub_task_manager,
+    build_downloader,
+)
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
 install_pyrogram_stub()
@@ -29,21 +33,10 @@ class WebTaskPauseDownloadCase(unittest.TestCase):
                 store = TransferStore(directory=directory)
                 task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
                 store.update_task(task_id, status=TransferStatus.RUNNING)
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.transfer_store = store
-                downloader.web_task_manager = WebUITaskManager(
-                    transfer_store_getter=lambda: store,
-                    diagnostic=SimpleNamespace(),
-                    loop_getter=lambda: None,
-                    web_task_queue=asyncio.Queue(),
-                    web_submitted_task_ids=set(),
-                    web_running_task_getter=lambda: None,
-                    web_running_task_setter=lambda value: None,
-                    web_running_task_id_getter=lambda: None,
-                    web_running_task_id_setter=lambda value: None,
-                    web_operation_queue=asyncio.Queue(),
-                    web_operations={},
+                downloader = build_downloader(
+                    transfer_store=store, with_task_manager=False
                 )
+                attach_stub_task_manager(downloader, store)
                 download_cancelled = asyncio.Event()
                 keep_running = asyncio.Event()
 

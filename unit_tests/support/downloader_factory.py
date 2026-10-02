@@ -32,7 +32,38 @@ import sys
 from types import SimpleNamespace
 from typing import Any, Optional
 
-__all__ = ["build_downloader", "attach_task_manager", "import_downloader_class"]
+__all__ = [
+    "attach_task_manager",
+    "attach_stub_task_manager",
+    "build_downloader",
+    "import_downloader_class",
+]
+
+
+def attach_stub_task_manager(downloader: Any, store: Any):
+    """给宿主接一个"最小可用"的 WebUITaskManager（各 getter 返回空/None）。
+
+    测试只需要 `web_task_manager` 存在时用这个，而不是每个文件再抄一遍
+    十几个 `lambda: None` 的构造参数。需要真实行为时用 ``attach_task_manager``
+    并显式传对应 getter。
+    """
+    from module.webops.task_manager import WebUITaskManager
+
+    manager = WebUITaskManager(
+        transfer_store_getter=lambda: store,
+        diagnostic=SimpleNamespace(),
+        loop_getter=lambda: None,
+        web_task_queue=asyncio.Queue(),
+        web_submitted_task_ids=set(),
+        web_running_task_getter=lambda: None,
+        web_running_task_setter=lambda value: None,
+        web_running_task_id_getter=lambda: None,
+        web_running_task_id_setter=lambda value: None,
+        web_operation_queue=asyncio.Queue(),
+        web_operations={},
+    )
+    downloader.web_task_manager = manager
+    return manager
 
 
 def _clean_argv_import(importer):

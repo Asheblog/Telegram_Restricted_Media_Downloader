@@ -16,6 +16,8 @@ from urllib.parse import quote
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
+from unit_tests.support.downloader_factory import build_downloader
+
 install_pyrogram_stub()
 
 # module.utils.parser 在 import 期就执行 argparse.parse_args()，会把 pytest 自己的 argv
@@ -3304,8 +3306,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
     def test_pikpak_ingest_confirmation_requires_forwarded_message_identity(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.app = SimpleNamespace(client=object())
+        downloader = build_downloader(app=SimpleNamespace(client=object()))
 
         self.assertFalse(
             asyncio.run(
@@ -3672,8 +3673,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self,
     ):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.gc = SimpleNamespace(upload_delete=False)
+        downloader = build_downloader(gc=SimpleNamespace(upload_delete=False))
 
         meta = downloader.build_download_upload_meta(
             target_link="https://t.me/pikpak_bot",
@@ -4401,9 +4401,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.app = SimpleNamespace(
+        downloader = build_downloader(
+            app=SimpleNamespace(
             temp_directory="tmp", save_directory="downloads"
+            ),
         )
         submitted_task_ids = []
         downloader.submit_web_task = lambda task_id: submitted_task_ids.append(task_id)
@@ -4462,13 +4463,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.loop = asyncio.get_running_loop()
-            downloader.web_task_queue = asyncio.Queue()
-            downloader.web_submitted_task_ids = set()
-            downloader.web_operation_queue = asyncio.Queue()
-            downloader.web_running_task = None
-            downloader.web_running_task_id = None
+            downloader = build_downloader(loop=asyncio.get_running_loop(), web_task_queue=asyncio.Queue(), web_submitted_task_ids=set(), web_operation_queue=asyncio.Queue(), web_running_task=None, web_running_task_id=None)
             started_task_ids = []
             cancelled_task_ids = []
 
@@ -5809,15 +5804,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 store.update_task(task_id, status=TransferStatus.RUNNING)
                 store.update_task_range_runtime(task_id, current_range_message_id=10)
 
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.transfer_store = store
-                downloader.uploader = object()
-                downloader.app = SimpleNamespace(client=SimpleNamespace())
-                downloader.gc = SimpleNamespace(
+                downloader = build_downloader(
+                    transfer_store=store,
+                    uploader=object(),
+                    app=SimpleNamespace(client=SimpleNamespace()),
+                    gc=SimpleNamespace(
                     download_upload=True, upload_delete=False
+                    ),
+                    forward_calls=[],
+                    fallback_calls=[],
                 )
-                downloader.forward_calls = []
-                downloader.fallback_calls = []
 
                 async def fake_forward(**kwargs):
                     downloader.forward_calls.append(kwargs)
