@@ -748,7 +748,7 @@ class WebOperationsMixin:
     def _archive_author_ops(self):
         ops = self.__dict__.get('_archive_author_ops_impl')
         if ops is None:
-            from module.adapters.webui.archive_author_ops import ArchiveAuthorOps
+            from module.webops.archive_author_ops import ArchiveAuthorOps
             ops = ArchiveAuthorOps(self)
             self._archive_author_ops_impl = ops
         return ops
@@ -820,7 +820,7 @@ class WebOperationsMixin:
         """Manually re-run PikPak archive for an archive_not_found system log."""
         ops = self.__dict__.get('_system_log_archive_retry_ops_impl')
         if ops is None:
-            from module.adapters.webui.system_log_archive_retry_ops import SystemLogArchiveRetryOps
+            from module.webops.system_log_archive_retry_ops import SystemLogArchiveRetryOps
             ops = SystemLogArchiveRetryOps(self)
             self._system_log_archive_retry_ops_impl = ops
         return ops.retry_archive_from_system_log(log_id)
