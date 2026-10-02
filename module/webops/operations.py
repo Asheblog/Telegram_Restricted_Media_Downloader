@@ -395,38 +395,48 @@ class WebOperationsMixin:
     def retry_failed_web_task(self, task_id: int) -> int:
         return _require_web_task_manager(self).retry_failed_web_task(task_id)
 
+    def _ensure_watch_ops(self):
+        """监听编排实例（懒建并缓存；实现见 module.webops.watch_operations）。"""
+        ops = self.__dict__.get('_watch_ops_impl')
+        if ops is None:
+            from module.webops.watch_operations import WatchOperations
+            ops = WatchOperations(
+                watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
+                comment_delay_scheduler_getter=lambda: self.__dict__.get(
+                    'comment_delay_scheduler'
+                ),
+                transfer_store_getter=self._ensure_transfer_store,
+                loop_getter=lambda: getattr(self, 'loop', None),
+            )
+            self._watch_ops_impl = ops
+        return ops
+
     def list_watches(self, tz_offset_minutes: int | None = None) -> list:
-        return self.watch_manager.list_watches(tz_offset_minutes=tz_offset_minutes)
+        return self._ensure_watch_ops().list_watches(tz_offset_minutes=tz_offset_minutes)
 
     def mark_pending_watch(self, payload: dict, status: str, error_message: str = None) -> None:
-        return self.watch_manager.mark_pending_watch(payload, status, error_message)
+        return self._ensure_watch_ops().mark_pending_watch(payload, status, error_message)
 
     def set_live_watch_status(self, watch_id: str, status: str, error_message: str = None) -> None:
-        return self.watch_manager.set_live_watch_status(watch_id, status, error_message)
+        return self._ensure_watch_ops().set_live_watch_status(watch_id, status, error_message)
 
     def persisted_watches(self) -> list:
-        return self.watch_manager.persisted_watches()
+        return self._ensure_watch_ops().persisted_watches()
 
     def watch_payload_from_record(self, watch: dict) -> dict:
-        return self.watch_manager.watch_payload_from_record(watch)
+        return self._ensure_watch_ops().watch_payload_from_record(watch)
 
     def create_watch(self, payload: dict) -> dict:
-        return self.watch_manager.create_watch(payload)
+        return self._ensure_watch_ops().create_watch(payload)
 
     def export_forward_watches(self) -> dict:
-        return self.watch_manager.export_forward_watches()
+        return self._ensure_watch_ops().export_forward_watches()
 
     def delete_watch(self, watch_id: str) -> bool:
-        scheduler = self.__dict__.get('comment_delay_scheduler')
-        if scheduler is not None:
-            try:
-                scheduler.cancel_for_watch(watch_id)
-            except Exception:
-                log.exception('删除监听时取消延迟评论区失败: %s', watch_id)
-        return self.watch_manager.delete_watch(watch_id)
+        return self._ensure_watch_ops().delete_watch(watch_id)
 
     def update_watch(self, watch_id: str, payload: dict) -> dict:
-        return self.watch_manager.update_watch(watch_id, payload)
+        return self._ensure_watch_ops().update_watch(watch_id, payload)
 
     def list_watch_events(
             self,
@@ -437,13 +447,13 @@ class WebOperationsMixin:
             tz_offset_minutes: int | None = None,
             status: str | None = None
     ):
-        return self.watch_manager.list_watch_events(
+        return self._ensure_watch_ops().list_watch_events(
             watch_id,
             limit=limit,
             offset=offset,
             today_only=today_only,
             tz_offset_minutes=tz_offset_minutes,
-            status=status
+            status=status,
         )
 
     def recover_pikpak_failed_item_before_retry(self, task: dict, item: dict) -> bool:
@@ -1618,41 +1628,16 @@ class WebOperationsMixin:
 
 
     def list_deferred_discussion_captures(self, watch_id: str) -> dict:
-        store = self._ensure_transfer_store()
-        captures = store.list_deferred_discussion_captures(watch_id=watch_id, limit=500)
-        return {'captures': captures, 'total': len(captures)}
+        return self._ensure_watch_ops().list_deferred_discussion_captures(watch_id)
 
     def cancel_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
-        store = self._ensure_transfer_store()
-        capture = store.get_deferred_discussion_capture(int(capture_id))
-        if not capture or capture.get('watch_id') != watch_id:
-            return False
-        scheduler = self._ensure_comment_delay_scheduler()
-        return scheduler.cancel(int(capture_id))
+        return self._ensure_watch_ops().cancel_deferred_discussion_capture(watch_id, capture_id)
 
     def run_deferred_discussion_capture_now(self, watch_id: str, capture_id: int) -> bool:
-        store = self._ensure_transfer_store()
-        capture = store.get_deferred_discussion_capture(int(capture_id))
-        if not capture or capture.get('watch_id') != watch_id:
-            return False
-        scheduler = self._ensure_comment_delay_scheduler()
-        loop = getattr(self, 'loop', None)
-        if loop is None:
-            return False
-        future = asyncio.run_coroutine_threadsafe(scheduler.run_now(int(capture_id)), loop)
-        return bool(future.result(timeout=180))
+        return self._ensure_watch_ops().run_deferred_discussion_capture_now(watch_id, capture_id)
 
     def retry_deferred_discussion_capture(self, watch_id: str, capture_id: int) -> bool:
-        store = self._ensure_transfer_store()
-        capture = store.get_deferred_discussion_capture(int(capture_id))
-        if not capture or capture.get('watch_id') != watch_id:
-            return False
-        scheduler = self._ensure_comment_delay_scheduler()
-        loop = getattr(self, 'loop', None)
-        if loop is None:
-            return False
-        future = asyncio.run_coroutine_threadsafe(scheduler.retry(int(capture_id)), loop)
-        return bool(future.result(timeout=180))
+        return self._ensure_watch_ops().retry_deferred_discussion_capture(watch_id, capture_id)
 
 
 _WEB_UI_DELEGATE_METHODS = (
