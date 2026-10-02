@@ -4,15 +4,13 @@
 # Time:2023/10/3 1:00:03
 # File:downloader.py
 import os
-import sys
 import random
 import asyncio
 import datetime
 
-from copy import deepcopy
 from functools import partial
 from sqlite3 import OperationalError
-from typing import Union, Callable, Optional, Dict, Set
+from typing import Union, Callable, Optional, Dict
 
 import pyrogram
 from pyrogram.enums.parse_mode import ParseMode
@@ -22,19 +20,7 @@ from pyrogram.errors import (
     FloodWait,
     FloodPremiumWait
 )
-from pyrogram.errors.exceptions.bad_request_400 import (
-    MsgIdInvalid,
-    UsernameInvalid,
-    ChannelInvalid,
-    BotMethodInvalid,
-    UsernameNotOccupied,
-    PeerIdInvalid,
-    MessageNotModified,
-    ChannelPrivate as ChannelPrivate_400,
-    ChatForwardsRestricted as ChatForwardsRestricted_400,
-    MediaCaptionTooLong as MediaCaptionTooLong_400,
-    MessageIdInvalid
-)
+from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid, UsernameInvalid, ChannelInvalid, BotMethodInvalid, UsernameNotOccupied, ChannelPrivate_400, ChatForwardsRestricted_400
 from pyrogram.errors.exceptions.not_acceptable_406 import (
     ChannelPrivate as ChannelPrivate_406,
     ChatForwardsRestricted as ChatForwardsRestricted_406
@@ -46,7 +32,6 @@ from pyrogram.errors.exceptions.unauthorized_401 import (
     Unauthorized
 )
 from pyrogram.errors.exceptions.forbidden_403 import ChatWriteForbidden
-from pyrogram.handlers import MessageHandler
 from pyrogram.types.messages_and_media import ReplyParameters
 from pyrogram.types.bots_and_keyboards import (
     InlineKeyboardButton,
@@ -59,98 +44,26 @@ from module import (
     LINK_PREVIEW_OPTIONS,
     SLEEP_THRESHOLD
 )
-from module.core.filter import Filter, MessageFilter
-from module.core.app import Application
-from module.core.app import DownloadFileName
-from module.core.config import GlobalConfig, UserConfig
 from module.utils.parser import PARSE_ARGS
-from module.infra.async_window import DynamicAsyncWindow
-from module.utils.diagnostics import RichDiagnosticAdapter
-from module.persistence.local_storage_guard import LocalStorageGuard
-from module.persistence.media_manager import MediaManager
-from module.webops.task_manager import WebUITaskManager
-from module.transfer.live_watch import LiveWatchManager
 from module.adapters.bot.keyboards import KeyboardButton
 from module.adapters.bot.bot import (
     Bot,
     CallbackData
 )
-from module.adapters.bot.callback_handler import CallbackHandler
-from module.core.enums import (
-    DownloadStatus,
-    UploadStatus,
-    LinkType,
-    KeyWord,
-    BotCallbackText,
-    BotButton,
-    BotMessage,
-    DownloadType,
-    CalenderKeyboard,
-    SaveDirectoryPrefix
-)
+from module.core.enums import DownloadStatus, LinkType, KeyWord, BotButton, BotMessage, DownloadType, SaveDirectoryPrefix
 from module.utils.language import _t
-from module.utils.path_tool import (
-    is_file_duplicate,
-    safe_delete,
-    get_file_size,
-    split_path,
-    compare_file_size,
-    move_to_save_directory,
-    safe_replace,
-    validate_title,
-    extract_full_extension,
-    is_compressed_file
-)
-from module.core.target_profiles import (
-    target_profile_limit,
-    target_profile_size_error
-)
-from module.adapters.pikpak.archive import build_pikpak_archive_client
+from module.utils.path_tool import is_file_duplicate, safe_delete, get_file_size, compare_file_size, safe_replace, validate_title
 from module.adapters.pikpak.integration import PikpakIntegrationManager
-from module.transfer.progress import TransferProgressTracker
-from module.domain.archive_naming.source_folders import (
-    archive_source_folder,
-    archive_source_folder_for_messages,
-    join_local_source_folder,
-    media_group_post_message_id,
-    normalize_archive_title_source,
-    resolve_forward_archive_source_folder,
-)
+from module.domain.archive_naming.source_folders import archive_source_folder, archive_source_folder_for_messages, join_local_source_folder, media_group_post_message_id, normalize_archive_title_source
 from module.domain.transfer_state.models import DownloadTask, UploadTask
-from module.persistence.transfer_store import TransferStore, TransferStatus
+from module.persistence.transfer_store import TransferStatus
 from module.persistence.system_log import SystemLogTracer
-from module.utils.stdio import ProgressBar, MetaData
+from module.utils.stdio import MetaData
 from module.infra.uploader import TelegramUploader
-from module.adapters.webui.server import (
-    WebUiServer,
-    get_web_host_from_env,
-    get_web_password_from_env,
-    get_web_port_from_env,
-    get_web_username_from_env,
-    merge_allowed_settings
-)
 from module.utils.display_support import truncate_display_filename
-from module.utils.flag_support import (
-    make_forward_watch_rule,
-    parse_forward_watch_rule,
-)
-from module.utils.runtime_support import is_docker
-from module.utils.util import (
-    parse_link,
-    format_chat_link,
-    get_my_id,
-    get_message_by_link,
-    get_chat_with_notify,
-    safe_message,
-    safe_delete_message,
-    Issues,
-    is_allow_upload,
-    iter_discussion_reply_forward_units,
-)
+from module.utils.util import parse_link, format_chat_link, get_my_id, get_message_by_link, get_chat_with_notify, safe_message, safe_delete_message, Issues
 from module.transfer.engine import TransferEngine
-from module.transfer.context import TransferContext, TransferPorts
 from module.transfer.runner import WebTransferRunner
-from module.transfer.watch_applicator import LiveWatchApplicator
 from module.transfer.live_transfer import LiveTransferService
 
 from module.composition_root import TrmdCompositionRoot
