@@ -176,108 +176,37 @@ class WebOperationsMixin:
             return watch_manager.watch_payload_from_record(watch)
         return self.watch_payload_from_record(watch)
 
-    def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
-        scheduler = self.__dict__.get('comment_delay_scheduler')
-        if scheduler is None:
-            store = self._ensure_transfer_store()
+    def _ensure_deferred_discussion_ops(self):
+        """延迟抓取编排实例（懒建并缓存；实现见 module.webops.deferred_discussion）。"""
+        ops = self.__dict__.get('_deferred_discussion_ops_impl')
+        if ops is None:
+            from module.webops.deferred_discussion import DeferredDiscussionOperations
 
-            async def executor(capture: dict):
-                client = (
-                    capture.get('client')
-                    or getattr(self, 'user', None)
-                    or getattr(getattr(self, 'app', None), 'client', None)
-                )
-                resolve_deep_link = False
-                archive_by_author = False
-                archive_title_source = 'auto'
-                watch_id = capture.get('watch_id')
-                if watch_id and store is not None:
-                    watch = store.get_live_transfer_watch(str(watch_id))
-                    if watch:
-                        resolve_deep_link = bool(watch.get('resolve_deep_link'))
-                        archive_by_author = bool(watch.get('archive_by_author'))
-                        archive_title_source = normalize_archive_title_source(
-                            watch.get('archive_title_source')
-                        )
-                count = await self.forward_discussion_replies(
-                    client=client,
-                    source_chat_id=capture.get('source_chat_id'),
-                    source_message_id=int(capture.get('source_message_id')),
-                    target_chat_id=capture.get('target_chat_id'),
-                    target_link=capture.get('target_link'),
-                    watch_id=capture.get('watch_id'),
-                    resolve_deep_link=resolve_deep_link,
-                    archive_by_author=archive_by_author,
-                    archive_title_source=archive_title_source,
-                )
-                watch_id = capture.get('watch_id')
-                if watch_id:
-                    self._record_watch_event(
-                        watch_id,
-                        capture.get('source_chat_id'),
-                        capture.get('source_message_id'),
-                        capture.get('target_chat_id'),
-                        capture.get('target_link'),
-                        'success' if count else 'skipped',
-                        f'延迟抓取评论区完成,匹配{count}条'
-                    )
-                return count
-
-            def on_cancel(capture: dict):
-                self._cancel_derived_tasks_for_deferred_capture(capture)
-
-            scheduler = CommentDelayScheduler(
-                store=store,
-                delay_minutes_getter=lambda: self.gc.get_comment_delay_minutes(),
-                executor=executor,
-                on_cancel=on_cancel,
-                has_active_derived=self._has_active_derived_tasks_for_deferred_capture,
+            ops = DeferredDiscussionOperations(
+                transfer_store_getter=self._ensure_transfer_store,
+                user_getter=lambda: getattr(self, 'user', None),
+                app_getter=lambda: getattr(self, 'app', None),
+                gc_getter=lambda: getattr(self, 'gc', None),
+                loop_getter=lambda: getattr(self, 'loop', None),
+                # 经实例解析：宿主/测试替身会覆盖这些方法。
+                forward_discussion_replies=lambda *a, **kw: self.forward_discussion_replies(
+                    *a, **kw
+                ),
+                record_watch_event=lambda *a, **kw: self._record_watch_event(*a, **kw),
+                delete_web_task=lambda task_id: self.delete_web_task(task_id),
             )
-            self.comment_delay_scheduler = scheduler
-        # Always (re)arm: first call may come from a WebUI worker thread without a
-        # running loop; pass the app loop so start can attach via call_soon_threadsafe.
-        scheduler.start(loop=getattr(self, 'loop', None))
-        return scheduler
+            self._deferred_discussion_ops_impl = ops
+        return ops
+
+    def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
+        return self._ensure_deferred_discussion_ops().ensure_scheduler()
 
     def _has_active_derived_tasks_for_deferred_capture(self, capture: dict) -> bool:
-        if not capture:
-            return False
-        watch_id = capture.get('watch_id')
-        if not watch_id:
-            return False
-        store = self._ensure_transfer_store()
-        started_at = str(capture.get('updated_at') or '')
-        for task in store.list_tasks(limit=500, watch_id=watch_id):
-            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
-                continue
-            created_at = str(task.get('created_at') or '')
-            if started_at and created_at and created_at < started_at:
-                continue
-            return True
-        return False
+        return self._ensure_deferred_discussion_ops().has_active_derived_tasks(capture)
 
     def _cancel_derived_tasks_for_deferred_capture(self, capture: dict) -> None:
         """Best-effort cancel web transfer tasks spawned by a running deferred capture."""
-        if not capture or capture.get('status') != DeferredDiscussionCaptureStatus.RUNNING:
-            return
-        watch_id = capture.get('watch_id')
-        if not watch_id:
-            return
-        store = self._ensure_transfer_store()
-        started_at = str(capture.get('updated_at') or '')
-        for task in store.list_tasks(limit=500, watch_id=watch_id):
-            if task.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
-                continue
-            created_at = str(task.get('created_at') or '')
-            if started_at and created_at and created_at < started_at:
-                continue
-            task_id = task.get('id')
-            if task_id is None:
-                continue
-            try:
-                self.delete_web_task(int(task_id))
-            except Exception:
-                log.exception('取消延迟评论区派生转存失败: task_id=%s', task_id)
+        return self._ensure_deferred_discussion_ops().cancel_derived_tasks(capture)
 
     async def schedule_or_forward_discussion_replies(
             self,
@@ -290,30 +219,15 @@ class WebOperationsMixin:
             watch_id: Optional[str] = None,
             done_notice: Optional[bool] = True,
     ) -> Optional[dict]:
-        scheduler = self._ensure_comment_delay_scheduler()
-        scheduled = await scheduler.schedule(
-            watch_id=watch_id or '',
+        return await self._ensure_deferred_discussion_ops().schedule_or_forward(
+            client=client,
             source_chat_id=source_chat_id,
             source_message_id=source_message_id,
             target_chat_id=target_chat_id,
             target_link=target_link,
-            client=client,
+            watch_id=watch_id,
+            done_notice=done_notice,
         )
-        if scheduled is None:
-            return None
-        if watch_id:
-            due_at = float(scheduled.get('due_at') or 0)
-            delay_minutes = max(0, int(round((due_at - time.time()) / 60)))
-            self._record_watch_event(
-                watch_id,
-                source_chat_id,
-                source_message_id,
-                target_chat_id,
-                target_link,
-                'success',
-                f'已调度延迟抓取评论区,约{delay_minutes}分钟后执行'
-            )
-        return scheduled
 
     def _web_ui_operations(self) -> 'WebOperationsFacade':
         facade = self.__dict__.get('_web_operations_facade')
