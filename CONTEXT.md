@@ -65,7 +65,9 @@ module/
   infra/          # Client、Uploader、AsyncWindow
   persistence/    # TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
   transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
-  utils/          # util、stdio、path_tool、parser、language、diagnostics
+  utils/          # util、stdio、path_tool、parser、language、diagnostics、
+                  # flag_support（标志位解析）、display_support（终端展示）、
+                  # runtime_support（docker/nuitka 探测、子进程、权限）、telegram_links
   webops/         # 业务编排层（见下）
 ```
 
@@ -117,6 +119,22 @@ module/
 `_app`/`_pb` 各 0 失败、主因只是 `_gc`（5 个）—— 也就是说**错误的实验设计产生了
 过宽的结论，而且被写进了文档**。单变量实验 + 记录失败清单（`tmp/tighten_matrix.py`）
 才是可复现的判据。
+
+**方法学教训之二（拆分必须度量"调用方是否真的改道"）**：我把 `utils/util.py` 按内聚
+拆成三个子模块后，全量测试全绿、行数也确实下降，但**入度一点没降** —— 因为调用方
+仍 import `util`，三个新模块各只有 1 个依赖方（就是转发层自己），拆分只停留在形式上。
+必须重新跑入度度量、并把调用方改为直连，拆分才真正生效。
+判据：**拆完看"新模块的入度是否 > 1、旧模块入度是否下降"**，而不是"文件是否变小"。
+
+**已尝试但放弃的拆分（避免重复投入）**：`domain/archive_naming/source_folders.py`
+（1,102 行、入度 25）的"作者提取"组内聚性经实测确认良好（对标题组/组装组零跨组调用，
+依赖单向），但拆它会连带搬走一批**相互引用的模块级常量**（`POST_AUTHOR_PREFIX` 用了
+`_POST_AUTHOR_MARKER`、`_AUTHOR_TAG_TOKEN` 用了 `_AUTHOR_TAG`…）。我用 AST 算常量
+依赖闭包连试 5 版都漏掉某条边（先后漏了 `_POST_AUTHOR_MARKER`、`POST_AUTHOR_LINE`、
+`_AUTHOR_TAG`），根因是**我给闭包加了名字启发式过滤**（依赖闭包是结构性质，不能用
+名字猜）。第五次失败后按"及时止损"放弃并完整回滚。
+结论：该文件若要拆，应先把常量按用途分块（而不是算闭包），或改用工具化的做法；
+**不要再用名字启发式去猜依赖集合**。
 
 
 **测试基础设施的既有限制（重要，避免重复踩坑）**：
