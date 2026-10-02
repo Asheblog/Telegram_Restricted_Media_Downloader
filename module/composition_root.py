@@ -202,18 +202,42 @@ class TrmdCompositionRoot:
 
     # ------------------------------------------------------------------
     # Explicit late-bound dependencies (single source of truth; no __getattr__ magic)
+    #
+    # 这四个 getter（`_app` / `_gc` / `_loop` / `_pb`）**一律不兜底**：
+    # 直接 `self.x`，初始化顺序写错会立刻 AttributeError，而不是让下游拿到
+    # 静默的 None（那会把"顺序错误"伪装成"能力缺失"）。
+    #
+    # 这个结论是实测出来的，不是猜的。做法：逐个把兜底换成直接属性访问、
+    # 跑全量、记录失败用例，再决定是收紧还是补测试（结果见下表）。
+    #
+    # | getter  | 收紧后失败数 | 处理 |
+    # | ------- | ------------ | ---- |
+    # | `_app`  | 0 | 直接收紧 |
+    # | `_pb`   | 0 | 直接收紧 |
+    # | `_gc`   | 5 | 先用探针定位真实调用路径（见下），给那 5 个宿主补 `gc` 后收紧 |
+    # | `_loop` | 1 | 核对后确认走的是生产降级分支，改为用例显式声明 `loop = None` 后收紧 |
+    #
+    # `_gc` 那次值得记一笔：失败只告诉你"测试红了"，不告诉你"谁在用 gc"。
+    # 实际调用链是 `PikpakIntegrationManager.get_task_target_size_limit_error`
+    # → `target_profile_limit(gc, ...)`，而后者对 gc 的唯一要求是"能取到 config"，
+    # 所以补 `SimpleNamespace(config={})`（语义 = 未配置目标档案）就够。
+    #
+    # `_loop` 那次也值得记：那个用例并不是"测试遗留"，它走的正是生产分支 ——
+    # `schedule_deferred_archive` 在 `loop is None or not loop.is_running()` 时
+    # 改为立即归档。所以正确处理是把"没有 loop"**显式写出来**，而不是继续
+    # 依赖 getter 的隐式 None。
     # ------------------------------------------------------------------
     def _app(self):
-        return getattr(self, "app", None)
+        return self.app
 
     def _gc(self):
-        return getattr(self, "gc", None)
+        return self.gc
 
     def _loop(self):
-        return getattr(self, "loop", None)
+        return self.loop
 
     def _pb(self):
-        return getattr(self, "pb", None)
+        return self.pb
 
     def _my_id(self):
         return getattr(self, "my_id", 0)

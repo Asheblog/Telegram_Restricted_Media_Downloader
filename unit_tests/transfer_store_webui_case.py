@@ -2578,6 +2578,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_forward_updates_task_progress_before_assignment_completes(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
@@ -2814,6 +2816,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_without_ingest_confirmation_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
@@ -2866,6 +2870,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_pikpak_forward_without_target_message_records_failure(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
@@ -3228,6 +3234,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_direct_non_pikpak_forward_does_not_wait_for_ingest_confirmation(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
@@ -3452,6 +3460,8 @@ class TransferStoreWebUiCase(unittest.TestCase):
     def test_pikpak_upload_status_archives_without_transfer_store(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
         archive_calls = []
 
         class FakeArchiveClient:
@@ -3496,6 +3506,13 @@ class TransferStoreWebUiCase(unittest.TestCase):
     ):
         TelegramRestrictedMediaDownloader = import_downloader_class()
         downloader = object.__new__(TelegramRestrictedMediaDownloader)
+        # 目标档案上限判定需要 gc；空 config 等价于未配置档案。
+        downloader.gc = SimpleNamespace(config={})
+        # 显式声明"没有事件循环"：这正是本用例要走的生产降级分支 ——
+        # `schedule_deferred_archive` 在 `loop is None or not loop.is_running()`
+        # 时改为**立即**归档（见 module/transfer/progress.py 的 schedule_deferred_archive）。
+        # 原先靠 getter 的隐式 None 兜底，收紧后会变成"属性不存在"。
+        downloader.loop = None
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task(
