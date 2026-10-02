@@ -36,7 +36,7 @@ def import_downloader_class():
 
 class WebTaskDeleteCase(unittest.TestCase):
     def _attach_task_manager(self, downloader, store, **kwargs):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
 
         loop = kwargs.pop('loop', getattr(downloader, 'loop', None))
         queue = kwargs.pop('web_task_queue', getattr(downloader, 'web_task_queue', None) or asyncio.Queue())
@@ -131,7 +131,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_delete_web_task_cancels_running_worker_before_file_cleanup(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
 
         MediaManager = import_with_clean_argv(
             lambda: __import__('module.media_manager', fromlist=['MediaManager']).MediaManager
@@ -259,7 +259,7 @@ class WebTaskDeleteCase(unittest.TestCase):
             self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
 
     def test_delete_only_task_then_submit_new_task_starts_from_http_thread(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
@@ -328,7 +328,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_delete_clears_stale_running_slot_when_worker_does_not_stop(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
         from unittest.mock import patch
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
@@ -411,7 +411,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_submit_web_task_requeues_when_stale_submitted_marker(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
 
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
@@ -470,7 +470,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         asyncio.run(run_case())
 
     def test_delete_web_task_survives_loop_callback_timeout(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
         from unittest.mock import patch
 
         TelegramRestrictedMediaDownloader = import_downloader_class()

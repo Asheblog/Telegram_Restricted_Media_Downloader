@@ -66,7 +66,7 @@ def _require_web_task_manager(host):
     wm = getattr(host, 'web_task_manager', None)
     if wm is not None:
         return wm
-    from module.adapters.webui.task_manager import WebUITaskManager
+    from module.webops.task_manager import WebUITaskManager
 
     if getattr(host, 'web_task_queue', None) is None:
         host.web_task_queue = asyncio.Queue()

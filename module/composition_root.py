@@ -12,7 +12,7 @@ from module.adapters.pikpak.integration import PikpakIntegrationManager
 from module.webops.operations import WebOperationsFacade
 from module.adapters.webui.server import WebUiServer
 from module.adapters.webui.setup import SetupCoordinator
-from module.adapters.webui.task_manager import WebUITaskManager
+from module.webops.task_manager import WebUITaskManager
 from module.bootstrap import initialize
 from module.core.app import Application
 from module.core.config import GlobalConfig

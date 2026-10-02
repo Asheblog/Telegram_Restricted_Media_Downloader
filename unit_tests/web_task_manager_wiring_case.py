@@ -19,7 +19,7 @@ import re
 import unittest
 
 MODULE_DIR = pathlib.Path(__file__).resolve().parents[1] / "module"
-TASK_MANAGER = MODULE_DIR / "adapters" / "webui" / "task_manager.py"
+TASK_MANAGER = MODULE_DIR / "webops" / "task_manager.py"
 COMPOSITION_ROOT = MODULE_DIR / "composition_root.py"
 
 # 有内置兜底实现、因此允许显式传 None 的形参。
