@@ -1050,169 +1050,68 @@ class WebOperationsMixin:
     def skip_setup_bot_token(self, payload: Optional[dict] = None) -> dict:
         return self._ensure_setup_wizard_ops().skip_setup_bot_token(payload)
 
-    async def process_web_operation(self, operation_id: str) -> None:
-        operation = self.web_operations.get(operation_id)
-        if not operation:
-            return
-        operation['status'] = TransferStatus.RUNNING
-        operation['updated_at'] = TransferStore.utc_now()
-        try:
-            operation_type = operation.get('type')
-            payload = operation.get('payload') or {}
-            if operation_type == 'watch':
-                await self.apply_web_watch(payload)
-            elif operation_type == 'upload':
-                await self.apply_web_upload(payload)
-            elif operation_type == 'channel_download':
-                await self.apply_web_channel_download(payload)
-            else:
-                raise ValueError(f'Unsupported WebUI operation: {operation_type}')
-            operation['status'] = TransferStatus.SUCCESS
-        except Exception as e:
-            operation['status'] = TransferStatus.FAILURE
-            operation['error_message'] = str(e)
-            payload = operation.get('payload') or {}
-            if operation.get('type') == 'watch':
-                self.mark_pending_watch(payload, TransferStatus.FAILURE, str(e))
-            log.exception(f'WebUI操作失败:{operation_id},{_t(KeyWord.REASON)}:"{e}"')
-        finally:
-            operation['updated_at'] = TransferStore.utc_now()
-
-    async def restore_live_transfer_watches(self) -> None:
-        for watch in self._persisted_watch_records():
-            watch_id = watch.get('id')
-            if not watch_id:
-                continue
-            if watch.get('type') == 'download' and watch.get('source_link') in self.listen_download_chat:
-                continue
-            if watch.get('type') == 'forward':
-                rule = make_forward_watch_rule(
-                    watch.get('source_link'),
-                    watch.get('target_link'),
-                    bool(watch.get('include_comment')),
-                    bool(watch.get('resolve_deep_link')),
-                    bool(watch.get('archive_by_author')),
-                    normalize_archive_title_source(watch.get('archive_title_source')),
-                )
-                if rule in self.listen_forward_chat:
-                    continue
-            self.web_pending_watches[watch_id] = {
-                **watch,
-                'status': TransferStatus.PENDING,
-                'error_message': None
-            }
-            self._set_live_watch_status(watch_id, TransferStatus.PENDING)
-            try:
-                await self.apply_web_watch(self._watch_payload_from_record(watch))
-            except Exception as e:
-                self.mark_pending_watch(self._watch_payload_from_record(watch), TransferStatus.FAILURE, str(e))
-                log.exception(f'恢复WebUI实时监听失败:{watch_id},{_t(KeyWord.REASON)}:"{e}"')
-
     def _ensure_watch_applicator(self) -> LiveWatchApplicator:
+        """监听应用器（懒建并缓存）—— 它需要宿主作为上下文，故留在宿主侧。"""
         applicator = self.__dict__.get('_watch_applicator')
         if applicator is None:
             applicator = LiveWatchApplicator(host=self)
             self._watch_applicator = applicator
         return applicator
 
+    def _ensure_operation_applicator(self):
+        """操作应用编排实例（懒建并缓存；实现见 module.webops.operation_applicator）。"""
+        ops = self.__dict__.get('_operation_applicator_impl')
+        if ops is None:
+            from module.webops.operation_applicator import WebOperationApplicator
+
+            ops = WebOperationApplicator(
+                web_operations_getter=lambda: getattr(self, 'web_operations', {}),
+                app_getter=lambda: getattr(self, 'app', None),
+                gc_getter=lambda: getattr(self, 'gc', None),
+                uploader_getter=lambda: getattr(self, 'uploader', None),
+                set_uploader=lambda value: setattr(self, 'uploader', value),
+                runtime_message_filter_getter=lambda: (
+                    self.runtime_message_filter()
+                    if hasattr(self, 'runtime_message_filter')
+                    else None
+                ),
+                watch_applicator_getter=self._ensure_watch_applicator,
+                persisted_watch_records_getter=self._persisted_watch_records,
+                listen_download_chat_getter=lambda: getattr(
+                    self, 'listen_download_chat', {}
+                ),
+                listen_forward_chat_getter=lambda: getattr(
+                    self, 'listen_forward_chat', {}
+                ),
+                web_pending_watches_getter=lambda: getattr(
+                    self, 'web_pending_watches', {}
+                ),
+                set_live_watch_status=self._set_live_watch_status,
+                mark_pending_watch=self.mark_pending_watch,
+                watch_payload_from_record=self._watch_payload_from_record,
+                create_download_task=self.create_download_task,
+                uploader_context=self,
+            )
+            self._operation_applicator_impl = ops
+        return ops
+
+    async def process_web_operation(self, operation_id: str) -> None:
+        return await self._ensure_operation_applicator().process_web_operation(operation_id)
+
+    async def restore_live_transfer_watches(self) -> None:
+        return await self._ensure_operation_applicator().restore_live_transfer_watches()
+
     async def apply_web_watch(self, payload: dict) -> None:
-        return await self._ensure_watch_applicator().apply_watch(payload)
+        return await self._ensure_operation_applicator().apply_web_watch(payload)
 
     def remove_web_watch(self, watch_id: str) -> bool:
-        return self._ensure_watch_applicator().remove_watch(watch_id)
+        return self._ensure_operation_applicator().remove_web_watch(watch_id)
 
     async def apply_web_upload(self, payload: dict) -> None:
-        if not self.uploader:
-            self.uploader = TelegramUploader(upload_context=self)
-        upload_path = payload.get('path')
-        target_link = payload.get('target_link')
-        recursive = bool(payload.get('recursive'))
-        if os.path.isdir(upload_path):
-            if recursive:
-                upload_files = [
-                    os.path.join(root, filename)
-                    for root, _dirs, files in os.walk(upload_path)
-                    for filename in files
-                ]
-            else:
-                upload_files = [
-                    os.path.join(upload_path, filename)
-                    for filename in os.listdir(upload_path)
-                    if os.path.isfile(os.path.join(upload_path, filename))
-                ]
-        else:
-            upload_files = [upload_path]
-        if not upload_files:
-            raise ValueError('Upload path contains no files.')
-        for file_path in upload_files:
-            file_size = os.path.getsize(file_path)
-            upload_task = UploadTask(
-                chat_id=None,
-                file_path=file_path,
-                file_id=self.app.client.rnd_id(),
-                file_size=file_size,
-                file_part=[],
-                status=UploadStatus.PENDING,
-                with_delete=self.gc.upload_delete
-            )
-            await self.uploader.create_upload_task(link=target_link, upload_task=upload_task)
+        return await self._ensure_operation_applicator().apply_web_upload(payload)
 
     async def apply_web_channel_download(self, payload: dict) -> None:
-        chat_link = payload.get('chat_link')
-        meta = await parse_link(client=self.app.client, link=chat_link)
-        chat_id = meta.get('chat_id')
-        date_range = payload.get('date_range') or {}
-        start_date = date_range.get('start_date')
-        end_date = date_range.get('end_date')
-        selected = set(payload.get('download_type') or [])
-        download_type = {
-            dtype: dtype in selected
-            for dtype in DownloadType()
-        }
-        # Form selection is full Media Type Override when provided; else inherit global allowlist.
-        media_types_override = None
-        if payload.get('download_type') is not None:
-            from module.core.media_types import DOWNLOAD_MEDIA_TYPES, MEDIA_TYPES
-            media_types_override = {t: False for t in MEDIA_TYPES}
-            for dtype in DOWNLOAD_MEDIA_TYPES:
-                media_types_override[dtype] = bool(download_type.get(dtype))
-        keywords = payload.get('keywords') or []
-        include_comment = bool(payload.get('include_comment'))
-        filter_obj = Filter()
-        runtime_filter = self.runtime_message_filter(media_types_override) if hasattr(
-            self, 'runtime_message_filter'
-        ) else Filter({'media_types': download_type})
-        links = []
-
-        def _media_ok(item) -> bool:
-            if hasattr(runtime_filter, 'should_pass_media_type'):
-                return runtime_filter.should_pass_media_type(item)
-            return filter_obj.dtype(item, download_type)
-
-        async for message in self.app.client.get_chat_history(chat_id=chat_id, reverse=True):
-            if (
-                    filter_obj.date_range(message, start_date, end_date)
-                    and _media_ok(message)
-                    and filter_obj.keyword_filter(message, keywords)
-            ):
-                links.append(message.link if getattr(message, 'link', None) else message)
-                if include_comment:
-                    try:
-                        async for comment in iter_discussion_reply_messages(
-                                client=self.app.client,
-                                chat_id=chat_id,
-                                message_id=message.id,
-                                include_message=_media_ok,
-                        ):
-                            links.append(comment.link if getattr(comment, 'link', None) else comment)
-                    except (ValueError, AttributeError, MsgIdInvalid):
-                        pass
-        for link in links:
-            await self.create_download_task(
-                message_ids=link,
-                single_link=True,
-                diy_download_type=[_ for _ in DownloadType()]
-            )
+        return await self._ensure_operation_applicator().apply_web_channel_download(payload)
 
     def _ensure_task_queue_ops(self):
         """任务队列编排实例（懒建并缓存；实现见 module.webops.task_queue）。"""
