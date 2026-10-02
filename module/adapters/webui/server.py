@@ -15,6 +15,26 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+# 从拆分出的模块 import 回来：本模块内部仍用这些名字，外部引用也不会断。
+from module.adapters.webui.http_support import (  # noqa: F401
+    MAX_JSON_BODY_BYTES,
+    declared_length,
+    is_message_link,
+    normalize_date_range,
+    normalize_detected_transfer_range,
+    normalize_optional_int,
+    parse_optional_timestamp,
+)
+from module.adapters.webui.settings_support import (  # noqa: F401
+    get_web_host_from_env,
+    get_web_password_from_env,
+    get_web_port_from_env,
+    get_web_username_from_env,
+    load_runtime_settings,
+    merge_allowed_settings,
+    save_runtime_settings,
+)
+
 from module.adapters.webui.contracts import (
     SENSITIVE_SETTING_KEYS,
     SPA_VIEW_PATHS,
@@ -37,70 +57,14 @@ from module.domain.archive_naming.source_folders import normalize_archive_title_
 from module.persistence.transfer_store import TransferStore
 
 # JSON 请求体上限：WebUI 只收发控制数据（路径 / 链接 / 监听备份），不上传媒体本体。
-MAX_JSON_BODY_BYTES = 8 * 1024 * 1024
 
 
-def declared_length(handler) -> int:
-    """校验并返回 Content-Length 声明的请求体长度。
-
-    单一真源：``_consume_request_body``（决定读多少）与 ``_read_json``（回 400/413）
-    都走这里，避免上限变更后两处不一致。
-    """
-    raw_length = handler.headers.get("content-length") if handler.headers else None
-    try:
-        length = int(raw_length or "0")
-    except (TypeError, ValueError):
-        raise WebUiApiError(
-            "invalid_content_length",
-            "Invalid Content-Length header.",
-            HTTPStatus.BAD_REQUEST,
-        )
-    if length < 0:
-        raise WebUiApiError(
-            "invalid_content_length",
-            "Invalid Content-Length header.",
-            HTTPStatus.BAD_REQUEST,
-        )
-    if length > MAX_JSON_BODY_BYTES:
-        raise WebUiApiError(
-            "request_body_too_large",
-            "Request body is too large.",
-            HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-        )
-    return length
 
 
-def normalize_optional_int(value):
-    return int(value) if value not in (None, "") else None
 
 
-def is_message_link(link: str) -> bool:
-    try:
-        parsed = urlparse(str(link).strip())
-    except ValueError:
-        return False
-    paths = [part for part in parsed.path.split("/") if part]
-    if not paths:
-        return False
-    if paths[0] == "c":
-        return len(paths) >= 3 and paths[-1].isdigit()
-    return len(paths) >= 2 and paths[-1].isdigit()
 
 
-def normalize_detected_transfer_range(value) -> Optional[tuple[int, int]]:
-    if value in (None, ""):
-        return None
-    if isinstance(value, dict):
-        start_id = value.get("start_id")
-        end_id = value.get("end_id")
-    else:
-        try:
-            start_id, end_id = value
-        except (TypeError, ValueError):
-            return None
-    if start_id in (None, "") or end_id in (None, ""):
-        return None
-    return int(start_id), int(end_id)
 
 
 class AuthProvider:
@@ -1907,167 +1871,21 @@ class WebUiServer:
         }
 
 
-def parse_optional_timestamp(value):
-    if value in (None, ""):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        pass
-    try:
-        return datetime.datetime.fromisoformat(text).timestamp()
-    except ValueError:
-        raise WebUiApiError(
-            "invalid_date_range",
-            "Date range values must be timestamps or ISO datetimes.",
-            HTTPStatus.BAD_REQUEST,
-        )
 
 
-def normalize_date_range(value) -> dict:
-    if not isinstance(value, dict):
-        return {"start_date": None, "end_date": None}
-    start_date = parse_optional_timestamp(value.get("start_date"))
-    end_date = parse_optional_timestamp(value.get("end_date"))
-    if start_date is not None and end_date is not None and end_date < start_date:
-        raise WebUiApiError(
-            "date_range_end_before_start",
-            "Date range end must be greater than or equal to start.",
-            HTTPStatus.BAD_REQUEST,
-        )
-    return {"start_date": start_date, "end_date": end_date}
 
 
-def load_runtime_settings() -> dict:
-    from module.core.config import GlobalConfig, UserConfig
-
-    user = UserConfig()
-    global_config = GlobalConfig()
-    return {
-        "user": {
-            "config_path": user.config_path,
-            "api_id": user.config.get("api_id"),
-            "api_hash": user.config.get("api_hash"),
-            "bot_token": user.config.get("bot_token"),
-            "session_directory": user.config.get("session_directory"),
-            "save_directory": user.config.get("save_directory"),
-            "temp_directory": user.config.get("temp_directory"),
-            "max_tasks": user.config.get("max_tasks"),
-            "max_retries": user.config.get("max_retries"),
-            "download_type": user.config.get("download_type"),
-            "is_shutdown": user.config.get("is_shutdown"),
-            "proxy": user.config.get("proxy"),
-        },
-        "global": global_config.config,
-    }
 
 
-def save_runtime_settings(payload: dict) -> dict:
-    from module.core.config import GlobalConfig, UserConfig
-
-    user = UserConfig()
-    global_config = GlobalConfig()
-    user_config = merge_allowed_settings(
-        target=deepcopy(user.config),
-        patch=payload.get("user", {}) if isinstance(payload, dict) else {},
-        allowed={
-            "api_id",
-            "api_hash",
-            "bot_token",
-            "session_directory",
-            "save_directory",
-            "temp_directory",
-            "max_tasks",
-            "max_retries",
-            "download_type",
-            "is_shutdown",
-            "proxy",
-        },
-        gc=global_config,
-    )
-    user_config = UserConfig.normalize_runtime_numbers(user_config)
-    global_settings = merge_allowed_settings(
-        target=deepcopy(global_config.config),
-        patch=payload.get("global", {}) if isinstance(payload, dict) else {},
-        allowed={
-            "notice",
-            "export_table",
-            "upload",
-            "forward_type",
-            "target_profiles",
-            "message_filter",
-            "live_watch",
-            "transfer",
-            "deep_link",
-        },
-        gc=global_config,
-    )
-    user.save_config(user_config)
-    global_config.save_config(global_settings)
-    return load_runtime_settings()
 
 
-def merge_allowed_settings(target: dict, patch: dict, allowed: set, gc=None) -> dict:
-    if not isinstance(patch, dict):
-        return target
-    for key, value in patch.items():
-        if key not in allowed:
-            continue
-        if isinstance(value, dict) and isinstance(target.get(key), dict):
-            target[key] = merge_allowed_settings(
-                target=deepcopy(target.get(key, {})),
-                patch=value,
-                allowed=set(target.get(key, {}).keys()) | set(value.keys()),
-                gc=gc,
-            )
-        elif key in SENSITIVE_SETTING_KEYS and value in (None, ""):
-            continue
-        else:
-            target[key] = _coerce_type(target.get(key), value)
-    return target
 
 
-def _coerce_type(target_val, new_val):
-    """将 new_val 转换为 target_val 的类型，防止 Web UI 表单字符串污染配置类型。"""
-    if target_val is None or new_val is None:
-        return new_val
-    target_type = type(target_val)
-    if target_type is bool:
-        if isinstance(new_val, str):
-            return new_val.lower() in ("true", "1", "yes", "on")
-        return bool(new_val)
-    if target_type is list and isinstance(new_val, str):
-        # textarea / comma fields: avoid list("a\\nb") character-splitting
-        return [
-            part.strip()
-            for part in new_val.replace(",", "\n").split("\n")
-            if part.strip()
-        ]
-    try:
-        return target_type(new_val)
-    except (TypeError, ValueError):
-        return new_val
 
 
-def get_web_port_from_env(default: int = 0) -> int:
-    try:
-        return int(os.environ.get(ENVIRON.TRMD_WEB_PORT, default))
-    except (TypeError, ValueError):
-        return default
 
 
-def get_web_host_from_env(default: str = "127.0.0.1") -> str:
-    return os.environ.get(ENVIRON.TRMD_WEB_HOST, default)
 
 
-def get_web_username_from_env() -> Optional[str]:
-    return os.environ.get(ENVIRON.TRMD_WEB_USERNAME)
 
 
-def get_web_password_from_env() -> Optional[str]:
-    return os.environ.get(ENVIRON.TRMD_WEB_PASSWORD)

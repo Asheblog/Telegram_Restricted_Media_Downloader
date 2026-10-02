@@ -61,7 +61,9 @@ class SettingsOperations:
         }
 
     def update_web_settings(self, payload: dict) -> dict:
-        from module.adapters.webui.server import merge_allowed_settings
+        # 直接依赖"设置合并"所在的模块，而不是经 1,900 行的 HTTP 壳中转 ——
+        # 这是把配置面从 server.py 拆出去的直接收益（webops 不再依赖 HTTP 层）。
+        from module.adapters.webui.settings_support import merge_allowed_settings
 
         app = self._app()
         gc = self._gc()
