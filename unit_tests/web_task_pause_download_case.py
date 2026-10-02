@@ -13,6 +13,8 @@ from unit_tests.support.downloader_factory import (
 )
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
+from unit_tests.support.downloader_factory import build_downloader
+
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
@@ -111,9 +113,7 @@ class WebTaskPauseDownloadCase(unittest.TestCase):
                         while True:
                             await asyncio.sleep(3600)
 
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.app = SimpleNamespace(client=FakeClient())
-                downloader.should_continue_web_transfer_task = lambda tid: store.get_task(tid)['status'] != TransferStatus.PAUSED
+                downloader = build_downloader(app=SimpleNamespace(client=FakeClient()), should_continue_web_transfer_task=lambda tid: store.get_task(tid)['status'] != TransferStatus.PAUSED)
 
                 message = SimpleNamespace(chat=SimpleNamespace(id=1), id=1)
                 with self.assertRaises(asyncio.CancelledError):

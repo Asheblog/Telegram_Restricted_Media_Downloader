@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
+from unit_tests.support.downloader_factory import build_downloader
+
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
@@ -249,9 +251,7 @@ class WebTaskDeferredPauseCase(unittest.TestCase):
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             store.update_task(task_id, status=TransferStatus.PAUSING)
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
-            downloader.diagnostic = SimpleNamespace(info=lambda *args, **kwargs: None)
+            downloader = build_downloader(transfer_store=store, diagnostic=SimpleNamespace(info=lambda *args, **kwargs: None))
             submitted = []
             downloader.submit_web_task = lambda tid: submitted.append(tid)
             downloader._ensure_comment_delay_scheduler = lambda: None

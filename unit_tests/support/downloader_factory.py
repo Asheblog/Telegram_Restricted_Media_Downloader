@@ -140,28 +140,54 @@ def attach_task_manager(
     return manager
 
 
+def _minimal_gc() -> Any:
+    """最小可用的 GlobalConfig 替身。
+
+    组合根/集成管理器读 gc 的方式是"取 config 字典再查目标档案"
+    （`target_profile_limit(settings, ...)` 只要求 `settings.config` 或本身就是字典），
+    因此空 config 等价于"未配置任何目标档案"，不会伪造出上限。
+    """
+    return SimpleNamespace(
+        config={},
+        target_profiles={},
+        upload_delete=False,
+        get_comment_delay_minutes=lambda watch_id=None: 0,
+        get_deep_link_bot_whitelist=lambda: [],
+        message_filter=None,
+    )
+
+
 def build_downloader(
     *,
     transfer_store: Any = None,
     app: Any = None,
     gc: Any = None,
     loop: Any = None,
+    user: Any = None,
+    uploader: Any = None,
     with_task_manager: bool = False,
     with_runtime_slots: bool = True,
     **overrides: Any,
 ):
     """构造一个可直接使用的宿主（绕过真实构造函数，与既有测试同一路径）。
 
-    只填**必需且安全**的槽位；其余留给调用方用 ``**overrides`` 覆盖，
-    避免工厂变成"又一个什么都塞的大对象"。
+    默认值刻意补成**裸宿主的完整等价物**：组合根的那批 getter 已改为
+    "构造期必赋值的属性直接访问、不兜底"，所以缺 `gc` / `loop` 这类属性会在
+    运行时 AttributeError。工厂把它们填成安全默认，于是
+    `object.__new__(host)` + 逐个塞属性 可以被一次调用替代。
+
+    `loop` 默认 **None** 是刻意的：那是真实的降级分支
+    （`schedule_deferred_archive` 在 `loop is None` 时改为立即归档），
+    不是"没配好"。需要真 loop 时显式传。
     """
     downloader_class = import_downloader_class()
     downloader = object.__new__(downloader_class)
     downloader.transfer_store = transfer_store
     downloader.loop = loop
     downloader.app = app if app is not None else SimpleNamespace(client=None)
-    if gc is not None:
-        downloader.gc = gc
+    downloader.gc = gc if gc is not None else _minimal_gc()
+    downloader.user = user
+    downloader.uploader = uploader
     if with_runtime_slots:
         downloader.web_task_queue = asyncio.Queue()
         downloader.web_operation_queue = asyncio.Queue()

@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
+from unit_tests.support.downloader_factory import build_downloader
+
 install_pyrogram_stub()
 
 import sys
@@ -51,8 +53,7 @@ class WebTaskDeleteCase(unittest.TestCase):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
+            downloader = build_downloader(transfer_store=store)
             self._attach_task_manager(downloader, store)
             self.assertTrue(downloader.should_continue_web_transfer_task(task_id))
             store.delete_task(task_id)
@@ -64,8 +65,7 @@ class WebTaskDeleteCase(unittest.TestCase):
             store = TransferStore(directory=directory)
             task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
             store.update_task(task_id, status=TransferStatus.PAUSED)
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.transfer_store = store
+            downloader = build_downloader(transfer_store=store)
             self._attach_task_manager(downloader, store)
             self.assertFalse(downloader.should_continue_web_transfer_task(task_id))
 
@@ -82,11 +82,7 @@ class WebTaskDeleteCase(unittest.TestCase):
                     end_id=3,
                 )
                 store.update_task(task_id, status=TransferStatus.RUNNING)
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.transfer_store = store
-                downloader.loop = asyncio.get_running_loop()
-                downloader.app = SimpleNamespace(client=SimpleNamespace(name='test'))
-                downloader.uploader = SimpleNamespace()
+                downloader = build_downloader(transfer_store=store, loop=asyncio.get_running_loop(), app=SimpleNamespace(client=SimpleNamespace(name='test')), uploader=SimpleNamespace())
                 self._attach_task_manager(downloader, store, loop=downloader.loop)
                 processed_message_ids = []
 
@@ -142,15 +138,7 @@ class WebTaskDeleteCase(unittest.TestCase):
                 )
                 store.update_task(task_id, status=TransferStatus.RUNNING)
 
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.transfer_store = store
-                downloader.media_manager = MediaManager(store, save_directory=directory, temp_directory=directory)
-                downloader.web_submitted_task_ids = set()
-                downloader.web_task_queue = asyncio.Queue()
-                downloader.web_running_task = None
-                downloader.web_running_task_id = None
-                downloader.loop = asyncio.get_running_loop()
-                downloader.uploader = None
+                downloader = build_downloader(transfer_store=store, media_manager=MediaManager(store, save_directory=directory, temp_directory=directory), web_submitted_task_ids=set(), web_task_queue=asyncio.Queue(), web_running_task=None, web_running_task_id=None, loop=asyncio.get_running_loop(), uploader=None)
                 worker_cancelled = asyncio.Event()
 
                 async def fake_process_web_transfer_task(running_id):

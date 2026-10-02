@@ -3298,7 +3298,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 for message in messages:
                     yield message
 
-        downloader.app = SimpleNamespace(client=FakeClient())
+        downloader = build_downloader(app=SimpleNamespace(client=FakeClient()))
 
         async def run_case():
             with patch("module.downloader.asyncio.sleep", new=AsyncMock()):
@@ -3962,7 +3962,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     yield message
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
+        downloader = build_downloader(app=SimpleNamespace(client=client))
 
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
@@ -4018,7 +4018,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 raise AssertionError(f"unexpected history offset: {offset}")
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
+        downloader = build_downloader(app=SimpleNamespace(client=client))
 
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
@@ -4074,7 +4074,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     yield message
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
+        downloader = build_downloader(app=SimpleNamespace(client=client))
 
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
@@ -4135,7 +4135,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     yield message
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
+        downloader = build_downloader(app=SimpleNamespace(client=client))
 
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
@@ -4182,7 +4182,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     yield message
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
+        downloader = build_downloader(app=SimpleNamespace(client=client))
 
         async def fake_parse_link(client, link):
             return {"chat_id": "source-chat"}
@@ -4221,8 +4221,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     raise FloodWait(9)
                 return SimpleNamespace(id=100)
 
-        downloader.app = SimpleNamespace(client=FakeClient())
-        downloader.transfer_store = None
+        downloader = build_downloader(app=SimpleNamespace(client=FakeClient()), transfer_store=None)
 
         async def run_case():
             with (
@@ -4268,8 +4267,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 return SimpleNamespace(id=101)
 
         client = FakeClient()
-        downloader.app = SimpleNamespace(client=client)
-        downloader.transfer_store = None
+        downloader = build_downloader(app=SimpleNamespace(client=client), transfer_store=None)
 
         result = asyncio.run(
             downloader.forward(
@@ -4375,9 +4373,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             async def copy_media_group(self, **_kwargs):
                 return [SimpleNamespace(id=101), SimpleNamespace(id=102)]
 
-        downloader.app = SimpleNamespace(client=FakeClient())
-        downloader.transfer_store = None
-        downloader.archive_pikpak_item = fake_archive_pikpak_item
+        downloader = build_downloader(app=SimpleNamespace(client=FakeClient()), transfer_store=None, archive_pikpak_item=fake_archive_pikpak_item)
 
         async def run_case():
             result = await downloader.forward(
