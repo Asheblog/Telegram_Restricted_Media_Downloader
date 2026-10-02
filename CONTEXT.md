@@ -102,7 +102,7 @@ module/
 | 残留 | 现状 | 为什么没做 |
 | --- | --- | --- |
 | `WebOperationsMixin` 仍是宿主门面 | 约 1,060 行，15 个 `_ensure_*` 惰性工厂 + 大量单语句转发 | `WebOperationsFacade` 必须按名字取到这些方法；继续搬只增加间接层，不减少耦合 |
-| `composition_root` 的 `*_getter` | **`_app` / `_gc` / `_loop` / `_pb` 已去掉静默兜底**（改为直接属性访问，初始化顺序错误会立刻 AttributeError）；其余 getter 仍是 `getattr(self, "x", default)` | 这四个的收紧是**单变量实验**定出来的（逐个收紧、跑全量、记录失败）：`_app`/`_pb` 各 0 失败，`_gc` 5 个失败（探针定位到 `target_profile_limit(gc, ...)` 只需 config，补 `SimpleNamespace(config={})` 后收紧），`_loop` 1 个失败（核对该用例走的是生产降级分支，改为显式 `loop = None` 后收紧）。其余 getter 尚未逐个实验 |
+| `composition_root` 的 `*_getter` | **10 个已去掉静默兜底**：`_app`/`_gc`/`_loop`/`_pb`/`_watch_manager`/`_pikpak_manager`/`_progress_tracker` 改为直接属性访问；`_transfer_store`/`_runtime_user`/`_uploader`/`_my_id` **刻意保留兜底**（运行期才装配，None 是真实降级语义） | 收紧与否由**两个证据**共同决定，缺一不可：① 单变量实验（逐个收紧→跑全量→记录失败）；② 查该属性是否在 `__init__` 中赋值。7 个候选实验**全部 0 失败**，但其中 4 个属性运行期才装配 —— 它们只是因为"测试都预先设了这些属性"才没暴露。只用①会改坏生产降级路径。边界已由 `composition_root_getter_boundary_case` 钉死（5 用例/18 subtests，并反向验证过守卫有效性） |
 | `WebTransferRunner` 的 4 个"双实现"方法 | 宿主有 `web_task_manager` 时转发；否则按 `transfer_store` 自行判定 | **已加一致性契约测试**（`runner_host_parity_case`：同状态两条路径结论一致，3 用例 / 14 subtests 全绿）。删兜底会同时改 15 个用 `SimpleNamespace` 宿主构造 runner 的测试文件，属独立变更 |
 | `runner.py` / `operations.py` 的约 68 处宿主能力探测 | `getattr(host, 'x', None)` 式软探测 | 多数是可选能力（如 `_log_system_chain`），软探测本身合理；需要逐点判定"可选"还是"必需" |
 | 测试仍有约 40 处 `object.__new__(host)` 手工装配 | 工厂 `unit_tests/support/downloader_factory.py` 已就位并迁移了部分 | 多数赋值在 `with` 块内、缩进更深（机械替换会破坏语义，试过两版 codemod 都只能吃到少数），需逐个手迁 |
