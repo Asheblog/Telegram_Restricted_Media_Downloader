@@ -68,20 +68,31 @@ module/
 ```
 
 **`webops/` 是业务编排层**：它承载"用户可见操作"的编排（任务队列、监听、
-账号与安装向导、媒体清理、归档整理、诊断导出、统计、延迟抓取、区间探测），
-并**组合**适配器（PikPak 归档、上传器、HTTP 壳）。依赖方向是刻意的：
-`webops → adapters`，且 `adapters` 的允许依赖集合中**不含 webops**
+账号与安装向导、媒体清理、归档整理、诊断导出、统计、延迟抓取、区间探测、
+操作应用、运行时恢复），并**组合**适配器（PikPak 归档、上传器、HTTP 壳）。
+依赖方向是刻意的：`webops → adapters`，且 `adapters` 的允许依赖集合中**不含 webops**
 （`architecture_guard.test_no_layer_inversions` 会拦住反向 import）。
 判据：某个模块若"零 HTTP 原语、但需要组合多个下层能力"，它属于 webops；
 若它定义的是 HTTP 层与外部共享的**契约/载荷形状**（`contracts`、
-`statistics_payload`、`setup` 的异常类型），它留在 `adapters/webui`。
+`statistics_payload`、`setup` 的异常类型与 token 校验），它留在 `adapters/webui`。
+
+这条判据是踩坑后定下来的：我曾把 `setup.py` **整个文件**搬到 webops，
+结果 `handlers/setup_api.py` 需要它的异常类型 → 层反转被守卫拦下。
+正确做法是**按契约与编排切分，而不是按文件切分** —— 现在
+`SetupCoordinator` 在 `webops/setup_coordinator.py`，异常与校验函数留在
+`adapters/webui/setup.py`。同理 `statistics_payload`（ADR-0005 数据契约）
+留在 `adapters/webui`，由 webops 反向依赖。
 
 顶层仅保留：`downloader.py`（门面）、`composition_root.py`、`constants.py`、`bootstrap.py`、`ports.py`；其余顶层文件均为指向子包实现的兼容 shim。`constants.py`（纯常量，零副作用）与 `bootstrap.py`（幂等 `initialize()`）承载原 `__init__.py` 的常量与运行时副作用；`module/__init__.py` 仅 re-export，**import 任何子模块均零副作用**（不建目录、不写日志、不起线程），运行时副作用由 `main.py` 与组合根显式调用 `bootstrap.initialize()` 触发。
 
-**架构立场（截至 0.2.252）**：无模块级导入环；子包不 import 顶层 shim；
+**架构立场（解耦轮）**：无模块级导入环；子包不 import 顶层 shim；
 `core` 不依赖 `adapters/infra/transfer`；`transfer` 不依赖 `adapters`；
 `infra` 不依赖 `transfer`；组合根无 `__getattr__` 反射装配；
-WebUI 的业务编排已整体迁出 adapters（见 `webops/`）。
+**WebUI 的业务编排已整体迁出 adapters** —— `adapters/webui` 现在只剩 HTTP 壳
+（`server.py`）、`handlers/*`、契约（`contracts` / `statistics_payload` /
+`setup` 的异常与校验）、`security`、`view_model`、静态资源加载
+（`static_assets`）与前端构建脚本（`build_frontend` / `download_fonts`）。
+
 
 ### 已知残留耦合（有意记录，未完成）
 
@@ -90,11 +101,20 @@ WebUI 的业务编排已整体迁出 adapters（见 `webops/`）。
 
 | 残留 | 现状 | 为什么没做 |
 | --- | --- | --- |
-| `WebOperationsMixin` 仍是宿主门面 | 约 1,050 行、含 ~77 个单语句转发 + `_ensure_*` 惰性工厂 | `WebOperationsFacade` 必须按名字取到这些方法；继续搬只增加间接层，不减少耦合 |
-| `composition_root` 的 50 个 `*_getter` | 协作方接线已去重为三个 `_new_*()` 工厂；getter 本身仍在 | 做过收紧实验（把"构造期必定已赋值"的改成直接属性访问）→ 6 个用例失败：半构造宿主依赖这些静默兜底。正确顺序是先让测试全面走 `unit_tests/support/downloader_factory.py`，再收紧 |
-| `WebTransferRunner` 的 4 个"双实现"方法 | 宿主有 `web_task_manager` 时转发；否则按 `transfer_store` 自行判定 | 两条分支判定依据本就不同；统一判定等于改行为。应先补一条契约测试证明两者一致，再合并 |
+| `WebOperationsMixin` 仍是宿主门面 | 约 1,060 行，15 个 `_ensure_*` 惰性工厂 + 大量单语句转发 | `WebOperationsFacade` 必须按名字取到这些方法；继续搬只增加间接层，不减少耦合 |
+| `composition_root` 的约 50 个 `*_getter` | 协作方接线已去重为三个 `_new_*()` 工厂；getter 本身仍在 | 做过收紧实验（把"构造期必定已赋值"的改成直接属性访问）→ 6 个用例失败：半构造宿主依赖这些静默兜底。正确顺序是先让测试全面走 `unit_tests/support/downloader_factory.py`，再收紧 |
+| `WebTransferRunner` 的 4 个"双实现"方法 | 宿主有 `web_task_manager` 时转发；否则按 `transfer_store` 自行判定 | **已加一致性契约测试**（`runner_host_parity_case`：同状态两条路径结论一致，3 用例 / 14 subtests 全绿）。删兜底会同时改 15 个用 `SimpleNamespace` 宿主构造 runner 的测试文件，属独立变更 |
 | `runner.py` / `operations.py` 的约 68 处宿主能力探测 | `getattr(host, 'x', None)` 式软探测 | 多数是可选能力（如 `_log_system_chain`），软探测本身合理；需要逐点判定"可选"还是"必需" |
-| 测试仍有约 40 处 `object.__new__(host)` 手工装配 | 工厂 `unit_tests/support/downloader_factory.py` 已就位并迁移了部分 | 多数赋值在 `with` 块内、缩进更深，机械替换会破坏语义，需逐个手迁 |
+| 测试仍有约 40 处 `object.__new__(host)` 手工装配 | 工厂 `unit_tests/support/downloader_factory.py` 已就位并迁移了部分 | 多数赋值在 `with` 块内、缩进更深（机械替换会破坏语义，试过两版 codemod 都只能吃到少数），需逐个手迁 |
+| 15 个 `_ensure_*` 的"检查-创建-赋值"未加锁 | 只有 `ensure_scheduler()` 加了双检锁（它有实害：并发首次触发会双启动调度器） | 其余协作者并发首次触发最多多造一个实例、由最后一次赋值胜出，无功能性危害；给全部 15 个加锁会引入新的全局锁与大量缩进变化，收益不抵成本 |
+
+**测试基础设施的既有限制（重要，避免重复踩坑）**：
+- 仓库**不能有"会在收集期 import `module.*` 的 `conftest.py`"** —— 那会触发
+  `module.utils.parser` 在 import 期执行 `parse_args()`，把 pytest 自己的参数当成
+  非法参数并以 exit 2 退出。需要 hook 时必须把逻辑推迟到测试函数内部。
+- `install_pyrogram_stub()` 在 `'pyrogram' in sys.modules` 时提前返回，因此测试
+  实际跑在真实 kurigram/pyrogram 上，涉及其版本的断言要谨慎。
+
 
 
 ### 配置系统（双层）
