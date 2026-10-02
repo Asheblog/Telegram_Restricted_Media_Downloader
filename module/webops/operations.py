@@ -856,64 +856,42 @@ class WebOperationsMixin:
             tz_offset_minutes=tz_offset_minutes,
         )
 
+    def _ensure_settings_ops(self):
+        """设置/PikPak 账号编排实例（懒建并缓存；实现见 module.webops.settings_operations）。"""
+        ops = self.__dict__.get('_settings_ops_impl')
+        if ops is None:
+            from module.webops.settings_operations import SettingsOperations
+            ops = SettingsOperations(
+                app_getter=lambda: getattr(self, 'app', None),
+                gc_getter=lambda: getattr(self, 'gc', None),
+                download_upload_window_getter=lambda: getattr(
+                    self, 'download_upload_window', None
+                ),
+                local_storage_guard_getter=lambda: getattr(
+                    self, 'local_storage_guard', None
+                ),
+                pikpak_manager_getter=lambda: getattr(self, 'pikpak_manager', None),
+                # 必须惰性：测试会预置 host.setup_coordinator（假协调器），
+                # 绑定时求值会把假协调器当成缺失而重建真的。
+                setup_coordinator_getter=lambda: self._setup_coordinator(),
+            )
+            self._settings_ops_impl = ops
+        return ops
+
+    def _setup_coordinator(self):
+        """取（必要时创建）首启向导协调器。"""
+        coordinator = getattr(self, 'setup_coordinator', None)
+        if coordinator is None:
+            from module.adapters.webui.setup import SetupCoordinator
+            coordinator = SetupCoordinator()
+            self.setup_coordinator = coordinator
+        return coordinator
+
     def get_web_settings(self) -> dict:
-        return {
-            'user': {
-                'config_path': self.app.config_path,
-                'api_id': self.app.config.get('api_id'),
-                'api_hash': self.app.config.get('api_hash'),
-                'bot_token': self.app.config.get('bot_token'),
-                'session_directory': self.app.config.get('session_directory'),
-                'save_directory': self.app.config.get('save_directory'),
-                'temp_directory': self.app.config.get('temp_directory'),
-                'max_tasks': self.app.config.get('max_tasks'),
-                'max_retries': self.app.config.get('max_retries'),
-                'download_type': self.app.config.get('download_type'),
-                'is_shutdown': self.app.config.get('is_shutdown'),
-                'proxy': self.app.config.get('proxy')
-            },
-            'global': self.gc.config
-        }
+        return self._ensure_settings_ops().get_web_settings()
 
     def update_web_settings(self, payload: dict) -> dict:
-        user_config = merge_allowed_settings(
-            target=deepcopy(self.app.config),
-            patch=payload.get('user', {}) if isinstance(payload, dict) else {},
-            allowed={
-                'api_id', 'api_hash', 'bot_token', 'session_directory', 'save_directory',
-                'temp_directory', 'max_tasks', 'max_retries', 'download_type', 'is_shutdown',
-                'proxy'
-            }
-        )
-        global_config = merge_allowed_settings(
-            target=deepcopy(self.gc.config),
-            patch=payload.get('global', {}) if isinstance(payload, dict) else {},
-            allowed={
-                'notice', 'export_table', 'upload', 'forward_type', 'target_profiles',
-                'message_filter', 'live_watch', 'transfer', 'deep_link',
-            }
-        )
-        user_config = UserConfig.normalize_runtime_numbers(user_config)
-        self.app.save_config(user_config)
-        self.app.config = user_config
-        self.app.download_type = user_config.get('download_type')
-        self.app.is_shutdown = user_config.get('is_shutdown')
-        self.app.max_download_task = user_config['max_tasks']['download']
-        self.app.max_upload_task = user_config['max_tasks']['upload']
-        self.app.max_download_retries = user_config['max_retries']['download']
-        self.app.max_upload_retries = user_config['max_retries']['upload']
-        self.app.save_directory = user_config.get('save_directory')
-        self.app.temp_directory = PARSE_ARGS.temp or (
-            user_config.get('temp_directory') or self.app.TEMP_DIRECTORY
-        )
-        self.app.work_directory = PARSE_ARGS.session or (
-            user_config.get('session_directory') or self.app.WORK_DIRECTORY
-        )
-        self.gc.save_config(global_config)
-        self.download_upload_window.notify_limit_changed()
-        if getattr(self, 'local_storage_guard', None):
-            self.local_storage_guard.notify_limit_changed()
-        return self.get_web_settings()
+        return self._ensure_settings_ops().update_web_settings(payload)
 
     def start_web_ui(self, with_auth_provider: bool = False, defer_runtime_recovery: bool = False) -> None:
         if PARSE_ARGS.web is None:
@@ -1011,211 +989,44 @@ class WebOperationsMixin:
             log.debug(f'Archive author reorganize resume skipped: {e}')
 
     def _archive_settings(self) -> dict:
-        profiles = (self.gc.config or {}).get('target_profiles') or {}
-        pikpak = profiles.get('pikpak') if isinstance(profiles, dict) else {}
-        archive = (pikpak or {}).get('archive') if isinstance(pikpak, dict) else {}
-        return archive if isinstance(archive, dict) else {}
+        return self._ensure_settings_ops()._archive_settings()
 
     def _set_archive_settings(self, *, enable: Optional[bool] = None, remote: Optional[str] = None) -> None:
-        config = deepcopy(self.gc.config)
-        profiles = config.setdefault('target_profiles', {})
-        if not isinstance(profiles, dict):
-            profiles = {}
-            config['target_profiles'] = profiles
-        pikpak = profiles.setdefault('pikpak', {})
-        if not isinstance(pikpak, dict):
-            pikpak = {}
-            profiles['pikpak'] = pikpak
-        archive = pikpak.setdefault('archive', {})
-        if not isinstance(archive, dict):
-            archive = {}
-            pikpak['archive'] = archive
-        if enable is not None:
-            archive['enable'] = bool(enable)
-        if remote is not None:
-            archive['remote'] = str(remote).strip().rstrip(':') or 'pikpak'
-        self.gc.save_config(config)
-        self.gc.target_profiles = config.get('target_profiles', self.gc.target_profiles)
-
-    # --- PikPak 多账号绑定/切换 -------------------------------------------------
+        return self._ensure_settings_ops()._set_archive_settings(enable=enable, remote=remote)
 
     @staticmethod
     def _normalize_account_remote(value: str) -> str:
-        return str(value or '').strip().rstrip(':')
+        from module.webops.settings_operations import SettingsOperations
+        return SettingsOperations._normalize_account_remote(value)
 
     def _pikpak_accounts(self) -> list:
-        """Return the persisted list of bound PikPak accounts (each ``{'remote': str}``)."""
-        profiles = (self.gc.config or {}).get('target_profiles') or {}
-        pikpak = profiles.get('pikpak') if isinstance(profiles, dict) else {}
-        accounts = (pikpak or {}).get('accounts') if isinstance(pikpak, dict) else None
-        if not isinstance(accounts, list):
-            return []
-        normalized = []
-        seen = set()
-        for entry in accounts:
-            if not isinstance(entry, dict):
-                continue
-            remote = self._normalize_account_remote(entry.get('remote'))
-            if not remote or remote in seen:
-                continue
-            seen.add(remote)
-            normalized.append({'remote': remote})
-        return normalized
+        return self._ensure_settings_ops()._pikpak_accounts()
 
     def _set_pikpak_accounts(self, accounts: list) -> None:
-        """Persist a new list of account remotes under target_profiles.pikpak.accounts."""
-        config = deepcopy(self.gc.config)
-        profiles = config.setdefault('target_profiles', {})
-        if not isinstance(profiles, dict):
-            profiles = {}
-            config['target_profiles'] = profiles
-        pikpak = profiles.setdefault('pikpak', {})
-        if not isinstance(pikpak, dict):
-            pikpak = {}
-            profiles['pikpak'] = pikpak
-        pikpak['accounts'] = [
-            {'remote': self._normalize_account_remote(entry.get('remote'))}
-            for entry in accounts
-            if isinstance(entry, dict) and self._normalize_account_remote(entry.get('remote'))
-        ]
-        self.gc.save_config(config)
-        self.gc.target_profiles = config.get('target_profiles', self.gc.target_profiles)
+        return self._ensure_settings_ops()._set_pikpak_accounts(accounts)
 
     @staticmethod
     def _next_pikpak_remote_name(existing: set) -> str:
-        """Auto-name a new rclone remote: ``pikpak``, then ``pikpak2`` … ``pikpak5``."""
-        if 'pikpak' not in existing:
-            return 'pikpak'
-        for n in range(2, PIKPAK_MAX_ACCOUNTS + 1):
-            candidate = f'pikpak{n}'
-            if candidate not in existing:
-                return candidate
-        raise ValueError(f'最多只能绑定 {PIKPAK_MAX_ACCOUNTS} 个 PikPak 账号。')
+        from module.webops.settings_operations import SettingsOperations
+        return SettingsOperations._next_pikpak_remote_name(existing)
 
     def _invalidate_pikpak_archive_client(self) -> None:
-        manager = getattr(self, 'pikpak_manager', None)
-        invalidate = getattr(manager, 'invalidate_archive_client', None)
-        if callable(invalidate):
-            invalidate()
-
-    def _setup_coordinator(self):
-        coordinator = getattr(self, 'setup_coordinator', None)
-        if coordinator is None:
-            from module.adapters.webui.setup import SetupCoordinator
-            coordinator = SetupCoordinator()
-            self.setup_coordinator = coordinator
-        return coordinator
+        return self._ensure_settings_ops()._invalidate_pikpak_archive_client()
 
     def _read_rclone_remotes(self) -> tuple:
-        """Return ``(remotes, error)``. On success error is ``''``; on failure
-        remotes is ``[]`` and error carries the reason. Callers MUST distinguish
-        "no remotes configured" from "rclone unavailable" — treating a refused
-        read as an empty list would mislabel every account as missing and can
-        orphan credentials on delete."""
-        try:
-            return self._setup_coordinator().list_remotes(), ''
-        except Exception as e:
-            return [], str(e)
+        return self._ensure_settings_ops()._read_rclone_remotes()
 
     def list_pikpak_accounts(self) -> dict:
-        """Return bound accounts, the active remote, and raw rclone remotes for the UI."""
-        accounts = self._pikpak_accounts()
-        active = self._normalize_account_remote(self._archive_settings().get('remote'))
-        remotes, rclone_error = self._read_rclone_remotes()
-        remote_set = set(remotes)
-        remotes_known = not rclone_error
-        payload_accounts = []
-        for entry in accounts:
-            remote = entry['remote']
-            payload_accounts.append({
-                'remote': remote,
-                'active': remote == active,
-                # Only genuinely-absent remotes are "missing": when rclone is
-                # unreadable we don't know, so accounts must not be mislabelled.
-                'missing': remotes_known and remote not in remote_set,
-            })
-        return {
-            'accounts': payload_accounts,
-            'active': active,
-            'remotes': remotes,
-            'limit': PIKPAK_MAX_ACCOUNTS,
-            'rclone_error': rclone_error,
-        }
+        return self._ensure_settings_ops().list_pikpak_accounts()
 
     def add_pikpak_account(self, payload: dict) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        username = str(payload.get('username') or '').strip()
-        password = str(payload.get('password') or '')
-        accounts = self._pikpak_accounts()
-        if len(accounts) >= PIKPAK_MAX_ACCOUNTS:
-            raise ValueError(f'最多只能绑定 {PIKPAK_MAX_ACCOUNTS} 个 PikPak 账号。')
-
-        existing_remotes, _ = self._read_rclone_remotes()
-        remote = self._next_pikpak_remote_name(
-            set(existing_remotes) | {a['remote'] for a in accounts}
-        )
-
-        probe = self._setup_coordinator().configure_pikpak_remote(
-            remote=remote,
-            username=username,
-            password=password,
-            overwrite=False,
-        )
-        if not probe.get('ok'):
-            raise RuntimeError(probe.get('message') or f'remote「{remote}」探测失败。')
-
-        accounts.append({'remote': remote})
-        self._set_pikpak_accounts(accounts)
-        # Point the active-remote pointer at the new account; do NOT force-enable
-        # the archive — the user's enable choice must be preserved (ADR-0016).
-        self._set_archive_settings(remote=remote)
-        self._invalidate_pikpak_archive_client()
-        return self.list_pikpak_accounts()
+        return self._ensure_settings_ops().add_pikpak_account(payload)
 
     def switch_pikpak_account(self, payload: dict) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        remote = self._normalize_account_remote(payload.get('remote'))
-        accounts = self._pikpak_accounts()
-        bound = {a['remote'] for a in accounts}
-        if not remote:
-            raise ValueError('请指定要切换到的 remote。')
-        if remote not in bound:
-            raise ValueError(f'remote「{remote}」未绑定。')
-        remotes, rclone_error = self._read_rclone_remotes()
-        if rclone_error:
-            raise ValueError('无法读取 rclone 配置，请确认 rclone 已安装且配置可读。')
-        if remote not in set(remotes):
-            raise ValueError(f'remote「{remote}」已不在 rclone 配置中，请先重新配置。')
-        # Only flip the active-account pointer; leave the archive enable flag as-is.
-        self._set_archive_settings(remote=remote)
-        self._invalidate_pikpak_archive_client()
-        return self.list_pikpak_accounts()
+        return self._ensure_settings_ops().switch_pikpak_account(payload)
 
     def remove_pikpak_account(self, payload: dict) -> dict:
-        payload = payload if isinstance(payload, dict) else {}
-        remote = self._normalize_account_remote(payload.get('remote'))
-        accounts = self._pikpak_accounts()
-        bound = {a['remote'] for a in accounts}
-        if not remote:
-            raise ValueError('请指定要删除的 remote。')
-        if remote not in bound:
-            raise ValueError(f'remote「{remote}」未绑定。')
-        active = self._normalize_account_remote(self._archive_settings().get('remote'))
-        if remote == active:
-            raise ValueError('不能删除当前激活的账号，请先切换到其他账号。')
-
-        # Delete the rclone remote only when it still exists; a genuinely "missing"
-        # account (rclone.conf entry already gone) is still removable. A refused
-        # read (rclone unavailable) must fail loudly instead of silently dropping
-        # the binding and orphaning credentials in rclone.conf.
-        remotes, rclone_error = self._read_rclone_remotes()
-        if rclone_error:
-            raise ValueError('无法读取 rclone 配置，请确认 rclone 已安装且配置可读。')
-        if remote in set(remotes):
-            self._setup_coordinator().delete_remote(remote)
-
-        self._set_pikpak_accounts([a for a in accounts if a['remote'] != remote])
-        return self.list_pikpak_accounts()
+        return self._ensure_settings_ops().remove_pikpak_account(payload)
 
     def is_setup_ready(self) -> bool:
         return bool(self.get_setup_status().get('ready'))
