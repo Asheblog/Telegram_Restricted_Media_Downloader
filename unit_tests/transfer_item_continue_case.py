@@ -13,7 +13,7 @@ sys.argv = [sys.argv[0]]
 
 class TransferItemContinueCase(unittest.TestCase):
     def test_should_continue_web_transfer_item_false_after_failure(self):
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
         from module.persistence.transfer_store import TransferStore, TransferStatus
         from module.web_operations import WebOperationsMixin
 

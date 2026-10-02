@@ -14,7 +14,7 @@ install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
 from module.adapters.pikpak.integration import PikpakIntegrationManager
-from module.adapters.webui.task_manager import WebUITaskManager
+from module.webops.task_manager import WebUITaskManager
 from module.transfer_store import TransferStore, TransferStatus
 
 

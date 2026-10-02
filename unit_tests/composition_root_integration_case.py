@@ -159,6 +159,41 @@ class CompositionRootIntegrationCase(unittest.TestCase):
 
     # ── 1. 真实装配 ──
 
+    def test_00_getter_resolution_contract_on_fully_built_root(self):
+        """在**完整构造**的组合根上，每个协作方 getter 都必须解析到已装配的对象。
+
+        为什么需要这条：`composition_root` 里有一批 `_app() / _gc() / _transfer_store()`
+        之类的 getter，它们此前用 `getattr(self, 'x', None)` 静默兜底，因此
+        "初始化顺序写错"会表现为下游拿到 None（或兜底新建一个对象），而不是报错。
+        收紧兜底的前提是先有一条"完整构造下必然解析成功"的断言 —— 就是本用例。
+        它只断言**解析成功且同一**，不锁实现细节（不要求内部字段名）。
+        """
+        dl = self.downloader
+        expectations = {
+            "_app": dl.app,
+            "_gc": dl.gc,
+            "_loop": dl.loop,
+            "_pb": dl.pb,
+            "_transfer_store": dl.transfer_store,
+            "_watch_manager": dl.watch_manager,
+            "_pikpak_manager": dl.pikpak_manager,
+            "_require_watch_manager": dl.watch_manager,
+            "_require_pikpak_manager": dl.pikpak_manager,
+            "_require_progress_tracker": dl.progress_tracker,
+        }
+        for getter_name, expected in expectations.items():
+            with self.subTest(getter=getter_name):
+                getter = getattr(dl, getter_name, None)
+                self.assertIsNotNone(getter, f"{getter_name} 不存在")
+                resolved = getter()
+                self.assertIsNotNone(resolved, f"{getter_name}() 解析为 None")
+                self.assertIs(
+                    resolved,
+                    expected,
+                    f"{getter_name}() 解析到的不是已装配的那个对象"
+                    f"（说明出现了兜底新建或时序错位）",
+                )
+
     def test_01_real_composition_wired_every_collaborator(self):
         dl = self.downloader
         self.assertIsNotNone(dl.gc, "GlobalConfig 未接线")

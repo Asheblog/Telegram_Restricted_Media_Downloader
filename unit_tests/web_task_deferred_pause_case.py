@@ -11,7 +11,7 @@ from unit_tests.pyrogram_stub import install_pyrogram_stub
 install_pyrogram_stub()
 sys.argv = [sys.argv[0]]
 
-from module.adapters.webui.task_manager import WebUITaskManager
+from module.webops.task_manager import WebUITaskManager
 from module.adapters.webui.view_model import WebUiViewModel
 from module.transfer.runner import WebTransferRunner
 from module.transfer_store import TransferStore, TransferStatus

@@ -1,3 +1,3 @@
 # coding=UTF-8
-"""Compatibility shim — implementation in module.adapters.webui.task_manager."""
-from module.adapters.webui.task_manager import WebUITaskManager  # noqa: F401
+"""Compatibility shim — implementation in module.webops.task_manager."""
+from module.webops.task_manager import WebUITaskManager  # noqa: F401

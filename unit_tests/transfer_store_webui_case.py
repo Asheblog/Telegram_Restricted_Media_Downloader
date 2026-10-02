@@ -16,6 +16,8 @@ from urllib.parse import quote
 
 from unit_tests.pyrogram_stub import install_pyrogram_stub
 
+from unit_tests.support.downloader_factory import build_downloader
+
 install_pyrogram_stub()
 
 # module.utils.parser 在 import 期就执行 argparse.parse_args()，会把 pytest 自己的 argv
@@ -25,7 +27,7 @@ _ORIGINAL_ARGV = sys.argv
 sys.argv = [_ORIGINAL_ARGV[0]]
 
 import module as trmd_module
-from module.adapters.webui.task_manager import WebUITaskManager
+from module.webops.task_manager import WebUITaskManager
 from module.core.media_types import MEDIA_TYPES_DEFAULT
 from module.core.message_filter_factory import build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
@@ -3304,8 +3306,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
     def test_pikpak_ingest_confirmation_requires_forwarded_message_identity(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.app = SimpleNamespace(client=object())
+        downloader = build_downloader(app=SimpleNamespace(client=object()))
 
         self.assertFalse(
             asyncio.run(
@@ -3672,8 +3673,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         self,
     ):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.gc = SimpleNamespace(upload_delete=False)
+        downloader = build_downloader(gc=SimpleNamespace(upload_delete=False))
 
         meta = downloader.build_download_upload_meta(
             target_link="https://t.me/pikpak_bot",
@@ -3951,7 +3951,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4007,7 +4007,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4063,7 +4063,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4124,7 +4124,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4171,7 +4171,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
             return {"chat_id": "source-chat"}
 
         with patch(
-            "module.adapters.webui.operations.parse_link",
+            "module.webops.operations.parse_link",
             side_effect=fake_parse_link,
         ):
             detected = asyncio.run(
@@ -4401,9 +4401,10 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
     def test_webui_start_requeues_running_tasks_after_container_restart(self):
         TelegramRestrictedMediaDownloader = import_downloader_class()
-        downloader = object.__new__(TelegramRestrictedMediaDownloader)
-        downloader.app = SimpleNamespace(
+        downloader = build_downloader(
+            app=SimpleNamespace(
             temp_directory="tmp", save_directory="downloads"
+            ),
         )
         submitted_task_ids = []
         downloader.submit_web_task = lambda task_id: submitted_task_ids.append(task_id)
@@ -4421,15 +4422,15 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
         with (
             patch(
-                "module.adapters.webui.operations.PARSE_ARGS",
+                "module.webops.operations.PARSE_ARGS",
                 SimpleNamespace(web=8080),
             ),
             patch(
-                "module.adapters.webui.operations.TransferStore",
+                "module.webops.operations.TransferStore",
                 return_value=fake_store,
             ),
             patch(
-                "module.adapters.webui.operations.WebUiServer",
+                "module.webops.operations.WebUiServer",
                 return_value=fake_web_ui,
             ),
         ):
@@ -4462,13 +4463,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
         TelegramRestrictedMediaDownloader = import_downloader_class()
 
         async def run_case():
-            downloader = object.__new__(TelegramRestrictedMediaDownloader)
-            downloader.loop = asyncio.get_running_loop()
-            downloader.web_task_queue = asyncio.Queue()
-            downloader.web_submitted_task_ids = set()
-            downloader.web_operation_queue = asyncio.Queue()
-            downloader.web_running_task = None
-            downloader.web_running_task_id = None
+            downloader = build_downloader(loop=asyncio.get_running_loop(), web_task_queue=asyncio.Queue(), web_submitted_task_ids=set(), web_operation_queue=asyncio.Queue(), web_running_task=None, web_running_task_id=None)
             started_task_ids = []
             cancelled_task_ids = []
 
@@ -5809,15 +5804,16 @@ class TransferStoreWebUiCase(unittest.TestCase):
                 store.update_task(task_id, status=TransferStatus.RUNNING)
                 store.update_task_range_runtime(task_id, current_range_message_id=10)
 
-                downloader = object.__new__(TelegramRestrictedMediaDownloader)
-                downloader.transfer_store = store
-                downloader.uploader = object()
-                downloader.app = SimpleNamespace(client=SimpleNamespace())
-                downloader.gc = SimpleNamespace(
+                downloader = build_downloader(
+                    transfer_store=store,
+                    uploader=object(),
+                    app=SimpleNamespace(client=SimpleNamespace()),
+                    gc=SimpleNamespace(
                     download_upload=True, upload_delete=False
+                    ),
+                    forward_calls=[],
+                    fallback_calls=[],
                 )
-                downloader.forward_calls = []
-                downloader.fallback_calls = []
 
                 async def fake_forward(**kwargs):
                     downloader.forward_calls.append(kwargs)

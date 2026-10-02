@@ -23,8 +23,8 @@ Phase 0–3 目录迁移、Protocol seam、deepen（P1–P4）与 arch-decouple 
 main.py
   └── TelegramRestrictedMediaDownloader          # module/downloader.py（门面）
         ├── TrmdCompositionRoot                  # module/composition_root.py（显式接线）
-        ├── WebOperationsMixin                   # adapters/webui/operations.py
-        │     └── ArchiveAuthorOps               # adapters/webui/archive_author_ops.py
+        ├── WebOperationsMixin                   # module/webops/operations.py（宿主门面）
+        │     └── 各编排协作者                    # module/webops/*（stats/diagnostics/…）
         └── BotHostMixin                         # adapters/bot/host.py
 
 装配出的主要模块：
@@ -34,7 +34,10 @@ main.py
   infra/uploader.py        TelegramUploader（依赖 domain 模型，不依赖 transfer 实现）
   adapters/bot/            Bot + CallbackHandler + BotHostMixin
   adapters/pikpak/         PikPak 集成 + rclone 归档 + Archive Author 执行
-  adapters/webui/          HTTP 壳 + handlers/* / operations / ViewModel / 任务调度 / 前端资源
+  adapters/webui/          **仅 HTTP 面**：HTTP 壳 + handlers/* + contracts/security/
+                           ViewModel + statistics_payload（数据契约）+ static_assets
+  webops/                  业务编排层：任务队列、监听、账号与向导、媒体清理、
+                           归档整理、诊断导出、统计、延迟抓取、区间探测
   domain/archive_naming/   Source Folder / 标题 / 作者 / hashtag 领域逻辑
   domain/archive_author/   Archive Author reorganize 计划领域逻辑
   domain/transfer_state/   DownloadTask / UploadTask / TransferRegistry 领域状态
@@ -52,18 +55,47 @@ module/
   adapters/
     bot/          # Bot 命令与回调、BotHostMixin
     pikpak/       # PikPak 集成、rclone 归档、Archive Author 执行
-    webui/        # HTTP 壳、handlers/*、operations、ArchiveAuthorOps、ViewModel、任务调度、前端资源
+    webui/        # **仅 HTTP 面**：HTTP 壳（server.py）、handlers/*、contracts、security、
+                  # ViewModel、statistics_payload（ADR-0005 数据契约）、setup（向导异常契约）、
+                  # static_assets（运行时资源加载）、build_frontend
   core/           # Application、Config、Enums、Filter、TargetProfiles
   domain/         # archive_naming、archive_author、transfer_state（纯领域，不依赖 adapters）
   infra/          # Client、Uploader、AsyncWindow
   persistence/    # TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
   transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
   utils/          # util、stdio、path_tool、parser、language、diagnostics
+  webops/         # 业务编排层（见下）
 ```
+
+**`webops/` 是业务编排层**：它承载"用户可见操作"的编排（任务队列、监听、
+账号与安装向导、媒体清理、归档整理、诊断导出、统计、延迟抓取、区间探测），
+并**组合**适配器（PikPak 归档、上传器、HTTP 壳）。依赖方向是刻意的：
+`webops → adapters`，且 `adapters` 的允许依赖集合中**不含 webops**
+（`architecture_guard.test_no_layer_inversions` 会拦住反向 import）。
+判据：某个模块若"零 HTTP 原语、但需要组合多个下层能力"，它属于 webops；
+若它定义的是 HTTP 层与外部共享的**契约/载荷形状**（`contracts`、
+`statistics_payload`、`setup` 的异常类型），它留在 `adapters/webui`。
 
 顶层仅保留：`downloader.py`（门面）、`composition_root.py`、`constants.py`、`bootstrap.py`、`ports.py`；其余顶层文件均为指向子包实现的兼容 shim。`constants.py`（纯常量，零副作用）与 `bootstrap.py`（幂等 `initialize()`）承载原 `__init__.py` 的常量与运行时副作用；`module/__init__.py` 仅 re-export，**import 任何子模块均零副作用**（不建目录、不写日志、不起线程），运行时副作用由 `main.py` 与组合根显式调用 `bootstrap.initialize()` 触发。
 
-**架构立场**：解耦阶段已完成——无模块级导入环；新子包不再 import 顶层 shim；`core` 不依赖 `adapters/infra/transfer`；`transfer` 不依赖 `adapters`；`infra` 不依赖 `transfer`；组合根无 `__getattr__` 反射装配；God Protocol 已替换为按消费者裁剪的小 Protocol。**不做纯包搬家、不以单文件行数硬顶为完成标准**；后续仅在具体痛点出现时做局部深化。
+**架构立场（截至 0.2.252）**：无模块级导入环；子包不 import 顶层 shim；
+`core` 不依赖 `adapters/infra/transfer`；`transfer` 不依赖 `adapters`；
+`infra` 不依赖 `transfer`；组合根无 `__getattr__` 反射装配；
+WebUI 的业务编排已整体迁出 adapters（见 `webops/`）。
+
+### 已知残留耦合（有意记录，未完成）
+
+这些是审计实测确认、**尚未消除**的点；写在这里是为了让后来者不必重新发现。
+每一项都附了"为什么当时没做"，避免被误读成已完成：
+
+| 残留 | 现状 | 为什么没做 |
+| --- | --- | --- |
+| `WebOperationsMixin` 仍是宿主门面 | 约 1,050 行、含 ~77 个单语句转发 + `_ensure_*` 惰性工厂 | `WebOperationsFacade` 必须按名字取到这些方法；继续搬只增加间接层，不减少耦合 |
+| `composition_root` 的 50 个 `*_getter` | 协作方接线已去重为三个 `_new_*()` 工厂；getter 本身仍在 | 做过收紧实验（把"构造期必定已赋值"的改成直接属性访问）→ 6 个用例失败：半构造宿主依赖这些静默兜底。正确顺序是先让测试全面走 `unit_tests/support/downloader_factory.py`，再收紧 |
+| `WebTransferRunner` 的 4 个"双实现"方法 | 宿主有 `web_task_manager` 时转发；否则按 `transfer_store` 自行判定 | 两条分支判定依据本就不同；统一判定等于改行为。应先补一条契约测试证明两者一致，再合并 |
+| `runner.py` / `operations.py` 的约 68 处宿主能力探测 | `getattr(host, 'x', None)` 式软探测 | 多数是可选能力（如 `_log_system_chain`），软探测本身合理；需要逐点判定"可选"还是"必需" |
+| 测试仍有约 40 处 `object.__new__(host)` 手工装配 | 工厂 `unit_tests/support/downloader_factory.py` 已就位并迁移了部分 | 多数赋值在 `with` 块内、缩进更深，机械替换会破坏语义，需逐个手迁 |
+
 
 ### 配置系统（双层）
 
@@ -74,22 +106,14 @@ module/
 
 ### 子包结构
 
-```
-module/
-  adapters/
-    bot/          # Bot 命令与回调（bot.py, callback_handler.py）
-    pikpak/       # PikPak 集成与 rclone 归档
-    webui/        # HTTP 壳、handlers/*、ArchiveAuthorOps、ViewModel、任务调度、内嵌前端
-  core/           # Application、Config、Enums、Filter、TargetProfiles
-  infra/          # Client、Uploader、AsyncWindow
-  persistence/    # TransferStore 门面 + store/* mixins、MediaManager、LocalStorageGuard、SystemLog
-  transfer/       # Engine、Runner、Progress、LiveWatch、LiveTransfer、DeepLink、CommentDelay…
-  utils/          # util、stdio、path_tool、parser、language、diagnostics
-```
+子包结构见上文「核心架构」一节（此处原为重复且已过时的副本，已合并；
+旧副本仍描述 `webui/operations` 与 `web_operations.py`，与现状不符）。
 
-顶层仍保留：`downloader.py`（门面）、`composition_root.py`、`web_operations.py`、`bot_host.py`、`ports.py`，以及指向子包实现的 shim（如 `bot.py` → `adapters.bot.bot`）；零引用的 `client.py` shim 已删除，请直接用 `module.infra.client`。`constants.py`（纯常量，零副作用）与 `bootstrap.py`（幂等 `initialize()`）承载原 `__init__.py` 的常量与运行时副作用；`module/__init__.py` 仅 re-export，**import 任何子模块均零副作用**（不建目录、不写日志、不起线程），运行时副作用由 `main.py` 与组合根显式调用 `bootstrap.initialize()` 触发。
-
-**架构立场**：deepen 轮（P1–P4）已完成——Archive Author / Web 任务控制委托、`TransferStore` 按聚合拆 mixin、`WebUiServer` 按 API 域拆 handler、Downloader 门面以委托既有服务为主（残留为下载编排与 Bot UX 胶水）。**不做纯包搬家、不以单文件行数硬顶为完成标准**；后续仅在具体痛点出现时做局部深化。
+**架构立场**：deepen 轮（P1–P4）与解耦轮（webops 编排层）均已完成——
+Archive Author / Web 任务控制委托、`TransferStore` 按聚合拆 mixin、
+`WebUiServer` 按 API 域拆 handler、业务编排整体迁出 `adapters/webui`。
+**不做纯包搬家、不以单文件行数硬顶为完成标准**；遗留耦合见上文
+「已知残留耦合」表，仅在具体痛点出现时做局部深化。
 
 ---
 

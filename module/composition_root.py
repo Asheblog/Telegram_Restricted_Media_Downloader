@@ -9,10 +9,10 @@ from module.adapters.bot.bot import Bot, CallbackData
 from module.adapters.bot.callback_handler import CallbackHandler
 from module.adapters.pikpak.archive import build_pikpak_archive_client
 from module.adapters.pikpak.integration import PikpakIntegrationManager
-from module.adapters.webui.operations import WebOperationsFacade
+from module.webops.operations import WebOperationsFacade
 from module.adapters.webui.server import WebUiServer
 from module.adapters.webui.setup import SetupCoordinator
-from module.adapters.webui.task_manager import WebUITaskManager
+from module.webops.task_manager import WebUITaskManager
 from module.bootstrap import initialize
 from module.core.app import Application
 from module.core.config import GlobalConfig
@@ -92,13 +92,7 @@ class TrmdCompositionRoot:
         self._transfer_download_tasks: dict[int, set] = {}
         self.web_operation_queue: asyncio.Queue = asyncio.Queue()
         self.web_operations: dict = {}
-        self.watch_manager = LiveWatchManager(
-            transfer_store_getter=self._transfer_store,
-            operation_submitter=self.submit_web_operation,
-            user_getter=self._runtime_user,
-            app_getter=self._app,
-            diagnostic=self.diagnostic,
-        )
+        self.watch_manager = self._new_watch_manager()
         # Host + Bot must share watch_manager dicts. Missing host aliases crash after
         # WebUI login when restore_live_transfer_watches reads self.listen_forward_chat.
         self.listen_download_chat = self.watch_manager.listen_download_chat
@@ -111,33 +105,8 @@ class TrmdCompositionRoot:
         self.web_pending_watches = self.watch_manager.web_pending_watches
         self.web_watch_handler_clients = self.watch_manager.web_watch_handler_clients
         self.pikpak_archive_client = None
-        self.pikpak_manager = PikpakIntegrationManager(
-            transfer_store_getter=self._transfer_store,
-            pikpak_archive_client_getter=self._pikpak_archive_client,
-            diagnostic=self.diagnostic,
-            gc_getter=self._gc,
-            refresh_counts=self.refresh_transfer_task_counts,
-            cleanup_item_file=self._cleanup_item_file,
-            app_getter=self._app,
-            system_log=self.system_log,
-            schedule_deferred_archive=self._schedule_deferred_archive,
-        )
-        self.progress_tracker = TransferProgressTracker(
-            transfer_store_getter=self._transfer_store,
-            diagnostic=self.diagnostic,
-            app_getter=self._app,
-            gc_getter=self._gc,
-            loop_getter=self._loop,
-            pb_getter=self._pb,
-            release_storage=self.release_transfer_local_storage,
-            release_window=self.release_download_upload_window,
-            start_download_upload=self.start_download_upload,
-            archive_pikpak_item=self.archive_pikpak_item,
-            fail_transfer_item=self.fail_transfer_item,
-            refresh_counts=self.refresh_transfer_task_counts,
-            cleanup_local_file=self._cleanup_item_file,
-            system_log=self.system_log,
-        )
+        self.pikpak_manager = self._new_pikpak_manager()
+        self.progress_tracker = self._new_progress_tracker()
         self.callback_handler = CallbackHandler(
             app_getter=self._app,
             gc_getter=self._gc,
@@ -260,88 +229,109 @@ class TrmdCompositionRoot:
 
     def _require_watch_manager(self):
         if getattr(self, "watch_manager", None) is None:
-            self.watch_manager = LiveWatchManager(
-                listen_download_chat=getattr(self, "listen_download_chat", {}),
-                listen_forward_chat=getattr(self, "listen_forward_chat", {}),
-                web_pending_watches=getattr(self, "web_pending_watches", {}),
-                web_watch_handler_clients=getattr(
-                    self, "web_watch_handler_clients", {}
-                ),
-                transfer_store_getter=self._transfer_store,
-                operation_submitter=getattr(
-                    self,
-                    "submit_web_operation",
-                    lambda ot, p: {
-                        "id": f"{ot}-0",
-                        "status": TransferStatus.PENDING,
-                    },
-                ),
-                user_getter=self._runtime_user,
-                app_getter=self._app,
-                diagnostic=getattr(
-                    self, "diagnostic", RichDiagnosticAdapter(console, log)
-                ),
-            )
+            self.watch_manager = self._new_watch_manager()
         return self.watch_manager
+
+    # ------------------------------------------------------------------
+    # Collaborator factories —— 接线只写一次
+    # ------------------------------------------------------------------
+    # 构造期（__init__）与按需兜底（_require_* / 半构造宿主）此前各写了一份
+    # LiveWatchManager / PikpakIntegrationManager / TransferProgressTracker 的
+    # 构造实参，改一个依赖要记得改两处，且两边默认值不同（一处用真实方法、
+    # 一处用 lambda 兜底），审计时记为"重复构造"。现在统一走下面三个工厂：
+    # 主路径与兜底路径读同一份定义，差异只剩"属性还没赋值时怎么退化"。
+    def _new_watch_manager(self) -> LiveWatchManager:
+        return LiveWatchManager(
+            listen_download_chat=getattr(self, "listen_download_chat", {}),
+            listen_forward_chat=getattr(self, "listen_forward_chat", {}),
+            web_pending_watches=getattr(self, "web_pending_watches", {}),
+            web_watch_handler_clients=getattr(self, "web_watch_handler_clients", {}),
+            transfer_store_getter=self._transfer_store,
+            operation_submitter=getattr(
+                self,
+                "submit_web_operation",
+                lambda operation_type, payload: {
+                    "id": f"{operation_type}-0",
+                    "status": TransferStatus.PENDING,
+                },
+            ),
+            user_getter=self._runtime_user,
+            app_getter=self._app,
+            diagnostic=getattr(
+                self, "diagnostic", RichDiagnosticAdapter(console, log)
+            ),
+        )
+
+    def _new_pikpak_manager(self) -> PikpakIntegrationManager:
+        return PikpakIntegrationManager(
+            transfer_store_getter=self._transfer_store,
+            pikpak_archive_client_getter=self._pikpak_archive_client,
+            diagnostic=getattr(
+                self, "diagnostic", RichDiagnosticAdapter(console, log)
+            ),
+            gc_getter=self._gc,
+            refresh_counts=getattr(self, "refresh_transfer_task_counts", None)
+            or (
+                lambda task_id: (
+                    self.transfer_store.refresh_task_counts(task_id)
+                    if getattr(self, "transfer_store", None) is not None
+                    else None
+                )
+            ),
+            cleanup_item_file=self._cleanup_item_file,
+            app_getter=self._app,
+            system_log=getattr(self, "system_log", None),
+            schedule_deferred_archive=self._schedule_deferred_archive,
+        )
+
+    def _new_progress_tracker(self) -> TransferProgressTracker:
+        return TransferProgressTracker(
+            transfer_store_getter=self._transfer_store,
+            diagnostic=getattr(
+                self, "diagnostic", RichDiagnosticAdapter(console, log)
+            ),
+            app_getter=self._app,
+            gc_getter=self._gc,
+            loop_getter=self._loop,
+            pb_getter=self._pb,
+            release_storage=getattr(
+                self, "release_transfer_local_storage", lambda with_upload: None
+            ),
+            release_window=getattr(
+                self, "release_download_upload_window", lambda with_upload: None
+            ),
+            start_download_upload=getattr(
+                self, "start_download_upload", lambda **kwargs: False
+            ),
+            archive_pikpak_item=getattr(
+                self, "archive_pikpak_item", lambda **kwargs: None
+            ),
+            fail_transfer_item=getattr(
+                self, "fail_transfer_item", lambda *args: None
+            ),
+            refresh_counts=getattr(self, "refresh_transfer_task_counts", None)
+            or (
+                lambda task_id: (
+                    self.transfer_store.refresh_task_counts(task_id)
+                    if getattr(self, "transfer_store", None) is not None
+                    else None
+                )
+            ),
+            cleanup_local_file=self._cleanup_item_file,
+            system_log=getattr(self, "system_log", None),
+        )
 
     def _pikpak_manager(self):
         return getattr(self, "pikpak_manager", None)
 
     def _require_pikpak_manager(self):
         if getattr(self, "pikpak_manager", None) is None:
-            self.pikpak_manager = PikpakIntegrationManager(
-                transfer_store_getter=self._transfer_store,
-                pikpak_archive_client_getter=self._pikpak_archive_client,
-                diagnostic=getattr(
-                    self, "diagnostic", RichDiagnosticAdapter(console, log)
-                ),
-                gc_getter=self._gc,
-                refresh_counts=lambda task_id: (
-                    self.transfer_store.refresh_task_counts(task_id)
-                    if self.transfer_store is not None
-                    else None
-                ),
-                cleanup_item_file=self._cleanup_item_file,
-                app_getter=self._app,
-                system_log=getattr(self, "system_log", None),
-                schedule_deferred_archive=self._schedule_deferred_archive,
-            )
+            self.pikpak_manager = self._new_pikpak_manager()
         return self.pikpak_manager
 
     def _require_progress_tracker(self):
         if getattr(self, "progress_tracker", None) is None:
-            self.progress_tracker = TransferProgressTracker(
-                transfer_store_getter=self._transfer_store,
-                diagnostic=getattr(
-                    self, "diagnostic", RichDiagnosticAdapter(console, log)
-                ),
-                app_getter=self._app,
-                gc_getter=self._gc,
-                loop_getter=self._loop,
-                pb_getter=self._pb,
-                release_storage=getattr(
-                    self, "release_transfer_local_storage", lambda wu: None
-                ),
-                release_window=getattr(
-                    self, "release_download_upload_window", lambda wu: None
-                ),
-                start_download_upload=getattr(
-                    self, "start_download_upload", lambda **kw: False
-                ),
-                archive_pikpak_item=getattr(
-                    self, "archive_pikpak_item", lambda **kw: None
-                ),
-                fail_transfer_item=getattr(
-                    self, "fail_transfer_item", lambda *a: None
-                ),
-                refresh_counts=lambda task_id: (
-                    self.transfer_store.refresh_task_counts(task_id)
-                    if self.transfer_store is not None
-                    else None
-                ),
-                cleanup_local_file=self._cleanup_item_file,
-                system_log=getattr(self, "system_log", None),
-            )
+            self.progress_tracker = self._new_progress_tracker()
         return self.progress_tracker
 
     def on_transfer_file_ready(self, *args, **kwargs):

@@ -2347,7 +2347,7 @@ class SourceFolderArchiveCase(unittest.TestCase):
 
     def test_watch_inline_task_is_not_web_queue_schedulable(self):
         from module.transfer_store import TransferStore, TransferStatus, ExecutionMode
-        from module.adapters.webui.task_manager import WebUITaskManager
+        from module.webops.task_manager import WebUITaskManager
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)

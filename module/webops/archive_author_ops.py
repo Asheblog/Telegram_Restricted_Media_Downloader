@@ -101,7 +101,7 @@ class ArchiveAuthorOps:
         return {'channels': service.list_channels()}
 
     def _archive_author_job_store(self):
-        from module.adapters.webui.archive_author_jobs import ArchiveAuthorJobStore
+        from module.webops.archive_author_jobs import ArchiveAuthorJobStore
 
         host = self._host
         store = getattr(host, '_archive_author_jobs', None)
@@ -127,7 +127,7 @@ class ArchiveAuthorOps:
     ) -> None:
         import threading
 
-        from module.adapters.webui.archive_author_jobs import completed_keys_from_job
+        from module.webops.archive_author_jobs import completed_keys_from_job
 
         host = self._host
         jobs = self._archive_author_job_store()
@@ -324,7 +324,7 @@ class ArchiveAuthorOps:
             execute_mode: str = 'all',
             resolve_scope: str = 'all',
     ) -> dict:
-        from module.adapters.webui.archive_author_jobs import (
+        from module.webops.archive_author_jobs import (
             completed_keys_from_job,
             public_job_view,
         )
@@ -365,7 +365,7 @@ class ArchiveAuthorOps:
             *,
             execute_mode: str = 'all',
     ) -> dict:
-        from module.adapters.webui.archive_author_jobs import (
+        from module.webops.archive_author_jobs import (
             completed_keys_from_job,
             public_job_view,
         )
@@ -435,7 +435,7 @@ class ArchiveAuthorOps:
         return resumed
 
     def stop_archive_author_job(self, job_id: str) -> dict:
-        from module.adapters.webui.archive_author_jobs import public_job_view
+        from module.webops.archive_author_jobs import public_job_view
 
         jobs = self._archive_author_job_store()
         job = jobs.get(str(job_id or '').strip())
@@ -476,7 +476,7 @@ class ArchiveAuthorOps:
         )
 
     def list_archive_author_plan_moves(self, payload: dict | None = None) -> dict:
-        from module.adapters.webui.archive_author_jobs import list_job_plan_moves
+        from module.webops.archive_author_jobs import list_job_plan_moves
 
         data = payload or {}
         job_id = str(data.get('job_id') or '').strip()
@@ -520,7 +520,7 @@ class ArchiveAuthorOps:
         )
 
     def get_archive_author_job(self, job_id: str) -> dict:
-        from module.adapters.webui.archive_author_jobs import public_job_view
+        from module.webops.archive_author_jobs import public_job_view
 
         job = self._archive_author_job_store().get(str(job_id or '').strip())
         if not job:
@@ -528,7 +528,7 @@ class ArchiveAuthorOps:
         return public_job_view(job)
 
     def get_active_archive_author_job(self, channel_folder: str | None = None) -> dict:
-        from module.adapters.webui.archive_author_jobs import public_job_view
+        from module.webops.archive_author_jobs import public_job_view
 
         jobs = self._archive_author_job_store()
         channel = str(channel_folder or '').strip() or None
