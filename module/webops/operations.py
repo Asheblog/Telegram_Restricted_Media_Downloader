@@ -15,7 +15,8 @@ architecture_guard 的 test_no_layer_inversions 已登记该层（adapters 不�
 """
 import asyncio
 import os
-from typing import Optional
+import threading
+from typing import Callable, Optional
 
 import pyrogram
 from pyrogram.errors import FloodWait
@@ -44,8 +45,32 @@ from module.transfer.watch_applicator import LiveWatchApplicator
 from module.utils.parser import PARSE_ARGS
 from module.utils.util import parse_link
 
+# 惰性协作者的共享锁。粒度是"进程内一把"，理由：
+# 这些协作者的首次构造可能同时来自 WebUI 的 HTTP 工作线程与主事件循环
+# （`start_web_ui` → `recover_web_runtime`），裸的"检查-创建-赋值"会建出两个实例；
+# 而构造本身很短（只是对象组装，不做 IO），用一把模块级锁足够，不必每个宿主一把。
+_COLLABORATOR_LOCK = threading.Lock()
 
 
+def _lazy_collaborator(host, cache_name: str, builder: Callable[[], object]):
+    """取宿主的惰性协作者：已缓存直接返回，否则**加锁**构造一次并缓存。
+
+    把 15 个 `_ensure_*` 里重复的骨架（`__dict__` 查缓存 → 建 → 写回）收成一处，
+    顺带补上原先缺失的锁 —— 之前每个 `_ensure_*` 都是裸的检查-创建-赋值。
+
+    缓存写在宿主实例的 `__dict__` 上（不是类属性），因此每个宿主各自持有；
+    用 `__dict__` 而不是 `getattr` 是为了不把**类属性**读进来。
+    """
+    cached = host.__dict__.get(cache_name)
+    if cached is not None:
+        return cached
+    with _COLLABORATOR_LOCK:
+        cached = host.__dict__.get(cache_name)
+        if cached is not None:
+            return cached
+        cached = builder()
+        host.__dict__[cache_name] = cached
+        return cached
 def _require_web_task_manager(host):
     """Return host.web_task_manager, lazily wiring a manager for bare test hosts."""
     wm = getattr(host, 'web_task_manager', None)
@@ -163,25 +188,28 @@ class WebOperationsMixin:
 
     def _ensure_deferred_discussion_ops(self):
         """延迟抓取编排实例（懒建并缓存；实现见 module.webops.deferred_discussion）。"""
-        ops = self.__dict__.get('_deferred_discussion_ops_impl')
-        if ops is None:
-            from module.webops.deferred_discussion import DeferredDiscussionOperations
+        return _lazy_collaborator(
+            self,
+            '_deferred_discussion_ops_impl',
+            self._build_deferred_discussion_ops,
+        )
 
-            ops = DeferredDiscussionOperations(
-                transfer_store_getter=self._ensure_transfer_store,
-                user_getter=lambda: getattr(self, 'user', None),
-                app_getter=lambda: getattr(self, 'app', None),
-                gc_getter=lambda: getattr(self, 'gc', None),
-                loop_getter=lambda: getattr(self, 'loop', None),
-                # 经实例解析：宿主/测试替身会覆盖这些方法。
-                forward_discussion_replies=lambda *a, **kw: self.forward_discussion_replies(
-                    *a, **kw
-                ),
-                record_watch_event=lambda *a, **kw: self._record_watch_event(*a, **kw),
-                delete_web_task=lambda task_id: self.delete_web_task(task_id),
-            )
-            self._deferred_discussion_ops_impl = ops
-        return ops
+    def _build_deferred_discussion_ops(self):
+        from module.webops.deferred_discussion import DeferredDiscussionOperations
+
+        return DeferredDiscussionOperations(
+            transfer_store_getter=self._ensure_transfer_store,
+            user_getter=lambda: getattr(self, 'user', None),
+            app_getter=lambda: getattr(self, 'app', None),
+            gc_getter=lambda: getattr(self, 'gc', None),
+            loop_getter=lambda: getattr(self, 'loop', None),
+            # 经实例解析：宿主/测试替身会覆盖这些方法。
+            forward_discussion_replies=lambda *a, **kw: self.forward_discussion_replies(
+                *a, **kw
+            ),
+            record_watch_event=lambda *a, **kw: self._record_watch_event(*a, **kw),
+            delete_web_task=lambda task_id: self.delete_web_task(task_id),
+        )
 
     def _ensure_comment_delay_scheduler(self) -> CommentDelayScheduler:
         return self._ensure_deferred_discussion_ops().ensure_scheduler()
@@ -507,22 +535,17 @@ class WebOperationsMixin:
         return self._ensure_stats_ops().statistics(tz_offset_minutes)
 
     def _ensure_stats_ops(self):
-        """统计编排实例（懒建并缓存；实现见 module.webops.stats）。
+        """统计编排实例（懒建并缓存；实现见 module.webops.stats）。"""
+        return _lazy_collaborator(self, '_stats_ops', self._build_stats_ops)
 
-        缓存属性一律走 `__dict__`（其余 `_ensure_*` 同此）：用 `getattr` 会把
-        **类属性**也读进来（子类或测试替身一旦在类上定义了同名属性，
-        懒建就会被静默跳过，拿到的不是本实例的协作者）。
-        """
-        ops = self.__dict__.get('_stats_ops')
-        if ops is None:
-            from module.webops.stats import StatsOperations
-            ops = StatsOperations(
-                transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
-                web_operations_getter=lambda: self.__dict__.get('web_operations') or {},
-                app_getter=lambda: getattr(self, 'app', None),
-            )
-            self._stats_ops = ops
-        return ops
+    def _build_stats_ops(self):
+        from module.webops.stats import StatsOperations
+
+        return StatsOperations(
+            transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
+            web_operations_getter=lambda: self.__dict__.get('web_operations') or {},
+            app_getter=lambda: getattr(self, 'app', None),
+        )
 
     def export_table(self, table_type: str) -> dict:
         return self._ensure_stats_ops().export_table(table_type)
