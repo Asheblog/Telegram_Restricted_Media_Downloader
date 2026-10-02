@@ -53,10 +53,12 @@ main.py
 ```
 module/
   adapters/
-    bot/          # Bot 命令与回调、BotHostMixin
+    bot/          # Bot 命令与回调（bot.py）、回复键盘（keyboards.py）、
+                  # 首启向导（guide_wizard.py）、BotHostMixin（host.py）
     pikpak/       # PikPak 集成、rclone 归档、Archive Author 执行
     webui/        # **仅 HTTP 面**：HTTP 壳（server.py）、handlers/*、contracts、security、
                   # ViewModel、statistics_payload（ADR-0005 数据契约）、setup（向导异常契约）、
+                  # http_support（请求解析校验）、settings_support（环境变量与设置合并）、
                   # static_assets（运行时资源加载）、build_frontend
   core/           # Application、Config、Enums、Filter、TargetProfiles
   domain/         # archive_naming、archive_author、transfer_state（纯领域，不依赖 adapters）
