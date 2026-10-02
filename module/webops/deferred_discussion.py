@@ -50,6 +50,15 @@ class DeferredDiscussionOperations:
 
     # ── 调度器装配 ──
 
+    def scheduler_if_started(self) -> Optional[CommentDelayScheduler]:
+        """取已启动的调度器；尚未启动则返回 None（**不**触发启动）。
+
+        删除监听时需要"若调度器已在跑，就取消该监听的延迟抓取"。用本方法而不是
+        `ensure_scheduler()`：后者会连带启动调度器（含线程/循环挂载），
+        在一个"只是删监听"的调用里产生副作用。
+        """
+        return self._scheduler
+
     def ensure_scheduler(self) -> CommentDelayScheduler:
         scheduler = self._scheduler
         if scheduler is None:

@@ -15,6 +15,10 @@ from module import AUTHOR, __version__, __update_date__, SOFTWARE_SHORT_NAME
 VERSION_INFO = sys.version_info
 PLATFORM: str = sys.platform
 UV: str = 'uv ' if which('uv') and os.path.exists('uv.lock') else ''
+# WebUI 静态资源产物目录：Nuitka 打包要把它整个带进去（见下方 build_command）。
+WEBUI_SOURCE_DIR: Path = Path('module') / 'adapters' / 'webui'
+WEBUI_DIST_DIR: Path = WEBUI_SOURCE_DIR / 'dist' / 'webui'
+WEBUI_BUNDLE_FILE: Path = WEBUI_DIST_DIR / 'assets.json'
 try:
     TERMINAL_COLUMNS: int = os.get_terminal_size().columns
     GRID_CONTENT: str = '='
@@ -119,6 +123,13 @@ if __name__ == '__main__':
         ready_nuitka()
         ready_zstandard()
         media_info_lib_filename, media_info_lib_path = ready_pymediainfo()
+        # 打包前必须确认 WebUI 产物存在：模板源码不进包，产物缺失会打出一个
+        # "首开页面必崩"的包，且在别的机器上才发现。宁可在这里失败。
+        if not WEBUI_BUNDLE_FILE.is_file():
+            raise FileNotFoundError(
+                f'WebUI 构建产物缺失：{WEBUI_BUNDLE_FILE}\n'
+                f'请先运行：python {WEBUI_SOURCE_DIR / "build_frontend.py"}'
+            )
         extension = '.exe' if PLATFORM == 'win32' else ''
         ico_path = 'res/icon.ico'
         output = 'output'
@@ -131,6 +142,10 @@ if __name__ == '__main__':
         build_command += f'--windows-icon-from-ico="{ico_path}" --assume-yes-for-downloads '
         build_command += f'--output-filename="{SOFTWARE_SHORT_NAME}{extension}" --copyright="{copy_right}" --msvc=latest '
         build_command += f'--include-data-file="{media_info_lib_path}"={media_info_lib_filename} '
+        # WebUI 静态资源：模板/静态源码被裁掉后，运行时只认构建产物
+        # （dist/webui/assets.json + fonts/*）。必须把整个目录按同样的相对路径打进包
+        # —— static_assets 用 __compiled__.containing_dir / "dist/webui" 定位。
+        build_command += f'--include-data-dir="{WEBUI_DIST_DIR}"=dist/webui '
         build_command += f'--remove-output '
         build_command += f'--no-deployment-flag=self-execution '
         build_command += f'--script-name={main}'

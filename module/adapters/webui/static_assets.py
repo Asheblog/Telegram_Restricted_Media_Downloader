@@ -27,7 +27,24 @@ import pathlib
 import threading
 from typing import Optional
 
-HERE = pathlib.Path(__file__).resolve().parent
+def _resource_base() -> pathlib.Path:
+    """资源根目录。
+
+    在 **Nuitka 单文件/独立包**里 ``__file__`` 指向源码路径（部署机上并不存在），
+    打包进去的数据实际落在 ``__compiled__.containing_dir``。因此这里优先取后者，
+    否则冻结包会出现"产物与源码都找不到"而**首开页面必崩**。
+    """
+    compiled = globals().get("__compiled__")
+    if compiled is not None:
+        containing_dir = getattr(compiled, "containing_dir", None)
+        if containing_dir:
+            candidate = pathlib.Path(containing_dir)
+            if candidate.is_dir():
+                return candidate
+    return pathlib.Path(__file__).resolve().parent
+
+
+HERE = _resource_base()
 BUNDLE_DIR = HERE / "dist" / "webui"
 BUNDLE_FILE = BUNDLE_DIR / "assets.json"
 FONTS_DIR = BUNDLE_DIR / "fonts"

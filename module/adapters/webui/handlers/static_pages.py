@@ -3,7 +3,12 @@
 
 from http import HTTPStatus
 
-from module.adapters.webui.assets import WEB_UI_HTML, WEB_UI_MOBILE_HTML, LOGIN_PAGE_HTML, FONTS
+from module.adapters.webui.static_assets import (
+    FONTS,
+    LOGIN_PAGE_HTML,
+    WEB_UI_HTML,
+    WEB_UI_MOBILE_HTML,
+)
 from module.adapters.webui.contracts import is_spa_page_path
 
 import base64

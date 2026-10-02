@@ -1,63 +1,48 @@
 # coding=UTF-8
 """WebUI 业务操作编排 —— IWebUiOperations / IWatchOps / ITaskOps 的实现。
 
-从 adapters/webui 迁出（原先与 HTTP 壳同目录）：本文件零 HTTP 原语，承载任务队列、
-监听、账号与安装向导、媒体清理、归档编排、诊断导出、统计等业务编排。
+从 adapters/webui 迁出（原先与 HTTP 壳同目录）：本文件零 HTTP 原语，作为**宿主门面**
+按名字暴露各编排协作者的能力；具体实现见同包的
+stats / diagnostics / media_cleanup / watch_operations / settings_operations /
+setup_wizard / task_queue / runtime_recovery / transfer_range /
+operation_applicator / deferred_discussion，以及 archive_author_ops 等。
 
 放在 webops 编排层是刻意的依赖方向：编排组合适配器，而不是反过来。
 architecture_guard 的 test_no_layer_inversions 已登记该层（adapters 不得 import webops）。
 
-旧路径 module/adapters/webui/operations.py 保留为兼容 shim（测试里的 patch 目标
-依赖该字符串路径）。
+注意：旧路径 ``module/adapters/webui/operations.py`` **已删除**（本层迁出时一起移走，
+测试的 patch 目标也已同步更新）——不要再引用该路径。
 """
-import os
 import asyncio
-import random
-import time
-from copy import deepcopy
-from functools import partial
-from typing import Optional, Union, Callable
+import os
+from typing import Optional
 
 import pyrogram
-from pyrogram.errors import FloodWait, FloodPremiumWait
-from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid
+from pyrogram.errors import FloodWait
 
 from module import console, log
-from module.utils.parser import PARSE_ARGS
-from module.core.filter import Filter
-from module.core.config import GlobalConfig, UserConfig
-from module.persistence.media_manager import MediaManager
-from module.transfer.watch_applicator import LiveWatchApplicator
-from module.core.enums import DownloadType, UploadStatus, KeyWord
-from module.utils.language import _t
-from module.domain.transfer_state.models import DownloadTask, UploadTask
-from module.persistence.transfer_store import DeferredDiscussionCaptureStatus, TransferStore, TransferStatus
-from module.transfer.comment_delay import CommentDelayScheduler
-from module.transfer.pikpak_rules import (
-    transfer_item_archive_match_original_name,
-    transfer_item_archive_timestamp,
-)
-
-
-ORPHAN_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
-from module.infra.uploader import TelegramUploader
+from module.adapters.pikpak.integration import PikpakIntegrationManager
 from module.adapters.webui.server import (
     WebUiServer,
     get_web_host_from_env,
     get_web_password_from_env,
     get_web_port_from_env,
     get_web_username_from_env,
-    merge_allowed_settings,
 )
-from module.utils.util import (
-    is_docker,
-    make_forward_watch_rule,
-    iter_discussion_reply_messages,
-    parse_link,
+from module.domain.archive_naming.source_folders import (
+    archive_source_folder,
+    normalize_archive_title_source,
 )
-from module.adapters.pikpak.integration import PikpakIntegrationManager
-from module.core.target_profiles import PIKPAK_MAX_ACCOUNTS
-from module.domain.archive_naming.source_folders import archive_source_folder, normalize_archive_title_source
+from module.persistence.media_manager import MediaManager
+from module.persistence.transfer_store import TransferStatus, TransferStore
+from module.transfer.comment_delay import CommentDelayScheduler
+from module.transfer.pikpak_rules import (
+    transfer_item_archive_match_original_name,
+    transfer_item_archive_timestamp,
+)
+from module.transfer.watch_applicator import LiveWatchApplicator
+from module.utils.parser import PARSE_ARGS
+from module.utils.util import parse_link
 
 
 
@@ -316,8 +301,13 @@ class WebOperationsMixin:
             from module.webops.watch_operations import WatchOperations
             ops = WatchOperations(
                 watch_manager_getter=lambda: getattr(self, 'watch_manager', None),
-                comment_delay_scheduler_getter=lambda: self.__dict__.get(
-                    'comment_delay_scheduler'
+                # 必须经调度器工厂取**同一个已启动实例**：调度器的实例状态由
+                # DeferredDiscussionOperations 持有（`_scheduler`），宿主上没有
+                # `comment_delay_scheduler` 这个属性。此前写成读
+                # `self.__dict__.get('comment_delay_scheduler')` → 恒为 None，
+                # 导致删监听时"取消延迟抓取"静默失效、另三个入口 AttributeError。
+                comment_delay_scheduler_getter=lambda: (
+                    self._ensure_deferred_discussion_ops().scheduler_if_started()
                 ),
                 transfer_store_getter=self._ensure_transfer_store,
                 loop_getter=lambda: getattr(self, 'loop', None),
