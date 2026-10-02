@@ -26,7 +26,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+# ruff 用于 CI 的静态检查（未用导入 / 重复定义）。放进 dev 依赖而不是用 `uvx ruff`：
+# uvx 会取未固定版本，同一提交在不同时间可能得到不同结果；`uv run --locked ruff`
+# 与本仓库既有的 `--locked` 纪律一致（lockfile 变了就必须重新 lock）。
+dev = ["pytest>=8.0", "ruff>=0.14"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["module"]

@@ -63,5 +63,7 @@ jobs:
       # ruff 的 F401 已正确处理字符串注解与 `__all__`，是**已验证**的工具。
       # 规则只选 F401/F811：实测全仓在这两条下干净；F841（未用变量）在测试里
       # 有 17 处属刻意写法，收进来会让门禁长期泛红而失去意义。
+      # 用 `uv run --locked` 而不是 `uvx`：ruff 版本固定在 lockfile（可复现），
+      # 且 `--locked` 会在 pyproject 与 lock 不一致时直接失败。
       - name: Lint (unused imports / redefinitions)
-        run: uvx ruff check --select F401,F811 module/ unit_tests/
+        run: uv run --locked ruff check --select F401,F811 module/ unit_tests/
