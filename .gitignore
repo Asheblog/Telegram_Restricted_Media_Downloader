@@ -12,6 +12,9 @@ tests/
 test*
 downloads/
 DownloadRecordForm/
+# 临时脚手架/审计脚本：不提交（历史上曾用 `git add -A` 误提交 140 个文件进分支）。
+# 需要保留的正式工具请放到 tools/ 而不是 tmp/。
+tmp/
 # ignore files
 *.txt
 *.exe
