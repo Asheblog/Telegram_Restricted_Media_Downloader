@@ -546,95 +546,58 @@ class WebOperationsMixin:
     def detect_transfer_range(self, source_link: str) -> Optional[dict]:
         return self.transfer_engine.detect_transfer_range(source_link)
 
+    def _ensure_transfer_range_detector(self):
+        """区间探测器（懒建并缓存；实现见 module.webops.transfer_range）。"""
+        detector = self.__dict__.get('_transfer_range_detector_impl')
+        if detector is None:
+            from module.webops.transfer_range import TransferRangeDetector
+
+            detector = TransferRangeDetector(
+                app_getter=lambda: getattr(self, 'app', None),
+                # 以下都经实例解析：宿主/测试替身会覆盖同名方法，
+                # 类内直接调自身方法会绕过覆盖（实测导致 5 个用例失败）。
+                wait_for_telegram_flood=lambda *a, **kw: self.wait_for_telegram_flood(
+                    *a, **kw
+                ),
+                first_history_message=lambda *a, **kw: self.get_first_transfer_range_history_message(
+                    *a, **kw
+                ),
+                iter_history=lambda *a, **kw: self.iter_transfer_range_history(*a, **kw),
+                fast_detect=lambda *a, **kw: self.detect_transfer_range_fast(*a, **kw),
+                history_scan=lambda *a, **kw: self.detect_transfer_range_by_history_scan(
+                    *a, **kw
+                ),
+                # 经宿主模块解析：测试会 patch "module.webops.operations.parse_link"。
+                parse_link=lambda *a, **kw: parse_link(*a, **kw),
+            )
+            self._transfer_range_detector_impl = detector
+        return detector
+
     async def detect_transfer_range_async(self, source_link: str) -> Optional[dict]:
-        origin_meta = await parse_link(client=self.app.client, link=source_link)
-        chat_id = origin_meta.get('chat_id')
-        if not chat_id:
-            raise ValueError('Invalid source link.')
-        detected = await self.detect_transfer_range_fast(chat_id)
-        if detected:
-            return detected
-        return await self.detect_transfer_range_by_history_scan(chat_id)
+        return await self._ensure_transfer_range_detector().detect_transfer_range_async(
+            source_link
+        )
 
     async def detect_transfer_range_by_history_scan(self, chat_id) -> Optional[dict]:
-        oldest = None
-        newest = None
-        async for message in self.iter_transfer_range_history(chat_id=chat_id):
-            newest = newest or message
-            oldest = message
-        if not newest or not oldest:
-            return None
-        return {
-            'start_id': int(getattr(oldest, 'id')),
-            'end_id': int(getattr(newest, 'id'))
-        }
+        return await self._ensure_transfer_range_detector().detect_transfer_range_by_history_scan(
+            chat_id
+        )
 
     async def detect_transfer_range_fast(self, chat_id) -> Optional[dict]:
-        client = self.app.client
-        history_count = getattr(client, 'get_chat_history_count', None)
-        if not callable(history_count):
-            return None
-        try:
-            newest = await self.get_first_transfer_range_history_message(chat_id=chat_id, limit=1)
-            if not newest:
-                return None
-            count = int(await history_count(chat_id))
-            if count <= 1:
-                oldest = newest
-            else:
-                oldest = await self.get_first_transfer_range_history_message(
-                    chat_id=chat_id,
-                    limit=1,
-                    offset=count - 1
-                )
-            if not oldest:
-                return None
-            start_id = int(getattr(oldest, 'id'))
-            end_id = int(getattr(newest, 'id'))
-            if start_id > end_id:
-                return None
-            if count > 1 and start_id == end_id:
-                return None
-        except (FloodWait, FloodPremiumWait) as e:
-            await self.wait_for_telegram_flood(e, action='detect transfer range')
-            return None
-        except Exception:
-            return None
-        return {
-            'start_id': start_id,
-            'end_id': end_id
-        }
+        return await self._ensure_transfer_range_detector().detect_transfer_range_fast(
+            chat_id
+        )
 
     async def get_first_transfer_range_history_message(self, chat_id, limit: int = 1, **kwargs):
-        async for message in self.app.client.get_chat_history(
-                chat_id=chat_id,
-                limit=limit,
-                **kwargs
-        ):
-            return message
-        return None
+        return await self._ensure_transfer_range_detector().get_first_transfer_range_history_message(
+            chat_id, limit=limit, **kwargs
+        )
 
     async def iter_transfer_range_history(self, chat_id, limit: int = 100):
-        offset_id = 0
-        while True:
-            last_message_id = None
-            try:
-                async for message in self.app.client.get_chat_history(
-                        chat_id=chat_id,
-                        limit=limit,
-                        offset_id=offset_id
-                ):
-                    last_message_id = getattr(message, 'id', None)
-                    yield message
-            except (FloodWait, FloodPremiumWait) as e:
-                await self.wait_for_telegram_flood(e, action='detect transfer range')
-                continue
-            if last_message_id is None:
-                return
-            next_offset_id = int(last_message_id)
-            if next_offset_id <= 0 or next_offset_id == offset_id:
-                return
-            offset_id = next_offset_id
+        async for message in self._ensure_transfer_range_detector().iter_transfer_range_history(
+            chat_id, limit=limit
+        ):
+            yield message
 
     def statistics(self, tz_offset_minutes: int | None = None) -> dict:
         return self._ensure_stats_ops().statistics(tz_offset_minutes)
