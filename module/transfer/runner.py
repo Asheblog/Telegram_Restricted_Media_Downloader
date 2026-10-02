@@ -94,7 +94,27 @@ class WebTransferRunner:
         self._host = host
 
     def _resolve_method(self, name: str):
-        """取 ``name`` 的实现：runner 自己的优先，其余以宿主为准。"""
+        """取 ``name`` 的实现：runner 自己的优先，其余以宿主为准。
+
+        解析顺序与理由（这三步都有依据，不是"保险起见"）：
+        1. `_RUNNER_LOCAL_METHODS` —— runner 自己的实现**必须**优先。宿主的同名方法
+           通常是"转发回 runner"（`downloader.wait_between_transfer_messages` 就是
+           `return await self._ensure_transfer_runner().wait_between_transfer_messages()`），
+           优先取宿主会立刻无限递归。
+        2. 宿主提供则用宿主 —— 这一步是**契约要求**，不是可选兜底：测试会直接在
+           宿主实例上 `downloader.check_type = ...` / `downloader.transfer_message_to_web_target = ...`
+           覆盖行为，跳过宿主就绕过了覆盖，"宿主可替换"会静默失效。
+        3. 宿主没提供才回落到 runner 的同名实现 —— 本文件确有实现
+           （`skip_missing_web_transfer_range_message` / `get_web_transfer_range_message` 等），
+           且生产宿主 `TrmdCompositionRoot` 恰好不定义这几个名字，所以这条分支是**活路径**。
+        4. 都没有则报错。
+
+        已知限制（记录，未加代码）：若把 runner 自身当宿主传进来
+        （`WebTransferRunner(host=runner)`），第 1 步命中的转发方法会回宿主=自己，
+        形成无限递归。生产装配里宿主是 `TrmdCompositionRoot`，测试里是装配好的
+        downloader，**不存在**这种自引用调用点，因此不加防御性分支
+        （加了就是为不可能发生的场景增加复杂度）。
+        """
         if name in self._RUNNER_LOCAL_METHODS:
             return getattr(self, name)
         host_method = getattr(self._host, name, None)
