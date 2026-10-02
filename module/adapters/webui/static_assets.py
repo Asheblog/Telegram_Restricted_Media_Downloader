@@ -16,12 +16,11 @@
    立刻生效，不需要先跑构建；测试环境也走这条）；
 3. 都没有：抛 ``RuntimeError``，附上"跑哪条命令"的提示。
 
-字体：``FONTS`` 仍以 ``{filename: base64}`` 暴露（HTTP 层按原样回写），
-但改为从 ``dist/webui/fonts/*`` 按需读取，不再把 base64 常驻在 Python 源里。
+字体：通过 ``load_font()`` 按需从 ``dist/webui/fonts/*``（或源码 ``static/fonts/*``）
+读取**原始字节**；HTTP 层直接回写，不再有 base64 往返。
 """
 from __future__ import annotations
 
-import base64
 import json
 import pathlib
 import threading
@@ -139,16 +138,13 @@ def font_names() -> list[str]:
     return [p.name for p in _font_files()]
 
 
-def _fonts_as_base64() -> dict:
-    """兼容旧接口：{filename: base64}。按需从磁盘读取，不常驻内存。"""
-    return {
-        path.name: base64.b64encode(path.read_bytes()).decode("ascii")
-        for path in _font_files()
-    }
-
-
 def __getattr__(name: str):
-    """按需暴露 4 个资源名，保持既有 `from ...assets import WEB_UI_HTML` 写法可用。"""
+    """按需暴露 3 个 HTML 资源名，保持 `from ...static_assets import WEB_UI_HTML` 可用。
+
+    字体**不**在此暴露：历史上有一个 `FONTS = {文件名: base64}` 接口，HTTP 层取它
+    再解码回字节；现已改为 `load_font()` 直接返回磁盘字节（去掉编码/解码绕路），
+    因此该接口已无调用者并被删除。
+    """
     mapping = {
         "WEB_UI_HTML": "web_ui_html",
         "WEB_UI_MOBILE_HTML": "web_ui_mobile_html",
@@ -156,15 +152,12 @@ def __getattr__(name: str):
     }
     if name in mapping:
         return _load_bundle()[mapping[name]]
-    if name == "FONTS":
-        return _fonts_as_base64()
     raise AttributeError(name)
 
 
 __all__ = [
     "BUNDLE_DIR",
     "BUNDLE_FILE",
-    "FONTS",
     "LOGIN_PAGE_HTML",
     "WEB_UI_HTML",
     "WEB_UI_MOBILE_HTML",

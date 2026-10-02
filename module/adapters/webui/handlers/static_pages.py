@@ -4,14 +4,13 @@
 from http import HTTPStatus
 
 from module.adapters.webui.static_assets import (
-    FONTS,
     LOGIN_PAGE_HTML,
     WEB_UI_HTML,
     WEB_UI_MOBILE_HTML,
+    load_font,
 )
 from module.adapters.webui.contracts import is_spa_page_path
 
-import base64
 import re
 
 
@@ -36,11 +35,16 @@ def handle_get(handler, server, parsed) -> bool:
 
 
 def _send_font(handler, filename: str) -> None:
-    b64_data = FONTS.get(filename)
-    if not b64_data:
+    """直接发原始字体字节。
+
+    历史实现从 `FONTS`（{文件名: base64}）取字符串再 `b64decode` 回来 ——
+    等于把磁盘上的字节编码成 base64 再解回来，纯属绕路。`load_font` 本身
+    也做了路径穿越校验（拒绝 `/` 与 `\\`），比这里原先"只拒绝 `/`"的判断更严。
+    """
+    font_bytes = load_font(filename)
+    if not font_bytes:
         handler._send_error('font_not_found', 'Font not found.', HTTPStatus.NOT_FOUND)
         return
-    font_bytes = base64.b64decode(b64_data)
     ext = filename.rsplit('.', 1)[-1] if '.' in filename else 'woff2'
     mime = {
         'woff2': 'font/woff2',

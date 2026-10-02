@@ -507,13 +507,18 @@ class WebOperationsMixin:
         return self._ensure_stats_ops().statistics(tz_offset_minutes)
 
     def _ensure_stats_ops(self):
-        """统计编排实例（懒建并缓存；实现见 module.webops.stats）。"""
-        ops = getattr(self, '_stats_ops', None)
+        """统计编排实例（懒建并缓存；实现见 module.webops.stats）。
+
+        缓存属性一律走 `__dict__`（其余 `_ensure_*` 同此）：用 `getattr` 会把
+        **类属性**也读进来（子类或测试替身一旦在类上定义了同名属性，
+        懒建就会被静默跳过，拿到的不是本实例的协作者）。
+        """
+        ops = self.__dict__.get('_stats_ops')
         if ops is None:
             from module.webops.stats import StatsOperations
             ops = StatsOperations(
                 transfer_store_getter=lambda: getattr(self, 'transfer_store', None),
-                web_operations_getter=lambda: getattr(self, 'web_operations', None) or {},
+                web_operations_getter=lambda: self.__dict__.get('web_operations') or {},
                 app_getter=lambda: getattr(self, 'app', None),
             )
             self._stats_ops = ops

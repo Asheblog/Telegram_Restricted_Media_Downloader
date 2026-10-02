@@ -10,15 +10,17 @@
 用来识别"顶层 shim"，改名或改措辞会让该守卫误判为"多出的真实模块"。
 """
 from module.adapters.webui.static_assets import (  # noqa: F401
-    FONTS,
     LOGIN_PAGE_HTML,
     WEB_UI_HTML,
     WEB_UI_MOBILE_HTML,
+    font_names,
+    load_font,
 )
 
 __all__ = [
-    "FONTS",
     "LOGIN_PAGE_HTML",
     "WEB_UI_HTML",
     "WEB_UI_MOBILE_HTML",
+    "font_names",
+    "load_font",
 ]
