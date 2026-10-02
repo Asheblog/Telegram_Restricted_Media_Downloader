@@ -70,9 +70,9 @@ from module.persistence.local_storage_guard import LocalStorageGuard
 from module.persistence.media_manager import MediaManager
 from module.webops.task_manager import WebUITaskManager
 from module.transfer.live_watch import LiveWatchManager
+from module.adapters.bot.keyboards import KeyboardButton
 from module.adapters.bot.bot import (
     Bot,
-    KeyboardButton,
     CallbackData
 )
 from module.adapters.bot.callback_handler import CallbackHandler
