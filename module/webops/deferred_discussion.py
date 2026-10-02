@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Callable, Optional
 
@@ -47,6 +48,8 @@ class DeferredDiscussionOperations:
         self._record_watch_event = record_watch_event
         self._delete_web_task = delete_web_task
         self._scheduler: Optional[CommentDelayScheduler] = None
+        # 保护调度器的"首次创建"（见 ensure_scheduler 的说明）。
+        self._lock = threading.Lock()
 
     # ── 调度器装配 ──
 
@@ -60,67 +63,82 @@ class DeferredDiscussionOperations:
         return self._scheduler
 
     def ensure_scheduler(self) -> CommentDelayScheduler:
+        """取（必要时创建并启动）调度器。
+
+        **首次创建必须加锁**：触发可能来自 WebUI 的 HTTP 工作线程，也可能来自主
+        事件循环（`start_web_ui` → `recover_web_runtime`）。并发首次触发时两者会
+        各造一个调度器并各自 `start()` —— 结果是**两个调度器同时在跑**，同一条
+        延迟抓取被调度两次。用双检锁保证只建一个；`start()` 放在锁外，
+        避免在持锁期间做启动动作。
+        """
         scheduler = self._scheduler
         if scheduler is None:
-            store = self._transfer_store()
-
-            async def executor(capture: dict):
-                client = (
-                    capture.get("client")
-                    or self._user()
-                    or getattr(self._app(), "client", None)
-                )
-                resolve_deep_link = False
-                archive_by_author = False
-                archive_title_source = "auto"
-                watch_id = capture.get("watch_id")
-                if watch_id and store is not None:
-                    watch = store.get_live_transfer_watch(str(watch_id))
-                    if watch:
-                        resolve_deep_link = bool(watch.get("resolve_deep_link"))
-                        archive_by_author = bool(watch.get("archive_by_author"))
-                        archive_title_source = normalize_archive_title_source(
-                            watch.get("archive_title_source")
-                        )
-                count = await self._forward_discussion_replies(
-                    client=client,
-                    source_chat_id=capture.get("source_chat_id"),
-                    source_message_id=int(capture.get("source_message_id")),
-                    target_chat_id=capture.get("target_chat_id"),
-                    target_link=capture.get("target_link"),
-                    watch_id=capture.get("watch_id"),
-                    resolve_deep_link=resolve_deep_link,
-                    archive_by_author=archive_by_author,
-                    archive_title_source=archive_title_source,
-                )
-                watch_id = capture.get("watch_id")
-                if watch_id:
-                    self._record_watch_event(
-                        watch_id,
-                        capture.get("source_chat_id"),
-                        capture.get("source_message_id"),
-                        capture.get("target_chat_id"),
-                        capture.get("target_link"),
-                        "success" if count else "skipped",
-                        f"延迟抓取评论区完成,匹配{count}条",
-                    )
-                return count
-
-            def on_cancel(capture: dict):
-                self.cancel_derived_tasks(capture)
-
-            scheduler = CommentDelayScheduler(
-                store=store,
-                delay_minutes_getter=lambda: self._gc().get_comment_delay_minutes(),
-                executor=executor,
-                on_cancel=on_cancel,
-                has_active_derived=self.has_active_derived_tasks,
-            )
-            self._scheduler = scheduler
+            with self._lock:
+                scheduler = self._scheduler
+                if scheduler is None:
+                    scheduler = self._build_scheduler()
+                    self._scheduler = scheduler
         # 每次都重新 arm：首次调用可能来自没有运行 loop 的 WebUI 工作线程，
         # 传入 app loop 以便 start 走 call_soon_threadsafe。
         scheduler.start(loop=self._loop())
         return scheduler
+
+    def _build_scheduler(self) -> CommentDelayScheduler:
+        """构造调度器（executor / on_cancel / 活跃派生判定）。调用方负责加锁。"""
+        store = self._transfer_store()
+
+        async def executor(capture: dict):
+            client = (
+                capture.get("client")
+                or self._user()
+                or getattr(self._app(), "client", None)
+            )
+            resolve_deep_link = False
+            archive_by_author = False
+            archive_title_source = "auto"
+            watch_id = capture.get("watch_id")
+            if watch_id and store is not None:
+                watch = store.get_live_transfer_watch(str(watch_id))
+                if watch:
+                    resolve_deep_link = bool(watch.get("resolve_deep_link"))
+                    archive_by_author = bool(watch.get("archive_by_author"))
+                    archive_title_source = normalize_archive_title_source(
+                        watch.get("archive_title_source")
+                    )
+            count = await self._forward_discussion_replies(
+                client=client,
+                source_chat_id=capture.get("source_chat_id"),
+                source_message_id=int(capture.get("source_message_id")),
+                target_chat_id=capture.get("target_chat_id"),
+                target_link=capture.get("target_link"),
+                watch_id=capture.get("watch_id"),
+                resolve_deep_link=resolve_deep_link,
+                archive_by_author=archive_by_author,
+                archive_title_source=archive_title_source,
+            )
+            watch_id = capture.get("watch_id")
+            if watch_id:
+                self._record_watch_event(
+                    watch_id,
+                    capture.get("source_chat_id"),
+                    capture.get("source_message_id"),
+                    capture.get("target_chat_id"),
+                    capture.get("target_link"),
+                    "success" if count else "skipped",
+                    f"延迟抓取评论区完成,匹配{count}条",
+                )
+            return count
+
+        def on_cancel(capture: dict):
+            self.cancel_derived_tasks(capture)
+
+        return CommentDelayScheduler(
+            store=store,
+            delay_minutes_getter=lambda: self._gc().get_comment_delay_minutes(),
+            executor=executor,
+            on_cancel=on_cancel,
+            has_active_derived=self.has_active_derived_tasks,
+        )
 
     # ── 派生任务判定与取消 ──
 
