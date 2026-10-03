@@ -81,9 +81,9 @@
 - Node 的 `watch_ui_helpers.test.mjs` 通过。
 - `git diff --check` 通过，13 个修改/新增文件均验证为 UTF-8 无 BOM、LF。
 - 首次扩展检查 `pytest -q -W error` 未通过：30 failed、730 passed、1 error。文件处理器警告已归为 Phase 1 回归并修复；SQLite 连接警告属于存量测试收尾问题，连接实现与基线逐字一致。最终独立检查仍在旧集成测试发现未关闭 SQLite 连接，本轮未批量改写这些 fixture。不能把全警告检查报告为通过，也不能把存量 fixture 警告归因于本轮业务变更。
-- Windows 宿主未提供 Docker CLI；本轮未本地重建 Linux 镜像。`1dee579` 对应 GitHub Tests 与 v0.2.266 Release Docker 均已成功，但不能代替本轮新修复的 Linux 构建验证。
+- Windows 宿主未提供 Docker CLI；审查阶段未本地重建 Linux 镜像。`1dee579` 对应 GitHub Tests 与 v0.2.266 Release Docker 均已成功，但不能代替新修复的 Linux 构建验证；后续发布以新版本 tag 对应的 GitHub Actions 结果验收。
 - 不使用真实 Telegram/PikPak 账户进行外部服务端到端操作。本地集成以外部客户端替身隔离网络，真实 HTTP、SQLite、组合根和 Pyrogram 导入由对应测试覆盖。
-- 本轮不需要数据迁移，直接替换代码；不创建版本 tag，不推送或发布镜像。
+- 本轮不需要数据迁移，直接替换代码；审查交付阶段未创建版本 tag、推送或发布镜像。
 
 ## 最终验收
 
@@ -91,4 +91,5 @@
 
 - Spec：生产接线、媒体覆盖、归属校验、冷启动调度器、删除时不启动的既有语义通过独立复核，无未修复阻塞项。
 - Standards/Quality：保留模块边界与现有工厂、锁及实例生命周期；新增测试的配置污染、临时目录泄漏和跨线程收尾问题均已修复并独立复现验证，无未修复阻塞项。
-- 交付：本地提交并快进合入 `main`，无需数据迁移，直接替换；不推送、不打 tag、不发布。本轮不宣称外部服务与新 Linux 镜像已经验证。
+- 审查交付：本地提交并快进合入 `main`，无需数据迁移，直接替换；当时未推送、打 tag 或发布，也未宣称外部服务与新 Linux 镜像已经验证。
+- 后续发布：用户已授权随 `v0.2.267` 推送修复，按现有发布流程同步推送 `main` 与版本 tag，并监督 Tests、真实镜像导入/资源冒烟及 Linux 双架构构建通过。
