@@ -12,14 +12,14 @@ from module.constants import __version__
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _run_isolated(code: str) -> subprocess.CompletedProcess:
+def _run_isolated(code: str, *python_args: str) -> subprocess.CompletedProcess:
     """在临时 APPDATA 环境下运行代码，隔离 import 副作用。"""
     env = os.environ.copy()
     env.pop("XDG_CONFIG_HOME", None)
     with tempfile.TemporaryDirectory() as tmp:
         env["APPDATA"] = tmp
         return subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, *python_args, "-c", code],
             capture_output=True,
             text=True,
             env=env,
@@ -82,6 +82,38 @@ class ModuleBootstrapCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CONFIGURED True", result.stdout)
         self.assertIn("IDEMPOTENT True", result.stdout)
+
+    def test_initialize_with_preexisting_root_handler_does_not_leak_file_handler(
+        self,
+    ):
+        """root 已有 handler 时 initialize 不得创建无人关闭的文件 handler。
+
+        ``logging.basicConfig`` 在 root 已有 handler 时会静默 no-op，若此前
+        已构造 ``TimedRotatingFileHandler``，该实例不会被 root 持有，函数返回后
+        失去引用，GC 时触发 ``ResourceWarning: unclosed file`` 泄漏文件句柄。
+        """
+        code = (
+            "import gc, logging, sys\n"
+            "unraisable = []\n"
+            "def _record(args):\n"
+            "    unraisable.append(args.exc_type.__name__)\n"
+            "sys.unraisablehook = _record\n"
+            "root = logging.getLogger()\n"
+            "marker = logging.NullHandler()\n"
+            "root.addHandler(marker)\n"
+            "from module.bootstrap import initialize\n"
+            "initialize()\n"
+            "initialize()\n"
+            "gc.collect()\n"
+            "print('MARKER_IS_ROOT_HANDLER',"
+            " len(root.handlers) == 1 and root.handlers[0] is marker)\n"
+            "print('UNRAISABLE', unraisable)\n"
+        )
+        result = _run_isolated(code, "-W", "error::ResourceWarning")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("unclosed file", result.stderr)
+        self.assertIn("MARKER_IS_ROOT_HANDLER True", result.stdout)
+        self.assertIn("UNRAISABLE []", result.stdout)
 
     def test_build_script_imports_constants_without_side_effects(self):
         """build.py 只取常量，import module 后 APPDATA 目录不应存在。"""

@@ -332,9 +332,12 @@ class WebOperationsMixin:
                 # `comment_delay_scheduler` 这个属性。此前写成读
                 # `self.__dict__.get('comment_delay_scheduler')` → 恒为 None，
                 # 导致删监听时"取消延迟抓取"静默失效、另三个入口 AttributeError。
+                # 删除用 peek（不得因删除而启动）；cancel/run_now/retry 用 ensure
+                # （用户主动动作，旧行为就是按需创建 + 启动）。
                 comment_delay_scheduler_getter=lambda: (
                     self._ensure_deferred_discussion_ops().scheduler_if_started()
                 ),
+                ensure_comment_delay_scheduler_getter=self._ensure_comment_delay_scheduler,
                 transfer_store_getter=self._ensure_transfer_store,
                 loop_getter=lambda: getattr(self, 'loop', None),
             )
@@ -963,8 +966,10 @@ class WebOperationsMixin:
                 gc_getter=lambda: getattr(self, 'gc', None),
                 uploader_getter=lambda: getattr(self, 'uploader', None),
                 set_uploader=lambda value: setattr(self, 'uploader', value),
-                runtime_message_filter_getter=lambda: (
-                    self.runtime_message_filter()
+                # 必须把 applicator 算出的 media_types_override 透传下去：
+                # 表单 download_type 是整表覆盖，丢了它就静默退回全局白名单。
+                runtime_message_filter_getter=lambda media_types_override=None: (
+                    self.runtime_message_filter(media_types_override)
                     if hasattr(self, 'runtime_message_filter')
                     else None
                 ),

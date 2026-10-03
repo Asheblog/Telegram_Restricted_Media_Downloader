@@ -49,24 +49,37 @@ class _FakeWatchManager:
 
 
 class WatchDeleteCancelsDeferredCaptureCase(unittest.TestCase):
-    def _ops(self, scheduler):
-        """构造 WatchOperations，getter 分别指向"已启动的调度器"与空 store。"""
+    def _ops(self, scheduler, ensure_calls=None):
+        """构造 WatchOperations：peek getter 指向"已启动的调度器"，ensure 单独注入。
+
+        删除语义要求只窥视已启动实例；ensure getter 一旦被删除路径调用就是回归，
+        因此默认注入一个「调用即失败」的探针，只有取消/立即执行/重试才允许用它。
+        """
         from module.webops.watch_operations import WatchOperations
 
         manager = _FakeWatchManager()
+        if ensure_calls is None:
+            ensure_calls = []
+
+        def _ensure():
+            ensure_calls.append(True)
+            raise AssertionError("删除监听不得调用 ensure（会启动调度器）")
+
         return (
             WatchOperations(
                 watch_manager_getter=lambda: manager,
                 comment_delay_scheduler_getter=lambda: scheduler,
+                ensure_comment_delay_scheduler_getter=_ensure,
                 transfer_store_getter=lambda: None,
                 loop_getter=lambda: None,
             ),
             manager,
+            ensure_calls,
         )
 
     def test_delete_watch_cancels_deferred_capture_for_that_watch(self):
         scheduler = _FakeScheduler()
-        ops, manager = self._ops(scheduler)
+        ops, manager, ensure_calls = self._ops(scheduler)
 
         self.assertTrue(ops.delete_watch("watch-7"))
         self.assertEqual(["watch-7"], manager.deleted, "监听本身没有被删除")
@@ -75,13 +88,19 @@ class WatchDeleteCancelsDeferredCaptureCase(unittest.TestCase):
             scheduler.cancelled_watches,
             "删除监听时没有取消它的延迟评论区抓取（会留下孤儿定时任务）",
         )
+        self.assertEqual(
+            [],
+            ensure_calls,
+            "删除监听调用了 ensure getter（会顺带启动调度器，违反 deferred_discussion 语义）",
+        )
 
     def test_delete_watch_still_succeeds_without_started_scheduler(self):
-        """调度器尚未启动（getter 返回 None）时，删除仍须成功。"""
-        ops, manager = self._ops(None)
+        """调度器尚未启动（peek getter 返回 None）时，删除仍须成功且不启动调度器。"""
+        ops, manager, ensure_calls = self._ops(None)
 
         self.assertTrue(ops.delete_watch("watch-8"))
         self.assertEqual(["watch-8"], manager.deleted)
+        self.assertEqual([], ensure_calls, "调度器未启动时删除不得走 ensure 启动它")
 
     def test_delete_watch_survives_scheduler_cancel_failure(self):
         """取消失败不应阻断删除（原实现的 try/except 语义）。"""
@@ -90,10 +109,11 @@ class WatchDeleteCancelsDeferredCaptureCase(unittest.TestCase):
             def cancel_for_watch(self, watch_id):
                 raise RuntimeError("scheduler exploded")
 
-        ops, manager = self._ops(_Exploding())
+        ops, manager, ensure_calls = self._ops(_Exploding())
 
         self.assertTrue(ops.delete_watch("watch-9"))
         self.assertEqual(["watch-9"], manager.deleted)
+        self.assertEqual([], ensure_calls)
 
 
 class WatchOpsSchedulerWiringCase(unittest.TestCase):

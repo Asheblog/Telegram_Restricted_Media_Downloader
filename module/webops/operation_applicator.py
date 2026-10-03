@@ -44,7 +44,7 @@ class WebOperationApplicator:
         gc_getter: Callable[[], object],
         uploader_getter: Callable[[], object],
         set_uploader: Callable[[object], None],
-        runtime_message_filter_getter: Callable[[], object],
+        runtime_message_filter_getter: Callable[[object], object],
         watch_applicator_getter: Callable[[], object],
         persisted_watch_records_getter: Callable[[], list],
         listen_download_chat_getter: Callable[[], dict],
@@ -215,7 +215,8 @@ class WebOperationApplicator:
         keywords = payload.get("keywords") or []
         include_comment = bool(payload.get("include_comment"))
         filter_obj = Filter()
-        runtime_filter = self._runtime_message_filter()
+        # 表单给了 download_type 就整表覆盖（override 非 None）；没给则传 None 继承全局。
+        runtime_filter = self._runtime_message_filter(media_types_override)
         if runtime_filter is None:
             runtime_filter = Filter({"media_types": download_type})
 

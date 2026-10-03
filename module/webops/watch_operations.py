@@ -14,18 +14,33 @@ from module import log
 
 
 class WatchOperations:
-    """监听规则的对外操作面（含延迟评论区抓取的调度入口）。"""
+    """监听规则的对外操作面（含延迟评论区抓取的调度入口）。
+
+    两条调度器 getter 刻意分开：
+
+    - ``comment_delay_scheduler_getter``（窥视）：只取**已启动**的调度器，未启动返回
+      ``None``。删除监听用它——删规则不应顺带把调度器线程/循环挂起来
+      （见 deferred_discussion.py 的语义说明与 ADR0007）。
+    - ``ensure_comment_delay_scheduler_getter``（主动）：必要时创建并启动调度器。
+      cancel / run_now / retry 是用户主动动作，旧实现就是按需 ensure；用 peek
+      会在调度器尚未启动时拿到 ``None`` 并抛 ``AttributeError``。
+
+    两条 getter 都经宿主工厂解析，保证拿到的是 ``DeferredDiscussionOperations``
+    持有的**同一个实例**（并发首次创建由那里的双检锁兜底）。
+    """
 
     def __init__(
         self,
         *,
         watch_manager_getter: Callable[[], object],
         comment_delay_scheduler_getter: Callable[[], object],
+        ensure_comment_delay_scheduler_getter: Callable[[], object],
         transfer_store_getter: Callable[[], object],
         loop_getter: Callable[[], object],
     ) -> None:
         self._watch_manager = watch_manager_getter
         self._comment_delay_scheduler = comment_delay_scheduler_getter
+        self._ensure_comment_delay_scheduler = ensure_comment_delay_scheduler_getter
         self._transfer_store = transfer_store_getter
         self._loop = loop_getter
 
@@ -98,7 +113,7 @@ class WatchOperations:
         capture = self._owned_capture(watch_id, capture_id)
         if capture is None:
             return False
-        return self._comment_delay_scheduler().cancel(int(capture_id))
+        return self._ensure_comment_delay_scheduler().cancel(int(capture_id))
 
     def run_deferred_discussion_capture_now(self, watch_id: str, capture_id: int) -> bool:
         if self._owned_capture(watch_id, capture_id) is None:
@@ -107,7 +122,7 @@ class WatchOperations:
         if loop is None:
             return False
         future = asyncio.run_coroutine_threadsafe(
-            self._comment_delay_scheduler().run_now(int(capture_id)), loop
+            self._ensure_comment_delay_scheduler().run_now(int(capture_id)), loop
         )
         return bool(future.result(timeout=180))
 
@@ -118,7 +133,7 @@ class WatchOperations:
         if loop is None:
             return False
         future = asyncio.run_coroutine_threadsafe(
-            self._comment_delay_scheduler().retry(int(capture_id)), loop
+            self._ensure_comment_delay_scheduler().retry(int(capture_id)), loop
         )
         return bool(future.result(timeout=180))
 

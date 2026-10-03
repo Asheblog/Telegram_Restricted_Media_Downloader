@@ -31,7 +31,18 @@ class UploaderInitCase(unittest.TestCase):
             web_ui=None,
         )
         try:
-            with patch('module.infra.uploader.asyncio.create_task', return_value=None):
+            from module.domain.transfer_state.registry import transfer_registry
+
+            def close_worker_coroutine(coroutine):
+                coroutine.close()
+
+            with patch.object(transfer_registry, 'notify', None), \
+                    patch.object(transfer_registry, 'loop', None), \
+                    patch.object(transfer_registry, 'directory_name', ''), \
+                    patch(
+                        'module.infra.uploader.asyncio.create_task',
+                        side_effect=close_worker_coroutine
+                    ):
                 uploader = TelegramUploader(upload_context=upload_context)
             self.assertIs(uploader.is_premium, False)
         finally:

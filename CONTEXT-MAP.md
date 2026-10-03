@@ -62,15 +62,16 @@
 | `adapters/pikpak/archive_author.py` | `archive_author_tool.py` | Archive Author 执行服务 | ~1130 |
 | `adapters/webui/server.py` | `web_ui.py` | WebUI HTTP 壳（路由调度进 handlers；统一异常边界 / 安全头 / 鉴权门） | ~1600 |
 | `adapters/webui/security.py` | — | HTTP 层安全策略：安全响应头 + HSTS、Secure Cookie 判定、登录失败限流（`LoginThrottle`）、同源校验 | ~330 |
-| `adapters/webui/operations.py` | `web_operations.py` | WebUI 操作 mixin + `WebOperationsFacade`；Archive Author / 任务控制委托 | ~1630 |
-| `adapters/webui/archive_author_jobs.py` | `archive_author_jobs.py` | Archive Author 作业 | ~500 |
+| `webops/operations.py` | `web_operations.py` | 操作宿主 mixin + `WebOperationsFacade`；各业务协作者装配与委托 | ~1100 |
+| `webops/archive_author_jobs.py` | `archive_author_jobs.py` | Archive Author 作业 | ~540 |
 | `adapters/webui/handlers/` | — | 按 API 域拆分的 HTTP handlers（auth/tasks/watches/…） | ~1140 |
-| `adapters/webui/archive_author_ops.py` | — | Archive Author 作业编排（WebOps 委托） | ~550 |
-| `adapters/webui/setup.py` | — | First-run Setup Wizard 状态 / rclone / 可选 Bot Token | ~350 |
+| `webops/archive_author_ops.py` | — | Archive Author 作业编排（WebOps 委托） | ~550 |
+| `adapters/webui/setup.py` | — | 安装向导异常契约与凭据校验 | ~205 |
+| `webops/setup_coordinator.py` | — | First-run Setup Wizard 状态 / rclone / 可选 Bot Token 编排 | ~285 |
 | `adapters/webui/view_model.py` | `webui_view_model.py` | 桌面/移动统一 ViewModel | ~550 |
-| `adapters/webui/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~740 |
+| `webops/task_manager.py` | `web_task_manager.py` | WebUI 任务调度器 | ~740 |
 | `adapters/webui/statistics_payload.py` | `statistics_payload.py` | 统计面板 payload | ~80 |
-| `adapters/webui/assets.py` | `web_ui_assets.py` | 内嵌 HTML/CSS/JS/字体 | 大文件 |
+| `adapters/webui/static_assets.py` | `web_ui_assets.py` | 运行时加载 HTML/CSS/JS/字体（优先 dist/webui，回退 templates/static） | ~170 |
 | `adapters/webui/build_frontend.py` | — | Tailwind 前端构建 | ~100 |
 | `utils/util.py` | `util.py` | 链接解析、消息、环境判断 | ~550 |
 | `utils/stdio.py` | `stdio.py` | 终端 I/O、进度条 | ~560 |
@@ -87,15 +88,16 @@
 
 | 子包 | 内容 | 状态 |
 | ------ | ------ | ------ |
-| `adapters/webui/` | server / handlers / operations / archive_author_ops / jobs / view_model / task_manager / assets / build | ✅ 已填充 |
-| `adapters/bot/` | bot.py / callback_handler.py / host.py | ✅ 已填充 |
+| `adapters/webui/` | server / handlers / contracts / security / view_model / setup / http_support / settings_support / static_assets / build | ✅ 已填充 |
+| `webops/` | operations / task_manager / archive_author_ops / jobs / setup_coordinator / settings / watch / deferred_discussion / recovery / diagnostics / stats 等业务编排 | ✅ 已填充 |
+| `adapters/bot/` | bot.py / callback_handler.py / host.py / keyboards.py / guide_wizard.py | ✅ 已填充 |
 | `adapters/pikpak/` | integration.py / archive.py / archive_author.py | ✅ 已填充 |
 | `core/` | app / config / enums / filter / target_profiles | ✅ 已填充 |
 | `infra/` | client / uploader / async_window | ✅ 已填充 |
 | `persistence/` | transfer_store 门面 + store/* / media_manager / local_storage_guard / system_log | ✅ 已填充（P2 拆 mixin） |
 | `domain/` | archive_naming / archive_author / transfer_state | ✅ 已填充（arch-decouple Phase 3/6） |
 | `transfer/` | engine / runner / progress / live_watch / watch_applicator / deep_link / comment_delay 等 | ✅ 已填充 |
-| `utils/` | util / stdio / path_tool / parser / language / diagnostics | ✅ 已填充 |
+| `utils/` | util / stdio / path_tool / parser / language / diagnostics / flag_support / display_support / runtime_support / telegram_links | ✅ 已填充 |
 
 > Phase 0–3、deepen P1–P4、arch-decouple Phases 1–6 均已完成；无模块级导入环，新子包不 import 顶层 shim，组合根显式装配。见 `CONTEXT.md` 架构立场与 ADR 0014。
 
@@ -175,15 +177,15 @@
 | Transfer Item | `persistence/store/items.py` → `transfer_items` 表 |
 | Transfer Progress | `persistence/store/*` → completed source_message_ids |
 | PikPak Archive | `adapters/pikpak/integration.py` → `archive_pikpak_item()` |
-| Source Channel Folder / Source Post Archive Path | `module/source_folders.py` → `archive_source_folder()` |
+| Source Channel Folder / Source Post Archive Path | `domain/archive_naming/source_folders.py` → `archive_source_folder()` |
 | PikPak Ingest Confirmation | `adapters/pikpak/integration.py` / downloader 转发等待路径 |
 | Target Profile | `core/target_profiles.py` → `DEFAULT_TARGET_PROFILES` |
 | Live Transfer Watch | `transfer/live_watch.py` → `LiveWatchManager` |
 | Message Filter | `core/filter.py` → `MessageFilter` |
 | Download Success Record | `persistence/store/tasks.py` 等 → `download_success` 表 |
 | WebUI ViewModel Contract | `adapters/webui/view_model.py` → `WebUiViewModel` |
-| First-run Setup Wizard / Setup Ready | `adapters/webui/setup.py` → `SetupCoordinator` |
-| Archive Author Ops | `adapters/webui/archive_author_ops.py` → `ArchiveAuthorOps` |
+| First-run Setup Wizard / Setup Ready | `webops/setup_coordinator.py` → `SetupCoordinator` |
+| Archive Author Ops | `webops/archive_author_ops.py` → `ArchiveAuthorOps` |
 | Execution Mode / watch_inline | `transfer/watch_inline.py` + TransferStore `execution_mode` |
 | Deep Link Resolve | `transfer/deep_link.py` |
 | Deferred Discussion Reply Capture | `transfer/comment_delay.py` |

@@ -65,7 +65,7 @@ class TrmdCompositionRoot:
             client_factory=TelegramRestrictedMediaDownloaderClient
         )
         self.download_upload_window = DynamicAsyncWindow(
-            limit_provider=self.gc.upload_pending_limit, minimum=1, maximum=5
+            limit_provider=self._upload_pending_limit, minimum=1, maximum=5
         )
         self.local_storage_guard = LocalStorageGuard(
             reserve_bytes_provider=self._local_storage_reserve_bytes
@@ -440,6 +440,11 @@ class TrmdCompositionRoot:
             "local_storage_reserve_bytes",
             LocalStorageGuard.DEFAULT_RESERVE_BYTES,
         )
+
+    def _upload_pending_limit(self) -> int:
+        # 必须 late-bind：传入 int 会让 DynamicAsyncWindow.current_limit
+        # 调用 int 时抛 TypeError 并静默降级为 minimum，冻结配置值与热更新。
+        return self.gc.upload_pending_limit
 
     def _pikpak_archive_client(self):
         return build_pikpak_archive_client(

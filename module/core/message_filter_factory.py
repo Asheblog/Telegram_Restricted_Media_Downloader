@@ -6,7 +6,7 @@
 
 - 本模块**只依赖 filter 与 media_types 两者**，自身不被任何地方反向依赖；
 - ``media_types.py`` 不再 import ``MessageFilter``；
-- 原 ``module.core.media_types.build_runtime_message_filter`` 保留为转发，兼容既有调用点。
+- ``build_runtime_message_filter`` 仅由本模块提供，调用方直接引用这个装配点。
 """
 from __future__ import annotations
 

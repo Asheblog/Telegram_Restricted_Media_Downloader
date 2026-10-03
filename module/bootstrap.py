@@ -186,39 +186,48 @@ def initialize() -> None:
         except Exception:
             pass
 
-    file_handler = TimedRotatingFileHandler(
-        filename=LOG_PATH,
-        when="midnight",
-        interval=1,
-        backupCount=LOG_RETENTION_DAYS,
-        encoding="UTF-8",
-    )
-    file_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)-8s" + " " + LOG_FORMAT, datefmt=LOG_TIME_FORMAT
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        file_handler = TimedRotatingFileHandler(
+            filename=LOG_PATH,
+            when="midnight",
+            interval=1,
+            backupCount=LOG_RETENTION_DAYS,
+            encoding="UTF-8",
         )
-    )
-    file_handler.setLevel(file_log_level)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-8s" + " " + LOG_FORMAT,
+                datefmt=LOG_TIME_FORMAT,
+            )
+        )
+        file_handler.setLevel(file_log_level)
 
-    # 配置日志终端记录器(控制台输出)
-    console_handler = RichHandler(
-        level=console_log_level,  # 控制台只显示WARNING及以上级别。
-        console=console,
-        rich_tracebacks=True,
-        show_path=False,
-        omit_repeated_times=True,
-        log_time_format=LOG_TIME_FORMAT,
-    )
-    # 配置日志记录器(根记录器设置为最低级别 DEBUG)
-    logging.basicConfig(
-        level=logging.DEBUG,  # 根记录器设置为DEBUG,允许所有日志通过。
-        format=LOG_FORMAT,
-        datefmt=LOG_TIME_FORMAT,
-        handlers=[
-            console_handler,  # 控制台:WARNING+
-            file_handler,  # 文件:INFO+
-        ],
-    )
+        # 配置日志终端记录器(控制台输出)
+        console_handler = RichHandler(
+            level=console_log_level,  # 控制台只显示WARNING及以上级别。
+            console=console,
+            rich_tracebacks=True,
+            show_path=False,
+            omit_repeated_times=True,
+            log_time_format=LOG_TIME_FORMAT,
+        )
+        # 配置日志记录器(根记录器设置为最低级别 DEBUG)
+        logging.basicConfig(
+            level=logging.DEBUG,  # 根记录器设置为DEBUG,允许所有日志通过。
+            format=LOG_FORMAT,
+            datefmt=LOG_TIME_FORMAT,
+            handlers=[
+                console_handler,  # 控制台:WARNING+
+                file_handler,  # 文件:INFO+
+            ],
+        )
+        if file_handler not in root_logger.handlers:
+            # basicConfig 会在 logging 内部重新检查 root.handlers: 若其他线程
+            # 在本次检查与 basicConfig 之间抢先添加了 handler，它会 no-op，而
+            # TimedRotatingFileHandler 已在构造时打开文件句柄。这里显式关闭，
+            # 避免该实例失去引用后触发 ResourceWarning: unclosed file。
+            file_handler.close()
     log.info(f"{SOFTWARE_SHORT_NAME}:{__version__},更新日期:{__update_date__}。")
     log.info(f'文件日志等级:"{file_log_level_name}"。')
     log.info(f'终端日志等级:"{console_log_level_name}"。')
