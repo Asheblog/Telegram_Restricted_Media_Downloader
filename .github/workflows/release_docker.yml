@@ -71,7 +71,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5.构建并推送镜像。
+      # 5.先本地构建单平台镜像并**真的跑起来做冒烟检查**（在 push 之前）。
+      #
+      # 为什么必须加这一步：2026-10-03 的事故里，镜像构建成功、CI 全绿，
+      # 但用户容器一启动就 `ImportError: cannot import name 'ChannelPrivate_400'`
+      # （我把多行 import 压成单行时丢了 `as` 别名，而测试用的 pyrogram stub
+      # 会伪造任意属性，所以测不出来）。"构建通过" ≠ "能启动"。
+      - name: Build locally for smoke test
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: trmd-smoke:local
+          cache-from: type=gha
+
+      # 6.在真实镜像里：① 确认用的是真 pyrogram（不是 stub）；② 导入整个 module 树；
+      #   ③ 确认 WebUI 静态资源可用（模板已在构建期裁剪，只剩构建产物）。
+      - name: Smoke test the built image (real import + assets)
+        shell: bash
+        run: |
+          docker run --rm --entrypoint python trmd-smoke:local -c '
+          import importlib, pathlib, sys
+          sys.path.insert(0, "/app")
+          import pyrogram
+          pyro = getattr(pyrogram, "__file__", None)
+          assert pyro and "site-packages" in pyro.replace("\\", "/"), f"stub detected: {pyro}"
+          root = pathlib.Path("/app/module")
+          mods = []
+          for p in sorted(root.rglob("*.py")):
+              if "__pycache__" in p.parts:
+                  continue
+              parts = list(p.relative_to("/app").with_suffix("").parts)
+              if parts[-1] == "__init__":
+                  parts.pop()
+              mods.append(".".join(parts))
+          failed = []
+          for name in mods:
+              try:
+                  importlib.import_module(name)
+              except Exception as exc:
+                  failed.append(f"{name}: {type(exc).__name__}: {exc}")
+          print(f"IMPORTED {len(mods) - len(failed)}/{len(mods)}")
+          for item in failed:
+              print("FAILED: " + item)
+          from module.adapters.webui import static_assets
+          html = static_assets.WEB_UI_HTML
+          assert html and len(html) > 1000, "WebUI 桌面页资源不可用（构建产物缺失？）"
+          mobile = static_assets.WEB_UI_MOBILE_HTML
+          assert mobile and len(mobile) > 1000, "WebUI 移动页资源不可用"
+          login = static_assets.LOGIN_PAGE_HTML
+          assert login and len(login) > 200, "WebUI 登录页资源不可用"
+          print(f"ASSETS ok: desktop={len(html)} mobile={len(mobile)} login={len(login)} fonts={len(static_assets.font_names())}")
+          sys.exit(1 if failed else 0)
+          '
+
+      # 7.冒烟通过后才构建并推送多平台镜像（复用上面的 GHA 层缓存）。
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

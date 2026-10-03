@@ -20,7 +20,20 @@ from pyrogram.errors import (
     FloodWait,
     FloodPremiumWait
 )
-from pyrogram.errors.exceptions.bad_request_400 import MsgIdInvalid, UsernameInvalid, ChannelInvalid, BotMethodInvalid, UsernameNotOccupied, ChannelPrivate_400, ChatForwardsRestricted_400
+from pyrogram.errors.exceptions.bad_request_400 import (
+    MsgIdInvalid,
+    UsernameInvalid,
+    ChannelInvalid,
+    BotMethodInvalid,
+    UsernameNotOccupied,
+    # 必须写成 `X as X_400`：真实 pyrogram 里**没有** ChannelPrivate_400 /
+    # ChatForwardsRestricted_400 这两个名字，它们只是本地的别名。
+    # 曾经这里被误改成裸名（多行 import 被压成单行时丢了 as），
+    # 结果镜像能构建、测试也全绿（pyrogram_stub 会伪造任意属性），
+    # 但容器一启动就 ImportError —— 生产事故。
+    ChannelPrivate as ChannelPrivate_400,
+    ChatForwardsRestricted as ChatForwardsRestricted_400
+)
 from pyrogram.errors.exceptions.not_acceptable_406 import (
     ChannelPrivate as ChannelPrivate_406,
     ChatForwardsRestricted as ChatForwardsRestricted_406
