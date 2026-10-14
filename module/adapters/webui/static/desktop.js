@@ -1161,12 +1161,9 @@ async function loadWatches() {
 }
 
 function updateWatchBadge() {
-  const watches = state.watches || [];
-  const activeWatches = watches.filter(w => w.status !== 'paused');
-  const todayTotal = activeWatches.reduce(function(sum, w) {
-    return sum + (Number(w.today_count) || 0);
-  }, 0);
-  const count = todayTotal > 0 ? todayTotal : activeWatches.length;
+  const count = globalThis.WatchUiHelpers && typeof globalThis.WatchUiHelpers.computeWatchBadgeCount === 'function'
+    ? globalThis.WatchUiHelpers.computeWatchBadgeCount(state.watches || [])
+    : 0;
   const badge = $('#badge-watches');
   if (!badge) return;
   badge.textContent = count || '';

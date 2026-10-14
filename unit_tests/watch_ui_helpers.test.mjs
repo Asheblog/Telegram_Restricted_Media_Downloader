@@ -59,4 +59,25 @@ assert.deepEqual(partitioned.withoutComment.map((w) => w.id), ['a', 'c']);
 assert.deepEqual(partitioned.withComment.map((w) => w.id), ['b', 'd']);
 assert.deepEqual(h.partitionWatchesByComment(null), { withoutComment: [], withComment: [] });
 
+// Sidebar "实时监听" badge: today's completed events, never active-channel count.
+assert.equal(
+  h.computeWatchBadgeCount([
+    { status: 'running', today_count: 0 },
+    { status: 'running', today_count: 0 },
+    { status: 'paused', today_count: 5 },
+  ]),
+  0,
+  'today=0 must stay 0 (not fall back to active channel count)'
+);
+assert.equal(
+  h.computeWatchBadgeCount([
+    { status: 'running', today_count: 2 },
+    { status: 'running', today_count: 3 },
+    { status: 'paused', today_count: 9 },
+  ]),
+  5
+);
+assert.equal(h.computeWatchBadgeCount([]), 0);
+assert.equal(h.computeWatchBadgeCount(null), 0);
+
 console.log('watch_ui_helpers.test.mjs: ok');

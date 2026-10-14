@@ -321,8 +321,8 @@ _Avoid_: media cleanup, full-disk rename, manual rclone script
 **Migration Overview** — Author Archive Reorganize 的计划汇总视图：按 `move` / `needs_confirm` / `needs_review` / skip 分桶计数，明细经分页 API 拉取全量，浏览器不再截断预览。
 _Avoid_: truncated 200-row table, per-row manual approve
 
-**Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。
-_Avoid_: Listen job, bot listener
+**Live Transfer Watch** — 持续的频道监听规则，新消息到达时自动触发转存/转发；WebUI 表格中的“今日记录”只统计本地当天事件，完整历史记录通过分页弹框查看。侧边栏「实时监听」角标为非暂停监听的当日事件合计；当日为 0 时隐藏角标，不回退为监听频道数。
+_Avoid_: Listen job, bot listener, channel-count badge fallback
 
 **Live Transfer Status** — 用户可见的进度消息，展示下载/上传/目标发送/失败各阶段状态。
 _Avoid_: Container log, final notice

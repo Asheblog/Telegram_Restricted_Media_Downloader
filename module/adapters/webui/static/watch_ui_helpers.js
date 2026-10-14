@@ -108,6 +108,15 @@
     return { withoutComment: withoutComment, withComment: withComment };
   }
 
+  /** Sidebar badge: sum of today's events on non-paused watches (0 stays 0). */
+  function computeWatchBadgeCount(watches) {
+    return (watches || [])
+      .filter(function (w) { return w && w.status !== 'paused'; })
+      .reduce(function (sum, w) {
+        return sum + (Number(w.today_count) || 0);
+      }, 0);
+  }
+
   var WatchUiHelpers = {
     shortTelegramLink: shortTelegramLink,
     formatWatchRoute: formatWatchRoute,
@@ -116,6 +125,7 @@
     watchDownloadTitle: watchDownloadTitle,
     watchDownloadProgressPercent: watchDownloadProgressPercent,
     partitionWatchesByComment: partitionWatchesByComment,
+    computeWatchBadgeCount: computeWatchBadgeCount,
   };
 
   root.WatchUiHelpers = WatchUiHelpers;
