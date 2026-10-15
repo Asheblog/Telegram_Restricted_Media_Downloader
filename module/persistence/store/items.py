@@ -36,16 +36,6 @@ class ItemsMixin:
         with self._lease_lock:
             self._leased_item_ids.update(leased)
 
-    def is_item_leased(self, item_id) -> bool:
-        try:
-            value = int(item_id)
-        except (TypeError, ValueError):
-            return False
-        if value <= 0:
-            return False
-        with self._lease_lock:
-            return value in self._leased_item_ids
-
     def add_item(
             self,
             task_id: int,
@@ -524,6 +514,29 @@ class ItemsMixin:
             if str(item.get('status') or '') in resumable_statuses
             and str(item.get('phase') or '') in resumable_phases
         ]
+
+    def has_in_flight_items(self, task_id: int) -> bool:
+        """任务未暂停/未终结且仍有 RUNNING 条目：此时重跑任务会与在途协程争用同一条目。"""
+        with self.connect() as conn:
+            row = conn.execute(
+                '''
+                SELECT 1
+                FROM transfer_items AS i
+                JOIN transfer_tasks AS t ON t.id = i.task_id
+                WHERE i.task_id = ?
+                  AND i.status = ?
+                  AND t.status IN (?, ?, ?)
+                LIMIT 1
+                ''',
+                (
+                    int(task_id),
+                    TransferStatus.RUNNING,
+                    TransferStatus.PENDING,
+                    TransferStatus.RUNNING,
+                    TransferStatus.PAUSING,
+                ),
+            ).fetchone()
+        return row is not None
 
     def count_items(self, task_id: int) -> int:
         with self.connect() as conn:

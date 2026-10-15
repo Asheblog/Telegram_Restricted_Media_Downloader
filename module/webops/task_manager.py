@@ -6,6 +6,7 @@ from typing import Callable, Optional, Set
 from module.adapters.pikpak.integration import PikpakIntegrationManager
 from module.domain.archive_naming.source_folders import archive_source_folder, normalize_archive_title_source
 from module.persistence.transfer_store import TransferStore, TransferStatus
+from module.ports import TransferTaskBusyError
 
 
 class WebUITaskManager:
@@ -492,6 +493,8 @@ class WebUITaskManager:
         task = self.transfer_store.get_task(task_id)
         if not task:
             return 0
+        if self.transfer_store.has_in_flight_items(task_id):
+            raise TransferTaskBusyError(task_id)
         from module.transfer.watch_inline import is_watch_inline_task
         watch_inline = is_watch_inline_task(task)
         failed_items = [
@@ -538,7 +541,7 @@ class WebUITaskManager:
         return reset_items
 
     def retry_failed_web_items(self, item_ids, submit_fn=None) -> dict:
-        result = {'retried_items': 0, 'task_ids': []}
+        result = {'retried_items': 0, 'task_ids': [], 'busy_items': 0}
         if not self.transfer_store:
             return result
         ids_by_task: dict[int, list[int]] = {}
@@ -548,9 +551,13 @@ class WebUITaskManager:
                 continue
             ids_by_task.setdefault(int(item['task_id']), []).append(item_id)
         for task_id in sorted(ids_by_task):
-            reset_items = self.retry_failed_web_task(
-                task_id, submit_fn=submit_fn, item_ids=ids_by_task[task_id]
-            )
+            try:
+                reset_items = self.retry_failed_web_task(
+                    task_id, submit_fn=submit_fn, item_ids=ids_by_task[task_id]
+                )
+            except TransferTaskBusyError:
+                result['busy_items'] += len(ids_by_task[task_id])
+                continue
             result['retried_items'] += reset_items
             if reset_items > 0:
                 result['task_ids'].append(task_id)

@@ -584,21 +584,10 @@ class TelegramRestrictedMediaDownloader(TrmdCompositionRoot, WebOperationsMixin,
         )
         store.add_event(int(task_id), 'Watch inline download retry requested.')
         runner = self._ensure_transfer_runner()
-        resumable_phases = store._resumable_item_phases()
-        pending_items = []
-        for item in store.list_items(int(task_id)):
-            if item.get('status') not in (TransferStatus.PENDING, TransferStatus.RUNNING):
-                continue
-            item_id = int(item.get('id') or 0)
-            # 持租约且已在 downloading/uploading 的条目由在途协程拥有，勿再 resume。
-            # 重试重置后的 pending 仍持租约，必须继续处理。
-            if (
-                item_id
-                and store.is_item_leased(item_id)
-                and str(item.get('phase') or '') in resumable_phases
-            ):
-                continue
-            pending_items.append(item)
+        pending_items = [
+            item for item in store.list_items(int(task_id))
+            if item.get('status') in (TransferStatus.PENDING, TransferStatus.RUNNING)
+        ]
         if pending_items:
             for item in pending_items:
                 try:

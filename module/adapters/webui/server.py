@@ -47,7 +47,7 @@ from module.adapters.webui.security import (
 )
 from module.adapters.webui.view_model import WebUiViewModel
 from module.utils.diagnostics import default_diagnostic
-from module.ports import IDiagnosticPort, IWebUiOperations
+from module.ports import IDiagnosticPort, IWebUiOperations, TransferTaskBusyError
 from module.domain.archive_naming.source_folders import normalize_archive_title_source
 from module.persistence.transfer_store import TransferStore
 
@@ -1361,12 +1361,21 @@ class WebUiServer:
             )
         if action == "retry-failed":
             retry_failed_web_task = self._operation("retry_failed_web_task")
-            if retry_failed_web_task:
-                reset_items = int(retry_failed_web_task(task_id))
-            else:
-                reset_items = self.store.retry_failed_items(task_id)
-                if reset_items and self.task_submitter:
-                    self.task_submitter(task_id)
+            try:
+                if retry_failed_web_task:
+                    reset_items = int(retry_failed_web_task(task_id))
+                elif self.store.has_in_flight_items(task_id):
+                    raise TransferTaskBusyError(task_id)
+                else:
+                    reset_items = self.store.retry_failed_items(task_id)
+            except TransferTaskBusyError:
+                raise WebUiApiError(
+                    "task_busy",
+                    "任务仍有文件在传输中，请等待传输完成，或先暂停任务后再重试。",
+                    HTTPStatus.CONFLICT,
+                ) from None
+            if not retry_failed_web_task and reset_items and self.task_submitter:
+                self.task_submitter(task_id)
             return {"task_id": task_id, "action": action, "reset_items": reset_items}
         if action == "pause":
             pause_web_task = self._operation("pause_web_task")
@@ -1621,7 +1630,7 @@ class WebUiServer:
             if isinstance(raw_item_id, bool) or isinstance(raw_item_id, float):
                 return None
             if isinstance(raw_item_id, str):
-                if not raw_item_id.isdigit():
+                if not (raw_item_id.isascii() and raw_item_id.isdigit()):
                     return None
                 item_id = int(raw_item_id)
             elif isinstance(raw_item_id, int):

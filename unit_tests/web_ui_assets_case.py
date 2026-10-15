@@ -359,8 +359,10 @@ class WebUiAssetsCase(unittest.TestCase):
         for fragment in (
             "async function retryMediaItems(itemIds)",
             "postJson('/api/media/retry', { item_ids: itemIds })",
+            "alert(mediaRetryResultMessage(result))",
             "t('media.retryNone')",
             "t('media.retryDone').replace('{count}', retried)",
+            "t('media.retryBusy').replace('{count}', busy)",
             "t('media.retrying')",
             'data-status="',
             'data-media-retry="',
@@ -381,8 +383,8 @@ class WebUiAssetsCase(unittest.TestCase):
             'data-mob-media-retry="',
             'class="mob-btn mob-btn-sm mob-btn-muted"',
             'item.error_message',
-            "showToast(t('media.retryNone')",
-            "t('media.retryDone').replace('{count}', retried)",
+            "showToast(mediaRetryResultMessage(result)",
+            "function mediaRetryResultMessage(result)",
             'loadMediaMobile();',
         ):
             self.assertIn(fragment, WEB_UI_MOBILE_HTML)
@@ -399,6 +401,10 @@ class WebUiAssetsCase(unittest.TestCase):
             "'media.retryDone': 'Reset {count} failed item(s) for retry (complete local files are reused).'",
             "'media.retryNone': '没有需要重新执行的失败项（可能已直接恢复），列表已刷新。'",
             "'media.retryNone': 'No failed items needed re-running (they may have been recovered directly); list refreshed.'",
+            "'media.retryBusy': '{count} 个失败项所在任务仍有文件在传输中，暂未重试；请等待传输完成，或先暂停该任务后再重试。'",
+            "'media.retryBusy': '{count} failed item(s) were not retried because their task still has files in flight; wait for it to finish, or pause the task first.'",
+            "'error.task_busy': '任务仍有文件在传输中，请等待传输完成，或先暂停任务后再重试。'",
+            "'error.task_busy': 'The task still has files in flight; wait for it to finish, or pause the task first, then retry.'",
             "'media.failureReason': '失败原因'",
             "'media.failureReason': 'Failure reason'",
             "'media.confirmCleanup': '确定要删除选中的文件吗？此操作不可撤销。失败项删除后再重试需要重新下载。'",

@@ -495,6 +495,7 @@ const i18n = {
     'media.retrying': '重试中…',
     'media.retryDone': '已重置 {count} 个失败项，正在重试（本地文件完整时不会重新下载）。',
     'media.retryNone': '没有需要重新执行的失败项（可能已直接恢复），列表已刷新。',
+    'media.retryBusy': '{count} 个失败项所在任务仍有文件在传输中，暂未重试；请等待传输完成，或先暂停该任务后再重试。',
     'media.failureReason': '失败原因',
     'media.cleanupHistory': '清理历史',
     'media.empty': '没有可清理文件',
@@ -513,6 +514,7 @@ const i18n = {
     'event.level.warning': '警告',
     'event.level.error': '错误',
     'error.auth_required': '需要登录。',
+    'error.task_busy': '任务仍有文件在传输中，请等待传输完成，或先暂停任务后再重试。',
     'error.setup_required': '请先完成初始化配置。',
     'error.setup_api_failed': '保存 API 凭证失败。',
     'error.setup_rclone_failed': '配置 rclone 失败。',
@@ -1024,6 +1026,7 @@ const i18n = {
     'media.retrying': 'Retrying…',
     'media.retryDone': 'Reset {count} failed item(s) for retry (complete local files are reused).',
     'media.retryNone': 'No failed items needed re-running (they may have been recovered directly); list refreshed.',
+    'media.retryBusy': '{count} failed item(s) were not retried because their task still has files in flight; wait for it to finish, or pause the task first.',
     'media.failureReason': 'Failure reason',
     'media.cleanupHistory': 'Cleanup history',
     'media.empty': 'No cleanable files',
@@ -1042,6 +1045,7 @@ const i18n = {
     'event.level.warning': 'Warning',
     'event.level.error': 'Error',
     'error.auth_required': 'Authentication required.',
+    'error.task_busy': 'The task still has files in flight; wait for it to finish, or pause the task first, then retry.',
     'error.setup_required': 'Please finish first-run setup.',
     'error.setup_api_failed': 'Failed to save API credentials.',
     'error.setup_rclone_failed': 'Failed to configure rclone.',
@@ -1619,6 +1623,16 @@ async function importForwardWatchBackupFile(file) {
   const text = await file.text();
   const payload = JSON.parse(text);
   return postJson('/api/watches/forward/import', payload);
+}
+
+function mediaRetryResultMessage(result) {
+  const retried = Number(result && result.retried_items) || 0;
+  const busy = Number(result && result.busy_items) || 0;
+  const parts = [];
+  if (retried > 0) parts.push(t('media.retryDone').replace('{count}', retried));
+  if (busy > 0) parts.push(t('media.retryBusy').replace('{count}', busy));
+  if (!parts.length) parts.push(t('media.retryNone'));
+  return parts.join('\n');
 }
 
 function translateApiError(data, fallbackKey) {

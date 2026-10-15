@@ -2675,8 +2675,7 @@ async function retryMediaItems(itemIds) {
   setMediaRetryLoading(true);
   try {
     const result = await postJson('/api/media/retry', { item_ids: itemIds });
-    const retried = Number(result.retried_items) || 0;
-    alert(retried > 0 ? t('media.retryDone').replace('{count}', retried) : t('media.retryNone'));
+    alert(mediaRetryResultMessage(result));
   } catch(e) {
     alert(translateApiError(e, 'form.requestFailed'));
   } finally {

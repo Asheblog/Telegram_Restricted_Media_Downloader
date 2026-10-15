@@ -2502,12 +2502,7 @@ async function retryMediaItemMobile(itemId, buttonEl) {
   }
   try {
     var result = await postJson('/api/media/retry', { item_ids: [itemId] });
-    var retried = Number(result.retried_items) || 0;
-    if (retried > 0) {
-      showToast(t('media.retryDone').replace('{count}', retried), 3500);
-    } else {
-      showToast(t('media.retryNone'), 3500);
-    }
+    showToast(mediaRetryResultMessage(result), Number(result.busy_items) > 0 ? 6000 : 3500);
   } catch (e) {
     showToast(translateApiError(e, 'form.requestFailed'), 4500);
   }

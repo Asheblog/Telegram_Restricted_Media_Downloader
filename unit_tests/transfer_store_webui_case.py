@@ -1819,7 +1819,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             result = downloader.retry_failed_web_items([selected_id, selected_id])
 
-            self.assertEqual({"retried_items": 1, "task_ids": [task_id]}, result)
+            self.assertEqual(
+                {"retried_items": 1, "task_ids": [task_id], "busy_items": 0}, result
+            )
             self.assertEqual([task_id], submitted)
             items = {item["id"]: item for item in store.list_items(task_id)}
             self.assertEqual(TransferStatus.PENDING, items[selected_id]["status"])
@@ -1846,7 +1848,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
             result = downloader.retry_failed_web_items([second_item_id, first_item_id])
 
             self.assertEqual(
-                {"retried_items": 2, "task_ids": [first_task_id, second_task_id]},
+                {
+                    "retried_items": 2,
+                    "task_ids": [first_task_id, second_task_id],
+                    "busy_items": 0,
+                },
                 result,
             )
             self.assertEqual([first_task_id, second_task_id], submitted)
@@ -1868,9 +1874,99 @@ class TransferStoreWebUiCase(unittest.TestCase):
 
             result = downloader.retry_failed_web_items([item_id + 1000])
 
-            self.assertEqual({"retried_items": 0, "task_ids": []}, result)
+            self.assertEqual(
+                {"retried_items": 0, "task_ids": [], "busy_items": 0}, result
+            )
             self.assertEqual([], submitted)
             self.assertEqual(TransferStatus.FAILURE, store.get_item(item_id)["status"])
+
+    def _task_with_in_flight_and_failed_item(self, store, task_status):
+        task_id = store.create_task(
+            "https://t.me/source", "https://t.me/target", start_id=1, end_id=2
+        )
+        failed_id = self._add_failed_media_item(store, task_id, 1)
+        in_flight_id = store.add_item(
+            task_id=task_id,
+            source_message_id=2,
+            source_link="https://t.me/source/2",
+            target_link="https://t.me/target",
+            file_name="2.mp4",
+            phase="uploading",
+            status=TransferStatus.RUNNING,
+        )
+        store.update_task(task_id, status=task_status)
+        return task_id, failed_id, in_flight_id
+
+    def test_retry_failed_web_items_skips_task_with_items_in_flight(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            busy_task_id, busy_failed_id, _ = self._task_with_in_flight_and_failed_item(
+                store, TransferStatus.RUNNING
+            )
+            idle_task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=3, end_id=3
+            )
+            idle_failed_id = self._add_failed_media_item(store, idle_task_id, 3)
+            downloader, submitted = self._build_item_retry_downloader(store)
+
+            result = downloader.retry_failed_web_items([busy_failed_id, idle_failed_id])
+
+            self.assertEqual(
+                {"retried_items": 1, "task_ids": [idle_task_id], "busy_items": 1},
+                result,
+            )
+            self.assertEqual([idle_task_id], submitted)
+            self.assertEqual(
+                TransferStatus.FAILURE, store.get_item(busy_failed_id)["status"]
+            )
+            self.assertEqual(TransferStatus.RUNNING, store.get_task(busy_task_id)["status"])
+
+    def test_retry_failed_web_task_allows_paused_task_with_interrupted_items(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id, failed_id, in_flight_id = self._task_with_in_flight_and_failed_item(
+                store, TransferStatus.PAUSED
+            )
+            downloader, submitted = self._build_item_retry_downloader(store)
+
+            self.assertEqual(1, downloader.retry_failed_web_task(task_id))
+
+            self.assertEqual([task_id], submitted)
+            self.assertEqual(TransferStatus.PENDING, store.get_item(failed_id)["status"])
+            self.assertEqual(
+                TransferStatus.RUNNING, store.get_item(in_flight_id)["status"]
+            )
+
+    def test_webui_task_retry_failed_rejects_task_with_items_in_flight(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id, failed_id, _ = self._task_with_in_flight_and_failed_item(
+                store, TransferStatus.RUNNING
+            )
+            downloader, submitted = self._build_item_retry_downloader(store)
+            server = WebUiServer(
+                store=store, operations=downloader, username="admin", password="pass"
+            )
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(
+                server, content_type="application/json"
+            )
+            try:
+                conn = connect_webui(server)
+                conn.request(
+                    "POST", f"/api/tasks/{task_id}/retry-failed", headers=headers
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(409, response.status)
+                self.assertEqual("task_busy", body["error_code"])
+                self.assertEqual([], submitted)
+                self.assertEqual(
+                    TransferStatus.FAILURE, store.get_item(failed_id)["status"]
+                )
+            finally:
+                server.stop()
 
     def test_retry_failed_web_task_with_item_ids_skips_watch_inline_empty_failure(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
@@ -2001,6 +2097,7 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     {"item_ids": [2.0]},
                     {"item_ids": ["1e2"]},
                     {"item_ids": [" 5"]},
+                    {"item_ids": ["²"]},
                     {"item_ids": list(range(1, 502))},
                 ):
                     with self.subTest(payload=payload):

@@ -279,7 +279,7 @@ _Avoid_: Download task, forward job
 **Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。长时间停在 `PENDING`/`RUNNING` 且无进度更新时，对账按全局 `transfer.item_stale_timeout_minutes`（默认 5）判失败并协作中止在途下载/转发，以释放队列；有下载/上传进度刷新 `updated_at` 时不误杀。进程内持有 **Transfer Item Lease** 的条目（重试重置、开始下载、文件就绪待上传时获得）在合法排队/等待期间不按该超时判失败，仅在 24 小时无进展时兜底判失败；租约不落库，重启后清空。
 _Avoid_: File task, message job
 
-**Transfer Item Lease** — 进程内（不落库）对在途 Transfer Item 的持有标记，表示该条目正处于合法排队/等待（上传并发排队、rclone 入库、FloodWait、存储预留、重试后等槽位）。持租约条目只受 24 小时无进展兜底超时约束；条目离开 `PENDING`/`RUNNING` 后对账时自动释放；所属任务不再处于活跃态（非 PENDING/RUNNING/PAUSING/PAUSED）时租约也会被修剪；resume 路径会跳过已持租约的在途（downloading/uploading）条目，避免双协程争用；进程重启后全部清空。
+**Transfer Item Lease** — 进程内（不落库）对在途 Transfer Item 的持有标记，表示该条目正处于合法排队/等待（上传并发排队、rclone 入库、FloodWait、存储预留、重试后等槽位）。持租约条目只受 24 小时无进展兜底超时约束；条目离开 `PENDING`/`RUNNING` 后对账时自动释放；所属任务不再处于活跃态（非 PENDING/RUNNING/PAUSING/PAUSED）时租约也会被修剪；进程重启后全部清空。租约只表示“合法等待中、不按短超时判失败”，**不**表示“有活协程在处理”（暂停/取消不会释放租约），不能用来做在途去重。
 _Avoid_: Heartbeat, persisted lock, item keepalive
 
 **Transfer Progress** — 已完成 Transfer Item 的集合。同名 Task 再次执行时跳过已完成的 Item，实现断点续传。
@@ -348,7 +348,7 @@ _Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album, wait
 **Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复时绑定已有 Item（item_id），跳过已 success/skipped 的来源消息；压制同消息上的僵尸 active 行，避免再开一轮 fallback 下载。
 _Avoid_: Cancel task, delete task, kill transfer
 
-**Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。
+**Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。重试会重跑整个任务，因此任务仍有在途条目（任务为 PENDING/RUNNING/PAUSING 且存在 RUNNING 条目）时拒绝重试，避免与在途协程争用同一条目；用户可等传输完成或先暂停任务再重试。任务级入口返回 409 `task_busy`；媒体管理按条目重试跳过这类任务并在响应 `busy_items` 中计数。
 _Avoid_: Restart task, rerun all, clear history
 
 **Manual Archive Retry** — WebUI 系统日志对 `archive_not_found` 条目提供单条手动重试：`POST /api/system-logs/{id}/retry-archive`。列表下发 `can_retry`；强制重新匹配并归档，无视自动匹配时间窗口；同目标进行中请求返回已在重试中。支持转存延迟归档（`task_id`/`item_id`）与实时监听路径（`source_folder`+`file_name`，旧日志可从消息正文解析文件名）。仍找不到则同步返回失败，不另起自动调度。

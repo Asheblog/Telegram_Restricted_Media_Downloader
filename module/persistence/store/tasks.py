@@ -927,11 +927,12 @@ class TasksMixin:
             )
             reset_items = int(cursor.rowcount)
         if reset_items:
-            self.lease_items(reset_ids)
             self.refresh_task_counts(task_id)
             self.update_task(
                 task_id, status=TransferStatus.RUNNING, error_message="", finished=False
             )
+            # 须在任务回到 RUNNING 之后再续租：否则并发对账会按旧的终态任务把租约修剪掉。
+            self.lease_items(reset_ids)
             self.add_event(task_id, f"Retry failed items requested: {reset_items}.")
         return reset_items
 
