@@ -22,6 +22,20 @@ class ItemsMixin:
             return max(60, value)
         return int(self.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS)
 
+    def lease_items(self, item_ids) -> None:
+        leased: set[int] = set()
+        for item_id in item_ids or ():
+            try:
+                value = int(item_id)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                leased.add(value)
+        if not leased:
+            return
+        with self._lease_lock:
+            self._leased_item_ids.update(leased)
+
     def add_item(
             self,
             task_id: int,

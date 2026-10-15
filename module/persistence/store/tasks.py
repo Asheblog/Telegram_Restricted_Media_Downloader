@@ -520,32 +520,67 @@ class TasksMixin:
         finally:
             self._tls.reconciling = False
 
-    def _fail_stale_active_items(self, timeout_seconds: int) -> int:
-        cutoff = self._iso_before_now(timeout_seconds)
+    @staticmethod
+    def _stale_item_message(timeout_seconds: int) -> str:
         timeout_label = max(1, int(timeout_seconds) // 60)
+        return (
+            f"转存项超过{timeout_label}分钟无进展，已超时失败 "
+            f"(timed out after {timeout_label} minutes without progress)."
+        )
+
+    def _prune_item_leases(self) -> set[int]:
+        # 查询与移除须在同一把锁内：否则重试刚重置并续租的条目会被旧快照误删租约。
+        with self._lease_lock:
+            if not self._leased_item_ids:
+                return set()
+            with self.connect(run_maintenance=False) as conn:
+                rows = conn.execute(
+                    "SELECT id FROM transfer_items WHERE status IN (?, ?)",
+                    (TransferStatus.PENDING, TransferStatus.RUNNING),
+                ).fetchall()
+            active_ids = {int(row["id"]) for row in rows}
+            self._leased_item_ids.intersection_update(active_ids)
+            return set(self._leased_item_ids)
+
+    def _fail_stale_active_items(self, timeout_seconds: int) -> int:
+        leased_ids = self._prune_item_leases()
+        cutoff = self._iso_before_now(timeout_seconds)
+        leased_cutoff = self._iso_before_now(self.LEASED_TRANSFER_ITEM_TIMEOUT_SECONDS)
         with self.connect(run_maintenance=False) as conn:
             rows = conn.execute(
                 """
-                SELECT id, task_id
+                SELECT id, task_id, updated_at
                 FROM transfer_items
                 WHERE status IN (?, ?)
                   AND updated_at < ?
                 """,
                 (TransferStatus.PENDING, TransferStatus.RUNNING, cutoff),
             ).fetchall()
-        if not rows:
+        stale_rows = [
+            row
+            for row in rows
+            if int(row["id"]) not in leased_ids
+            or str(row["updated_at"] or "") < leased_cutoff
+        ]
+        if not stale_rows:
             return 0
         now = self.utc_now()
-        message = (
-            f"转存项超过{timeout_label}分钟无进展，已超时失败 "
-            f"(timed out after {timeout_label} minutes without progress)."
+        stale_message = self._stale_item_message(timeout_seconds)
+        leased_message = self._stale_item_message(
+            self.LEASED_TRANSFER_ITEM_TIMEOUT_SECONDS
         )
-        affected_tasks: set[int] = set()
+        task_messages: dict[int, list[str]] = {}
+        expired_leases: set[int] = set()
         logger = self._stale_item_logger
         with self.connect(run_maintenance=False) as conn:
-            for row in rows:
+            for row in stale_rows:
                 item_id = int(row["id"])
                 task_id = int(row["task_id"])
+                if item_id in leased_ids:
+                    message = leased_message
+                    expired_leases.add(item_id)
+                else:
+                    message = stale_message
                 conn.execute(
                     """
                     UPDATE transfer_items
@@ -557,16 +592,22 @@ class TasksMixin:
                     """,
                     (TransferStatus.FAILURE, message, now, item_id),
                 )
-                affected_tasks.add(task_id)
+                messages = task_messages.setdefault(task_id, [])
+                if message not in messages:
+                    messages.append(message)
                 if callable(logger):
                     try:
                         logger(item_id, task_id, message)
                     except Exception:
                         pass
-        for task_id in affected_tasks:
-            self.add_event(task_id, message, level="warning")
+        if expired_leases:
+            with self._lease_lock:
+                self._leased_item_ids.difference_update(expired_leases)
+        for task_id, messages in task_messages.items():
+            for message in messages:
+                self.add_event(task_id, message, level="warning")
             self.refresh_task_counts(task_id)
-        return len(rows)
+        return len(stale_rows)
 
     def _fail_stale_empty_watch_inline_tasks(self, timeout_seconds: int) -> int:
         cutoff = self._iso_before_now(timeout_seconds)
@@ -840,7 +881,18 @@ class TasksMixin:
                 ),
             )
             reset_items = int(cursor.rowcount)
+            if reset_items:
+                pending_rows = conn.execute(
+                    f"""
+                    SELECT id FROM transfer_items
+                    WHERE task_id = ?
+                      AND status = ?
+                      AND id IN ({placeholders})
+                    """,
+                    (task_id, TransferStatus.PENDING, *item_ids),
+                ).fetchall()
         if reset_items:
+            self.lease_items(int(row["id"]) for row in pending_rows)
             self.refresh_task_counts(task_id)
             self.update_task(
                 task_id, status=TransferStatus.RUNNING, error_message="", finished=False

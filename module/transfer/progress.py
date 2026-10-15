@@ -767,6 +767,7 @@ class TransferProgressTracker:
                 status=TransferStatus.RUNNING,
                 error_message='',
             )
+            store.lease_items([item_id])
             store.add_event(task_id, f'File ready for target upload: {file_name}', item_id=item_id)
             self._refresh_counts(task_id)
             return item_id
@@ -789,6 +790,7 @@ class TransferProgressTracker:
             phase='uploading',
             status=TransferStatus.RUNNING
         )
+        store.lease_items([item_id])
         store.add_event(task_id, f'File ready for target upload: {os.path.basename(file_path)}', item_id=item_id)
         self._refresh_counts(task_id)
         return item_id

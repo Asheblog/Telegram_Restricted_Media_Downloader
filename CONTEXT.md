@@ -276,8 +276,11 @@ _Avoid_: Listen queue job, ghost task
 **Transfer Task** — 一条持久化的转存请求（来源链接 → 目标链接，含可选 ID 范围）。存储在 SQLite 的 `transfer_tasks` 表。
 _Avoid_: Download task, forward job
 
-**Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。长时间停在 `PENDING`/`RUNNING` 且无进度更新时，对账按全局 `transfer.item_stale_timeout_minutes`（默认 5）判失败并协作中止在途下载/转发，以释放队列；有下载/上传进度刷新 `updated_at` 时不误杀。
+**Transfer Item** — Transfer Task 中的单条消息/媒体记录。存储在 `transfer_items` 表。长时间停在 `PENDING`/`RUNNING` 且无进度更新时，对账按全局 `transfer.item_stale_timeout_minutes`（默认 5）判失败并协作中止在途下载/转发，以释放队列；有下载/上传进度刷新 `updated_at` 时不误杀。进程内持有 **Transfer Item Lease** 的条目（重试重置、开始下载、文件就绪待上传时获得）在合法排队/等待期间不按该超时判失败，仅在 24 小时无进展时兜底判失败；租约不落库，重启后清空。
 _Avoid_: File task, message job
+
+**Transfer Item Lease** — 进程内（不落库）对在途 Transfer Item 的持有标记，表示该条目正处于合法排队/等待（上传并发排队、rclone 入库、FloodWait、存储预留、重试后等槽位）。持租约条目只受 24 小时无进展兜底超时约束；条目离开 `PENDING`/`RUNNING` 后对账时自动释放，进程重启后全部清空。
+_Avoid_: Heartbeat, persisted lock, item keepalive
 
 **Transfer Progress** — 已完成 Transfer Item 的集合。同名 Task 再次执行时跳过已完成的 Item，实现断点续传。
 _Avoid_: Chapter cursor, runtime offset

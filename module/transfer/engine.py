@@ -234,6 +234,7 @@ class TransferEngine:
                 status=TransferStatus.RUNNING,
                 error_message='',
             )
+            self.transfer_store.lease_items([item_id])
         else:
             item_id = self.transfer_store.add_item(
                 task_id=task_id,
@@ -252,6 +253,7 @@ class TransferEngine:
                 phase='downloading',
                 status=TransferStatus.RUNNING
             )
+            self.transfer_store.lease_items([item_id])
         partial_bytes = self.partial_download_bytes(final_path)
         self.transfer_store.update_item_progress(
             item_id=item_id,
