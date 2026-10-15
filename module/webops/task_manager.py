@@ -486,7 +486,7 @@ class WebUITaskManager:
         self._invoke_on_loop(enqueue)
         return True
 
-    def retry_failed_web_task(self, task_id: int, submit_fn=None) -> int:
+    def retry_failed_web_task(self, task_id: int, submit_fn=None, item_ids=None) -> int:
         if not self.transfer_store:
             return 0
         task = self.transfer_store.get_task(task_id)
@@ -499,6 +499,9 @@ class WebUITaskManager:
             if PikpakIntegrationManager.is_pikpak_archive_recoverable_item(item)
             or item.get('status') == TransferStatus.FAILURE
         ]
+        if item_ids is not None:
+            selected_ids = set(item_ids)
+            failed_items = [item for item in failed_items if int(item['id']) in selected_ids]
         retry_item_ids = [
             int(item['id'])
             for item in failed_items
@@ -507,7 +510,8 @@ class WebUITaskManager:
         reset_items = self.transfer_store.retry_failed_item_ids(task_id, retry_item_ids)
         if watch_inline:
             empty_failure = (
-                task.get('status') == TransferStatus.FAILURE
+                item_ids is None
+                and task.get('status') == TransferStatus.FAILURE
                 and not self.transfer_store.list_items(task_id)
             )
             if empty_failure:
@@ -532,6 +536,25 @@ class WebUITaskManager:
                     lambda tid=task_id: self._enqueue_and_process_web_task(tid)
                 )
         return reset_items
+
+    def retry_failed_web_items(self, item_ids, submit_fn=None) -> dict:
+        result = {'retried_items': 0, 'task_ids': []}
+        if not self.transfer_store:
+            return result
+        ids_by_task: dict[int, list[int]] = {}
+        for item_id in dict.fromkeys(int(item_id) for item_id in item_ids):
+            item = self.transfer_store.get_item(item_id)
+            if not item:
+                continue
+            ids_by_task.setdefault(int(item['task_id']), []).append(item_id)
+        for task_id in sorted(ids_by_task):
+            reset_items = self.retry_failed_web_task(
+                task_id, submit_fn=submit_fn, item_ids=ids_by_task[task_id]
+            )
+            result['retried_items'] += reset_items
+            if reset_items > 0:
+                result['task_ids'].append(task_id)
+        return result
 
     def _schedule_watch_inline_retry(self, task_id: int) -> None:
         retry_runner = self._retry_watch_inline_task

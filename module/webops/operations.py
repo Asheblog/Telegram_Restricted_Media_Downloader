@@ -320,6 +320,9 @@ class WebOperationsMixin:
     def retry_failed_web_task(self, task_id: int) -> int:
         return _require_web_task_manager(self).retry_failed_web_task(task_id)
 
+    def retry_failed_web_items(self, item_ids: list[int]) -> dict:
+        return _require_web_task_manager(self).retry_failed_web_items(item_ids)
+
     def _ensure_watch_ops(self):
         """监听编排实例（懒建并缓存；实现见 module.webops.watch_operations）。"""
         ops = self.__dict__.get('_watch_ops_impl')
@@ -1071,6 +1074,7 @@ class WebOperationsMixin:
 _WEB_UI_DELEGATE_METHODS = (
     'should_continue_web_transfer_task', 'cancel_task_uploads', 'pause_task_uploads', 'cancel_task_downloads', 'submit_web_task',
     'delete_web_task', 'pause_web_task', 'resume_web_task', 'retry_failed_web_task',
+    'retry_failed_web_items',
     'list_watches', 'create_watch', 'export_forward_watches', 'update_watch', 'delete_watch', 'list_watch_events',
     'list_deferred_discussion_captures', 'cancel_deferred_discussion_capture', 'run_deferred_discussion_capture_now',
     'retry_deferred_discussion_capture',

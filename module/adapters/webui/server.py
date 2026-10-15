@@ -1593,6 +1593,40 @@ class WebUiServer:
             HTTPStatus.SERVICE_UNAVAILABLE,
         )
 
+    def retry_media_items(self, payload: dict) -> dict:
+        item_ids = self._positive_item_ids(payload.get("item_ids"))
+        if item_ids is None:
+            raise WebUiApiError(
+                "invalid_item_ids",
+                "item_ids must be a non-empty list of positive integers.",
+                HTTPStatus.BAD_REQUEST,
+            )
+        retry_failed_web_items = self._operation("retry_failed_web_items")
+        if retry_failed_web_items:
+            return retry_failed_web_items(item_ids)
+        raise WebUiApiError(
+            "media_operations_unavailable",
+            "Media operations are unavailable.",
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+
+    @staticmethod
+    def _positive_item_ids(raw_item_ids) -> list[int] | None:
+        if not isinstance(raw_item_ids, list) or not raw_item_ids:
+            return None
+        item_ids = []
+        for raw_item_id in raw_item_ids:
+            if isinstance(raw_item_id, bool):
+                return None
+            try:
+                item_id = int(raw_item_id)
+            except (TypeError, ValueError):
+                return None
+            if item_id <= 0:
+                return None
+            item_ids.append(item_id)
+        return item_ids
+
     def list_archive_author_channels(self) -> dict:
         op = self._operation("list_archive_author_channels")
         if op:

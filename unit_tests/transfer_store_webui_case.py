@@ -1785,6 +1785,191 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(1, task["completed_items"])
             self.assertEqual(0, task["failed_items"])
 
+    def _add_failed_media_item(self, store, task_id, message_id):
+        return store.add_item(
+            task_id=task_id,
+            source_message_id=message_id,
+            source_link=f"https://t.me/source/{message_id}",
+            target_link="https://t.me/target",
+            file_name=f"{message_id}.mp4",
+            phase="failure",
+            status=TransferStatus.FAILURE,
+            error_message="upload failed",
+        )
+
+    def _build_item_retry_downloader(self, store):
+        downloader = build_downloader(transfer_store=store)
+        manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
+        submitted = []
+        manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
+        return downloader, submitted
+
+    def test_retry_failed_web_items_resets_only_selected_items(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=1, end_id=2
+            )
+            selected_id = self._add_failed_media_item(store, task_id, 1)
+            other_id = self._add_failed_media_item(store, task_id, 2)
+            store.refresh_task_counts(
+                task_id, expected_total=2, assignment_completed=True
+            )
+            downloader, submitted = self._build_item_retry_downloader(store)
+
+            result = downloader.retry_failed_web_items([selected_id, selected_id])
+
+            self.assertEqual({"retried_items": 1, "task_ids": [task_id]}, result)
+            self.assertEqual([task_id], submitted)
+            items = {item["id"]: item for item in store.list_items(task_id)}
+            self.assertEqual(TransferStatus.PENDING, items[selected_id]["status"])
+            self.assertEqual(TransferStatus.FAILURE, items[other_id]["status"])
+            self.assertEqual("upload failed", items[other_id]["error_message"])
+
+    def test_retry_failed_web_items_processes_each_task_in_ascending_order(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            first_task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=1, end_id=1
+            )
+            second_task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=2, end_id=2
+            )
+            first_item_id = self._add_failed_media_item(store, first_task_id, 1)
+            second_item_id = self._add_failed_media_item(store, second_task_id, 2)
+            for task_id in (first_task_id, second_task_id):
+                store.refresh_task_counts(
+                    task_id, expected_total=1, assignment_completed=True
+                )
+            downloader, submitted = self._build_item_retry_downloader(store)
+
+            result = downloader.retry_failed_web_items([second_item_id, first_item_id])
+
+            self.assertEqual(
+                {"retried_items": 2, "task_ids": [first_task_id, second_task_id]},
+                result,
+            )
+            self.assertEqual([first_task_id, second_task_id], submitted)
+            self.assertEqual(
+                TransferStatus.PENDING, store.get_item(first_item_id)["status"]
+            )
+            self.assertEqual(
+                TransferStatus.PENDING, store.get_item(second_item_id)["status"]
+            )
+
+    def test_retry_failed_web_items_ignores_unknown_item_ids(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=1, end_id=1
+            )
+            item_id = self._add_failed_media_item(store, task_id, 1)
+            downloader, submitted = self._build_item_retry_downloader(store)
+
+            result = downloader.retry_failed_web_items([item_id + 1000])
+
+            self.assertEqual({"retried_items": 0, "task_ids": []}, result)
+            self.assertEqual([], submitted)
+            self.assertEqual(TransferStatus.FAILURE, store.get_item(item_id)["status"])
+
+    def test_retry_failed_web_task_with_item_ids_skips_watch_inline_empty_failure(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source",
+                "https://t.me/target",
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+            store.update_task(task_id, status=TransferStatus.FAILURE)
+            downloader = build_downloader(transfer_store=store)
+            manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
+
+            reset_items = manager.retry_failed_web_task(task_id, item_ids=[999])
+
+            self.assertEqual(0, reset_items)
+            self.assertEqual(TransferStatus.FAILURE, store.get_task(task_id)["status"])
+
+    def test_webui_media_retry_api_validates_and_delegates_item_ids(self):
+        class MediaRetryOperations:
+            def __init__(self):
+                self.calls = []
+
+            def retry_failed_web_items(self, item_ids):
+                self.calls.append(list(item_ids))
+                return {"retried_items": len(item_ids), "task_ids": [7]}
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            operations = MediaRetryOperations()
+            server = WebUiServer(
+                store=store, operations=operations, username="admin", password="pass"
+            )
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(
+                server, content_type="application/json"
+            )
+            try:
+                conn = connect_webui(server)
+                conn.request(
+                    "POST",
+                    "/api/media/retry",
+                    body=json.dumps({"item_ids": [3, "5"]}),
+                    headers=headers,
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(200, response.status)
+                self.assertEqual({"retried_items": 2, "task_ids": [7]}, body)
+                self.assertEqual([[3, 5]], operations.calls)
+
+                for payload in (
+                    {"item_ids": []},
+                    {},
+                    {"item_ids": "3"},
+                    {"item_ids": [0]},
+                    {"item_ids": [-1]},
+                    {"item_ids": ["abc"]},
+                    {"item_ids": [None]},
+                    {"item_ids": [True]},
+                ):
+                    with self.subTest(payload=payload):
+                        conn.request(
+                            "POST",
+                            "/api/media/retry",
+                            body=json.dumps(payload),
+                            headers=headers,
+                        )
+                        response = conn.getresponse()
+                        body = json.loads(response.read().decode("utf-8"))
+                        self.assertEqual(400, response.status)
+                        self.assertEqual("invalid_item_ids", body["error_code"])
+                self.assertEqual([[3, 5]], operations.calls)
+            finally:
+                server.stop()
+
+    def test_webui_media_retry_api_requires_operations(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            server = WebUiServer(store=store, username="admin", password="pass")
+            server.start(open_browser=False)
+            headers = self._authenticated_headers(
+                server, content_type="application/json"
+            )
+            try:
+                conn = connect_webui(server)
+                conn.request(
+                    "POST",
+                    "/api/media/retry",
+                    body=json.dumps({"item_ids": [1]}),
+                    headers=headers,
+                )
+                response = conn.getresponse()
+                body = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(503, response.status)
+                self.assertEqual("media_operations_unavailable", body["error_code"])
+            finally:
+                server.stop()
+
     def test_webui_task_pause_blocks_scheduling_and_resume_resubmits(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = TransferStore(directory=directory)

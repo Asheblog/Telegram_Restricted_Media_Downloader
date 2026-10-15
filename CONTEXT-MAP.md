@@ -155,6 +155,7 @@
 | `/api/transfer/detect-range` | POST | 检测频道消息范围 |
 | `/api/media/scan` | GET | 扫描可清理文件 |
 | `/api/media/cleanup` | POST | 执行文件清理 |
+| `/api/media/retry` | POST | 按 `item_ids` 重试失败 Items；响应 `retried_items`/`task_ids` |
 | `/api/auth/status` | GET | WebUI Telegram Login 步进状态 |
 | `/api/auth/submit` | POST | 提交手机号/验证码/2FA |
 | `/api/setup/status` | GET | First-run Setup Wizard 状态（含 Setup Ready） |

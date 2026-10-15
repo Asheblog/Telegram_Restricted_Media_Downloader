@@ -49,6 +49,45 @@ class MediaManagerCase(unittest.TestCase):
             self.assertEqual(9, result['total_size'])
             self.assertEqual(4, len(result['items'][0]['paths']))
 
+    def test_scan_transfer_items_includes_error_message(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            failed_path = os.path.join(directory, 'failed.mp4')
+            done_path = os.path.join(directory, 'done.mp4')
+            for path in (failed_path, done_path):
+                with open(path, 'wb') as file:
+                    file.write(b'1234')
+
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source/1', 'https://t.me/pikpak_bot')
+            failed_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                file_name='failed.mp4',
+                local_path=failed_path,
+                status=TransferStatus.FAILURE,
+                phase='failure',
+                error_message='upload timeout',
+            )
+            done_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                file_name='done.mp4',
+                local_path=done_path,
+                status=TransferStatus.SUCCESS,
+                phase='forwarded',
+            )
+            manager = MediaManager(store, save_directory=directory, temp_directory=directory)
+
+            result = manager.scan_transfer_items()
+
+            by_id = {item['item_id']: item for item in result['items']}
+            self.assertEqual('upload timeout', by_id[failed_id]['error_message'])
+            self.assertEqual('', by_id[done_id]['error_message'])
+
     def test_scan_orphan_files_includes_temp_directory_but_keeps_paused_cache(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as save_directory, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_directory:
             orphan_path = os.path.join(temp_directory, 'orphan.bin.temp')

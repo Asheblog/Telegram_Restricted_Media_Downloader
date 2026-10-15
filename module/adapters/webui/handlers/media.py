@@ -32,20 +32,31 @@ def handle_get(handler, server, parsed) -> bool:
 
 
 def handle_post(handler, server, parsed) -> bool:
-    if parsed.path != '/api/media/cleanup':
-        return False
+    if parsed.path == '/api/media/cleanup':
+        _handle_media_post(
+            handler, server, server.cleanup_media_files, '[WebUI] 媒体清理失败。', 'media_cleanup_failed'
+        )
+        return True
+    if parsed.path == '/api/media/retry':
+        _handle_media_post(
+            handler, server, server.retry_media_items, '[WebUI] 媒体重试失败。', 'media_retry_failed'
+        )
+        return True
+    return False
+
+
+def _handle_media_post(handler, server, action, log_message: str, error_code: str) -> None:
     try:
         payload = handler._read_json()
-        handler._send_json(server.cleanup_media_files(payload))
+        handler._send_json(action(payload))
     except WebUiApiError as e:
         handler._send_error(e.error_code, e.message, e.status)
     except Exception as e:
-        server.diagnostic.exception('[WebUI] 媒体清理失败。')
+        server.diagnostic.exception(log_message)
         handler._send_json(
             {
-                'error_code': 'media_cleanup_failed',
+                'error_code': error_code,
                 'error': str(e)
             },
             HTTPStatus.BAD_REQUEST
         )
-    return True

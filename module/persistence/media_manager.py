@@ -214,6 +214,7 @@ class MediaManager:
                 'temp_path': item.get('temp_path') or '',
                 'paths': allowed_paths,
                 'status': item.get('status'),
+                'error_message': item.get('error_message') or '',
                 'source_link': item.get('task_source_link') or item.get('source_link'),
                 'target_link': item.get('task_target_link') or item.get('target_link'),
                 'file_exists': bool(existing_paths),
@@ -228,7 +229,7 @@ class MediaManager:
         Returns:
             {
                 'items': [{'item_id', 'task_id', 'file_name', 'file_size',
-                           'local_path', 'status', 'source_link', 'target_link',
+                           'local_path', 'status', 'error_message', 'source_link', 'target_link',
                            'file_exists': bool, 'ghost': bool}, ...],
                 'total_count': int,
                 'total_size': int,
