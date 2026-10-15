@@ -239,6 +239,87 @@ class WebTaskResumeNoRedownloadCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    @staticmethod
+    def _owned_item_host(store):
+        message = SimpleNamespace(id=190, link='https://t.me/source/190')
+        return SimpleNamespace(
+            transfer_store=store,
+            web_task_manager=None,
+            uploader=object(),
+            app=SimpleNamespace(client=SimpleNamespace()),
+            parse_web_transfer_link=AsyncMock(
+                side_effect=[
+                    {'chat_id': 'source-chat'},
+                    {'chat_id': 'target-chat'},
+                ]
+            ),
+            find_resumable_transfer_item=_engine_with_store(store).find_resumable_transfer_item,
+            wait_between_transfer_messages=AsyncMock(),
+            get_web_transfer_range_message=AsyncMock(return_value=message),
+            get_web_transfer_single_message=AsyncMock(return_value=message),
+            transfer_message_to_web_target=AsyncMock(return_value=True),
+            skip_missing_web_transfer_range_message=lambda **kwargs: None,
+            transfer_web_discussion_replies_to_target=AsyncMock(return_value=(0, 0)),
+            create_download_task=AsyncMock(return_value={'status': 'downloading'}),
+        )
+
+    def _run_owned_item_case(self, *, single: bool):
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                if single:
+                    task_id = store.create_task(
+                        'https://t.me/source/190',
+                        'https://t.me/pikpak_bot',
+                    )
+                else:
+                    task_id = store.create_task(
+                        'https://t.me/source',
+                        'https://t.me/pikpak_bot',
+                        start_id=190,
+                        end_id=190,
+                    )
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                item_id = store.add_item(
+                    task_id=task_id,
+                    source_chat_id='source-chat',
+                    source_message_id=190,
+                    range_message_id=190,
+                    source_link='https://t.me/source/190',
+                    target_link='https://t.me/pikpak_bot',
+                    media_type='video',
+                    file_name='a.mp4',
+                    phase='uploading',
+                    status=TransferStatus.RUNNING,
+                )
+                store.lease_items([item_id])
+                host = self._owned_item_host(store)
+                runner = WebTransferRunner(host)
+                resumed = []
+
+                async def fake_resume(**kwargs):
+                    resumed.append(int(kwargs['item']['id']))
+
+                runner.resume_transfer_item_download = fake_resume
+                fallback = AsyncMock()
+                runner.create_web_transfer_fallback_download = fallback
+                with patch.object(runner, 'resume_orphan_resumable_items', new=AsyncMock()):
+                    await runner.process_task(task_id)
+
+                self.assertEqual([], resumed)
+                self.assertEqual(0, fallback.await_count)
+                self.assertEqual(0, host.transfer_message_to_web_target.await_count)
+                self.assertEqual(0, host.create_download_task.await_count)
+                self.assertEqual(TransferStatus.RUNNING, store.get_item(item_id)['status'])
+
+        asyncio.run(run_case())
+
+    def test_process_range_task_does_not_resume_or_refetch_owned_in_flight_item(self):
+        self._run_owned_item_case(single=False)
+
+    def test_process_single_task_does_not_resume_or_refetch_owned_in_flight_item(self):
+        self._run_owned_item_case(single=True)
+
     def test_process_task_skips_message_when_source_already_terminal(self):
         async def run_case():
             with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
@@ -364,7 +445,8 @@ class WebTaskResumeNoRedownloadCase(unittest.TestCase):
                 count = await runner.resume_interrupted_items_for_range_message(
                     store.get_task(task_id), 10
                 )
-                self.assertEqual(1, count)
+                # 持租约条目不重复 resume，但仍计为"在途"，调用方据此不再兜底重下该消息。
+                self.assertEqual(2, count)
                 self.assertEqual([unleased_id], resumed)
 
         asyncio.run(run_case())

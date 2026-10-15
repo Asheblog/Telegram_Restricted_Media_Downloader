@@ -295,6 +295,9 @@ class WebTransferRunner:
                     if host.transfer_store.is_source_message_terminal(task_id, message_id, origin_chat_id):
                         continue
                     resumable_item = host.find_resumable_transfer_item(task_id, message_id, origin_chat_id)
+                    if self._is_owned_in_flight(resumable_item):
+                        fallback_count += 1
+                        continue
                     if resumable_item:
                         try:
                             await self._resolve_method('wait_between_transfer_messages')()
@@ -497,7 +500,9 @@ class WebTransferRunner:
                         pass
                     else:
                         resumable_item = host.find_resumable_transfer_item(task_id, message_id, origin_chat_id)
-                        if resumable_item:
+                        if self._is_owned_in_flight(resumable_item):
+                            fallback_count = 1
+                        elif resumable_item:
                             try:
                                 await self.resume_transfer_item_download(
                                     task=task,
@@ -594,26 +599,33 @@ class WebTransferRunner:
             item_id=item.get('id'),
         )
 
+    def _is_owned_in_flight(self, item: Optional[dict]) -> bool:
+        """本进程已有协程在处理的 downloading/uploading 条目：再 resume 会双协程争用同一文件。"""
+        store = self._host.transfer_store
+        if not store or not item:
+            return False
+        item_id = int(item.get('id') or 0)
+        return bool(
+            item_id
+            and str(item.get('phase') or '') in store._resumable_item_phases()
+            and store.is_item_leased(item_id)
+        )
+
     async def resume_interrupted_items_for_range_message(
             self,
             task: dict,
             range_message_id: int
     ) -> int:
+        """返回该消息在途条目数（本次 resume 的 + 本进程已在处理的），非 0 时调用方不再兜底重下。"""
         host = self._host
         if not host.transfer_store:
             return 0
         task_id = int(task.get('id'))
         host.transfer_store.suppress_duplicate_active_items_for_range(task_id, range_message_id)
         resumed = 0
-        resumable_phases = host.transfer_store._resumable_item_phases()
         for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
-            item_id = int(item.get('id') or 0)
-            # 进程内已持有的 downloading/uploading 条目勿再 resume，避免双协程争用。
-            if (
-                item_id
-                and host.transfer_store.is_item_leased(item_id)
-                and str(item.get('phase') or '') in resumable_phases
-            ):
+            if self._is_owned_in_flight(item):
+                resumed += 1
                 continue
             if await self.settle_web_task_pause_request(task_id, before=str(range_message_id)):
                 break
@@ -672,8 +684,8 @@ class WebTransferRunner:
             item_id = int(item.get('id') or 0)
             if not item_id:
                 continue
-            # 已持租约的在途条目跳过，且勿先写 range_message_id，以免污染孤儿绑定。
-            if host.transfer_store.is_item_leased(item_id):
+            # 须在写 range_message_id 之前跳过，以免改写在途条目的孤儿绑定。
+            if self._is_owned_in_flight(item):
                 continue
             host.transfer_store.update_item(item_id, range_message_id=anchor_id)
             item = host.transfer_store.get_item(item_id) or item
