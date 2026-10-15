@@ -2644,10 +2644,56 @@ function setMediaScanButtonLoading(isLoading) {
   if (label) label.textContent = isLoading ? t('media.scanning') : t('media.scan');
 }
 
+let mediaRetrying = false;
+
+function selectedFailedMediaItemIds() {
+  return Array.from($$('.media-cb:checked'))
+    .filter(cb => cb.dataset.type === 'item' && cb.dataset.status === 'failure')
+    .map(cb => Number(cb.dataset.id));
+}
+
 function updateMediaCleanupButton() {
   const btn = $('#media-cleanup-btn');
-  if (!btn) return;
-  btn.disabled = $$('.media-cb:checked').length === 0;
+  if (btn) btn.disabled = $$('.media-cb:checked').length === 0;
+  const retryBtn = $('#media-retry-btn');
+  if (retryBtn) retryBtn.disabled = mediaRetrying || selectedFailedMediaItemIds().length === 0;
+}
+
+function setMediaRetryLoading(isLoading) {
+  mediaRetrying = Boolean(isLoading);
+  const btn = $('#media-retry-btn');
+  if (btn) {
+    btn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    btn.textContent = isLoading ? t('media.retrying') : t('media.retrySelected');
+  }
+  $$('[data-media-retry]').forEach(b => { b.disabled = mediaRetrying; });
+  updateMediaCleanupButton();
+}
+
+async function retryMediaItems(itemIds) {
+  if (!itemIds.length || mediaRetrying) return;
+  setMediaRetryLoading(true);
+  try {
+    const result = await postJson('/api/media/retry', { item_ids: itemIds });
+    const retried = Number(result.retried_items) || 0;
+    alert(retried > 0 ? t('media.retryDone').replace('{count}', retried) : t('media.retryNone'));
+  } catch(e) {
+    alert(translateApiError(e, 'form.requestFailed'));
+  } finally {
+    setMediaRetryLoading(false);
+  }
+  loadMedia();
+}
+
+function mediaItemStatusCell(item) {
+  const badge = statusBadge(item.status || '');
+  if (item.status !== 'failure' || !item.error_message) return badge;
+  return '<span title="' + esc(t('media.failureReason') + ': ' + item.error_message) + '">' + badge + '</span>';
+}
+
+function mediaItemRetryCell(item) {
+  if (item.status !== 'failure') return '';
+  return '<button type="button" class="btn btn-sm" data-media-retry="' + item.item_id + '">' + t('media.retry') + '</button>';
 }
 
 function mediaScanUrl() {
@@ -2725,6 +2771,7 @@ function renderMediaResult(data) {
           '<th class="text-right">' + t('media.size') + '</th>' +
           '<th class="text-center">' + t('media.status') + '</th>' +
           '<th>' + t('media.source') + '</th>' +
+          '<th class="w-20"><span class="sr-only">' + t('media.retry') + '</span></th>' +
         '</tr></thead><tbody id="media-items-tbody"></tbody></table>' +
       '</div>' +
       '<div id="media-items-pagination"></div>' +
@@ -2759,14 +2806,15 @@ function renderMediaResult(data) {
     showMediaElement(itemsSection, true);
     if (items.length) {
       $('#media-items-tbody').innerHTML = items.map(item => '<tr>' +
-        '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '"></td>' +
+        '<td><input type="checkbox" class="media-cb" data-type="item" data-id="' + item.item_id + '" data-status="' + esc(item.status || '') + '"></td>' +
         '<td class="max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc((item.paths || []).join('\\n') || item.local_path || '') + '">' + esc(item.file_name || item.local_path || '-') + '</td>' +
         '<td class="text-right">' + fmtSize(item.file_size) + '</td>' +
-        '<td class="text-center">' + statusBadge(item.status || '') + '</td>' +
+        '<td class="text-center">' + mediaItemStatusCell(item) + '</td>' +
         '<td class="max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap" title="' + esc(item.source_link || '-') + '">' + esc(item.source_link || '-') + '</td>' +
+        '<td class="text-center whitespace-nowrap">' + mediaItemRetryCell(item) + '</td>' +
         '</tr>').join('');
     } else {
-      $('#media-items-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">暂无数据</td></tr>';
+      $('#media-items-tbody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无数据</td></tr>';
     }
     $('#media-items-pagination').innerHTML = renderMediaPagination('media-items', mediaItemsPage, totalItemsPages, ti.total_count || 0);
     bindMediaPagination('media-items', mediaItemsPage, totalItemsPages, function(newPage) {
@@ -2861,6 +2909,17 @@ $('#media-scan-btn')?.addEventListener('click', function() {
   loadMedia();
 });
 $('#media-cleanup-btn')?.addEventListener('click', doMediaCleanup);
+$('#media-retry-btn')?.addEventListener('click', function() {
+  retryMediaItems(selectedFailedMediaItemIds());
+});
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-media-retry]');
+  if (!btn || btn.disabled) return;
+  const itemId = Number(btn.dataset.mediaRetry);
+  if (!itemId) return;
+  retryMediaItems([itemId]);
+  btn.textContent = t('media.retrying');
+});
 document.addEventListener('change', function(e) {
   if (e.target && e.target.classList && e.target.classList.contains('media-cb')) {
     updateMediaCleanupButton();

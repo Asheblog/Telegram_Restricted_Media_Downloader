@@ -1577,7 +1577,18 @@
   <div class="panel">
     <div class="panel-header">
       <h3 data-i18n="media.title">媒体管理</h3>
-      <div class="flex items-center gap-2" id="media-actions">
+      <div
+        class="flex flex-wrap items-center justify-end gap-2"
+        id="media-actions"
+      >
+        <button
+          class="btn btn-sm"
+          id="media-retry-btn"
+          disabled
+          data-i18n="media.retrySelected"
+        >
+          重试选中失败项
+        </button>
         <button
           class="btn btn-danger btn-sm"
           id="media-cleanup-btn"

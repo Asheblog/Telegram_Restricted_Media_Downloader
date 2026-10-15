@@ -2447,9 +2447,22 @@ async function loadMediaMobile() {
     if (transferItems.length > 0) {
       html += '<div style="margin-top:12px;"><strong class="type-title">转存任务文件</strong></div>';
       transferItems.forEach(function(item) {
-        html += '<div class="text-xs" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--color-line);">' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(item.file_name || item.local_path || '') + '</span>' +
-          '<span style="flex-shrink:0;margin-left:8px;">' + formatBytes(item.file_size || 0) + '</span>' +
+        var isFailure = item.status === 'failure';
+        var reason = isFailure && item.error_message
+          ? t('media.failureReason') + ': ' + item.error_message
+          : '';
+        html += '<div class="text-xs" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--color-line);">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(item.file_name || item.local_path || '') + '</div>' +
+            (reason
+              ? '<div class="text-xs text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(reason) + '">' + esc(reason) + '</div>'
+              : '') +
+          '</div>' +
+          '<span style="flex-shrink:0;">' + formatBytes(item.file_size || 0) + '</span>' +
+          (isFailure
+            ? '<button type="button" class="mob-btn mob-btn-sm mob-btn-muted" style="flex-shrink:0;" data-mob-media-retry="' +
+              esc(String(item.item_id || '')) + '">' + esc(t('media.retry')) + '</button>'
+            : '') +
         '</div>';
       });
     }
@@ -2471,9 +2484,34 @@ async function loadMediaMobile() {
     }
 
     container.innerHTML = html;
+    container.querySelectorAll('[data-mob-media-retry]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        retryMediaItemMobile(Number(btn.getAttribute('data-mob-media-retry')), btn);
+      });
+    });
   } catch (e) {
     container.innerHTML = '<div class="mob-empty">加载失败: ' + esc(e.message || '') + '</div>';
   }
+}
+
+async function retryMediaItemMobile(itemId, buttonEl) {
+  if (!itemId) return;
+  if (buttonEl) {
+    buttonEl.disabled = true;
+    buttonEl.textContent = t('media.retrying');
+  }
+  try {
+    var result = await postJson('/api/media/retry', { item_ids: [itemId] });
+    var retried = Number(result.retried_items) || 0;
+    if (retried > 0) {
+      showToast(t('media.retryDone').replace('{count}', retried), 3500);
+    } else {
+      showToast(t('media.retryNone'), 3500);
+    }
+  } catch (e) {
+    showToast(translateApiError(e, 'form.requestFailed'), 4500);
+  }
+  loadMediaMobile();
 }
 
 var mobArchiveOrganizePlan = null;

@@ -64,6 +64,7 @@ class WebUiAssetsCase(unittest.TestCase):
             '/api/media/scan',
             '/api/media/cleanup',
             '/api/media/cleanup-logs',
+            '/api/media/retry',
             '/api/tables/export',
             '/api/system-logs/export',
         ):
@@ -345,6 +346,66 @@ class WebUiAssetsCase(unittest.TestCase):
         self.assertIn("function updateMediaCleanupButton", WEB_UI_HTML)
         self.assertIn("document.addEventListener('change', function(e) {", WEB_UI_HTML)
         self.assertNotIn('id="media-cleanup-actions"', WEB_UI_HTML)
+
+    def test_media_retry_failed_items_desktop(self):
+        self.assertRegex(
+            WEB_UI_HTML,
+            r'<button[^>]*id="media-retry-btn"[^>]*disabled[^>]*data-i18n="media\.retrySelected"[^>]*>',
+        )
+        self.assertLess(
+            WEB_UI_HTML.index('id="media-retry-btn"'),
+            WEB_UI_HTML.index('id="media-cleanup-btn"'),
+        )
+        for fragment in (
+            "async function retryMediaItems(itemIds)",
+            "postJson('/api/media/retry', { item_ids: itemIds })",
+            "t('media.retryNone')",
+            "t('media.retryDone').replace('{count}', retried)",
+            "t('media.retrying')",
+            'data-status="',
+            'data-media-retry="',
+            "closest('[data-media-retry]')",
+            "cb.dataset.status === 'failure'",
+            "t('media.failureReason')",
+            'colspan="6"',
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+        self.assertNotIn(
+            '<tr><td colspan="5" class="text-center text-muted py-4">暂无数据</td></tr>',
+            WEB_UI_HTML,
+        )
+
+    def test_media_retry_failed_items_mobile(self):
+        for fragment in (
+            "postJson('/api/media/retry', { item_ids: [itemId] })",
+            'data-mob-media-retry="',
+            'class="mob-btn mob-btn-sm mob-btn-muted"',
+            'item.error_message',
+            "showToast(t('media.retryNone')",
+            "t('media.retryDone').replace('{count}', retried)",
+            'loadMediaMobile();',
+        ):
+            self.assertIn(fragment, WEB_UI_MOBILE_HTML)
+
+    def test_media_retry_i18n_strings_in_both_languages(self):
+        for fragment in (
+            "'media.retry': '重试'",
+            "'media.retry': 'Retry'",
+            "'media.retrySelected': '重试选中失败项'",
+            "'media.retrySelected': 'Retry selected failures'",
+            "'media.retrying': '重试中…'",
+            "'media.retrying': 'Retrying…'",
+            "'media.retryDone': '已重置 {count} 个失败项，正在重试（本地文件完整时不会重新下载）。'",
+            "'media.retryDone': 'Reset {count} failed item(s) for retry (complete local files are reused).'",
+            "'media.retryNone': '没有需要重新执行的失败项（可能已直接恢复），列表已刷新。'",
+            "'media.retryNone': 'No failed items needed re-running (they may have been recovered directly); list refreshed.'",
+            "'media.failureReason': '失败原因'",
+            "'media.failureReason': 'Failure reason'",
+            "'media.confirmCleanup': '确定要删除选中的文件吗？此操作不可撤销。失败项删除后再重试需要重新下载。'",
+            "'media.confirmCleanup': 'Delete selected files? This cannot be undone. Failed items will need to re-download if retried later.'",
+        ):
+            self.assertIn(fragment, WEB_UI_HTML)
+            self.assertIn(fragment, WEB_UI_MOBILE_HTML)
 
     def test_webui_session_expiry_redirects_to_login_page(self):
         combined = WEB_UI_HTML + WEB_UI_MOBILE_HTML
