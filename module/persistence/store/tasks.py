@@ -530,13 +530,27 @@ class TasksMixin:
 
     def _prune_item_leases(self) -> set[int]:
         # 查询与移除须在同一把锁内：否则重试刚重置并续租的条目会被旧快照误删租约。
+        # 仅保留 PENDING/RUNNING 且所属任务仍处于活跃态的条目；任务已终态则释放租约。
         with self._lease_lock:
             if not self._leased_item_ids:
                 return set()
             with self.connect(run_maintenance=False) as conn:
                 rows = conn.execute(
-                    "SELECT id FROM transfer_items WHERE status IN (?, ?)",
-                    (TransferStatus.PENDING, TransferStatus.RUNNING),
+                    """
+                    SELECT i.id
+                    FROM transfer_items AS i
+                    JOIN transfer_tasks AS t ON t.id = i.task_id
+                    WHERE i.status IN (?, ?)
+                      AND t.status IN (?, ?, ?, ?)
+                    """,
+                    (
+                        TransferStatus.PENDING,
+                        TransferStatus.RUNNING,
+                        TransferStatus.PENDING,
+                        TransferStatus.RUNNING,
+                        TransferStatus.PAUSING,
+                        TransferStatus.PAUSED,
+                    ),
                 ).fetchall()
             active_ids = {int(row["id"]) for row in rows}
             self._leased_item_ids.intersection_update(active_ids)
@@ -571,17 +585,18 @@ class TasksMixin:
         )
         task_messages: dict[int, list[str]] = {}
         expired_leases: set[int] = set()
+        failed_count = 0
         logger = self._stale_item_logger
         with self.connect(run_maintenance=False) as conn:
             for row in stale_rows:
                 item_id = int(row["id"])
                 task_id = int(row["task_id"])
+                row_updated_at = str(row["updated_at"] or "")
                 if item_id in leased_ids:
                     message = leased_message
-                    expired_leases.add(item_id)
                 else:
                     message = stale_message
-                conn.execute(
+                cursor = conn.execute(
                     """
                     UPDATE transfer_items
                     SET status = ?,
@@ -589,9 +604,24 @@ class TasksMixin:
                         error_message = ?,
                         updated_at = ?
                     WHERE id = ?
+                      AND status IN (?, ?)
+                      AND updated_at = ?
                     """,
-                    (TransferStatus.FAILURE, message, now, item_id),
+                    (
+                        TransferStatus.FAILURE,
+                        message,
+                        now,
+                        item_id,
+                        TransferStatus.PENDING,
+                        TransferStatus.RUNNING,
+                        row_updated_at,
+                    ),
                 )
+                if int(cursor.rowcount) != 1:
+                    continue
+                failed_count += 1
+                if item_id in leased_ids:
+                    expired_leases.add(item_id)
                 messages = task_messages.setdefault(task_id, [])
                 if message not in messages:
                     messages.append(message)
@@ -607,7 +637,7 @@ class TasksMixin:
             for message in messages:
                 self.add_event(task_id, message, level="warning")
             self.refresh_task_counts(task_id)
-        return len(stale_rows)
+        return failed_count
 
     def _fail_stale_empty_watch_inline_tasks(self, timeout_seconds: int) -> int:
         cutoff = self._iso_before_now(timeout_seconds)
@@ -859,6 +889,20 @@ class TasksMixin:
         now = self.utc_now()
         placeholders = ",".join(["?"] * len(item_ids))
         with self.connect() as conn:
+            # 先精确选出失败行，再 UPDATE/lease，避免把列表里已有的 PENDING 一并续租。
+            match_rows = conn.execute(
+                f"""
+                SELECT id FROM transfer_items
+                WHERE task_id = ?
+                  AND status = ?
+                  AND id IN ({placeholders})
+                """,
+                (task_id, TransferStatus.FAILURE, *item_ids),
+            ).fetchall()
+            reset_ids = [int(row["id"]) for row in match_rows]
+            if not reset_ids:
+                return 0
+            reset_placeholders = ",".join(["?"] * len(reset_ids))
             cursor = conn.execute(
                 f"""
                 UPDATE transfer_items
@@ -867,32 +911,23 @@ class TasksMixin:
                     download_current = 0,
                     upload_current = 0,
                     error_message = NULL,
+                    local_file_deleted = 0,
                     updated_at = ?
                 WHERE task_id = ?
                   AND status = ?
-                  AND id IN ({placeholders})
+                  AND id IN ({reset_placeholders})
                 """,
                 (
                     TransferStatus.PENDING,
                     now,
                     task_id,
                     TransferStatus.FAILURE,
-                    *item_ids,
+                    *reset_ids,
                 ),
             )
             reset_items = int(cursor.rowcount)
-            if reset_items:
-                pending_rows = conn.execute(
-                    f"""
-                    SELECT id FROM transfer_items
-                    WHERE task_id = ?
-                      AND status = ?
-                      AND id IN ({placeholders})
-                    """,
-                    (task_id, TransferStatus.PENDING, *item_ids),
-                ).fetchall()
         if reset_items:
-            self.lease_items(int(row["id"]) for row in pending_rows)
+            self.lease_items(reset_ids)
             self.refresh_task_counts(task_id)
             self.update_task(
                 task_id, status=TransferStatus.RUNNING, error_message="", finished=False

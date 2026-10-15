@@ -36,6 +36,16 @@ class ItemsMixin:
         with self._lease_lock:
             self._leased_item_ids.update(leased)
 
+    def is_item_leased(self, item_id) -> bool:
+        try:
+            value = int(item_id)
+        except (TypeError, ValueError):
+            return False
+        if value <= 0:
+            return False
+        with self._lease_lock:
+            return value in self._leased_item_ids
+
     def add_item(
             self,
             task_id: int,

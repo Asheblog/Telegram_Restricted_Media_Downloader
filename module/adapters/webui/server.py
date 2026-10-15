@@ -1614,13 +1614,19 @@ class WebUiServer:
     def _positive_item_ids(raw_item_ids) -> list[int] | None:
         if not isinstance(raw_item_ids, list) or not raw_item_ids:
             return None
+        if len(raw_item_ids) > 500:
+            return None
         item_ids = []
         for raw_item_id in raw_item_ids:
-            if isinstance(raw_item_id, bool):
+            if isinstance(raw_item_id, bool) or isinstance(raw_item_id, float):
                 return None
-            try:
+            if isinstance(raw_item_id, str):
+                if not raw_item_id.isdigit():
+                    return None
                 item_id = int(raw_item_id)
-            except (TypeError, ValueError):
+            elif isinstance(raw_item_id, int):
+                item_id = raw_item_id
+            else:
                 return None
             if item_id <= 0:
                 return None

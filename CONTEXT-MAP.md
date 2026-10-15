@@ -122,7 +122,7 @@
 | Media Type Override（任务/监听） | TransferStore | `transfer_tasks.media_types` / `live_transfer_watches.media_types` |
 | file_log_level / console_log_level | GlobalConfig | `.CONFIG.yaml` |
 | notice | GlobalConfig | `.CONFIG.yaml` |
-| `transfer.item_stale_timeout_minutes` | GlobalConfig | 转存项无进展超时（分钟，默认 5） |
+| `transfer.item_stale_timeout_minutes` | GlobalConfig | 转存项无进展超时（分钟，默认 5；仅未持 **Transfer Item Lease** 的条目；持租约条目兜底超时为 24h） |
 | `deep_link.bot_whitelist` | GlobalConfig | 资源 bot 白名单 |
 | `deep_link.timeout_seconds` | GlobalConfig | 取片超时秒数 |
 | `deep_link.min_interval_seconds` | GlobalConfig | 两次 StartBot 最小间隔秒数 |

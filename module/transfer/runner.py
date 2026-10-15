@@ -605,7 +605,16 @@ class WebTransferRunner:
         task_id = int(task.get('id'))
         host.transfer_store.suppress_duplicate_active_items_for_range(task_id, range_message_id)
         resumed = 0
+        resumable_phases = host.transfer_store._resumable_item_phases()
         for item in host.transfer_store.list_resumable_items_for_range_message(task_id, range_message_id):
+            item_id = int(item.get('id') or 0)
+            # 进程内已持有的 downloading/uploading 条目勿再 resume，避免双协程争用。
+            if (
+                item_id
+                and host.transfer_store.is_item_leased(item_id)
+                and str(item.get('phase') or '') in resumable_phases
+            ):
+                continue
             if await self.settle_web_task_pause_request(task_id, before=str(range_message_id)):
                 break
             try:
@@ -662,6 +671,9 @@ class WebTransferRunner:
                 continue
             item_id = int(item.get('id') or 0)
             if not item_id:
+                continue
+            # 已持租约的在途条目跳过，且勿先写 range_message_id，以免污染孤儿绑定。
+            if host.transfer_store.is_item_leased(item_id):
                 continue
             host.transfer_store.update_item(item_id, range_message_id=anchor_id)
             item = host.transfer_store.get_item(item_id) or item

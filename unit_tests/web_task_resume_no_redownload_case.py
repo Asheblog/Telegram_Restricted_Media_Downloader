@@ -319,6 +319,156 @@ class WebTaskResumeNoRedownloadCase(unittest.TestCase):
 
         asyncio.run(run_case())
 
+    def test_resume_interrupted_skips_leased_resumable_but_resumes_unleased(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task(
+                    'https://t.me/source',
+                    'https://t.me/pikpak_bot',
+                    start_id=10,
+                    end_id=11,
+                )
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                leased_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=10,
+                    range_message_id=10,
+                    source_link='https://t.me/source/10',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='downloading',
+                    status=TransferStatus.RUNNING,
+                )
+                unleased_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=11,
+                    range_message_id=10,
+                    source_link='https://t.me/source/11',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='uploading',
+                    status=TransferStatus.RUNNING,
+                )
+                store.lease_items([leased_id])
+                resumed = []
+
+                async def fake_resume(*, task, item, range_message_id=None):
+                    resumed.append(int(item['id']))
+
+                host = SimpleNamespace(
+                    transfer_store=store,
+                    settle_web_task_pause_request=AsyncMock(return_value=False),
+                    wait_between_transfer_messages=AsyncMock(),
+                )
+                runner = WebTransferRunner(host)
+                runner.resume_transfer_item_download = fake_resume
+                count = await runner.resume_interrupted_items_for_range_message(
+                    store.get_task(task_id), 10
+                )
+                self.assertEqual(1, count)
+                self.assertEqual([unleased_id], resumed)
+
+        asyncio.run(run_case())
+
+    def test_resume_orphan_skips_leased_resumable_before_range_mutation(self):
+        async def run_case():
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task(
+                    'https://t.me/source',
+                    'https://t.me/pikpak_bot',
+                    start_id=1,
+                    end_id=2,
+                )
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                leased_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=99,
+                    source_link='https://t.me/source/99',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='downloading',
+                    status=TransferStatus.RUNNING,
+                )
+                unleased_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=100,
+                    source_link='https://t.me/source/100',
+                    target_link='https://t.me/pikpak_bot',
+                    phase='uploading',
+                    status=TransferStatus.RUNNING,
+                )
+                store.lease_items([leased_id])
+                resumed = []
+
+                async def fake_resume(*, task, item, range_message_id=None):
+                    resumed.append(int(item['id']))
+
+                host = SimpleNamespace(
+                    transfer_store=store,
+                    wait_between_transfer_messages=AsyncMock(),
+                )
+                runner = WebTransferRunner(host)
+                runner.resume_transfer_item_download = fake_resume
+                count = await runner.resume_orphan_resumable_items(
+                    store.get_task(task_id), 1, 2
+                )
+                self.assertEqual(1, count)
+                self.assertEqual([unleased_id], resumed)
+                self.assertIsNone(store.get_item(leased_id).get('range_message_id'))
+                self.assertEqual(1, store.get_item(unleased_id).get('range_message_id'))
+
+        asyncio.run(run_case())
+
+    def test_retry_watch_inline_skips_leased_downloading_but_resumes_leased_pending(self):
+        async def run_case():
+            from module.transfer_store import ExecutionMode
+            from unit_tests.support.downloader_factory import build_downloader
+
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                store = TransferStore(directory=directory)
+                task_id = store.create_task(
+                    'https://t.me/source',
+                    'https://t.me/target',
+                    execution_mode=ExecutionMode.WATCH_INLINE,
+                )
+                store.update_task(task_id, status=TransferStatus.RUNNING)
+                downloading_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=1,
+                    source_link='https://t.me/source/1',
+                    target_link='https://t.me/target',
+                    phase='downloading',
+                    status=TransferStatus.RUNNING,
+                )
+                pending_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=2,
+                    source_link='https://t.me/source/2',
+                    target_link='https://t.me/target',
+                    phase='pending',
+                    status=TransferStatus.PENDING,
+                )
+                unleased_downloading_id = store.add_item(
+                    task_id=task_id,
+                    source_message_id=3,
+                    source_link='https://t.me/source/3',
+                    target_link='https://t.me/target',
+                    phase='downloading',
+                    status=TransferStatus.RUNNING,
+                )
+                store.lease_items([downloading_id, pending_id])
+                resumed = []
+                downloader = build_downloader(transfer_store=store)
+                runner = downloader._ensure_transfer_runner()
+
+                async def fake_resume(*, task, item, range_message_id=None):
+                    resumed.append(int(item['id']))
+
+                runner.resume_transfer_item_download = fake_resume
+                await downloader.retry_watch_inline_task(task_id)
+                self.assertEqual([pending_id, unleased_downloading_id], resumed)
+
+        asyncio.run(run_case())
+
 
 if __name__ == '__main__':
     unittest.main()

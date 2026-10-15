@@ -299,6 +299,128 @@ class TransferTaskReconcileCase(unittest.TestCase):
 
             self.assertEqual(TransferStatus.PENDING, store.get_item(item_id)['status'])
 
+    def test_reconcile_drops_lease_when_task_finished_then_fails_by_normal_timeout(self):
+        """任务已 FAILURE 后租约应被修剪，条目按普通超时判失败。"""
+        from module.persistence.transfer_store import TransferStatus, TransferStore
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id, item_id = self._running_task_with_item(
+                store, status=TransferStatus.FAILURE
+            )
+            self.assertEqual(1, store.retry_failed_item_ids(task_id, [item_id]))
+            self.assertIn(item_id, store._leased_item_ids)
+
+            store.update_task(task_id, status=TransferStatus.FAILURE, finished=True)
+            self._age_item(
+                store, item_id, seconds=store.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS + 120
+            )
+            store.reconcile_active_tasks(force=True)
+
+            item = store.get_item(item_id)
+            self.assertEqual(TransferStatus.FAILURE, item['status'])
+            self.assertIn('5分钟无进展', item.get('error_message') or '')
+            self.assertNotIn(item_id, store._leased_item_ids)
+
+    def test_retry_failed_item_ids_does_not_lease_preexisting_pending(self):
+        from module.persistence.transfer_store import TransferStatus, TransferStore
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task('https://t.me/source', 'https://t.me/pikpak_bot')
+            store.update_task(task_id, status=TransferStatus.RUNNING, started=True)
+            pending_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link='https://t.me/source/1',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.PENDING,
+                phase='pending',
+            )
+            failed_id = store.add_item(
+                task_id=task_id,
+                source_message_id=2,
+                source_link='https://t.me/source/2',
+                target_link='https://t.me/pikpak_bot',
+                status=TransferStatus.FAILURE,
+                phase='failure',
+                error_message='boom',
+            )
+
+            self.assertEqual(1, store.retry_failed_item_ids(task_id, [pending_id, failed_id]))
+            self.assertIn(failed_id, store._leased_item_ids)
+            self.assertNotIn(pending_id, store._leased_item_ids)
+            self.assertEqual(TransferStatus.PENDING, store.get_item(failed_id)['status'])
+
+    def test_retry_failed_item_ids_resets_local_file_deleted(self):
+        from module.persistence.transfer_store import TransferStatus, TransferStore
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id, item_id = self._running_task_with_item(
+                store, status=TransferStatus.FAILURE
+            )
+            store.mark_item_local_file_deleted(item_id)
+            self.assertEqual(1, store.get_item(item_id)['local_file_deleted'])
+
+            self.assertEqual(1, store.retry_failed_item_ids(task_id, [item_id]))
+
+            self.assertEqual(0, store.get_item(item_id)['local_file_deleted'])
+            self.assertEqual(TransferStatus.PENDING, store.get_item(item_id)['status'])
+
+    def test_fail_stale_active_items_skips_row_when_updated_at_changed(self):
+        """SELECT 与 UPDATE 之间 refreshed 的行不应被误判失败。"""
+        from contextlib import contextmanager
+
+        from module.persistence.transfer_store import TransferStatus, TransferStore
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            _task_id, item_id = self._running_task_with_item(store)
+            self._age_item(
+                store, item_id, seconds=store.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS + 120
+            )
+
+            real_connect = store.connect
+            bumped = {'done': False}
+
+            @contextmanager
+            def connect_and_bump(*args, **kwargs):
+                with real_connect(*args, **kwargs) as conn:
+                    class _ConnProxy:
+                        def execute(self, sql, parameters=()):
+                            result = conn.execute(sql, parameters)
+                            sql_text = ' '.join(str(sql).split())
+                            if (
+                                not bumped['done']
+                                and 'FROM transfer_items' in sql_text
+                                and 'updated_at <' in sql_text
+                                and sql_text.lstrip().upper().startswith('SELECT')
+                            ):
+                                bumped['done'] = True
+                                conn.execute(
+                                    'UPDATE transfer_items SET updated_at = ? WHERE id = ?',
+                                    (store.utc_now(), item_id),
+                                )
+                            return result
+
+                        def __getattr__(self, name):
+                            return getattr(conn, name)
+
+                    yield _ConnProxy()
+
+            store.connect = connect_and_bump
+            try:
+                changed = store._fail_stale_active_items(
+                    store.STALE_TRANSFER_ITEM_TIMEOUT_SECONDS
+                )
+            finally:
+                store.connect = real_connect
+
+            self.assertEqual(0, changed)
+            self.assertTrue(bumped['done'])
+            self.assertEqual(TransferStatus.RUNNING, store.get_item(item_id)['status'])
+
     def _download_message(self, message_id: int):
         from types import SimpleNamespace
 

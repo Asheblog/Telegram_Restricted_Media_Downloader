@@ -1889,6 +1889,72 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual(0, reset_items)
             self.assertEqual(TransferStatus.FAILURE, store.get_task(task_id)["status"])
 
+    def test_retry_failed_web_task_item_ids_watch_inline_schedules_selected_only(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source",
+                "https://t.me/target",
+                execution_mode=ExecutionMode.WATCH_INLINE,
+            )
+            selected_id = self._add_failed_media_item(store, task_id, 1)
+            other_id = self._add_failed_media_item(store, task_id, 2)
+            store.refresh_task_counts(
+                task_id, expected_total=2, assignment_completed=True
+            )
+            store.update_task(task_id, status=TransferStatus.FAILURE)
+            downloader = build_downloader(transfer_store=store)
+            manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
+            scheduled = []
+            manager._schedule_watch_inline_retry = lambda tid: scheduled.append(tid)
+
+            reset_items = manager.retry_failed_web_task(
+                task_id, item_ids=[selected_id]
+            )
+
+            self.assertEqual(1, reset_items)
+            self.assertEqual([task_id], scheduled)
+            items = {item["id"]: item for item in store.list_items(task_id)}
+            self.assertEqual(TransferStatus.PENDING, items[selected_id]["status"])
+            self.assertEqual(TransferStatus.FAILURE, items[other_id]["status"])
+            self.assertEqual(TransferStatus.RUNNING, store.get_task(task_id)["status"])
+
+    def test_retry_failed_web_task_item_ids_pikpak_recoverable_skips_reset(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source",
+                "https://t.me/pikpak_bot",
+                target_profile="pikpak",
+                start_id=1,
+                end_id=1,
+            )
+            item_id = store.add_item(
+                task_id=task_id,
+                source_message_id=1,
+                source_link="https://t.me/source/1",
+                target_link="https://t.me/pikpak_bot",
+                file_name="a.mp4",
+                file_size=10,
+                phase="failure",
+                status=TransferStatus.FAILURE,
+                error_message="archive failed",
+            )
+            store.refresh_task_counts(
+                task_id, expected_total=1, assignment_completed=True
+            )
+            downloader = build_downloader(transfer_store=store)
+            manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
+            submitted = []
+            manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
+            manager.recover_pikpak_failed_item_before_retry = lambda task, item: True
+
+            reset_items = manager.retry_failed_web_task(task_id, item_ids=[item_id])
+
+            self.assertEqual(0, reset_items)
+            self.assertEqual([], submitted)
+            self.assertEqual(TransferStatus.FAILURE, store.get_item(item_id)["status"])
+
     def test_webui_media_retry_api_validates_and_delegates_item_ids(self):
         class MediaRetryOperations:
             def __init__(self):
@@ -1931,6 +1997,11 @@ class TransferStoreWebUiCase(unittest.TestCase):
                     {"item_ids": ["abc"]},
                     {"item_ids": [None]},
                     {"item_ids": [True]},
+                    {"item_ids": [1.9]},
+                    {"item_ids": [2.0]},
+                    {"item_ids": ["1e2"]},
+                    {"item_ids": [" 5"]},
+                    {"item_ids": list(range(1, 502))},
                 ):
                     with self.subTest(payload=payload):
                         conn.request(
