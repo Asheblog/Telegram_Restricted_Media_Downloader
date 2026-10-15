@@ -306,7 +306,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
             finally:
                 UploadTask.DIRECTORY_NAME = original_directory
 
-    def test_pikpak_upload_over_target_limit_fails_and_deletes_transfer_file(self):
+    def test_pikpak_upload_over_target_limit_fails_and_keeps_transfer_file(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'oversize.bin')
             with open(file_path, 'wb') as file:
@@ -342,7 +342,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
 
             self.assertEqual(UploadStatus.FAILURE, upload_task.status)
             self.assertIn('PikPak', upload_task.error_msg)
-            self.assertFalse(os.path.exists(file_path))
+            self.assertTrue(os.path.exists(file_path))
             self.assertEqual([True], released)
             self.assertEqual([True], window_releases)
             self.assertIn(UploadStatus.FAILURE, status_updates)
@@ -558,7 +558,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
             self.assertTrue(progress and progress[0][0] == 0)
             uploader.loop.close()
 
-    def test_download_upload_pikpak_deletes_local_file_on_failure(self):
+    def test_download_upload_pikpak_keeps_local_file_on_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             file_path = os.path.join(directory, 'fail-name.mp4')
             with open(file_path, 'wb') as file:
@@ -629,7 +629,7 @@ class UploaderFloodWaitCase(unittest.TestCase):
                     file_path=file_path
                 )
 
-            self.assertFalse(os.path.exists(file_path))
+            self.assertTrue(os.path.exists(file_path))
             uploader.loop.close()
 
 
