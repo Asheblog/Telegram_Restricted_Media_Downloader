@@ -515,8 +515,8 @@ class ItemsMixin:
             and str(item.get('phase') or '') in resumable_phases
         ]
 
-    def has_in_flight_items(self, task_id: int) -> bool:
-        """任务未暂停/未终结且仍有 RUNNING 条目：此时重跑任务会与在途协程争用同一条目。"""
+    def has_unfinished_items(self, task_id: int) -> bool:
+        """任务未暂停/未终结且仍有排队或在途条目：此时重跑任务会与已派发的工作争用同一条目。"""
         with self.connect() as conn:
             row = conn.execute(
                 '''
@@ -524,12 +524,13 @@ class ItemsMixin:
                 FROM transfer_items AS i
                 JOIN transfer_tasks AS t ON t.id = i.task_id
                 WHERE i.task_id = ?
-                  AND i.status = ?
+                  AND i.status IN (?, ?)
                   AND t.status IN (?, ?, ?)
                 LIMIT 1
                 ''',
                 (
                     int(task_id),
+                    TransferStatus.PENDING,
                     TransferStatus.RUNNING,
                     TransferStatus.PENDING,
                     TransferStatus.RUNNING,

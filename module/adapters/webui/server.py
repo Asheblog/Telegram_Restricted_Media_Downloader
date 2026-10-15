@@ -1364,14 +1364,14 @@ class WebUiServer:
             try:
                 if retry_failed_web_task:
                     reset_items = int(retry_failed_web_task(task_id))
-                elif self.store.has_in_flight_items(task_id):
+                elif self.store.has_unfinished_items(task_id):
                     raise TransferTaskBusyError(task_id)
                 else:
                     reset_items = self.store.retry_failed_items(task_id)
             except TransferTaskBusyError:
                 raise WebUiApiError(
                     "task_busy",
-                    "任务仍有文件在传输中，请等待传输完成，或先暂停任务后再重试。",
+                    "任务仍有未完成的文件（排队或传输中），请等待完成，或先暂停任务后再重试。",
                     HTTPStatus.CONFLICT,
                 ) from None
             if not retry_failed_web_task and reset_items and self.task_submitter:

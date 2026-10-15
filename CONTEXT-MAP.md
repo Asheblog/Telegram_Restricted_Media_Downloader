@@ -146,7 +146,7 @@
 | `/api/tasks/<id>/summary` | GET | 获取任务统计 ViewModel 与最近事件 |
 | `/api/tasks/<id>/pause` | POST | 暂停任务 |
 | `/api/tasks/<id>/resume` | POST | 恢复任务 |
-| `/api/tasks/<id>/retry-failed` | POST | 重试失败 Items；任务仍有在途条目时 409 `task_busy` |
+| `/api/tasks/<id>/retry-failed` | POST | 重试失败 Items；任务仍有未完成工作（排队/在途条目或正被处理）时 409 `task_busy` |
 | `/api/watches` | GET/POST | 列出/创建监听规则 |
 | `/api/watches/<id>` | DELETE/PATCH | 删除/更新监听 |
 | `/api/watches/<id>/events` | GET | 监听转发记录；`limit`/`offset`/`today`/`tz_offset`/`status=success\|skipped\|failure`；响应含 `status_counts` |
@@ -155,7 +155,7 @@
 | `/api/transfer/detect-range` | POST | 检测频道消息范围 |
 | `/api/media/scan` | GET | 扫描可清理文件 |
 | `/api/media/cleanup` | POST | 执行文件清理 |
-| `/api/media/retry` | POST | 按 `item_ids` 重试失败 Items；响应 `retried_items`/`task_ids`/`busy_items`（所在任务仍有在途条目而未重试的数量） |
+| `/api/media/retry` | POST | 按 `item_ids` 重试失败 Items；响应 `retried_items`/`task_ids`/`busy_items`（所在任务仍有未完成工作而未重试的数量） |
 | `/api/auth/status` | GET | WebUI Telegram Login 步进状态 |
 | `/api/auth/submit` | POST | 提交手机号/验证码/2FA |
 | `/api/setup/status` | GET | First-run Setup Wizard 状态（含 Setup Ready） |

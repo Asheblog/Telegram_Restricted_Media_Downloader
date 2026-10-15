@@ -27,10 +27,10 @@ class IWatchOps(Protocol):
 
 
 class TransferTaskBusyError(RuntimeError):
-    """任务仍有在途条目时拒绝重试：重跑任务会与在途协程争用同一条目。"""
+    """任务仍有排队/在途工作时拒绝重试：重跑任务会与已派发的工作争用同一条目。"""
 
     def __init__(self, task_id: int):
-        super().__init__(f'Transfer task {task_id} still has items in flight.')
+        super().__init__(f'Transfer task {task_id} still has unfinished items.')
         self.task_id = int(task_id)
 
 
@@ -40,7 +40,7 @@ class ITaskOps(Protocol):
     def pause_web_task(self, task_id: int) -> bool: ...
     def resume_web_task(self, task_id: int) -> bool: ...
     def retry_failed_web_task(self, task_id: int) -> int:
-        """Raises TransferTaskBusyError while the task still has items in flight."""
+        """Raises TransferTaskBusyError while the task still has unfinished items."""
         ...
     def retry_failed_web_items(self, item_ids: list[int]) -> dict: ...
     def submit_web_task(self, task_id: int) -> None: ...

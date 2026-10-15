@@ -30,6 +30,7 @@ import module as trmd_module
 from module.core.media_types import MEDIA_TYPES_DEFAULT
 from module.core.message_filter_factory import build_runtime_message_filter
 from module.live_watch_manager import LiveWatchManager
+from module.ports import TransferTaskBusyError
 from module.pikpak_integration import PikpakIntegrationManager
 from module.transfer_store import ExecutionMode, TransferStatus, TransferStore
 from module.webui_view_model import WebUiViewModel
@@ -1880,7 +1881,9 @@ class TransferStoreWebUiCase(unittest.TestCase):
             self.assertEqual([], submitted)
             self.assertEqual(TransferStatus.FAILURE, store.get_item(item_id)["status"])
 
-    def _task_with_in_flight_and_failed_item(self, store, task_status):
+    def _task_with_in_flight_and_failed_item(
+        self, store, task_status, item_status=TransferStatus.RUNNING
+    ):
         task_id = store.create_task(
             "https://t.me/source", "https://t.me/target", start_id=1, end_id=2
         )
@@ -1891,11 +1894,54 @@ class TransferStoreWebUiCase(unittest.TestCase):
             source_link="https://t.me/source/2",
             target_link="https://t.me/target",
             file_name="2.mp4",
-            phase="uploading",
-            status=TransferStatus.RUNNING,
+            phase="uploading" if item_status == TransferStatus.RUNNING else "pending",
+            status=item_status,
         )
         store.update_task(task_id, status=task_status)
         return task_id, failed_id, in_flight_id
+
+    def test_retry_failed_web_task_rejects_unfinished_pending_or_pausing_task(self):
+        cases = (
+            (TransferStatus.RUNNING, TransferStatus.PENDING),
+            (TransferStatus.PAUSING, TransferStatus.RUNNING),
+            (TransferStatus.PENDING, TransferStatus.PENDING),
+        )
+        for task_status, item_status in cases:
+            with self.subTest(task_status=task_status, item_status=item_status):
+                with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+                    store = TransferStore(directory=directory)
+                    task_id, failed_id, _ = self._task_with_in_flight_and_failed_item(
+                        store, task_status, item_status
+                    )
+                    downloader, submitted = self._build_item_retry_downloader(store)
+
+                    with self.assertRaises(TransferTaskBusyError):
+                        downloader.retry_failed_web_task(task_id)
+
+                    self.assertEqual([], submitted)
+                    self.assertEqual(
+                        TransferStatus.FAILURE, store.get_item(failed_id)["status"]
+                    )
+
+    def test_retry_failed_web_task_rejects_task_being_processed_by_runner(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+            store = TransferStore(directory=directory)
+            task_id = store.create_task(
+                "https://t.me/source", "https://t.me/target", start_id=1, end_id=1
+            )
+            failed_id = self._add_failed_media_item(store, task_id, 1)
+            store.update_task(task_id, status=TransferStatus.RUNNING)
+            downloader = build_downloader(transfer_store=store)
+            manager = attach_task_manager(downloader, store, diagnostic=SimpleNamespace())
+            submitted = []
+            manager._enqueue_and_process_web_task = lambda tid: submitted.append(tid)
+            manager._has_active_web_transfer_runner = lambda tid: tid == task_id
+
+            with self.assertRaises(TransferTaskBusyError):
+                downloader.retry_failed_web_task(task_id)
+
+            self.assertEqual([], submitted)
+            self.assertEqual(TransferStatus.FAILURE, store.get_item(failed_id)["status"])
 
     def test_retry_failed_web_items_skips_task_with_items_in_flight(self):
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:

@@ -348,7 +348,7 @@ _Avoid_: Immediate kill, hard pause, force stop, wait for whole post/album, wait
 **Transfer Task Pause** — 已兑现的暂停态：Transfer Task 不再启动下一条 Transfer Item；未完成 Item 可保留已对齐的临时缓存以便恢复，不视为失败清理。恢复时绑定已有 Item（item_id），跳过已 success/skipped 的来源消息；压制同消息上的僵尸 active 行，避免再开一轮 fallback 下载。
 _Avoid_: Cancel task, delete task, kill transfer
 
-**Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。重试会重跑整个任务，因此任务仍有在途条目（任务为 PENDING/RUNNING/PAUSING 且存在 RUNNING 条目）时拒绝重试，避免与在途协程争用同一条目；用户可等传输完成或先暂停任务再重试。任务级入口返回 409 `task_busy`；媒体管理按条目重试跳过这类任务并在响应 `busy_items` 中计数。
+**Failed Item Retry** — 重试失败的 Transfer Item，成功的和跳过的保持为已完成。重试会重跑整个任务，因此任务仍有未完成工作（任务为 PENDING/RUNNING/PAUSING 且存在 PENDING/RUNNING 条目，或 Web 队列 runner 正在处理该任务）时拒绝重试，避免与已派发的工作争用同一条目；用户可等传输完成或先暂停任务再重试。任务级入口返回 409 `task_busy`；媒体管理按条目重试跳过这类任务并在响应 `busy_items` 中计数。
 _Avoid_: Restart task, rerun all, clear history
 
 **Manual Archive Retry** — WebUI 系统日志对 `archive_not_found` 条目提供单条手动重试：`POST /api/system-logs/{id}/retry-archive`。列表下发 `can_retry`；强制重新匹配并归档，无视自动匹配时间窗口；同目标进行中请求返回已在重试中。支持转存延迟归档（`task_id`/`item_id`）与实时监听路径（`source_folder`+`file_name`，旧日志可从消息正文解析文件名）。仍找不到则同步返回失败，不另起自动调度。

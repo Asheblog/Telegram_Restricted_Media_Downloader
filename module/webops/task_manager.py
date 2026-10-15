@@ -493,7 +493,10 @@ class WebUITaskManager:
         task = self.transfer_store.get_task(task_id)
         if not task:
             return 0
-        if self.transfer_store.has_in_flight_items(task_id):
+        if (
+            self._has_active_web_transfer_runner(task_id)
+            or self.transfer_store.has_unfinished_items(task_id)
+        ):
             raise TransferTaskBusyError(task_id)
         from module.transfer.watch_inline import is_watch_inline_task
         watch_inline = is_watch_inline_task(task)
