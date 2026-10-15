@@ -818,7 +818,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
         self.assertEqual([(4, 8), (8, 8)], progress_values)
         self.assertEqual(b'AAAABBBB', data)
 
-    def test_transfer_failure_cleans_final_and_temp_files(self):
+    def test_transfer_failure_keeps_final_and_temp_files_for_retry(self):
         from module.media_manager import MediaManager
         from module.transfer_progress import TransferProgressTracker
 
@@ -852,6 +852,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
                 save_directory=directory,
                 temp_directory=directory
             )
+            cleanup_calls = []
             tracker = TransferProgressTracker(
                 transfer_store_getter=lambda: store,
                 diagnostic=SimpleNamespace(warning=lambda m: None, info=lambda m: None, status=lambda m: None),
@@ -870,7 +871,7 @@ class DownloaderTransferRecordCase(unittest.TestCase):
                     error_message=msg
                 ),
                 refresh_counts=lambda tid: store.refresh_task_counts(tid, expected_total=1, assignment_completed=True),
-                cleanup_local_file=manager.try_cleanup_item_file,
+                cleanup_local_file=lambda item_id: cleanup_calls.append(item_id) or manager.try_cleanup_item_file(item_id),
             )
             upload_task = SimpleNamespace(
                 status=UploadStatus.FAILURE,
@@ -880,11 +881,12 @@ class DownloaderTransferRecordCase(unittest.TestCase):
 
             tracker.on_transfer_upload_status(upload_task)
 
-            self.assertFalse(os.path.exists(final_path))
-            self.assertFalse(os.path.exists(active_cache_path))
-            self.assertEqual(1, store.get_item(item_id)['local_file_deleted'])
-            reasons = [row['reason'] for row in store.list_cleanup_logs()]
-            self.assertIn('auto_cleanup_on_transfer_complete', reasons)
+            self.assertEqual([], cleanup_calls)
+            self.assertTrue(os.path.exists(final_path))
+            self.assertTrue(os.path.exists(active_cache_path))
+            self.assertEqual(0, store.get_item(item_id)['local_file_deleted'])
+            self.assertEqual(TransferStatus.FAILURE, store.get_item(item_id)['status'])
+            self.assertEqual([], store.list_cleanup_logs())
 
     def test_delete_web_task_cleans_final_and_temp_files_before_deleting_record(self):
         from module.media_manager import MediaManager

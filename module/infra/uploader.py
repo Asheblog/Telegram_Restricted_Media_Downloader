@@ -213,8 +213,8 @@ class TelegramUploader:
         self.release_transfer_local_storage(upload_task)
         upload_task.release_window()
         self.notify_transfer_status(upload_task)
-        if delete_file and upload_task.with_delete:
-            safe_delete(upload_task.file_path)
+        # 失败保留本地文件；delete_file 参数保留兼容，忽略。
+        _ = delete_file
 
     def _transfer_upload_registry(self) -> dict[int, set]:
         return self.__dict__.setdefault('_transfer_upload_tasks', {})
@@ -359,8 +359,8 @@ class TelegramUploader:
         self.release_transfer_local_storage(upload_task)
         upload_task.release_window()
         self.notify_transfer_status(upload_task)
-        if delete_file and upload_task.with_delete:
-            safe_delete(upload_task.file_path)
+        # 失败保留本地文件，便于重试；仅成功路径才按 with_delete 删除。
+        _ = delete_file
 
     async def resume_upload(
             self,
@@ -1158,10 +1158,45 @@ class TelegramUploader:
                 exc_info=True,
             )
             upload_task.error_msg = str(e)
-            # FAILURE triggers TransferProgressTracker._try_cleanup; also honor with_delete.
+            # 失败保留本地文件，便于重试；仅 SENT/SUCCESS 路径才按 with_delete 删除。
+            # #region agent log
+            try:
+                import json as _json, time as _time
+                _exists = bool(upload_task.file_path and os.path.isfile(upload_task.file_path))
+                _payload = {
+                    'sessionId': 'e907b5',
+                    'runId': 'post-fix',
+                    'hypothesisId': 'H2',
+                    'location': 'uploader.py:_pikpak_rclone_ingest:failure',
+                    'message': 'rclone ingest failure keep local',
+                    'data': {
+                        'with_delete': bool(upload_task.with_delete),
+                        'file_exists_before': _exists,
+                        'will_delete': False,
+                        'error': str(e)[:240],
+                        'file_name': file_name,
+                    },
+                    'timestamp': int(_time.time() * 1000),
+                }
+                for _path in (
+                    r'E:\codebase\tgbot\debug-e907b5.log',
+                    '/app/debug-e907b5.log',
+                    os.path.join(os.getcwd(), 'debug-e907b5.log'),
+                ):
+                    try:
+                        with open(_path, 'a', encoding='utf-8') as _f:
+                            _f.write(_json.dumps(_payload, ensure_ascii=False) + '\n')
+                        break
+                    except Exception:
+                        continue
+                self.diagnostic.warning(
+                    f'[debug-e907b5] rclone failure keep local '
+                    f'with_delete={bool(upload_task.with_delete)} exists={_exists} will_delete=False'
+                )
+            except Exception:
+                pass
+            # #endregion
             self._set_upload_status(upload_task, UploadStatus.FAILURE)
-            if upload_task.with_delete:
-                safe_delete(upload_task.file_path)
             self.release_transfer_local_storage(upload_task)
             upload_task.release_window()
         finally:

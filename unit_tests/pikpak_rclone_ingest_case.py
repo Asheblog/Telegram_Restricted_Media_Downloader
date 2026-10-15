@@ -242,6 +242,102 @@ class PikpakRcloneIngestCase(unittest.TestCase):
         self.assertIn('storage', releases)
         self.assertTrue(cleaned)
 
+    def test_rclone_ingest_failure_keeps_local_file_even_with_delete(self):
+        from module.infra.uploader import TelegramUploader
+
+        statuses = []
+
+        class FakeArchive:
+            def resolve_ingest_path(self, file_name):
+                return f'My Telegram/{file_name}'
+
+            def copyto_command(self, local_path, remote_path):
+                return ['rclone', 'copyto', local_path, f'pikpak:{remote_path}']
+
+            def _upload_timeout_seconds(self, file_size):
+                return 30
+
+            config = {'source_directory': 'My Telegram'}
+
+            def ensure_directory(self, path):
+                return None
+
+        class FakeUploader(TelegramUploader):
+            def __init__(self):
+                self.loop = asyncio.new_event_loop()
+                self.client = SimpleNamespace(rnd_id=lambda: 1)
+                self.upload_context = SimpleNamespace(
+                    pikpak_manager=SimpleNamespace(
+                        get_pikpak_archive_client=lambda: FakeArchive()
+                    ),
+                    transfer_store=None,
+                    is_running=True,
+                    is_bot_running=False,
+                    web_ui=None,
+                    should_continue_web_transfer_task=lambda task_id: True,
+                    diagnostic=SimpleNamespace(
+                        info=lambda *a, **k: None,
+                        warning=lambda *a, **k: None,
+                        error=lambda *a, **k: None,
+                        console_log=lambda *a, **k: None,
+                        exception=lambda *a, **k: None,
+                    ),
+                )
+                self.valid_link_cache = {}
+                self.current_task_num = 0
+                self.max_upload_task = 1
+                self.max_upload_retries = 1
+                self.upload_queue = asyncio.Queue()
+                self.event = asyncio.Event()
+                self.pb = SimpleNamespace()
+                self.app = SimpleNamespace()
+                self.is_premium = False
+                self._transfer_upload_tasks = {}
+
+            async def create_upload_task(self, *args, **kwargs):
+                raise AssertionError('Telegram create_upload_task must not run for pikpak ingest')
+
+            async def _run_cancellable_rclone_copyto(self, *, upload_task, command, timeout):
+                raise RuntimeError(
+                    'uploaded file name mismatch: expected "a.mp4", got "a(1).mp4"'
+                )
+
+        uploader = FakeUploader()
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as handle:
+            handle.write(b'data')
+            local_path = handle.name
+        try:
+            def status_callback(task):
+                statuses.append(task.status)
+
+            with_upload = {
+                'link': 'https://t.me/pikpak_bot',
+                'target_profile': 'pikpak',
+                'with_delete': True,
+                'source_link': 'https://t.me/ctuxas/1',
+                'file_name': 'a.mp4',
+                'task_id': 7,
+                'item_id': 9,
+                'status_callback': status_callback,
+                '_window_release': lambda: None,
+                '_local_storage_release': lambda: None,
+            }
+
+            async def run():
+                uploader.download_upload(with_upload, local_path)
+                await asyncio.sleep(0.05)
+                pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                if pending:
+                    await asyncio.wait(pending, timeout=2)
+
+            uploader.loop.run_until_complete(run())
+            self.assertIn(UploadStatus.FAILURE, statuses)
+            self.assertTrue(os.path.isfile(local_path))
+        finally:
+            uploader.loop.close()
+            if os.path.exists(local_path):
+                os.unlink(local_path)
+
 
 if __name__ == '__main__':
     unittest.main()

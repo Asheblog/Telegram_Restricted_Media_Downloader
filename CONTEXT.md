@@ -339,7 +339,7 @@ _Avoid_: Cache hit, finished file
 **Channel Download Statistics** — WebUI 统计面板按 Source Channel Folder（取 Source Post Archive Path 第一段；缺省回退 `source_chat_id`）聚合近 7 个本地自然日的 Transfer Item 终端态（success / failure / skipped）；数据来自 TransferStore，进程重启不丢失。
 _Avoid_: In-memory link completion, upload task counters, media-type-only chart, per-post stats
 
-**Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算并清理不再可恢复的本地文件。
+**Local Transfer Storage Budget** — 下载→上传回退流程的本地磁盘预算。启动下载前按文件大小预留空间；成功、失败、跳过或删除后必须释放预算。本地文件只在上传/rclone 入库成功、跳过或显式删除时清理；上传或入库失败时保留，以便重试复用。
 _Avoid_: Upload concurrency, temp cache size
 
 **Transfer Task Pausing** — 用户请求暂停后的中间态：当前 Transfer Item（单个媒体文件/视频）继续跑完转发/入库确认，不新开下一条 Item（同一主贴/相册里的下一个视频也不开）；在途下载上传排空后进入 Transfer Task Pause。**不等待 PikPak Archive**（归档已改为延迟/后台）。无手头 Item（排队中或重启后无在途工作）时可直接进入 Pause。

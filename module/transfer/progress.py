@@ -867,7 +867,7 @@ class TransferProgressTracker:
             },
         )
         self._refresh_counts(task_id)
-        self._try_cleanup(item_id)
+        # 失败保留本地文件，便于重试；不在此处清理。
 
     def on_transfer_upload_status(self, upload_task) -> None:
         self.notify_bot_transfer_upload_status(upload_task)
@@ -979,7 +979,45 @@ class TransferProgressTracker:
                         'source_link': item.get('source_link') or '',
                     },
                 )
-                self._try_cleanup(int(item_id))
+                # #region agent log
+                try:
+                    import json as _json, time as _time
+                    _local = (item.get('local_path') or '')
+                    _exists = bool(_local and os.path.isfile(_local))
+                    _payload = {
+                        'sessionId': 'e907b5',
+                        'runId': 'post-fix',
+                        'hypothesisId': 'H2',
+                        'location': 'progress.py:on_transfer_upload_status:FAILURE',
+                        'message': 'upload FAILURE skip cleanup keep local',
+                        'data': {
+                            'item_id': int(item_id),
+                            'task_id': int(task_id),
+                            'file_exists': _exists,
+                            'will_cleanup': False,
+                            'error': str(error_message)[:240],
+                        },
+                        'timestamp': int(_time.time() * 1000),
+                    }
+                    for _path in (
+                        r'E:\codebase\tgbot\debug-e907b5.log',
+                        '/app/debug-e907b5.log',
+                        os.path.join(os.getcwd(), 'debug-e907b5.log'),
+                    ):
+                        try:
+                            with open(_path, 'a', encoding='utf-8') as _f:
+                                _f.write(_json.dumps(_payload, ensure_ascii=False) + '\n')
+                            break
+                        except Exception:
+                            continue
+                    self.diagnostic.warning(
+                        f'[debug-e907b5] upload FAILURE skip cleanup '
+                        f'item={item_id} exists={_exists} will_cleanup=False'
+                    )
+                except Exception:
+                    pass
+                # #endregion
+                # 失败保留本地文件，便于重试；仅 SENT/SUCCESS 才清理。
         store = self.transfer_store
         if store and task_id:
             self._refresh_counts(int(task_id))
@@ -992,6 +1030,43 @@ class TransferProgressTracker:
             item_id = int(item_id)
         except (TypeError, ValueError):
             return
+        # #region agent log
+        try:
+            import json as _json, time as _time
+            _item = self.transfer_store.get_item(item_id) if self.transfer_store else None
+            _status = (_item or {}).get('status')
+            _local = (_item or {}).get('local_path') or ''
+            _exists = bool(_local and os.path.isfile(_local))
+            _payload = {
+                'sessionId': 'e907b5',
+                'runId': 'post-fix',
+                'hypothesisId': 'H2',
+                'location': 'progress.py:_try_cleanup',
+                'message': 'cleanup invoked',
+                'data': {
+                    'item_id': item_id,
+                    'status': _status,
+                    'file_exists_before': _exists,
+                },
+                'timestamp': int(_time.time() * 1000),
+            }
+            for _path in (
+                r'E:\codebase\tgbot\debug-e907b5.log',
+                '/app/debug-e907b5.log',
+                os.path.join(os.getcwd(), 'debug-e907b5.log'),
+            ):
+                try:
+                    with open(_path, 'a', encoding='utf-8') as _f:
+                        _f.write(_json.dumps(_payload, ensure_ascii=False) + '\n')
+                    break
+                except Exception:
+                    continue
+            self.diagnostic.warning(
+                f'[debug-e907b5] _try_cleanup item={item_id} status={_status} exists={_exists}'
+            )
+        except Exception:
+            pass
+        # #endregion
         try:
             self._cleanup_local_file(item_id)
         except Exception:
